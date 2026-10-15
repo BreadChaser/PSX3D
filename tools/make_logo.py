@@ -220,3 +220,9 @@ for wm_, cy_ in ((top, 116), (bot, 262)):
 rounded(ic, 60).resize((48, 48), Image.LANCZOS).save(f"{OUT}/icon.png")
 rounded(ic.copy(), 60).save(f"{OUT}/icon_big.png")
 print("ok")
+
+# library background: the scene without the logo, sun lower and dimmer so
+# box art stands out in front of it
+bg = scene(400, 240, 150, show_shapes=False)
+dim = Image.new("RGBA", bg.size, (0, 0, 0, 90))
+Image.alpha_composite(bg, dim).convert("RGB").save(f"{OUT}/library_bg.png")

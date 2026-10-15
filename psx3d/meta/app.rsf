@@ -4,7 +4,7 @@ BasicInfo:
   Logo                    : Homebrew
 
 RomFs:
-  # no RomFS
+  RootPath: psx3d/romfs
 
 TitleInfo:
   Category                : Application

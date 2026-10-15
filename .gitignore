@@ -3,3 +3,4 @@ psx3d/build/
 *.elf
 *.smdh
 *.map
+psx3d/romfs/gfx/

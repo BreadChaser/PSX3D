@@ -128,10 +128,43 @@ int main(void)
 		log_printf("video_init failed\n");
 		return 1;
 	}
+	romfsInit();
 	ui_init();
+	libui_init();
+	covers_init();
 	emu_init();
 
-	while (browser_run(path, sizeof(path))) {
+	// Home screen: the game library (needs a games folder); Y switches to
+	// the folder browser, which also is where a games folder gets picked.
+	bool use_library = g_cfg.games_dir[0] && library_load(g_cfg.games_dir, false);
+	if (use_library && g_cfg.last_title[0])
+		libui_select_title(g_cfg.last_title);
+	for (;;) {
+		bool play;
+		if (use_library) {
+			int r = libui_run(path, sizeof(path));
+			if (r == 0)
+				break;
+			if (r == 2) {
+				play = browser_run(path, sizeof(path));
+				if (!play) {
+					// back from the browser: the games folder may have changed
+					use_library = g_cfg.games_dir[0] && library_load(g_cfg.games_dir, false);
+					continue;
+				}
+			} else {
+				play = true;
+			}
+		} else {
+			play = browser_run(path, sizeof(path));
+			if (!play) {
+				if (g_cfg.games_dir[0] && library_load(g_cfg.games_dir, false)) {
+					use_library = true;
+					continue;
+				}
+				break;
+			}
+		}
 		if (!emu_run_game(path))
 			show_error("Could not load that game.\nCheck sdmc:/3ds/PSX3D/log.txt");
 		if (aptShouldClose())
@@ -139,6 +172,9 @@ int main(void)
 	}
 
 	config_save();
+	covers_exit();
+	libui_exit();
+	romfsExit();
 	emu_deinit();
 	ui_exit();
 	video_exit();

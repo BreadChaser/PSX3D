@@ -214,7 +214,7 @@ static void draw_bottom(void *ud)
 	ui_text(10, 34, 0.45f, grey, "Based on PCSX-ReARMed (GPL v2)");
 	ui_text(10, 62, 0.5f, white, "A: open    B: back    L/R: page");
 	ui_text(10, 80, 0.5f, white, "Y: games folder    X: set games folder");
-	ui_text(10, 98, 0.5f, white, "START: exit PSX3D");
+	ui_text(10, 98, 0.5f, white, g_cfg.games_dir[0] ? "START: back to library" : "START: exit PSX3D");
 	if (msg_frames > 0) {
 		msg_frames--;
 		ui_text(10, 180, 0.5f, C2D_Color32(140, 220, 140, 255), "%s", msg);
