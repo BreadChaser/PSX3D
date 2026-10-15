@@ -101,8 +101,6 @@ void config_load(void)
 	fclose(f);
 	if (g_cfg.stereo == 2 && !g_cfg.debug)
 		g_cfg.stereo = 1;
-	g_cfg.sounds = 1;
-	g_cfg.music = 1;
 	g_cfg.bottom_off = 1;   // experimental real 3D needs debug=1
 	config_sync_stereo();
 }
