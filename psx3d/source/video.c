@@ -21,6 +21,7 @@ static bool stereo_on;
 // UI screens in 3D: draw_top is called once per eye; ui_eye is -1 (left),
 // +1 (right) or 0 (no 3D). A layer at depth d (>0 behind the screen, <0 in
 // front) is shifted by ui_eye * d * ui_parallax pixels.
+void (*video_pre_draw)(void);   // GPU work to queue at frame start (cover uploads)
 int ui_eye;
 float ui_parallax;
 bool ui_wants_3d;
@@ -260,6 +261,9 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	// no vsync wait here: emu.c paces frames; this only waits for the GPU
 	C3D_FrameBegin(0);
 	wait_ticks += svcGetSystemTick() - t0;
+
+	if (video_pre_draw && !show_game)
+		video_pre_draw();
 
 	// queued on the GPU ahead of the draw below, so it never stalls the CPU
 	if (pending) {
