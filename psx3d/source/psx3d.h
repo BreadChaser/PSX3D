@@ -53,16 +53,20 @@ bool video_init(void);
 void video_exit(void);
 void *video_framebuffer(unsigned width, unsigned height, size_t *pitch);
 void video_frame(const void *data, unsigned width, unsigned height, size_t pitch);
-void video_set_fps(double fps);
 void video_present(bool show_game, void (*draw_top)(void *),
 	void (*draw_bottom)(void *), void *ud);
 C3D_RenderTarget *video_bottom_target(void);
+u64 video_take_wait_ticks(void);
+u64 video_take_xfer_ticks(void);
 
 // audio.c
 bool audio_init(double sample_rate);
 void audio_exit(void);
 size_t audio_write(const int16_t *data, size_t frames);
 void audio_pause(bool paused);
+void audio_stats(char *buf, size_t len);
+bool audio_capture_start(void);
+bool audio_test_tone_toggle(void);
 
 // input.c
 void input_poll(void);

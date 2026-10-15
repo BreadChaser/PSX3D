@@ -15,7 +15,12 @@ static int novr;
 
 // Defaults tuned for the 3DS that differ from the core's own defaults.
 static const char *const tuned_defaults[][2] = {
-	{ "pcsx_rearmed_spu_thread", "enabled" },
+	// The core's 3DS defaults turn these off to save CPU. Without
+	// interpolation, low-pitched samples are stretched by repeating each
+	// value (96% of Silent Hill's output was repeats), which sounds harsh and
+	// crackly. On a New 3DS both together cost well under 1ms per frame.
+	{ "pcsx_rearmed_spu_interpolation", "simple" },
+	{ "pcsx_rearmed_spu_reverb", "enabled" },
 };
 
 static void set_defaults(void)

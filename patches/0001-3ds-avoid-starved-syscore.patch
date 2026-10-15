@@ -1,0 +1,31 @@
+diff --git a/frontend/pcsxr-threads.c b/frontend/pcsxr-threads.c
+index dccc9d8..123a0e6 100644
+--- a/frontend/pcsxr-threads.c
++++ b/frontend/pcsxr-threads.c
+@@ -8,6 +8,7 @@
+ #include <sys/time.h>
+ #include "../libpcsxcore/new_dynarec/new_dynarec.h"
+ static bool is_new_3ds;
++static u32 syscore_percent;
+ #endif
+ #include "pcsxr-threads.h"
+ 
+@@ -35,6 +36,7 @@ static void pcsxr_sthread_lib_init(void)
+ 	APT_SetAppCpuTimeLimit(35);
+ 	u32 percent = -1;
+ 	APT_GetAppCpuTimeLimit(&percent);
++	syscore_percent = percent;
+ 
+ 	__asm__ volatile("fmrx %0, fpscr" : "=r"(fpscr));
+ 	SysPrintf("%s3ds detected, v%d.%d, AppCpuTimeLimit=%ld fpscr=%08x\n",
+@@ -62,7 +64,9 @@ sthread_t *pcsxr_sthread_create(void (*thread_func)(void *),
+ 	switch (type) {
+ 	case PCSXRT_CDR:
+ 	case PCSXRT_SPU:
+-		core_id = 1;
++		// no time granted on the syscore (e.g. some homebrew launch paths):
++		// threads there would starve, so use the new3ds' extra core instead
++		core_id = (is_new_3ds && syscore_percent == 0) ? 2 : 1;
+ 		break;
+ 	case PCSXRT_DRC:
+ 		stack_size = new_dynarec_estimate_stack_size();
