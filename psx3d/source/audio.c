@@ -11,7 +11,7 @@
 #include "psx3d.h"
 
 #define RING_FRAMES  8192         // ~186 ms at 44.1 kHz
-#define TARGET_FILL  2048         // ~46 ms of latency
+#define TARGET_FILL  3072         // ~70 ms of latency
 #define MAX_ADJUST   0.005
 
 static int16_t *ring;             // stereo interleaved, linear memory
@@ -19,6 +19,8 @@ static ndspWaveBuf wbuf;
 static bool active, started;
 static u32 wpos, last_ppos;
 static double base_rate;
+static double avg_fill;   // smoothed buffer level for rate control
+static float cur_rate;
 
 // debug capture: what the core produced vs what the DSP actually read
 #define CAP_FRAMES (44100 * 10)
@@ -53,7 +55,9 @@ bool audio_init(double sample_rate)
 	base_rate = sample_rate;
 	ndspSetOutputMode(NDSP_OUTPUT_STEREO);
 	ndspChnReset(0);
-	ndspChnSetInterp(0, NDSP_INTERP_LINEAR);
+	// polyphase is the DSP's best resampler (44.1kHz -> its 32.7kHz output);
+	// linear adds audible grit on high frequencies
+	ndspChnSetInterp(0, NDSP_INTERP_POLYPHASE);
 	ndspChnSetRate(0, (float)base_rate);
 	ndspChnSetFormat(0, NDSP_FORMAT_STEREO_PCM16);
 
@@ -66,6 +70,8 @@ bool audio_init(double sample_rate)
 	wbuf.looping = true;
 
 	wpos = TARGET_FILL;  // start with a cushion of silence
+	avg_fill = TARGET_FILL;
+	cur_rate = (float)base_rate;
 	last_ppos = 0;
 	started = false;
 	active = true;
@@ -210,6 +216,7 @@ size_t audio_write(const int16_t *data, size_t frames)
 		// the DSP lapped us (long stall) - restart from the play cursor
 		wpos = (ppos + TARGET_FILL) % RING_FRAMES;
 		fill = TARGET_FILL;
+		avg_fill = TARGET_FILL;
 		st.laps++;
 	}
 	st.calls++;
@@ -231,11 +238,19 @@ size_t audio_write(const int16_t *data, size_t frames)
 		flush_range(start, n);
 
 	// dynamic rate control around the target fill level
-	double err = ((double)fill - TARGET_FILL) / TARGET_FILL;
+	// The raw fill level saws up and down by a whole video frame of audio
+	// on every write; steer by a slow average so the pitch doesn't wobble,
+	// and only touch the DSP when the rate really changes.
+	avg_fill += ((double)fill - avg_fill) * 0.02;
+	double err = (avg_fill - TARGET_FILL) / TARGET_FILL;
 	if (err > 1.0) err = 1.0;
 	if (err < -1.0) err = -1.0;
-	st.rate = (float)(base_rate * (1.0 + err * MAX_ADJUST));
-	ndspChnSetRate(0, st.rate);
+	float rate = (float)(base_rate * (1.0 + err * MAX_ADJUST));
+	if (fabsf(rate - cur_rate) >= 2.0f) {
+		cur_rate = rate;
+		ndspChnSetRate(0, cur_rate);
+	}
+	st.rate = cur_rate;
 
 	return frames;
 }
