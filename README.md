@@ -26,7 +26,9 @@ A standalone PlayStation 1 emulator for the **New Nintendo 3DS**, built on
 
 ## Requirements
 
-- New 3DS / New 2DS XL recommended. Old 3DS models will be too slow for most games.
+- New 3DS / New 2DS XL recommended. Old 3DS / 2DS is supported on a best-effort
+  basis (untested on real hardware): it sizes memory to fit, runs everything on
+  one core and turns on auto frameskip, but heavy 3D games will be slow.
 - Custom firmware with **Luma3DS** (needed for the fast dynarec; without it,
   PSX3D falls back to a very slow interpreter)
 - `sdmc:/3ds/dspfirm.cdc` for sound (dump it with DSP1)
