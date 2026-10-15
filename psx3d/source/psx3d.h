@@ -46,6 +46,9 @@ const char *config_core_override(const char *key);
 bool config_widescreen(void);
 int config_screen_mode(void);
 void config_set_screen_mode(int mode);
+void config_game_begin(const char *game);
+void config_game_set_screen(int mode);
+void config_game_end(void);
 void config_set_widescreen(bool on);
 void config_set_core_override(const char *key, const char *value);
 
