@@ -12,18 +12,30 @@ static char game_name[PATH_LEN];   // file name without extension
 static char osd_msg[128];
 static int  osd_frames;
 static double fps_target = 60.0;
-static float fps_measured;
+static float fps_measured, emu_ms, present_ms;
 static bool core_initialized;
 static bool has_audio;
 
 static void core_log(enum retro_log_level level, const char *fmt, ...)
 {
+	static char last[512];
+	static unsigned repeats;
 	char buf[512];
 	va_list ap;
 	(void)level;
 	va_start(ap, fmt);
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
+	// some core messages repeat every frame; writing those to the SD card
+	// costs real time, so only log a message once until it changes
+	if (strcmp(buf, last) == 0) {
+		repeats++;
+		return;
+	}
+	if (repeats)
+		log_printf("(previous message repeated %u times)\n", repeats);
+	repeats = 0;
+	snprintf(last, sizeof(last), "%s", buf);
 	log_printf("%s", buf);
 }
 
@@ -364,7 +376,7 @@ static void game_draw_top(void *ud)
 	(void)ud;
 	u32 white = C2D_Color32(255, 255, 255, 255);
 	if (g_cfg.show_fps)
-		ui_text(2, 0, 0.45f, white, "%.1f", fps_measured);
+		ui_text(2, 0, 0.45f, white, "%.1f fps  emu %.1fms", fps_measured, emu_ms);
 	if (osd_frames > 0) {
 		osd_frames--;
 		ui_rect(0, 222, 400, 18, C2D_Color32(0, 0, 0, 160));
@@ -439,8 +451,12 @@ bool emu_run_game(const char *path)
 	osd("%s", __ctr_svchax ? "Dynarec enabled" : "Interpreter mode (no Luma SVC access) - slow");
 
 	fps_t0 = osGetTime();
+	u64 t_run = 0, t_present = 0;
 	while (aptMainLoop()) {
+		u64 t0 = svcGetSystemTick();
 		retro_run();
+		u64 t1 = svcGetSystemTick();
+		t_run += t1 - t0;
 
 		// touch the bottom screen to open the menu
 		if (input_keys_down() & KEY_TOUCH) {
@@ -451,7 +467,9 @@ bool emu_run_game(const char *path)
 		}
 
 		ui_begin();
+		t1 = svcGetSystemTick();
 		video_present(true, game_draw_top, game_draw_bottom, NULL);
+		t_present += svcGetSystemTick() - t1;
 
 		if (++srm_counter >= SRM_CHECK_FRAMES) {
 			srm_counter = 0;
@@ -461,6 +479,10 @@ bool emu_run_game(const char *path)
 		u64 now = osGetTime();
 		if (now - fps_t0 >= 1000) {
 			fps_measured = fps_frames * 1000.0f / (now - fps_t0);
+			emu_ms = t_run / (float)fps_frames / CPU_TICKS_PER_MSEC;
+			present_ms = t_present / (float)fps_frames / CPU_TICKS_PER_MSEC;
+			log_printf("fps %.1f  emu %.2fms  present %.2fms\n", fps_measured, emu_ms, present_ms);
+			t_run = t_present = 0;
 			fps_frames = 0;
 			fps_t0 = now;
 		}
