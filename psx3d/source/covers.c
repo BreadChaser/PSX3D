@@ -326,27 +326,46 @@ C3D_Tex *covers_get(int game)
 	if (!s)
 		return NULL;
 
-	if (state == 2) {
-		// upload on the main thread
+	(void)state;
+	return s->state == 3 ? &s->tex : NULL;
+}
+
+// Upload decoded covers to textures. Must run outside a frame: the
+// transfer waits for the GPU, and inside a frame the GPU only starts once
+// the frame is submitted (that deadlock froze the library).
+void covers_pump(void)
+{
+	int done = 0;
+	for (int i = 0; i < SLOTS && done < 2; i++) {
+		slot_t *s = &slots[i];
+		if (s->state != 2)
+			continue;
 		if (!s->tex_ok)
 			s->tex_ok = C3D_TexInit(&s->tex, COVER_SIZE, COVER_SIZE, GPU_RGBA8);
-		if (s->tex_ok) {
-			u32 *lin = linearAlloc(COVER_SIZE * COVER_SIZE * 4);
-			if (lin) {
-				memcpy(lin, s->pixels, COVER_SIZE * COVER_SIZE * 4);
-				GSPGPU_FlushDataCache(lin, COVER_SIZE * COVER_SIZE * 4);
-				C3D_SyncDisplayTransfer(lin, GX_BUFFER_DIM(COVER_SIZE, COVER_SIZE), (u32 *)s->tex.data,
-					GX_BUFFER_DIM(COVER_SIZE, COVER_SIZE),
-					GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_RAW_COPY(0) |
-					GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8) |
-					GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
-				linearFree(lin);
-				C3D_TexSetFilter(&s->tex, GPU_LINEAR, GPU_LINEAR);
+		u32 *lin = s->tex_ok ? linearAlloc(COVER_SIZE * COVER_SIZE * 4) : NULL;
+		if (!lin)
+			return;
+		LightLock_Lock(&lock);
+		bool still = s->state == 2 && s->pixels;
+		if (still)
+			memcpy(lin, s->pixels, COVER_SIZE * COVER_SIZE * 4);
+		LightLock_Unlock(&lock);
+		if (still) {
+			GSPGPU_FlushDataCache(lin, COVER_SIZE * COVER_SIZE * 4);
+			C3D_SyncDisplayTransfer(lin, GX_BUFFER_DIM(COVER_SIZE, COVER_SIZE), (u32 *)s->tex.data,
+				GX_BUFFER_DIM(COVER_SIZE, COVER_SIZE),
+				GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_RAW_COPY(0) |
+				GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8) |
+				GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
+			C3D_TexSetFilter(&s->tex, GPU_LINEAR, GPU_LINEAR);
+			LightLock_Lock(&lock);
+			if (s->state == 2)
 				s->state = 3;
-			}
+			LightLock_Unlock(&lock);
+			done++;
 		}
+		linearFree(lin);
 	}
-	return s->state == 3 ? &s->tex : NULL;
 }
 
 void covers_focus(int game)
