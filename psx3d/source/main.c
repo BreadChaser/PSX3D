@@ -89,7 +89,7 @@ static void show_error(const char *msg)
 		if (input_keys_down())
 			break;
 		ui_begin();
-		video_present(false, NULL, draw_message, (void *)msg);
+		video_present_vsync(false, NULL, draw_message, (void *)msg);
 	}
 }
 

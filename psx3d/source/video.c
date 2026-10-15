@@ -320,3 +320,12 @@ void video_present(bool show_game, void (*draw_top)(void *),
 
 	C3D_FrameEnd(0);
 }
+
+// UI screens (browser, menus): one frame per refresh. In game, emu.c paces
+// frames by the clock instead.
+void video_present_vsync(bool show_game, void (*draw_top)(void *),
+	void (*draw_bottom)(void *), void *ud)
+{
+	video_present(show_game, draw_top, draw_bottom, ud);
+	gspWaitForVBlank();
+}

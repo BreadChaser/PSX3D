@@ -408,7 +408,7 @@ static bool menu_run(void)
 		}
 
 		ui_begin();
-		video_present(true, menu_draw_top, menu_draw_bottom, &m);
+		video_present_vsync(true, menu_draw_top, menu_draw_bottom, &m);
 	}
 	if (!aptShouldClose())
 		goto resume;

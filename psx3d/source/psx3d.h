@@ -59,6 +59,8 @@ void *video_framebuffer(unsigned width, unsigned height, size_t *pitch);
 void video_frame(const void *data, unsigned width, unsigned height, size_t pitch);
 void video_present(bool show_game, void (*draw_top)(void *),
 	void (*draw_bottom)(void *), void *ud);
+void video_present_vsync(bool show_game, void (*draw_top)(void *),
+	void (*draw_bottom)(void *), void *ud);
 C3D_RenderTarget *video_bottom_target(void);
 u64 video_take_wait_ticks(void);
 u64 video_take_xfer_ticks(void);
