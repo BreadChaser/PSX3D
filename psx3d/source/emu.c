@@ -146,8 +146,12 @@ static void audio_sample_cb(int16_t l, int16_t r)
 	audio_write(s, 1);
 }
 
+static bool audio_muted;   // fast-forward / rewind frames make no sound
+
 static size_t audio_batch_cb(const int16_t *data, size_t frames)
 {
+	if (audio_muted)
+		return frames;
 	return audio_write(data, frames);
 }
 
@@ -231,52 +235,75 @@ static void bottom_backlight(bool on);
 static unsigned menu_disc;
 static int game_frames;      // frames since the game (re)started showing   // disc picked in the menu (left/right), inserted with A
 
-static void state_save(void)
+static void state_ext(char *ext, size_t len, int slot)
+{
+	if (slot == STATE_AUTO)
+		snprintf(ext, len, ".sta");
+	else
+		snprintf(ext, len, ".st%d", slot);
+}
+
+static bool state_save_to(int slot)
 {
 	char path[PATH_LEN], ext[16];
 	size_t size = retro_serialize_size();
 	void *buf = size ? malloc(size) : NULL;
+	bool ok = false;
 
 	if (!buf || !retro_serialize(buf, size)) {
 		osd(buf ? "Save state failed" : "Not enough memory to save a state");
 		free(buf);
-		return;
+		return false;
 	}
-	snprintf(ext, sizeof(ext), ".st%d", state_slot);
+	state_ext(ext, sizeof(ext), slot);
 	make_path(path, sizeof(path), PSX3D_STATE_DIR, ext);
 	if (write_file(path, buf, size)) {
 		make_path(path, sizeof(path), PSX3D_STATE_DIR, "");
-		state_thumb_write(path, state_slot);
-		osd("Saved to slot %d", state_slot);
-	} else {
-		osd("Could not write slot %d", state_slot);
+		state_thumb_write(path, slot);
+		ok = true;
 	}
 	free(buf);
+	return ok;
 }
 
-static void state_load(void)
+static bool state_load_from(int slot)
 {
 	char path[PATH_LEN], ext[16];
 	size_t size = retro_serialize_size();
 	void *buf = size ? malloc(size) : NULL;
+	bool ok = false;
 
-	snprintf(ext, sizeof(ext), ".st%d", state_slot);
+	state_ext(ext, sizeof(ext), slot);
 	make_path(path, sizeof(path), PSX3D_STATE_DIR, ext);
 	if (!buf)
 		osd("Not enough memory to load a state");
 	else if (read_file(path, buf, size) == 0)
-		osd("Slot %d is empty", state_slot);
+		osd("Slot %d is empty", slot);
 	else if (!retro_unserialize(buf, size))
-		osd("Slot %d is from an incompatible version", state_slot);
+		osd("That save is from an incompatible version");
 	else
-		osd("Loaded slot %d", state_slot);
+		ok = true;
 	free(buf);
+	if (ok)
+		rewind_reset();
+	return ok;
+}
+
+static void state_save(void)
+{
+	osd(state_save_to(state_slot) ? "Saved to slot %d" : "Could not write slot %d", state_slot);
+}
+
+static void state_load(void)
+{
+	if (state_load_from(state_slot))
+		osd("Loaded slot %d", state_slot);
 }
 
 // ---------------------------------------------------------------- menu
 
 enum { M_RESUME, M_SAVE, M_LOAD, M_DISC, M_CHEATS, M_SETTINGS, M_RESET, M_EXIT,
-       M_SCREEN, M_3D, M_SMOOTH, M_FPS, M_CORE, M_RECORD, M_TONE, M_COUNT };
+       M_SCREEN, M_3D, M_SMOOTH, M_FPS, M_CONTROLS, M_REWIND, M_AUTOSAVE, M_CORE, M_RECORD, M_TONE, M_COUNT };
 #define M_FIRST_SETTING M_SCREEN
 
 // items on the main page or the settings page; the debug ones only with
@@ -299,7 +326,9 @@ static int menu_items(int *items, bool settings)
 typedef struct {
 	int sel, main_sel;
 	bool settings;
-	bool core_page, cheat_page;
+	bool core_page, cheat_page, ctl_page;
+	int ctl_sel;
+	flist_t ctl_fl;
 	int cheat_sel;
 	flist_t cheat_fl;
 	int core_sel, core_scroll;
@@ -333,7 +362,8 @@ static const char *const menu_names[M_COUNT] = {
 	[M_RESUME] = "Resume", [M_SAVE] = "Save state", [M_LOAD] = "Load state", [M_DISC] = "Swap disc", [M_CHEATS] = "Cheats",
 	[M_SETTINGS] = "Settings", [M_RESET] = "Reset game", [M_EXIT] = "Exit to library",
 	[M_SCREEN] = "Screen", [M_3D] = "3D", [M_SMOOTH] = "Smoothing",
-	[M_FPS] = "Show FPS", [M_CORE] = "Core options", [M_RECORD] = "Debug: record audio",
+	[M_FPS] = "Show FPS", [M_CONTROLS] = "Controls", [M_REWIND] = "Rewind (this game)",
+	[M_AUTOSAVE] = "Continue where I left off", [M_CORE] = "Core options", [M_RECORD] = "Debug: record audio",
 	[M_TONE] = "Debug: test tone",
 };
 
@@ -399,11 +429,52 @@ static void sync_widescreen(void)
 	config_set_ws_native(want && native);
 }
 
+static const char *ctl_label(int i, void *ud)
+{
+	(void)ud;
+	return input_map_key_name(i);
+}
+
+static const char *ctl_value(int i, void *ud)
+{
+	(void)ud;
+	return input_ps1_name(input_map_get(i));
+}
+
+static void controls_save(void)
+{
+	for (int i = 0; i < INPUT_REMAP_N; i++) {
+		char key[16];
+		snprintf(key, sizeof(key), "map_%s", input_map_key_name(i));
+		gamecfg_set_int(key, input_map_get(i));
+	}
+}
+
+static void controls_load(void)
+{
+	input_map_reset();
+	for (int i = 0; i < INPUT_REMAP_N; i++) {
+		char key[16];
+		snprintf(key, sizeof(key), "map_%s", input_map_key_name(i));
+		const char *v = gamecfg_get(key);
+		if (v)
+			input_map_set(i, atoi(v));
+	}
+}
+
 static void menu_draw_bottom(void *ud)
 {
 	menu_t *m = ud;
 	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
 	u32 hint = C2D_Color32(110, 120, 160, 255);
+
+	if (m->ctl_page) {
+		menu_header("CONTROLS", "this game");
+		flist_draw(&m->ctl_fl, INPUT_REMAP_N, m->ctl_sel, 0, MENU_Y0, 320, MENU_ROW_H, CORE_ROWS,
+			ctl_label, ctl_value, m, menu_accent_cols[m->ctl_sel & 3]);
+		ui_text_ex(NULL, 160, 222, 0.42f, hint, C2D_AlignCenter, "Left/Right change    X reset    B back");
+		return;
+	}
 
 	if (m->cheat_page) {
 		char n[24];
@@ -432,6 +503,12 @@ static void menu_draw_bottom(void *ud)
 	snprintf(m->val[M_3D], 48, "%s", s3d_names[g_cfg.stereo]);
 	snprintf(m->val[M_SMOOTH], 48, "%s", g_cfg.smooth ? "on" : "off");
 	snprintf(m->val[M_FPS], 48, "%s", g_cfg.show_fps ? "on" : "off");
+	snprintf(m->val[M_REWIND], 48, "%s", gamecfg_int("rewind", 0) ? (rewind_active() ? "on" : "on (unavailable)") : "off");
+	snprintf(m->val[M_AUTOSAVE], 48, "%s", g_cfg.autosave ? "on" : "off");
+	int changed = 0;
+	for (int i = 0; i < INPUT_REMAP_N; i++)
+		changed += !input_map_is_default(i);
+	snprintf(m->val[M_CONTROLS], 48, "%s", changed ? "custom" : "default");
 
 	m->nitems = menu_items(m->items, m->settings);
 	char clock[16];
@@ -461,6 +538,7 @@ static bool menu_run(void)
 	static menu_t m;   // keep the core options scroll position between visits
 	m.core_page = false;
 	m.cheat_page = false;
+	m.ctl_page = false;
 	m.settings = false;
 	if (have_disk && disk.get_image_index)
 		menu_disc = disk.get_image_index();
@@ -476,7 +554,7 @@ static bool menu_run(void)
 		u32 k = input_keys_down();
 
 		// touch a row to select it, touch it again to use it
-		if (!m.core_page && !m.cheat_page && (k & KEY_TOUCH)) {
+		if (!m.core_page && !m.cheat_page && !m.ctl_page && (k & KEY_TOUCH)) {
 			touchPosition tp;
 			hidTouchRead(&tp);
 			int row = flist_row_at(&m.fl, MENU_Y0, MENU_ROW_H, tp.py);
@@ -490,7 +568,17 @@ static bool menu_run(void)
 			}
 		}
 
-		if (m.cheat_page) {
+		if (m.ctl_page) {
+			if (k & KEY_B) {
+				m.ctl_page = false;
+				sfx_play(SFX_BACK);
+			}
+			if (k & KEY_DOWN) { m.ctl_sel = (m.ctl_sel + 1) % INPUT_REMAP_N; sfx_play(SFX_MOVE); }
+			if (k & KEY_UP) { m.ctl_sel = (m.ctl_sel - 1 + INPUT_REMAP_N) % INPUT_REMAP_N; sfx_play(SFX_MOVE); }
+			if (k & (KEY_RIGHT | KEY_A)) { input_map_cycle(m.ctl_sel, 1); controls_save(); sfx_play(SFX_MOVE); }
+			if (k & KEY_LEFT) { input_map_cycle(m.ctl_sel, -1); controls_save(); sfx_play(SFX_MOVE); }
+			if (k & KEY_X) { input_map_reset(); controls_save(); sfx_play(SFX_SELECT); }
+		} else if (m.cheat_page) {
 			int n = cheats_count();
 			if (k & KEY_B) {
 				m.cheat_page = false;
@@ -561,6 +649,22 @@ static bool menu_run(void)
 					menu_disc = (menu_disc + dir + dn) % dn;
 					sfx_play(SFX_MOVE);
 				} break;
+				case M_CONTROLS:
+					if (k & KEY_A) {
+						m.ctl_page = true;
+						m.ctl_fl.init = false;
+						sfx_play(SFX_SELECT);
+					}
+					break;
+				case M_REWIND: {
+					bool on = !gamecfg_int("rewind", 0);
+					gamecfg_set_int("rewind", on);
+					if (on && !rewind_start())
+						osd("Rewind needs a New 3DS and free memory");
+					if (!on)
+						rewind_stop();
+				} break;
+				case M_AUTOSAVE: g_cfg.autosave ^= 1; break;
 				case M_CHEATS:
 					if (k & KEY_A) {
 						m.cheat_page = true;
@@ -601,7 +705,7 @@ static bool menu_run(void)
 						goto resume;
 					}
 					break;
-				case M_RESET: if (k & KEY_A) { retro_reset(); goto resume; } break;
+				case M_RESET: if (k & KEY_A) { retro_reset(); rewind_reset(); goto resume; } break;
 				case M_EXIT:
 					if (k & KEY_A) {
 						config_save();
@@ -612,7 +716,9 @@ static bool menu_run(void)
 			}
 		}
 
-		if (m.cheat_page)
+		if (m.ctl_page)
+			flist_update(&m.ctl_fl, m.ctl_sel, INPUT_REMAP_N, CORE_ROWS);
+		else if (m.cheat_page)
 			flist_update(&m.cheat_fl, m.cheat_sel, cheats_count(), CORE_ROWS);
 		else if (m.core_page)
 			flist_update(&m.core_fl, m.core_sel, options_count(), CORE_ROWS);
@@ -763,6 +869,15 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	srm_load();
 	cheats_load(game_name);
 	sync_widescreen();
+	controls_load();
+	{
+		char prefix[PATH_LEN];
+		make_path(prefix, sizeof(prefix), PSX3D_STATE_DIR, "");
+		if (g_cfg.autosave && states_resume_prompt(prefix) && state_load_from(STATE_AUTO))
+			osd("Continuing where you left off");
+	}
+	if (gamecfg_int("rewind", 0))
+		rewind_start();
 	osd("%s", __ctr_svchax ? "Dynarec enabled" : "Interpreter mode (no Luma SVC access) - slow");
 
 	fps_t0 = osGetTime();
@@ -788,7 +903,38 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			abuf_status_cb(has_audio, occ, occ < 20);
 		}
 		u64 t0 = svcGetSystemTick();
-		retro_run();
+		static bool rewind_hint;
+		if (input_rewind() && rewind_active()) {
+			// step back about 6 times a second of game time, shown at 20/s
+			static int rw;
+			if (++rw >= 3) {
+				rw = 0;
+				if (!rewind_step())
+					osd("Rewound as far as it goes");
+			}
+			audio_muted = true;
+			retro_run();   // show the rewound frame
+			audio_muted = false;
+		} else {
+			if (input_rewind() && !rewind_hint) {
+				osd("Rewind is off for this game (Settings)");
+				rewind_hint = true;
+			}
+			if (!input_rewind())
+				rewind_hint = false;
+			bool ff = input_fast_forward();
+			// fast-forward: up to 3 more frames per shown frame, no sound
+			for (int extra = ff ? 3 : 0; extra > 0; extra--) {
+				audio_muted = true;
+				retro_run();
+				rewind_capture();
+			}
+			audio_muted = false;
+			retro_run();
+			rewind_capture();
+			if (ff)
+				next_deadline = svcGetSystemTick();
+		}
 		{
 			// real 3D only costs anything while the slider is up; a little
 			// hysteresis so a slider resting near 0 doesn't toggle it
@@ -857,6 +1003,10 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	}
 
 	aptUnhook(&apt_cookie);
+	log_printf("game: leaving\n");
+	rewind_stop();
+	if (g_cfg.autosave)
+		log_printf("auto-save: %s\n", state_save_to(STATE_AUTO) ? "written" : "failed");
 	bottom_backlight(true);
 	srm_save(false);
 	cheats_unload();

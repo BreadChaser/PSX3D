@@ -38,6 +38,7 @@ static void set_defaults(void)
 	g_cfg.sounds = 1;
 	g_cfg.music = 1;
 	g_cfg.bottom_off = 1;
+	g_cfg.autosave = 1;
 	for (size_t i = 0; i < sizeof(tuned_defaults) / sizeof(tuned_defaults[0]); i++)
 		if (tuned_defaults[i][0])
 			config_set_core_override(tuned_defaults[i][0], tuned_defaults[i][1]);
@@ -85,6 +86,8 @@ void config_load(void)
 			g_cfg.music = atoi(v) != 0;
 		else if (strcmp(k, "bottom_off") == 0)
 			g_cfg.bottom_off = atoi(v) != 0;
+		else if (strcmp(k, "autosave") == 0)
+			g_cfg.autosave = atoi(v) != 0;
 		else if (strcmp(k, "debug") == 0)
 			g_cfg.debug = atoi(v) != 0;
 		else if (strcmp(k, "smooth") == 0)
@@ -121,6 +124,7 @@ void config_save(void)
 	int screen = in_game ? default_screen : config_screen_mode();
 	fprintf(f, "stretch=%d\n", screen == 1);
 	fprintf(f, "sounds=%d\nmusic=%d\nbottom_off=%d\n", g_cfg.sounds, g_cfg.music, g_cfg.bottom_off);
+	fprintf(f, "autosave=%d\n", g_cfg.autosave);
 	if (g_cfg.debug)
 		fprintf(f, "debug=1\n");
 	for (int i = 0; i < novr; i++) {
@@ -250,37 +254,6 @@ static int game_screen_get(const char *game)
 	return mode;
 }
 
-static void game_screen_put(const char *game, int mode)
-{
-	char line[PATH_LEN + 16];
-	static char keep[64 * 1024];
-	size_t len = 0;
-	FILE *f = fopen(GAMES_INI, "r");
-	if (f) {
-		while (fgets(line, sizeof(line), f)) {
-			char name[PATH_LEN + 16];
-			snprintf(name, sizeof(name), "%s", line);
-			char *eq = strrchr(name, '=');
-			if (eq) {
-				*eq = 0;
-				if (strcmp(trim(name), game) == 0)
-					continue;   // replaced below
-			}
-			size_t n = strlen(line);
-			if (len + n < sizeof(keep)) {
-				memcpy(keep + len, line, n);
-				len += n;
-			}
-		}
-		fclose(f);
-	}
-	if (!(f = fopen(GAMES_INI, "w")))
-		return;
-	fwrite(keep, 1, len, f);
-	fprintf(f, "%s=%d\n", game, mode);
-	fclose(f);
-}
-
 static char cur_game[PATH_LEN];
 
 // a game starts: use its own screen mode if it has one
@@ -289,7 +262,10 @@ void config_game_begin(const char *game)
 	snprintf(cur_game, sizeof(cur_game), "%s", game);
 	default_screen = config_screen_mode();
 	in_game = true;
-	int mode = game_screen_get(game);
+	gamecfg_load(game);
+	int mode = gamecfg_int("screen", -1);
+	if (mode < 0)
+		mode = game_screen_get(game);   // 0.1.1 kept it in games.ini
 	if (mode >= 0 && mode != default_screen)
 		config_set_screen_mode(mode);
 	log_printf("screen: %d (%s)\n", config_screen_mode(), mode >= 0 ? "this game" : "default");
@@ -300,7 +276,7 @@ void config_game_set_screen(int mode)
 {
 	config_set_screen_mode(mode);
 	if (in_game)
-		game_screen_put(cur_game, mode);
+		gamecfg_set_int("screen", mode);
 }
 
 // back to the library: the default screen mode again
@@ -309,6 +285,8 @@ void config_game_end(void)
 	if (!in_game)
 		return;
 	in_game = false;
+	gamecfg_end();
+	input_map_reset();   // per-game controls end with the game
 	config_set_ws_native(false);
 	if (config_screen_mode() != default_screen)
 		config_set_screen_mode(default_screen);

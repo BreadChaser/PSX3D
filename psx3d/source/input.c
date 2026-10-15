@@ -12,17 +12,78 @@ static circlePosition cpad, cstick;
 
 #define CPAD_DPAD_THRESHOLD 60
 
+// remappable buttons (input_map_*); -1 = does nothing in the game
+static const u32 remap_keys[INPUT_REMAP_N] = { KEY_A, KEY_B, KEY_X, KEY_Y, KEY_L, KEY_R, KEY_ZL, KEY_ZR, KEY_START, KEY_SELECT };
+static const char *const remap_names[INPUT_REMAP_N] = { "A", "B", "X", "Y", "L", "R", "ZL", "ZR", "START", "SELECT" };
+static const int remap_default[INPUT_REMAP_N] = {
+	RETRO_DEVICE_ID_JOYPAD_A, RETRO_DEVICE_ID_JOYPAD_B, RETRO_DEVICE_ID_JOYPAD_X, RETRO_DEVICE_ID_JOYPAD_Y,
+	RETRO_DEVICE_ID_JOYPAD_L, RETRO_DEVICE_ID_JOYPAD_R, RETRO_DEVICE_ID_JOYPAD_L2, RETRO_DEVICE_ID_JOYPAD_R2,
+	RETRO_DEVICE_ID_JOYPAD_START, RETRO_DEVICE_ID_JOYPAD_SELECT,
+};
+static int remap[INPUT_REMAP_N];
+static bool remap_init;
+
+// the PS1 buttons a 3DS button can be set to, in menu order
+static const int ps1_ids[] = {
+	RETRO_DEVICE_ID_JOYPAD_A, RETRO_DEVICE_ID_JOYPAD_B, RETRO_DEVICE_ID_JOYPAD_X, RETRO_DEVICE_ID_JOYPAD_Y,
+	RETRO_DEVICE_ID_JOYPAD_L, RETRO_DEVICE_ID_JOYPAD_R, RETRO_DEVICE_ID_JOYPAD_L2, RETRO_DEVICE_ID_JOYPAD_R2,
+	RETRO_DEVICE_ID_JOYPAD_L3, RETRO_DEVICE_ID_JOYPAD_R3, RETRO_DEVICE_ID_JOYPAD_START, RETRO_DEVICE_ID_JOYPAD_SELECT, -1,
+};
+#define N_PS1 (int)(sizeof(ps1_ids) / sizeof(ps1_ids[0]))
+
+const char *input_ps1_name(int id)
+{
+	switch (id) {
+	case RETRO_DEVICE_ID_JOYPAD_A: return "Circle";
+	case RETRO_DEVICE_ID_JOYPAD_B: return "Cross";
+	case RETRO_DEVICE_ID_JOYPAD_X: return "Triangle";
+	case RETRO_DEVICE_ID_JOYPAD_Y: return "Square";
+	case RETRO_DEVICE_ID_JOYPAD_L: return "L1";
+	case RETRO_DEVICE_ID_JOYPAD_R: return "R1";
+	case RETRO_DEVICE_ID_JOYPAD_L2: return "L2";
+	case RETRO_DEVICE_ID_JOYPAD_R2: return "R2";
+	case RETRO_DEVICE_ID_JOYPAD_L3: return "L3";
+	case RETRO_DEVICE_ID_JOYPAD_R3: return "R3";
+	case RETRO_DEVICE_ID_JOYPAD_START: return "Start";
+	case RETRO_DEVICE_ID_JOYPAD_SELECT: return "Select";
+	}
+	return "none";
+}
+
+static void remap_defaults(void)
+{
+	for (int i = 0; i < INPUT_REMAP_N; i++)
+		remap[i] = remap_default[i];
+	remap_init = true;
+}
+
+const char *input_map_key_name(int i) { return i >= 0 && i < INPUT_REMAP_N ? remap_names[i] : ""; }
+int input_map_get(int i) { if (!remap_init) remap_defaults(); return remap[i]; }
+bool input_map_is_default(int i) { return input_map_get(i) == remap_default[i]; }
+
+void input_map_set(int i, int id)
+{
+	if (!remap_init) remap_defaults();
+	if (i >= 0 && i < INPUT_REMAP_N)
+		remap[i] = id;
+}
+
+// step a button's PS1 assignment forward/back through the list
+void input_map_cycle(int i, int dir)
+{
+	int cur = 0;
+	for (int k = 0; k < N_PS1; k++)
+		if (ps1_ids[k] == input_map_get(i))
+			cur = k;
+	input_map_set(i, ps1_ids[(cur + dir + N_PS1) % N_PS1]);
+}
+
+void input_map_reset(void)
+{
+	remap_defaults();
+}
+
 static const struct { u32 key; unsigned id; } map[] = {
-	{ KEY_A,      RETRO_DEVICE_ID_JOYPAD_A },
-	{ KEY_B,      RETRO_DEVICE_ID_JOYPAD_B },
-	{ KEY_X,      RETRO_DEVICE_ID_JOYPAD_X },
-	{ KEY_Y,      RETRO_DEVICE_ID_JOYPAD_Y },
-	{ KEY_L,      RETRO_DEVICE_ID_JOYPAD_L },
-	{ KEY_R,      RETRO_DEVICE_ID_JOYPAD_R },
-	{ KEY_ZL,     RETRO_DEVICE_ID_JOYPAD_L2 },
-	{ KEY_ZR,     RETRO_DEVICE_ID_JOYPAD_R2 },
-	{ KEY_START,  RETRO_DEVICE_ID_JOYPAD_START },
-	{ KEY_SELECT, RETRO_DEVICE_ID_JOYPAD_SELECT },
 	{ KEY_DUP,    RETRO_DEVICE_ID_JOYPAD_UP },
 	{ KEY_DDOWN,  RETRO_DEVICE_ID_JOYPAD_DOWN },
 	{ KEY_DLEFT,  RETRO_DEVICE_ID_JOYPAD_LEFT },
@@ -42,11 +103,29 @@ void input_poll(void)
 u32 input_keys_down(void) { return down; }
 u32 input_keys_held(void) { return held; }
 
+// Hotkeys: SELECT + R fast-forwards, SELECT + L rewinds (while held).
+// While one is held those buttons don't reach the game.
+static u32 hotkey_mask(void)
+{
+	if (!(held & KEY_SELECT) || !(held & (KEY_L | KEY_R)))
+		return 0;
+	return KEY_SELECT | (held & (KEY_L | KEY_R));
+}
+
+bool input_fast_forward(void) { return (held & (KEY_SELECT | KEY_R)) == (KEY_SELECT | KEY_R); }
+bool input_rewind(void) { return (held & (KEY_SELECT | KEY_L)) == (KEY_SELECT | KEY_L); }
+
 static u16 joypad_mask(void)
 {
 	u16 mask = 0;
+	u32 game_held = held & ~hotkey_mask();
+	if (!remap_init)
+		remap_defaults();
+	for (int i = 0; i < INPUT_REMAP_N; i++)
+		if ((game_held & remap_keys[i]) && remap[i] >= 0)
+			mask |= 1 << remap[i];
 	for (size_t i = 0; i < sizeof(map) / sizeof(map[0]); i++)
-		if (held & map[i].key)
+		if (game_held & map[i].key)
 			mask |= 1 << map[i].id;
 
 	mask |= touch_mask();

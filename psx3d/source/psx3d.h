@@ -37,6 +37,7 @@ typedef struct {
 	int  sounds;       // interface sounds
 	int  music;        // library music
 	int  bottom_off;   // backlight off on the bottom screen while playing
+	int  autosave;     // save on exit, offer to continue next time
 } psx3d_config;
 
 extern psx3d_config g_cfg;
@@ -91,6 +92,22 @@ double csnd_real_rate(u32 rate);
 void csnd_setup(int chn, bool loop, u32 rate, float vol, float pan, const s16 *data, u32 bytes);
 void csnd_set_volume(int chn, float vol, float pan);
 
+// rewind.c - per game, off by default
+bool rewind_start(void);
+void rewind_stop(void);
+bool rewind_active(void);
+void rewind_capture(void);
+bool rewind_step(void);
+void rewind_reset(void);
+
+// gamecfg.c - per-game settings (sdmc:/3ds/PSX3D/games/<game>.ini)
+void gamecfg_load(const char *game);
+void gamecfg_end(void);
+const char *gamecfg_get(const char *key);
+int gamecfg_int(const char *key, int def);
+void gamecfg_set(const char *key, const char *value);
+void gamecfg_set_int(const char *key, int v);
+
 // cheats.c
 void cheats_load(const char *game);
 void cheats_unload(void);
@@ -105,7 +122,9 @@ bool cheats_forced(int i);
 bool dsp_firmware_ensure(void);
 
 // savestates.c - save state browser with screenshots
+#define STATE_AUTO -1
 bool state_thumb_write(const char *prefix, int slot);
+bool states_resume_prompt(const char *prefix);
 int states_run(bool saving, const char *prefix, const char *title, int *slot);
 
 // stereo.c - real 3D from the core's depth map
@@ -136,6 +155,16 @@ u32 input_keys_down(void);
 u32 input_keys_held(void);
 bool touch_buttons_active(void);
 bool menu_touched(void);
+bool input_fast_forward(void);
+bool input_rewind(void);
+#define INPUT_REMAP_N 10
+const char *input_map_key_name(int i);
+const char *input_ps1_name(int id);
+int input_map_get(int i);
+bool input_map_is_default(int i);
+void input_map_set(int i, int id);
+void input_map_cycle(int i, int dir);
+void input_map_reset(void);
 void touch_buttons_draw(void);
 
 // ui.c - text drawing on the bottom screen

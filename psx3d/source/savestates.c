@@ -47,9 +47,13 @@ static const u32 accent[4] = { 0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28 };
 
 // ---------------------------------------------------------------- files
 
+// slot STATE_AUTO is the auto-save made on exit (".sta")
 static void slot_path(char *out, size_t len, const char *prefix, int slot, bool thm)
 {
-	snprintf(out, len, "%s.st%d%s", prefix, slot, thm ? ".thm" : "");
+	if (slot == STATE_AUTO)
+		snprintf(out, len, "%s.sta%s", prefix, thm ? ".thm" : "");
+	else
+		snprintf(out, len, "%s.st%d%s", prefix, slot, thm ? ".thm" : "");
 }
 
 // screenshot of the paused game, saved next to state <slot>
@@ -347,4 +351,76 @@ int states_run(bool saving, const char *prefix, const char *title, int *slot)
 	*slot = b.sel;
 	release(&b);
 	return result;
+}
+
+// ---------------------------------------------------------------- resume
+
+typedef struct { C3D_Tex tex; bool tex_ok; u32 saved; float t; } resume_t;
+
+static void resume_top(void *ud)
+{
+	resume_t *r = ud;
+	C2D_DrawRectSolid(0, 0, 0.6f, 400, 240, C2D_Color32(4, 6, 18, 255));
+	const float pw = 264, ph = 198, px = (400 - pw) / 2, py = 10;
+	float dx = ui_depth(-0.6f);
+	C2D_DrawRectSolid(px - 3 + dx, py - 3, 0.62f, pw + 6, ph + 6, accent[2]);
+	if (r->tex_ok)
+		draw_tex(&r->tex, px + dx, py, pw, ph, 0.64f);
+	char when[40], line[64];
+	when_text(when, sizeof(when), r->saved);
+	snprintf(line, sizeof(line), "Left off %s", when);
+	ui_text_ex(NULL, 200 + dx, 215, 0.5f, C2D_Color32(240, 242, 255, 255), C2D_AlignCenter, line);
+}
+
+static void resume_bottom(void *ud)
+{
+	(void)ud;
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
+	ui_text_ex(libui_font(), 160, 70, 0.6f, C2D_Color32(235, 238, 255, 255), C2D_AlignCenter, "Continue?");
+	ui_text_ex(NULL, 160, 120, 0.5f, C2D_Color32(170, 185, 230, 255), C2D_AlignCenter, "A  pick up where you left off");
+	ui_text_ex(NULL, 160, 145, 0.5f, C2D_Color32(170, 185, 230, 255), C2D_AlignCenter, "B  start the game");
+}
+
+// The game was auto-saved when it was last closed: offer to continue.
+// Returns true to load the auto-save.
+bool states_resume_prompt(const char *prefix)
+{
+	char path[PATH_LEN];
+	struct stat st;
+	slot_path(path, sizeof(path), prefix, STATE_AUTO, false);
+	if (stat(path, &st) != 0)
+		return false;
+	static resume_t r;
+	memset(&r, 0, sizeof(r));
+	r.saved = (u32)st.st_mtime;
+	u16 *px = malloc(TW * TH * 2);
+	slot_path(path, sizeof(path), prefix, STATE_AUTO, true);
+	FILE *f = fopen(path, "rb");
+	thm_hdr_t h;
+	if (f && px && fread(&h, sizeof(h), 1, f) == 1 && h.magic == THM_MAGIC && h.w == TW && h.h == TH &&
+	    fread(px, 2, TW * TH, f) == TW * TH) {
+		r.tex_ok = make_tex(&r.tex, px);
+		r.saved = h.saved;
+	}
+	if (f)
+		fclose(f);
+	free(px);
+	bool resume = false;
+	while (aptMainLoop()) {
+		input_poll();
+		u32 k = input_keys_down();
+		if (k & KEY_TOUCH) {
+			touchPosition tp;
+			hidTouchRead(&tp);
+			if (tp.py >= 110 && tp.py < 135) k |= KEY_A;
+			if (tp.py >= 135 && tp.py < 160) k |= KEY_B;
+		}
+		if (k & KEY_A) { resume = true; sfx_play(SFX_SELECT); break; }
+		if (k & KEY_B) { sfx_play(SFX_BACK); break; }
+		ui_begin();
+		video_present_vsync(false, resume_top, resume_bottom, &r);
+	}
+	if (r.tex_ok)
+		C3D_TexDelete(&r.tex);
+	return resume;
 }
