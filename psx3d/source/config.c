@@ -16,6 +16,7 @@ static int novr;
 // While a game runs its own screen mode is in effect; config.ini keeps the
 // default for games that don't have one (see config_game_begin).
 static bool in_game;
+void config_set_ws_native(bool on);
 static int default_screen;
 #define WS_KEY "pcsx_rearmed_psx3d_widescreen"
 
@@ -198,13 +199,28 @@ void config_set_stereo_active(bool on)
 
 // Screen: 0 = 4:3, 1 = stretched to 400x240, 2 = widescreen hack (3D games
 // draw a wider view, shown full width)
+// widescreen from the game's own cheat code instead of the GTE squeeze
+static bool ws_native;
+
+void config_set_ws_native(bool on)
+{
+	if (on == ws_native)
+		return;
+	ws_native = on;
+	config_set_core_override(WS_KEY, on ? "0" : WS_Q16);
+	options_mark_updated();
+}
+
 int config_screen_mode(void)
 {
+	if (ws_native)
+		return 2;
 	return config_widescreen() ? 2 : (g_cfg.stretch ? 1 : 0);
 }
 
 void config_set_screen_mode(int mode)
 {
+	ws_native = false;
 	g_cfg.stretch = mode == 1;
 	config_set_widescreen(mode == 2);
 }
@@ -293,6 +309,7 @@ void config_game_end(void)
 	if (!in_game)
 		return;
 	in_game = false;
+	config_set_ws_native(false);
 	if (config_screen_mode() != default_screen)
 		config_set_screen_mode(default_screen);
 }

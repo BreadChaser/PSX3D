@@ -49,6 +49,7 @@ void config_set_screen_mode(int mode);
 void config_game_begin(const char *game);
 void config_game_set_screen(int mode);
 void config_game_end(void);
+void config_set_ws_native(bool on);
 void config_set_widescreen(bool on);
 void config_set_core_override(const char *key, const char *value);
 
@@ -97,6 +98,8 @@ int cheats_count(void);
 const char *cheats_desc(int i);
 bool cheats_on(int i);
 void cheats_toggle(int i);
+bool cheats_widescreen(bool on);
+bool cheats_forced(int i);
 
 // dspdump.c
 bool dsp_firmware_ensure(void);

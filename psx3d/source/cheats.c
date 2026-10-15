@@ -3,6 +3,7 @@
 // own sdmc:/3ds/PSX3D/cheats/<game>.cht, which wins. Files use the RetroArch
 // .cht format. The cheats switched on are remembered per game in
 // sdmc:/3ds/PSX3D/cheats/<game>.on (one description per line).
+#define _GNU_SOURCE   // strcasestr
 #include <ctype.h>
 #include <dirent.h>
 #include <stdio.h>
@@ -16,7 +17,7 @@
 #define DB_DIR   "romfs:/cheats"
 #define MAX_CHEATS 256
 
-typedef struct { char *desc, *code; bool on; } cheat_t;
+typedef struct { char *desc, *code; bool on, forced; } cheat_t;
 
 static cheat_t cheats[MAX_CHEATS];
 static int ncheats;
@@ -24,6 +25,7 @@ static char game[PATH_LEN];
 
 int cheats_count(void) { return ncheats; }
 const char *cheats_desc(int i) { return i >= 0 && i < ncheats ? cheats[i].desc : ""; }
+bool cheats_forced(int i) { return i >= 0 && i < ncheats && cheats[i].forced; }
 bool cheats_on(int i) { return i >= 0 && i < ncheats && cheats[i].on; }
 
 // "Tekken 3 (World) (GameShark).cht" -> "Tekken 3"
@@ -126,7 +128,7 @@ static void apply(void)
 	retro_cheat_reset();
 	int k = 0;
 	for (int i = 0; i < ncheats; i++)
-		if (cheats[i].on)
+		if (cheats[i].on || cheats[i].forced)
 			retro_cheat_set(k++, true, cheats[i].code);
 	if (k)
 		log_printf("cheats: %d on\n", k);
@@ -204,6 +206,25 @@ void cheats_load(const char *key)
 		fclose(f);
 	}
 	apply();
+}
+
+// The game's own widescreen code, if it has one: it makes the game draw a
+// wider view itself, so nothing is culled at the edges (unlike the GTE
+// squeeze). Turned on and off with the Screen setting, not saved.
+bool cheats_widescreen(bool on)
+{
+	int found = -1;
+	for (int i = 0; i < ncheats && found < 0; i++)
+		if (strcasestr(cheats[i].desc, "widescreen"))
+			found = i;
+	if (found < 0)
+		return false;
+	if (cheats[found].forced != on) {
+		cheats[found].forced = on;
+		apply();
+		log_printf("cheats: widescreen code %s (%s)\n", on ? "on" : "off", cheats[found].desc);
+	}
+	return true;
 }
 
 void cheats_toggle(int i)
