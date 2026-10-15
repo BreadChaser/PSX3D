@@ -100,8 +100,18 @@ C3D_RenderTarget *video_bottom_target(void) { return bottom; }
 
 void *video_framebuffer(unsigned width, unsigned height, size_t *pitch)
 {
+	static unsigned last_w, last_h;
 	if (width > TEX_W || height > TEX_H)
 		return NULL;
+	// the core only clears the buffer it's drawing to when the video mode
+	// changes; clear both, or the other one keeps stale rows (e.g. a white
+	// strip from a taller logo screen)
+	if (width != last_w || height != last_h) {
+		for (int i = 0; i < 2; i++)
+			memset(fbs[i], 0, TEX_W * TEX_H * 2);
+		last_w = width;
+		last_h = height;
+	}
 	*pitch = TEX_W * 2;
 	return fbs[fb_cur];
 }
