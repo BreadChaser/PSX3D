@@ -162,6 +162,11 @@ typedef struct {
 bool library_load(const char *root, bool rescan);
 int library_count(void);
 const game_t *library_get(int i);
+int library_series_count(void);
+int library_game_series(int game);          // -1 if not in a series
+const char *library_series_name(int s);
+int library_series_size(int s);
+int library_series_game(int s, int k);      // k-th game of series s, in order
 const char *library_launch_path(const game_t *g, char *buf, size_t len);
 
 // covers.c - box art

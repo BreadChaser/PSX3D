@@ -26,6 +26,7 @@ typedef struct {
 	bool tex_ok;
 	u32 *staging;        // linear copy the GPU reads from (kept for reuse)
 	u32 last_used;
+	u32 rank;            // order the UI asked for it in its latest frame (0 = selected)
 } slot_t;
 
 static slot_t slots[SLOTS];
@@ -70,7 +71,7 @@ static void on_apt(APT_HookType hook, void *param)
 	}
 }
 static u32 use_clock;
-static volatile int focus;   // the selected game: fetch nearest first
+static volatile u32 frame_base;   // use_clock when the UI's current frame began (covers_focus)
 static u32 *soc_buf;
 static bool soc_started;
 
@@ -338,12 +339,13 @@ static void worker_main(void *arg)
 			for (int i = 0; i < SLOTS; i++) {
 				if (slots[i].state != 1)
 					continue;
-				int d = abs(slots[i].game - focus);
-				if (d > 6) {
-					slots[i].state = 0;   // scrolled away: not worth fetching now
+				// not asked for in the last few frames: scrolled away
+				if (slots[i].last_used + 40 < use_clock) {
+					slots[i].state = 0;
 					slots[i].game = -1;
 					continue;
 				}
+				int d = (int)slots[i].rank;   // the UI asks for the selection first, then outward
 				if (d < best) {
 					best = d;
 					pick = i;
@@ -482,8 +484,13 @@ C3D_Tex *covers_get(int game)
 			LightEvent_Signal(&wake);
 		}
 	}
-	if (s)
+	if (s) {
+		// keep the best rank it got this frame (drawing asks again, later)
+		u32 r = use_clock - frame_base;
+		if (s->last_used < frame_base || r < s->rank)
+			s->rank = r;
 		s->last_used = use_clock;
+	}
 	int state = s ? s->state : 0;
 	LightLock_Unlock(&lock);
 	if (!s)
@@ -578,11 +585,13 @@ void covers_resume(void)
 	LightEvent_Signal(&wake);
 }
 
+// a new UI frame: covers_get calls from now on rank from the selection out
 void covers_focus(int game)
 {
+	(void)game;
 	if (sw_nocovers)
 		return;
-	focus = game;
+	frame_base = use_clock + 1;
 	LightEvent_Signal(&wake);
 	LightEvent_Signal(&wake);
 }
