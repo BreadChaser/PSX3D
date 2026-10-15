@@ -100,7 +100,6 @@ int main(void)
 	// New 3DS: 804 MHz + L2 cache
 	osSetSpeedupEnable(true);
 	irrstInit();
-	gspLcdInit();
 	// the core asks cfg:u for the console model to count CPU cores; without
 	// it, it assumes one core and never starts its graphics thread
 	cfguInit();
@@ -185,8 +184,6 @@ int main(void)
 	emu_deinit();
 	ui_exit();
 	video_exit();
-	GSPLCD_PowerOnBacklight(GSPLCD_SCREEN_BOTH);
-	gspLcdExit();
 	irrstExit();
 	cfguExit();
 	log_close();
