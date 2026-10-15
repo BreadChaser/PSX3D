@@ -524,14 +524,20 @@ static void bottom_backlight(bool on)
 	// gsp::Lcd allows very few sessions and the HOME Menu needs one: keeping
 	// ours open across a HOME press left the HOME Menu waiting forever.
 	// Open it only for the switch.
-	if (sw_nolcd || R_FAILED(gspLcdInit()))
+	if (sw_nolcd)
 		return;
+	Result rc = gspLcdInit();
+	if (R_FAILED(rc)) {
+		log_printf("bottom backlight: gsp::Lcd unavailable (%08lx)\n", rc);
+		return;
+	}
 	if (on)
 		GSPLCD_PowerOnBacklight(GSPLCD_SCREEN_BOTTOM);
 	else
 		GSPLCD_PowerOffBacklight(GSPLCD_SCREEN_BOTTOM);
 	gspLcdExit();
 	bottom_dark = !on;
+	log_printf("bottom backlight %s\n", on ? "on" : "off");
 }
 
 bool emu_init(void)
@@ -566,6 +572,17 @@ static void set_game_name(const char *path)
 
 // save_name: base name for memory cards and states (NULL = from path);
 // title: shown in the menu (NULL = save name)
+// The HOME Menu draws on the bottom screen too: light it up while we're
+// suspended, dim it again a moment after coming back.
+static void game_apt(APT_HookType hook, void *param)
+{
+	(void)param;
+	if (hook == APTHOOK_ONSUSPEND)
+		bottom_backlight(true);
+	else if (hook == APTHOOK_ONRESTORE)
+		game_frames = 0;
+}
+
 bool emu_run_game(const char *path, const char *save_name, const char *title)
 {
 	struct retro_game_info info = { .path = path };
@@ -603,6 +620,8 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	fps_t0 = osGetTime();
 	u64 t_run = 0, t_present = 0, t_run_max = 0;
 	u64 next_deadline = svcGetSystemTick();
+	aptHookCookie apt_cookie;
+	aptHook(&apt_cookie, game_apt, NULL);
 	while (aptMainLoop()) {
 		// Pace by the clock, not by vsync: a heavy frame (Silent Hill
 		// alternates ~4ms and ~17ms ones) can borrow time from the next light
@@ -689,6 +708,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		}
 	}
 
+	aptUnhook(&apt_cookie);
 	bottom_backlight(true);
 	srm_save(false);
 	retro_unload_game();
