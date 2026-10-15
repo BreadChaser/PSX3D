@@ -127,6 +127,64 @@ static void parse(const char *path)
 	ncheats = n;
 }
 
+// Pull GameShark codes out of free text: pairs of 8 and 4 hex digits
+// ("8001EDDE 241B", "8001EDDE:241B", "8001EDDE241B"), joined with '+'.
+// Returns false when there are none.
+static bool normalize_codes(const char *in, char *out, size_t len)
+{
+	char hex[1024];
+	size_t n = 0, o = 0;
+	for (const char *p = in; *p && n < sizeof(hex) - 1; p++)
+		if (isxdigit((unsigned char)*p))
+			hex[n++] = (char)toupper((unsigned char)*p);
+		else if (n % 12 && strchr(" :+-\t\r\n", *p) == NULL)
+			return false;   // something that isn't a code
+	hex[n] = 0;
+	if (!n || n % 12)
+		return false;
+	out[0] = 0;
+	for (size_t i = 0; i < n; i += 12) {
+		if (o + 14 >= len)
+			return false;
+		o += snprintf(out + o, len - o, "%s%.8s %.4s", o ? "+" : "", hex + i, hex + i + 8);
+	}
+	return true;
+}
+
+// Plain text: a name on its own line, then its code lines under it
+static void parse_plain(const char *path)
+{
+	FILE *f = fopen(path, "r");
+	if (!f)
+		return;
+	char line[256], codes[1024] = "", name[128] = "";
+	for (;;) {
+		bool more = fgets(line, sizeof(line), f) != NULL;
+		char norm[256];
+		if (more) {
+			line[strcspn(line, "\r\n")] = 0;
+			if (!line[0])
+				continue;
+			if (normalize_codes(line, norm, sizeof(norm))) {
+				size_t l = strlen(codes);
+				snprintf(codes + l, sizeof(codes) - l, "%s%s", l ? "+" : "", norm);
+				continue;
+			}
+		}
+		// a new name (or the end): finish the cheat before it
+		if (name[0] && codes[0] && ncheats < MAX_CHEATS) {
+			cheats[ncheats].desc = strdup(name);
+			cheats[ncheats].code = strdup(codes);
+			ncheats++;
+		}
+		if (!more)
+			break;
+		snprintf(name, sizeof(name), "%s", line);
+		codes[0] = 0;
+	}
+	fclose(f);
+}
+
 static void apply(void)
 {
 	retro_cheat_reset();
@@ -174,6 +232,8 @@ void cheats_load(const char *key)
 	cheats_unload();
 	snprintf(game, sizeof(game), "%s", key);
 
+	snprintf(path, sizeof(path), USER_DIR "/%s.txt", key);   // added on the 3DS or pasted in
+	parse_plain(path);
 	snprintf(path, sizeof(path), USER_DIR "/%s.cht", key);
 	parse(path);
 
@@ -268,6 +328,53 @@ bool cheats_widescreen(bool on)
 		log_printf("cheats: widescreen code %s (%s)\n", on ? "on" : "off", cheats[found].desc);
 	}
 	return true;
+}
+
+// "Add code": ask for a name and the codes with the system keyboard, append
+// them to the game's .txt and switch the new cheat on. Returns a message.
+const char *cheats_add_dialog(void)
+{
+	static char msg[64];
+	char name[64] = "", codes[512] = "", norm[1024];
+	SwkbdState kb;
+	swkbdInit(&kb, SWKBD_TYPE_QWERTY, 2, 60);
+	swkbdSetHintText(&kb, "Cheat name, e.g. Infinite Health");
+	if (swkbdInputText(&kb, name, sizeof(name)) != SWKBD_BUTTON_CONFIRM || !name[0])
+		return NULL;
+	swkbdInit(&kb, SWKBD_TYPE_QWERTY, 2, 500);
+	swkbdSetFeatures(&kb, SWKBD_MULTILINE);
+	swkbdSetHintText(&kb, "GameShark codes: 8001EDDE 241B");
+	if (swkbdInputText(&kb, codes, sizeof(codes)) != SWKBD_BUTTON_CONFIRM)
+		return NULL;
+	if (!normalize_codes(codes, norm, sizeof(norm))) {
+		snprintf(msg, sizeof(msg), "Not a GameShark code (8 + 4 hex digits)");
+		return msg;
+	}
+	char path[PATH_LEN];
+	mkdir(USER_DIR, 0777);
+	snprintf(path, sizeof(path), USER_DIR "/%s.txt", game);
+	FILE *f = fopen(path, "a");
+	if (!f) {
+		snprintf(msg, sizeof(msg), "Could not save the code");
+		return msg;
+	}
+	fprintf(f, "\n%s\n", name);
+	for (char *c = norm; *c; ) {   // one code per line
+		char *plus = strchr(c, '+');
+		fprintf(f, "%.*s\n", plus ? (int)(plus - c) : (int)strlen(c), c);
+		c = plus ? plus + 1 : c + strlen(c);
+	}
+	fclose(f);
+	// reload so the new cheat shows up, keeping what's switched on
+	save_on();
+	char key[PATH_LEN];
+	snprintf(key, sizeof(key), "%s", game);
+	cheats_load(key);
+	for (int i = 0; i < ncheats; i++)
+		if (!strcmp(cheats[i].desc, name) && !cheats[i].on)
+			cheats_toggle(i);
+	snprintf(msg, sizeof(msg), "Added \"%.40s\"", name);
+	return msg;
 }
 
 void cheats_toggle(int i)
