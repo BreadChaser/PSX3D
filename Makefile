@@ -19,7 +19,11 @@ app: core
 # or MAKEROM=/path/to/makerom BANNERTOOL=/path/to/bannertool.
 MAKEROM    ?= makerom
 BANNERTOOL ?= bannertool
-VERSION    ?= 0
+# CIA title version from PSX3D_VERSION. The HOME Menu only refreshes a
+# cached icon when this number changes. makerom drops the minor field
+# (bits 4-9) of the title version, so major*16+minor goes in the major field
+# and patch in the micro field: 0.1.0 -> 1024 (FBI shows it as 1.0.0).
+VERSION    ?= $(shell sed -n 's/.*PSX3D_VERSION *"\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\)".*/\1 \2 \3/p' psx3d/source/psx3d.h | awk '{print ($$1*16 + $$2)*1024 + $$3}')
 
 cia: app
 	$(BANNERTOOL) makebanner -i psx3d/meta/banner.png -a psx3d/meta/banner.wav -o psx3d/build/banner.bnr
