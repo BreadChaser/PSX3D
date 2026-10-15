@@ -66,6 +66,10 @@ static int score(const char *file, const char *key)
 		s = 40;
 	if (strstr(file, "(diff)"))
 		s -= 5;   // a variant list: prefer the main one
+	// Game Buster was a German device: its "World" lists carry PAL codes,
+	// which write to the wrong places on a USA or Japanese disc
+	if (strstr(file, "(Game Buster)") && !strstr(kr, "Europe") && !strstr(kr, "Germany") && !strstr(kr, "France"))
+		s = s >= 40 ? 15 : s;
 	return s;
 }
 
@@ -173,25 +177,64 @@ void cheats_load(const char *key)
 	snprintf(path, sizeof(path), USER_DIR "/%s.cht", key);
 	parse(path);
 
+	// every database file that fits (exact name, same region or "World"),
+	// best first; the same cheat in two lists is only kept once
+	static char files[16][PATH_LEN];
+	int fscore[16], nf = 0, best_score = 0;
 	DIR *d = opendir(DB_DIR);
-	char best[PATH_LEN] = "";
-	int best_score = 0;
 	if (d) {
 		struct dirent *de;
-		while ((de = readdir(d))) {
-			int s = score(de->d_name, key);
-			if (s > best_score) {
-				best_score = s;
-				snprintf(best, sizeof(best), "%s", de->d_name);
+		while ((de = readdir(d)) && nf < 16) {
+			int sc = score(de->d_name, key);
+			if (sc > best_score)
+				best_score = sc;
+			if (sc >= 40) {
+				snprintf(files[nf], PATH_LEN, "%s", de->d_name);
+				fscore[nf++] = sc;
 			}
 		}
 		closedir(d);
 	}
-	if (best[0]) {
-		snprintf(path, sizeof(path), DB_DIR "/%s", best);
-		parse(path);
+	if (!nf && best_score) {   // only a loose match (other region): use the best one
+		d = opendir(DB_DIR);
+		struct dirent *de;
+		while (d && (de = readdir(d)))
+			if (score(de->d_name, key) == best_score && nf < 1) {
+				snprintf(files[0], PATH_LEN, "%s", de->d_name);
+				fscore[nf++] = best_score;
+			}
+		if (d)
+			closedir(d);
 	}
-	log_printf("cheats: %d for %s (%s)\n", ncheats, key, best[0] ? best : "no database match");
+	for (int a = 1; a < nf; a++)
+		for (int b = a; b > 0 && fscore[b] > fscore[b - 1]; b--) {
+			int t = fscore[b]; fscore[b] = fscore[b - 1]; fscore[b - 1] = t;
+			char tmp[PATH_LEN];
+			memcpy(tmp, files[b], PATH_LEN); memcpy(files[b], files[b - 1], PATH_LEN); memcpy(files[b - 1], tmp, PATH_LEN);
+		}
+	for (int k = 0; k < nf; k++) {
+		int before = ncheats;
+		snprintf(path, sizeof(path), DB_DIR "/%s", files[k]);
+		parse(path);
+		// drop cheats already listed (same description or same code)
+		int n = before;
+		for (int i = before; i < ncheats; i++) {
+			bool dup = false;
+			for (int j = 0; j < before && !dup; j++)
+				dup = !strcasecmp(cheats[j].desc, cheats[i].desc) || !strcasecmp(cheats[j].code, cheats[i].code);
+			if (dup) {
+				free(cheats[i].desc);
+				free(cheats[i].code);
+			} else {
+				cheats[n++] = cheats[i];
+			}
+		}
+		for (int i = n; i < ncheats; i++)
+			memset(&cheats[i], 0, sizeof(cheats[i]));
+		ncheats = n;
+	}
+	const char *best = nf ? files[0] : "";
+	log_printf("cheats: %d for %s (%d files, best %s)\n", ncheats, key, nf, best[0] ? best : "none");
 
 	on_path(path, sizeof(path));
 	FILE *f = fopen(path, "r");
