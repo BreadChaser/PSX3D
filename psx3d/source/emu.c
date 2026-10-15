@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <time.h>
 #include "psx3d.h"
 
 #define SRM_CHECK_FRAMES 180
@@ -243,7 +244,13 @@ static void state_save(void)
 	}
 	snprintf(ext, sizeof(ext), ".st%d", state_slot);
 	make_path(path, sizeof(path), PSX3D_STATE_DIR, ext);
-	osd(write_file(path, buf, size) ? "Saved state %d" : "Could not write state %d", state_slot);
+	if (write_file(path, buf, size)) {
+		make_path(path, sizeof(path), PSX3D_STATE_DIR, "");
+		state_thumb_write(path, state_slot);
+		osd("Saved to slot %d", state_slot);
+	} else {
+		osd("Could not write slot %d", state_slot);
+	}
 	free(buf);
 }
 
@@ -258,23 +265,26 @@ static void state_load(void)
 	if (!buf)
 		osd("Not enough memory to load a state");
 	else if (read_file(path, buf, size) == 0)
-		osd("No state in slot %d", state_slot);
+		osd("Slot %d is empty", state_slot);
 	else if (!retro_unserialize(buf, size))
-		osd("State %d is from an incompatible version", state_slot);
+		osd("Slot %d is from an incompatible version", state_slot);
 	else
-		osd("Loaded state %d", state_slot);
+		osd("Loaded slot %d", state_slot);
 	free(buf);
 }
 
 // ---------------------------------------------------------------- menu
 
-enum { M_RESUME, M_DISC, M_SAVE, M_LOAD, M_SLOT, M_SCREEN, M_3D, M_SMOOTH, M_FPS, M_CORE, M_RECORD, M_TONE, M_RESET, M_EXIT, M_COUNT };
+enum { M_RESUME, M_SAVE, M_LOAD, M_DISC, M_SETTINGS, M_RESET, M_EXIT,
+       M_SCREEN, M_3D, M_SMOOTH, M_FPS, M_CORE, M_RECORD, M_TONE, M_COUNT };
+#define M_FIRST_SETTING M_SCREEN
 
-// items shown in the menu; the debug ones only with debug=1 in config.ini
-static int menu_items(int *items)
+// items on the main page or the settings page; the debug ones only with
+// debug=1 in config.ini, the disc swap only for multi-disc games
+static int menu_items(int *items, bool settings)
 {
 	int n = 0;
-	for (int i = 0; i < M_COUNT; i++) {
+	for (int i = settings ? M_FIRST_SETTING : 0; i < (settings ? M_COUNT : M_FIRST_SETTING); i++) {
 		if ((i == M_RECORD || i == M_TONE) && !g_cfg.debug)
 			continue;
 		if (i == M_DISC && !(have_disk && disk.get_num_images() > 1))
@@ -285,7 +295,8 @@ static int menu_items(int *items)
 }
 
 typedef struct {
-	int sel;
+	int sel, main_sel;
+	bool settings;
 	bool core_page;
 	int core_sel, core_scroll;
 	flist_t fl, core_fl;
@@ -294,9 +305,9 @@ typedef struct {
 } menu_t;
 
 
-#define MENU_ROW_H 22
-#define MENU_ROWS 9
-#define CORE_ROWS 9
+#define MENU_ROW_H 24
+#define MENU_ROWS 7
+#define CORE_ROWS 7
 
 static const u32 menu_accent_cols[4] = { 0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28 }; // ABGR: red, yellow, green, blue
 
@@ -315,10 +326,11 @@ static void menu_draw_top(void *ud)
 }
 
 static const char *const menu_names[M_COUNT] = {
-	[M_RESUME] = "Resume", [M_DISC] = "Disc", [M_SAVE] = "Save state", [M_LOAD] = "Load state",
-	[M_SLOT] = "State slot", [M_SCREEN] = "Screen", [M_3D] = "3D", [M_SMOOTH] = "Smoothing",
+	[M_RESUME] = "Resume", [M_SAVE] = "Save state", [M_LOAD] = "Load state", [M_DISC] = "Swap disc",
+	[M_SETTINGS] = "Settings", [M_RESET] = "Reset game", [M_EXIT] = "Exit to library",
+	[M_SCREEN] = "Screen", [M_3D] = "3D", [M_SMOOTH] = "Smoothing",
 	[M_FPS] = "Show FPS", [M_CORE] = "Core options", [M_RECORD] = "Debug: record audio",
-	[M_TONE] = "Debug: test tone", [M_RESET] = "Reset game", [M_EXIT] = "Exit to game list",
+	[M_TONE] = "Debug: test tone",
 };
 
 static const char *menu_label(int i, void *ud)
@@ -349,35 +361,60 @@ static const char *core_value(int i, void *ud)
 	return b;
 }
 
+#define MENU_Y0 40
+
+static void menu_header(const char *title, const char *right)
+{
+	ui_text_ex(libui_font(), 10, 6, 0.5f, C2D_Color32(235, 238, 255, 255), 0, title);
+	if (right)
+		ui_text_ex(NULL, 310, 9, 0.42f, C2D_Color32(110, 120, 160, 255), C2D_AlignRight, right);
+	for (int i = 0; i < 4; i++)
+		C2D_DrawRectSolid(10 + i * 18, 26, 0.2f, 16, 2, menu_accent_cols[i]);
+}
+
 static void menu_draw_bottom(void *ud)
 {
 	menu_t *m = ud;
 	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
-	u32 hint = C2D_Color32(90, 100, 135, 255);
+	u32 hint = C2D_Color32(110, 120, 160, 255);
 
 	if (m->core_page) {
-		ui_text_ex(libui_font(), 10, 4, 0.55f, C2D_Color32(220, 228, 255, 255), 0, "Core options");
-		flist_draw(&m->core_fl, options_count(), m->core_sel, 0, 26, 320, MENU_ROW_H, CORE_ROWS,
+		menu_header("CORE OPTIONS", NULL);
+		flist_draw(&m->core_fl, options_count(), m->core_sel, 0, MENU_Y0, 320, MENU_ROW_H, CORE_ROWS,
 			core_label, core_value, m, menu_accent_cols[m->core_sel & 3]);
-		ui_text_ex(NULL, 8, 224, 0.4f, hint, 0, "Left/Right change    B back");
+		ui_text_ex(NULL, 160, 222, 0.42f, hint, C2D_AlignCenter, "Left/Right change    B back");
 		return;
 	}
 
 	static const char *const s3d_names[] = { "off", "screen depth", "real (exp.)" };
-	memset(m->val, 0, sizeof(m->val));
-	if (have_disk)
-		snprintf(m->val[M_DISC], 48, "%u of %u", menu_disc + 1, disk.get_num_images());
-	snprintf(m->val[M_SLOT], 48, "%d", state_slot);
 	static const char *const screen_names[] = { "4:3", "stretch", "widescreen" };
+	memset(m->val, 0, sizeof(m->val));
+	if (have_disk && disk.get_num_images)
+		snprintf(m->val[M_DISC], 48, "disc %u of %u", menu_disc + 1, disk.get_num_images());
 	snprintf(m->val[M_SCREEN], 48, "%s", screen_names[config_screen_mode()]);
 	snprintf(m->val[M_3D], 48, "%s", s3d_names[g_cfg.stereo]);
 	snprintf(m->val[M_SMOOTH], 48, "%s", g_cfg.smooth ? "on" : "off");
 	snprintf(m->val[M_FPS], 48, "%s", g_cfg.show_fps ? "on" : "off");
 
-	m->nitems = menu_items(m->items);
-	flist_draw(&m->fl, m->nitems, m->sel, 0, 8, 320, MENU_ROW_H, MENU_ROWS, menu_label, menu_value, m,
+	m->nitems = menu_items(m->items, m->settings);
+	char clock[16];
+	time_t now = time(NULL);
+	strftime(clock, sizeof(clock), "%H:%M", gmtime(&now));
+	menu_header(m->settings ? "SETTINGS" : "MENU", clock);
+	flist_draw(&m->fl, m->nitems, m->sel, 0, MENU_Y0, 320, MENU_ROW_H, MENU_ROWS, menu_label, menu_value, m,
 		menu_accent_cols[m->sel & 3]);
-	ui_text_ex(NULL, 8, 224, 0.4f, hint, 0, "A select    Left/Right change    B resume");
+	ui_text_ex(NULL, 160, 222, 0.42f, hint, C2D_AlignCenter,
+		m->settings ? "Left/Right change    B back" : "A select    B resume");
+}
+
+static void menu_open_page(menu_t *m, bool settings)
+{
+	if (settings && !m->settings)
+		m->main_sel = m->sel;
+	m->settings = settings;
+	m->nitems = menu_items(m->items, settings);
+	m->sel = settings ? 0 : m->main_sel;
+	m->fl.init = false;
 }
 
 // returns false when the user wants to leave the game
@@ -386,13 +423,11 @@ static bool menu_run(void)
 	bottom_backlight(true);
 	static menu_t m;   // keep the core options scroll position between visits
 	m.core_page = false;
+	m.settings = false;
 	if (have_disk && disk.get_image_index)
 		menu_disc = disk.get_image_index();
-	m.sel = 0;
-	m.fl.init = false;
-	int items[M_COUNT], nitems = menu_items(items);
-	memcpy(m.items, items, sizeof(items));
-	m.nitems = nitems;
+	m.main_sel = 0;
+	menu_open_page(&m, false);
 	sfx_play(SFX_SELECT);
 
 	audio_pause(true);
@@ -402,10 +437,27 @@ static bool menu_run(void)
 		input_poll();
 		u32 k = input_keys_down();
 
+		// touch a row to select it, touch it again to use it
+		if (!m.core_page && (k & KEY_TOUCH)) {
+			touchPosition tp;
+			hidTouchRead(&tp);
+			int row = flist_row_at(&m.fl, MENU_Y0, MENU_ROW_H, tp.py);
+			if (tp.py >= MENU_Y0 && row >= 0 && row < m.nitems) {
+				if (row == m.sel)
+					k |= KEY_A;
+				else {
+					m.sel = row;
+					sfx_play(SFX_MOVE);
+				}
+			}
+		}
+
 		if (m.core_page) {
 			int n = options_count();
-			if (k & KEY_B)
+			if (k & KEY_B) {
 				m.core_page = false;
+				sfx_play(SFX_BACK);
+			}
 			if (n) {
 				if (k & KEY_DOWN) { m.core_sel = (m.core_sel + 1) % n; sfx_play(SFX_MOVE); }
 				if (k & KEY_UP) { m.core_sel = (m.core_sel - 1 + n) % n; sfx_play(SFX_MOVE); }
@@ -413,17 +465,42 @@ static bool menu_run(void)
 				if (k & (KEY_LEFT | KEY_L)) { options_cycle(m.core_sel, -1); sfx_play(SFX_MOVE); }
 			}
 		} else {
-			if (k & KEY_DOWN) { m.sel = (m.sel + 1) % nitems; sfx_play(SFX_MOVE); }
-			if (k & KEY_UP) { m.sel = (m.sel - 1 + nitems) % nitems; sfx_play(SFX_MOVE); }
-			if (k & (KEY_LEFT | KEY_RIGHT)) sfx_play(SFX_MOVE);
-			if (k & KEY_B)
-				break;
+			int n = m.nitems;
+			if (k & KEY_DOWN) { m.sel = (m.sel + 1) % n; sfx_play(SFX_MOVE); }
+			if (k & KEY_UP) { m.sel = (m.sel - 1 + n) % n; sfx_play(SFX_MOVE); }
+			if (k & KEY_B) {
+				if (!m.settings)
+					break;
+				menu_open_page(&m, false);
+				sfx_play(SFX_BACK);
+			}
 			int dir = (k & KEY_RIGHT) ? 1 : (k & KEY_LEFT) ? -1 : (k & KEY_A) ? 1 : 0;
+			if (dir && (k & (KEY_LEFT | KEY_RIGHT)) && m.settings)
+				sfx_play(SFX_MOVE);
 			if (dir) {
-				switch (items[m.sel]) {
+				switch (m.items[m.sel]) {
 				case M_RESUME: if (k & KEY_A) goto resume; break;
+				case M_SAVE:
+				case M_LOAD:
+					if (k & KEY_A) {
+						bool saving = m.items[m.sel] == M_SAVE;
+						char prefix[PATH_LEN];
+						make_path(prefix, sizeof(prefix), PSX3D_STATE_DIR, "");
+						int slot = state_slot;
+						if (states_run(saving, prefix, game_title, &slot) >= 0) {
+							state_slot = slot;
+							if (saving)
+								state_save();
+							else
+								state_load();
+							goto resume;
+						}
+						state_slot = slot;
+						m.fl.init = false;
+					}
+					break;
 				case M_DISC: {
-					unsigned n = disk.get_num_images();
+					unsigned dn = disk.get_num_images();
 					if (k & KEY_A) {
 						// swap like a real console: open the lid, change, close
 						disk.set_eject_state(true);
@@ -432,11 +509,15 @@ static bool menu_run(void)
 						osd("Disc %u inserted", menu_disc + 1);
 						goto resume;
 					}
-					menu_disc = (menu_disc + dir + n) % n;
+					menu_disc = (menu_disc + dir + dn) % dn;
+					sfx_play(SFX_MOVE);
 				} break;
-				case M_SAVE: if (k & KEY_A) { state_save(); goto resume; } break;
-				case M_LOAD: if (k & KEY_A) { state_load(); goto resume; } break;
-				case M_SLOT: state_slot = (state_slot + dir + 10) % 10; break;
+				case M_SETTINGS:
+					if (k & KEY_A) {
+						menu_open_page(&m, true);
+						sfx_play(SFX_SELECT);
+					}
+					break;
 				case M_SCREEN: config_set_screen_mode((config_screen_mode() + dir + 3) % 3); break;
 				case M_3D: {
 					// "real" per-object 3D is experimental: debug builds only
@@ -446,7 +527,12 @@ static bool menu_run(void)
 				} break;
 				case M_SMOOTH: g_cfg.smooth ^= 1; break;
 				case M_FPS: g_cfg.show_fps ^= 1; break;
-				case M_CORE: if (k & KEY_A) m.core_page = true; break;
+				case M_CORE:
+					if (k & KEY_A) {
+						m.core_page = true;
+						sfx_play(SFX_SELECT);
+					}
+					break;
 				case M_RECORD:
 					if (k & KEY_A) {
 						osd(audio_capture_start() ? "Recording 30s of audio..." : "Could not start recording");
@@ -473,7 +559,7 @@ static bool menu_run(void)
 		if (m.core_page)
 			flist_update(&m.core_fl, m.core_sel, options_count(), CORE_ROWS);
 		else
-			flist_update(&m.fl, m.sel, nitems, MENU_ROWS);
+			flist_update(&m.fl, m.sel, m.nitems, MENU_ROWS);
 		ui_begin();
 		video_present_vsync(true, menu_draw_top, menu_draw_bottom, &m);
 	}
