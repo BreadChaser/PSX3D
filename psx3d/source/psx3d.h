@@ -154,7 +154,9 @@ void covers_reset(void);
 void covers_focus(int game);
 void covers_pump(void);
 bool covers_busy(void);
-void covers_quiesce(bool on);
+bool covers_stop(void);
+void covers_stop_wait(void);
+void covers_resume(void);
 
 // uisound.c - interface sounds and library music
 enum { SFX_MOVE, SFX_SELECT, SFX_BACK, SFX_LAUNCH, SFX_COUNT };

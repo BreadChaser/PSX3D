@@ -38,18 +38,20 @@ static u64 net_retry_at;   // after a network failure, wait before trying again
 static volatile bool paused; // HOME menu / sleep: don't start new downloads
 static volatile int busy;    // workers currently fetching/decoding a cover
 static aptHookCookie apt_cookie;
+void covers_stop_wait(void);
 
 // The system tells us about HOME, sleep and closing right away (from inside
 // aptMainLoop). Stop network work immediately instead of whenever the main
 // loop next looks.
 static void on_apt(APT_HookType hook, void *param)
 {
+	log_printf("covers: apt hook %d, busy %d\n", hook, busy);
 	(void)param;
 
 	switch (hook) {
 	case APTHOOK_ONSUSPEND:
 	case APTHOOK_ONSLEEP:
-		paused = true;
+		covers_stop_wait();
 		break;
 	case APTHOOK_ONRESTORE:
 	case APTHOOK_ONWAKEUP:
@@ -71,6 +73,18 @@ static u32 use_clock;
 static volatile int focus;   // the selected game: fetch nearest first
 static u32 *soc_buf;
 static bool soc_started;
+
+// The network. Only one thread at a time may use it (net_lock): all our
+// socket calls share one session with the 3DS socket service, and a thread
+// blocked in poll() there holds up every other socket call, ours and, while
+// suspended, the HOME Menu's. That froze the 3DS on HOME. So curl is driven
+// by hand with short polls, aborts within ~50ms of a pause, and every socket
+// is closed (net_close) before HOME or sleep.
+static LightLock net_lock;
+static CURL *easy;
+static CURLM *multi;
+static CURLSH *share;            // DNS and TLS sessions, kept across net_close
+static volatile bool net_open;   // multi holds connections
 
 // ---------------------------------------------------------------- names
 
@@ -180,21 +194,25 @@ static size_t on_data(void *p, size_t sz, size_t n, void *ud)
 	return add;
 }
 
-// abort a transfer within a moment when the app is quitting
-static int on_progress(void *ud, curl_off_t a, curl_off_t b, curl_off_t c_, curl_off_t d)
+// close every connection (caller holds net_lock)
+static void net_close(void)
 {
-	(void)ud; (void)a; (void)b; (void)c_; (void)d;
-	return (quit || paused) ? 1 : 0;   // a paused transfer is retried later
+	if (multi)
+		curl_multi_cleanup(multi);
+	multi = NULL;
+	net_open = false;
 }
 
-static u32 *download(CURL *c, const char *key)
+// caller holds net_lock
+static u32 *download(const char *key)
 {
 	char name[256], esc[768], url[1024];
 	thumb_name(key, name, sizeof(name));
 	url_escape(name, esc, sizeof(esc));
 	snprintf(url, sizeof(url), "%s%s.png", THUMB_URL, esc);
 
-	if (!c)
+	CURL *c = easy;
+	if (!c || (!multi && !(multi = curl_multi_init())))
 		return NULL;
 	membuf_t m = { 0 };
 	long code = 0;
@@ -209,9 +227,31 @@ static u32 *download(CURL *c, const char *key)
 	// the handle is reused for every cover: one TLS handshake (seconds on
 	// the 3DS CPU) instead of one per cover
 	curl_easy_setopt(c, CURLOPT_TCP_KEEPALIVE, 1L);
-	curl_easy_setopt(c, CURLOPT_NOPROGRESS, 0L);
-	curl_easy_setopt(c, CURLOPT_XFERINFOFUNCTION, on_progress);
-	CURLcode rc = curl_easy_perform(c);
+	curl_easy_setopt(c, CURLOPT_SHARE, share);
+	curl_easy_setopt(c, CURLOPT_DNS_CACHE_TIMEOUT, -1L);   // lookups can't be aborted: do them once
+
+	CURLcode rc = CURLE_ABORTED_BY_CALLBACK;
+	bool aborted = false;
+	int running = 1;
+	curl_multi_add_handle(multi, c);
+	net_open = true;
+	for (;;) {
+		if (curl_multi_perform(multi, &running) != CURLM_OK || !running)
+			break;
+		if (quit || paused) {   // HOME, sleep or exit: retried later
+			aborted = true;
+			break;
+		}
+		curl_multi_poll(multi, NULL, 0, 50, NULL);
+	}
+	CURLMsg *msg;
+	int left;
+	while (!aborted && (msg = curl_multi_info_read(multi, &left)))
+		if (msg->msg == CURLMSG_DONE)
+			rc = msg->data.result;
+	curl_multi_remove_handle(multi, c);
+	if (aborted)
+		net_close();
 	curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &code);
 	{
 		double tc = 0, ta = 0, tt = 0, sp = 0;
@@ -242,7 +282,7 @@ static u32 *download(CURL *c, const char *key)
 
 // ---------------------------------------------------------------- worker
 
-static u32 *load_cover(CURL *c, const game_t *g)
+static u32 *load_cover(const game_t *g)
 {
 	char path[PATH_LEN];
 	u32 *px;
@@ -265,8 +305,12 @@ static u32 *load_cover(CURL *c, const game_t *g)
 	if (!px) {
 		while (!quit && osGetTime() < net_retry_at)
 			svcSleepThread(200000000LL);
-		if (!quit && !sw_nonet)
-			px = download(c, g->cover_key);
+		if (!quit && !sw_nonet) {
+			LightLock_Lock(&net_lock);
+			if (!quit && !paused)
+				px = download(g->cover_key);
+			LightLock_Unlock(&net_lock);
+		}
 	}
 	if (px) {
 		cache_path(g->cover_key, ".bin", path, sizeof(path));
@@ -281,7 +325,6 @@ static u32 *load_cover(CURL *c, const game_t *g)
 static void worker_main(void *arg)
 {
 	(void)arg;
-	CURL *c = curl_easy_init();
 	while (!quit) {
 		LightEvent_Wait(&wake);
 		for (;;) {
@@ -311,8 +354,9 @@ static void worker_main(void *arg)
 				break;
 			const game_t *g = library_get(game);
 			u64 t0 = osGetTime();
+			log_printf("covers: start #%d\n", game);
 			__atomic_add_fetch(&busy, 1, __ATOMIC_SEQ_CST);
-			u32 *px = g ? load_cover(c, g) : NULL;
+			u32 *px = g ? load_cover(g) : NULL;
 			__atomic_sub_fetch(&busy, 1, __ATOMIC_SEQ_CST);
 			log_printf("covers: #%d %s -> %s in %llums\n", game, g ? g->cover_key : "?",
 				px ? "ok" : "none", osGetTime() - t0);
@@ -327,7 +371,6 @@ static void worker_main(void *arg)
 			LightLock_Unlock(&lock);
 		}
 	}
-	curl_easy_cleanup(c);
 }
 
 // ---------------------------------------------------------------- API
@@ -344,14 +387,25 @@ void covers_init(void)
 	if (!sw_nonet && !soc_buf && (soc_buf = memalign(0x1000, 0x100000)))
 		soc_started = R_SUCCEEDED(socInit(soc_buf, 0x100000));
 	curl_global_init(CURL_GLOBAL_DEFAULT);
+	LightLock_Init(&net_lock);
+	easy = curl_easy_init();
+	if ((share = curl_share_init())) {
+		curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
+		curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
+	}
 	aptHook(&apt_cookie, on_apt, NULL);
 	s32 prio = 0x30;
 	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
-	// Same core as the app (core 0), below the UI's priority. They used to
-	// run on the New 3DS's core 2, and the app then froze whenever HOME was
-	// pressed during a download.
-	for (int i = 0; i < WORKERS; i++)
-		workers[i] = threadCreate(worker_main, NULL, 64 * 1024, prio + 4, 0, false);
+	// The New 3DS's spare core 2 when we have it: on core 0 under the UI,
+	// TLS got so little CPU that covers came in at 20KB/s. (The old HOME
+	// freeze blamed on core 2 was the blocking socket calls, see net_lock.)
+	for (int i = 0; i < WORKERS; i++) {
+		int core = 2;
+		workers[i] = threadCreate(worker_main, NULL, 64 * 1024, prio + 4, core, false);
+		if (!workers[i])
+			workers[i] = threadCreate(worker_main, NULL, 64 * 1024, prio + 4, core = 0, false);
+		log_printf("covers: worker %d on core %d\n", i, workers[i] ? core : -1);
+	}
 
 }
 
@@ -375,6 +429,13 @@ void covers_exit(void)
 		if (slots[i].staging)
 			linearFree(slots[i].staging);
 	}
+	net_close();
+	if (easy)
+		curl_easy_cleanup(easy);
+	if (share)
+		curl_share_cleanup(share);
+	easy = NULL;
+	share = NULL;
 	curl_global_cleanup();
 	// close the network ourselves: leaving sockets for the system to tear
 	// down at exit crashed the 3DS's process manager
@@ -469,29 +530,42 @@ void covers_pump(void)
 	video_pre_draw = covers_pump_in_frame;   // runs at the next frame start
 }
 
+// true while a cover is loading or a connection is open: HOME must wait
 bool covers_busy(void)
 {
 	if (sw_nocovers)
 		return false;
-	return busy > 0;
+	return busy > 0 || net_open;
 }
 
-// Stop all network work and wait (bounded) until the workers are idle.
-// Pressing HOME while a download was in flight froze the app, so the
-// library holds HOME back while busy and calls this before going HOME.
-void covers_quiesce(bool on)
+// Pause the workers and close the network. Doesn't block: call it each
+// frame until it returns true (a transfer aborts within ~50ms).
+bool covers_stop(void)
+{
+	if (sw_nocovers)
+		return true;
+	paused = true;
+	if (busy > 0 || LightLock_TryLock(&net_lock) != 0)
+		return false;
+	net_close();
+	LightLock_Unlock(&net_lock);
+	return true;
+}
+
+// covers_stop, waiting (up to 3s) until it's done
+void covers_stop_wait(void)
+{
+	for (int i = 0; i < 300 && !covers_stop(); i++)
+		svcSleepThread(10000000LL);
+}
+
+void covers_resume(void)
 {
 	if (sw_nocovers)
 		return;
-	paused = on;
-	if (!on) {
-		LightEvent_Signal(&wake);
-		LightEvent_Signal(&wake);
-		return;
-	}
-	for (int i = 0; i < 150 && busy > 0; i++)   // transfers abort via on_progress
-		svcSleepThread(10000000LL);
-
+	paused = false;
+	LightEvent_Signal(&wake);
+	LightEvent_Signal(&wake);
 }
 
 void covers_focus(int game)

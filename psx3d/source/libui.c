@@ -363,6 +363,8 @@ int libui_run(char *out_path, size_t len)
 	music_play(true);
 	ui_wants_3d = true;
 	fade = 1;
+	covers_resume();
+	bool home_pending = false;
 	static u32 frame_no;
 	while (aptMainLoop()) {
 		input_poll();
@@ -370,14 +372,20 @@ int libui_run(char *out_path, size_t len)
 		n = library_count();
 		int before = sel;
 
-		// HOME: held back while covers download; when pressed, stop the
-		// downloads cleanly, then go to the HOME Menu ourselves
-		aptSetHomeAllowed(!covers_busy());
-		if (aptCheckHomePressRejected()) {
-			covers_quiesce(true);
+		// HOME: held back while the covers use the network. When pressed,
+		// stop them (the UI keeps running meanwhile), then go HOME ourselves.
+		aptSetHomeAllowed(!home_pending && !covers_busy());
+		if (aptCheckHomePressRejected() && !home_pending) {
+			log_printf("home: pressed while covers busy\n");
+			home_pending = true;
+		}
+		if (home_pending && covers_stop()) {
+			log_printf("home: network closed, jumping\n");
+			home_pending = false;
 			aptSetHomeAllowed(true);
 			aptJumpToHomeMenu();
-			covers_quiesce(false);
+			log_printf("home: back\n");
+			covers_resume();
 			continue;
 		}
 		// trail for hang diagnosis: last frames before a freeze end up in the log
@@ -431,6 +439,7 @@ int libui_run(char *out_path, size_t len)
 				library_launch_path(g, out_path, len);
 				snprintf(g_cfg.last_title, sizeof(g_cfg.last_title), "%s", g->title);
 				config_save();
+				covers_stop_wait();   // no network during the game
 				// launch sound, music fades out while it plays
 				sfx_play(SFX_LAUNCH);
 				for (int f = 0; f <= 36 && aptMainLoop(); f++) {
