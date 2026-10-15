@@ -179,7 +179,14 @@ static void draw_grid(void)
 	float phase = fmodf(zoff, MESH_DZ);
 
 	for (int j = 0; j <= MESH_ROWS; j++) {
-		float z = 0.45f + j * MESH_DZ + (MESH_DZ - phase);
+		// The nearest row must always land below the screen, or the floor
+		// stops short of the bottom edge for part of each scroll step (at
+		// z = 1.85 it projected to y = 194). It runs from 0.45 down past the
+		// camera; clamped at 0.4 it still projects below the screen (y ~ 392),
+		// so the lines toward it reach the bottom edge.
+		float z = 0.45f - phase + j * MESH_DZ;
+		if (z < 0.4f)
+			z = 0.4f;
 		rz[j] = z;
 		float zw = z + zoff;
 		for (int i = 0; i < MESH_COLS; i++) {
