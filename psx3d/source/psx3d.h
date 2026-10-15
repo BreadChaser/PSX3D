@@ -27,6 +27,7 @@ void log_close(void);
 // config.c - frontend settings plus core option overrides
 typedef struct {
 	char last_dir[PATH_LEN];
+	char games_dir[PATH_LEN];   // Y in the browser jumps here
 	int  smooth;       // bilinear filtering
 	int  show_fps;
 	int  stereo;       // 3D slider: 0 off, 1 screen depth, 2 real (per-object)

@@ -61,6 +61,8 @@ void config_load(void)
 			config_set_core_override(k + 5, v);
 		else if (strcmp(k, "last_dir") == 0)
 			snprintf(g_cfg.last_dir, sizeof(g_cfg.last_dir), "%s", v);
+		else if (strcmp(k, "games_dir") == 0)
+			snprintf(g_cfg.games_dir, sizeof(g_cfg.games_dir), "%s", v);
 		else if (strcmp(k, "debug") == 0)
 			g_cfg.debug = atoi(v) != 0;
 		else if (strcmp(k, "smooth") == 0)
@@ -84,6 +86,8 @@ void config_save(void)
 		return;
 	fprintf(f, "# PSX3D settings\n");
 	fprintf(f, "last_dir=%s\n", g_cfg.last_dir);
+	if (g_cfg.games_dir[0])
+		fprintf(f, "games_dir=%s\n", g_cfg.games_dir);
 	fprintf(f, "smooth=%d\n", g_cfg.smooth);
 	fprintf(f, "show_fps=%d\n", g_cfg.show_fps);
 	fprintf(f, "stereo=%d\n", g_cfg.stereo);
