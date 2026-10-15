@@ -387,7 +387,16 @@ static const char *cheat_label(int i, void *ud)
 static const char *cheat_value(int i, void *ud)
 {
 	(void)ud;
-	return cheats_on(i) ? "on" : "off";
+	return cheats_on(i) ? "on" : cheats_forced(i) ? "auto" : "off";
+}
+
+// Widescreen: the game's own widescreen code when it has one (nothing gets
+// culled at the edges), otherwise the GTE squeeze
+static void sync_widescreen(void)
+{
+	bool want = config_screen_mode() == 2;
+	bool native = cheats_widescreen(want);
+	config_set_ws_native(want && native);
 }
 
 static void menu_draw_bottom(void *ud)
@@ -565,7 +574,7 @@ static bool menu_run(void)
 						sfx_play(SFX_SELECT);
 					}
 					break;
-				case M_SCREEN: config_game_set_screen((config_screen_mode() + dir + 3) % 3); break;
+				case M_SCREEN: config_game_set_screen((config_screen_mode() + dir + 3) % 3); sync_widescreen(); break;
 				case M_3D: {
 					// "real" per-object 3D is experimental: debug builds only
 					int modes = g_cfg.debug ? 3 : 2;
@@ -753,6 +762,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	has_audio = audio_init(av.timing.sample_rate);
 	srm_load();
 	cheats_load(game_name);
+	sync_widescreen();
 	osd("%s", __ctr_svchax ? "Dynarec enabled" : "Interpreter mode (no Luma SVC access) - slow");
 
 	fps_t0 = osGetTime();
