@@ -130,10 +130,27 @@ static option_t *find(const char *key)
 	return NULL;
 }
 
+// Fast-forward: the core skips drawing 3 of every 4 frames while it's held
+// (only the last one is shown anyway). Never saved.
+static bool ff_skip;
+
+void options_fast_forward(bool on)
+{
+	if (on == ff_skip)
+		return;
+	ff_skip = on;
+	options_mark_updated();
+}
+
 const char *options_get(const char *key)
 {
 	const char *ov = locked_value(key);
 	option_t *o = find(key);
+
+	if (ff_skip && !strcmp(key, "pcsx_rearmed_frameskip_type"))
+		return "fixed_interval";
+	if (ff_skip && !strcmp(key, "pcsx_rearmed_frameskip_interval"))
+		return "3";
 
 	if (!ov)
 		ov = config_core_override(key);
