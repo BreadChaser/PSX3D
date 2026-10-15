@@ -65,6 +65,11 @@ void video_present(bool show_game, void (*draw_top)(void *),
 void video_present_vsync(bool show_game, void (*draw_top)(void *),
 	void (*draw_bottom)(void *), void *ud);
 C3D_RenderTarget *video_bottom_target(void);
+extern int ui_eye;
+extern float ui_parallax;
+extern bool ui_wants_3d;
+// x shift for a UI layer at depth d (>0 behind the screen, <0 in front)
+static inline float ui_depth(float d) { return ui_eye * d * ui_parallax; }
 u64 video_take_wait_ticks(void);
 u64 video_take_xfer_ticks(void);
 

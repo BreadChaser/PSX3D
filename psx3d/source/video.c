@@ -18,6 +18,12 @@
 
 static C3D_RenderTarget *top, *top_r, *bottom;
 static bool stereo_on;
+// UI screens in 3D: draw_top is called once per eye; ui_eye is -1 (left),
+// +1 (right) or 0 (no 3D). A layer at depth d (>0 behind the screen, <0 in
+// front) is shifted by ui_eye * d * ui_parallax pixels.
+int ui_eye;
+float ui_parallax;
+bool ui_wants_3d;
 
 // 3D slider fully up pushes the game picture this many pixels behind the screen
 #define MAX_DEPTH_PX 8.0f
@@ -266,7 +272,9 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	// PSX3D's overlays (FPS, messages) stay on the screen surface. Each eye
 	// sees the picture shifted the opposite way.
 	float slider = osGet3DSliderState();
-	bool stereo = show_game && g_cfg.stereo && slider > 0.01f;
+	bool ui3d = !show_game && ui_wants_3d && g_cfg.stereo && slider > 0.01f;
+	bool stereo = (show_game && g_cfg.stereo && slider > 0.01f) || ui3d;
+	ui_parallax = ui3d ? slider * 6.0f : 0.0f;
 	if (stereo != stereo_on) {
 		gfxSet3D(stereo);
 		stereo_on = stereo;
@@ -302,6 +310,7 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	}
 	else if (show_game)
 		draw_game(-depth);
+	ui_eye = ui3d ? -1 : 0;
 	if (draw_top)
 		draw_top(ud);
 
@@ -314,10 +323,12 @@ void video_present(bool show_game, void (*draw_top)(void *),
 			if (hud)
 				draw_hud(gx0, gdw, -hud_dx);
 		}
-		else
+		else if (show_game)
 			draw_game(depth);
+		ui_eye = ui3d ? 1 : 0;
 		if (draw_top)
 			draw_top(ud);
+		ui_eye = 0;
 	}
 
 	if (draw_bottom) {

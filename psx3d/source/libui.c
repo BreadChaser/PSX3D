@@ -16,7 +16,13 @@ static bool bg_ok;
 static C2D_TextBuf tbuf;
 
 static int sel, list_top;
-static float anim;                 // carousel position, eases toward sel
+static float anim, anim_v;         // carousel position (spring toward sel) and velocity
+static float pop = 1, pop_v;       // selected cover scale (spring, overshoots)
+static float title_t = 1;          // 0..1 title slide/fade-in after a change
+static int title_for = -1;         // game the title animation belongs to
+static float clock_s;              // seconds since the screen opened
+static float fade = 1;             // 1 = black, eases to 0 on open
+static float launch_t = -1;        // >= 0 while the launch zoom plays
 static int rep_l, rep_r, rep_u, rep_d, rep_pl, rep_pr;
 
 // PS-era accent colours, one per game in turn
@@ -79,32 +85,54 @@ static float text_width(C2D_Font font, float size, const char *s)
 }
 
 // a cover, or a placeholder card with the game's initial
-static void draw_cover(int i, float cx, float cy, float size, float dim)
+static void draw_cover(int i, float cx, float cy, float size, float dim, float z)
 {
 	const game_t *g = library_get(i);
 	if (!g)
 		return;
 	float x = cx - size / 2, y = cy - size / 2;
-	// drop shadow
-	C2D_DrawRectSolid(x + 3, y + 4, 0.4f, size, size, C2D_Color32(0, 0, 0, 120));
+	// drop shadow on the "floor", a little behind the cover
+	C2D_DrawRectSolid(x + 4 + ui_depth(1.5f), y + 6, z - 0.01f, size, size, C2D_Color32(0, 0, 0, 110));
 	C3D_Tex *t = covers_get(i);
 	if (t) {
 		Tex3DS_SubTexture st = { COVER_SIZE, COVER_SIZE, 0.0f, 1.0f, 1.0f, 0.0f };
 		C2D_Image img = { t, &st };
 		C2D_ImageTint tint;
 		C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim);
-		C2D_DrawImageAt(img, x, y, 0.5f, dim > 0 ? &tint : NULL, size / COVER_SIZE, size / COVER_SIZE);
+		C2D_DrawImageAt(img, x, y, z, dim > 0 ? &tint : NULL, size / COVER_SIZE, size / COVER_SIZE);
 	} else {
 		u32 c = *accent(i);
-		C2D_DrawRectangle(x, y, 0.5f, size, size, C2D_Color32(20, 26, 60, 255), C2D_Color32(20, 26, 60, 255),
+		C2D_DrawRectangle(x, y, z, size, size, C2D_Color32(20, 26, 60, 255), C2D_Color32(20, 26, 60, 255),
 			C2D_Color32(8, 10, 28, 255), C2D_Color32(8, 10, 28, 255));
-		C2D_DrawRectSolid(x, y + size - 6, 0.5f, size, 6, c);
+		C2D_DrawRectSolid(x, y + size - 6, z, size, 6, c);
 		char initial[2] = { g->title[0], 0 };
 		float s = size / 60.0f;
-		C2D_Font f = title_font ? title_font : NULL;
-		text(f, cx, cy - 14 * s, s, C2D_Color32(220, 225, 245, 255), C2D_AlignCenter, initial);
+		text(title_font, cx, cy - 14 * s, s, C2D_Color32(220, 225, 245, 255), C2D_AlignCenter, initial);
 		if (dim > 0)
-			C2D_DrawRectSolid(x, y, 0.55f, size, size, C2D_Color32(0, 0, 0, (u8)(dim * 255)));
+			C2D_DrawRectSolid(x, y, z + 0.005f, size, size, C2D_Color32(0, 0, 0, (u8)(dim * 255)));
+	}
+}
+
+// the neon floor, scrolling toward the viewer; each line gets its own depth
+// so the floor recedes into the screen in 3D
+static void draw_grid(void)
+{
+	const float hy = 150, cx = 200;
+	u32 col = C2D_Color32(40, 140, 255, 255), glow = C2D_Color32(40, 140, 255, 70);
+	float scroll = fmodf(clock_s * 0.35f, 1.0f);
+	for (int k = 0; k < 9; k++) {
+		float u = (k + scroll) / 8.0f;           // 0 at the horizon .. 1 at the bottom
+		float y = hy + powf(u, 2.2f) * (240 - hy);
+		if (y > 240) continue;
+		float d = 3.0f * (1.0f - u) - 0.5f;      // far lines deep behind, near ones at the surface
+		float dx = ui_depth(d);
+		C2D_DrawRectSolid(dx, y - 1, 0.15f, 400, 3, glow);
+		C2D_DrawRectSolid(dx, y, 0.16f, 400, 1.2f + 1.2f * u, col);
+	}
+	for (int i = -12; i <= 12; i++) {
+		float x0 = cx + i * 16.0f, x1 = cx + i * 168.0f;
+		C2D_DrawLine(x0 + ui_depth(2.5f), hy, glow, x1 + ui_depth(-0.5f), 240, glow, 4, 0.15f);
+		C2D_DrawLine(x0 + ui_depth(2.5f), hy, col, x1 + ui_depth(-0.5f), 240, col, 1.5f, 0.16f);
 	}
 }
 
@@ -113,10 +141,12 @@ static void draw_top(void *ud)
 	(void)ud;
 	int n = library_count();
 	if (bg_ok)
-		C2D_DrawImageAt(bg_img, 0, 0, 0.1f, NULL, 1.0f, 1.0f);
+		C2D_DrawImageAt(bg_img, ui_depth(3.0f), 0, 0.1f, NULL, 1.0f, 1.0f);   // sky: far back
+	draw_grid();
 
 	// carousel: neighbours first so the selection sits on top
 	float spacing = 116.0f;
+	float bob = sinf(clock_s * 2.0f) * 2.0f;
 	for (int k = 3; k >= 0; k--)
 		for (int side = -1; side <= 1; side += 2) {
 			if (k == 0 && side == 1)
@@ -127,28 +157,51 @@ static void draw_top(void *ud)
 			float d = i - anim;                       // distance from centre
 			float ad = fabsf(d);
 			float size = ad < 1 ? 136 - 48 * ad : 88 - 8 * (ad - 1);
-			float cx = 200 + d * spacing;
+			float cy = 96;
+			if (i == sel) {
+				size *= pop;
+				cy += bob;
+			}
+			if (launch_t >= 0 && i == sel) {
+				// launch: the cover rushes toward you
+				float e = launch_t * launch_t;
+				size *= 1 + e * 2.2f;
+				cy += e * 20;
+			}
+			float depth = ad < 0.5f ? -1.2f + 2.4f * ad : 0.6f + 0.4f * ad;   // selected pops out
+			float cx = 200 + d * spacing + ui_depth(depth);
 			float dim = ad < 1 ? 0.55f * ad : 0.55f + 0.1f * (ad - 1);
 			if (dim > 0.85f) dim = 0.85f;
-			draw_cover(i, cx, 96, size, dim);
+			draw_cover(i, cx, cy, size, dim, 0.5f - ad * 0.02f);
 		}
 
 	const game_t *g = library_get(sel);
-	if (!g)
-		return;
-	// title: brand font, shrunk to fit
-	C2D_Font f = title_font;
-	float size = 0.9f;
-	float w = text_width(f, size, g->title);
-	if (w > 380)
-		size *= 380 / w;
-	text(f, 201, 179, size, C2D_Color32(0, 0, 0, 160), C2D_AlignCenter, g->title);
-	text(f, 200, 178, size, C2D_Color32(255, 255, 255, 255), C2D_AlignCenter, g->title);
-	if (g->ndiscs > 1) {
-		char d[32];
-		snprintf(d, sizeof(d), "%d discs", g->ndiscs);
-		text(NULL, 200, 214, 0.45f, C2D_Color32(170, 185, 230, 255), C2D_AlignCenter, d);
+	if (g && launch_t < 0) {
+		// title slides up and fades in after the selection changes
+		float e = 1 - (1 - title_t) * (1 - title_t);
+		u8 a = (u8)(255 * e);
+		float ty = 178 + (1 - e) * 10;
+		C2D_Font f = title_font;
+		float size = 0.9f;
+		float w = text_width(f, size, g->title);
+		if (w > 380)
+			size *= 380 / w;
+		float tx = 200 + ui_depth(-0.8f);   // floats just in front of the screen
+		text(f, tx + 1, ty + 1, size, C2D_Color32(0, 0, 0, a * 5 / 8), C2D_AlignCenter, g->title);
+		text(f, tx, ty, size, C2D_Color32(255, 255, 255, a), C2D_AlignCenter, g->title);
+		if (g->ndiscs > 1) {
+			char dd[32];
+			snprintf(dd, sizeof(dd), "%d discs", g->ndiscs);
+			text(NULL, tx, ty + 36, 0.45f, C2D_Color32(170, 185, 230, a), C2D_AlignCenter, dd);
+		}
 	}
+
+	// fade from/to black (open, launch)
+	float f = fade;
+	if (launch_t >= 0)
+		f = launch_t > 0.4f ? (launch_t - 0.4f) / 0.6f : 0;
+	if (f > 0.001f)
+		C2D_DrawRectSolid(0, 0, 0.9f, 400, 240, C2D_Color32(0, 0, 0, (u8)(255 * (f > 1 ? 1 : f))));
 }
 
 static void draw_bottom(void *ud)
@@ -203,6 +256,7 @@ void libui_select_title(const char *title)
 		if (!strcmp(library_get(i)->title, title)) {
 			sel = i;
 			anim = i;
+			title_for = i;
 			clamp_list();
 			return;
 		}
@@ -224,6 +278,8 @@ int libui_run(char *out_path, size_t len)
 	clamp_list();
 
 	music_play(true);
+	ui_wants_3d = true;
+	fade = 1;
 	while (aptMainLoop()) {
 		input_poll();
 		u32 k = input_keys_down(), h = input_keys_held();
@@ -232,10 +288,12 @@ int libui_run(char *out_path, size_t len)
 
 		if (k & KEY_START) {
 			music_play(false);
+			ui_wants_3d = false;
 			return 0;
 		}
 		if (k & KEY_Y) {
 			sfx_play(SFX_SELECT);
+			ui_wants_3d = false;
 			return 2;
 		}
 		if (k & KEY_SELECT) {
@@ -275,21 +333,42 @@ int libui_run(char *out_path, size_t len)
 				config_save();
 				// launch sound, music fades out while it plays
 				sfx_play(SFX_LAUNCH);
-				for (int f = 0; f < 30 && aptMainLoop(); f++) {
+				for (int f = 0; f <= 36 && aptMainLoop(); f++) {
+					launch_t = f / 36.0f;
+					clock_s += 1.0f / 60.0f;
+					music_update();
 					C2D_TextBufClear(tbuf);
 					ui_begin();
 					video_present_vsync(false, draw_top, draw_bottom, NULL);
 				}
+				launch_t = -1;
+				fade = 1;
 				music_play(false);
+				ui_wants_3d = false;
 				return 1;
 			}
 		}
 
 		music_update();
-		// ease the carousel toward the selection
-		anim += (sel - anim) * 0.25f;
-		if (fabsf(sel - anim) < 0.01f)
+		// springs: carousel glides to the selection, the new cover pops
+		const float dt = 1.0f / 60.0f;
+		clock_s += dt;
+		anim_v += ((sel - anim) * 180.0f - anim_v * 22.0f) * dt;
+		anim += anim_v * dt;
+		if (fabsf(sel - anim) < 0.002f && fabsf(anim_v) < 0.01f) {
 			anim = sel;
+			anim_v = 0;
+		}
+		if (title_for != sel) {
+			title_for = sel;
+			title_t = 0;
+			pop = 0.88f;
+			pop_v = 0;
+		}
+		pop_v += ((1.0f - pop) * 260.0f - pop_v * 14.0f) * dt;
+		pop += pop_v * dt;
+		if (title_t < 1) title_t = fminf(1, title_t + dt * 5);
+		if (fade > 0) fade = fmaxf(0, fade - dt * 3);
 		// the selection first, then outward: what's on screen loads first
 		covers_focus(sel);
 		for (int d = 0; d <= 4; d++) {

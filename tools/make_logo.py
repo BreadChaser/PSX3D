@@ -37,7 +37,7 @@ def glow(layer, radius, strength=1.0):
         g.putalpha(a)
     return g
 
-def scene(W, H, horizon, show_shapes=True, show_sun=True):
+def scene(W, H, horizon, show_shapes=True, show_sun=True, show_grid=True):
     sky = vgrad(W, H, [(0, (3, 6, 22, 255)), (0.45, (10, 24, 64, 255)),
                        (horizon / H, (30, 90, 170, 255)), (horizon / H + 0.001, (3, 6, 20, 255)),
                        (1, (1, 2, 10, 255))])
@@ -107,6 +107,8 @@ def scene(W, H, horizon, show_shapes=True, show_sun=True):
     sky = Image.alpha_composite(sky, glow(mtn, H / 200, 1.0))
     sky = Image.alpha_composite(sky, mtn)
 
+    if not show_grid:
+        return sky
     # perspective grid floor
     grid = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     gd = ImageDraw.Draw(grid)
@@ -223,6 +225,6 @@ print("ok")
 
 # library background: the scene without the logo, sun lower and dimmer so
 # box art stands out in front of it
-bg = scene(400, 240, 150, show_shapes=False)
+bg = scene(400, 240, 150, show_shapes=False, show_grid=False)  # grid is drawn live
 dim = Image.new("RGBA", bg.size, (0, 0, 0, 90))
 Image.alpha_composite(bg, dim).convert("RGB").save(f"{OUT}/library_bg.png")
