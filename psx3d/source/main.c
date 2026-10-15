@@ -159,6 +159,7 @@ int main(int argc, char **argv)
 	if (!sw_nocovers)
 		covers_init();
 	if (!sw_nosound)
+		dsp_firmware_ensure();   // first start: copy it from the HOME Menu
 		uisound_init();
 	emu_init();
 
@@ -203,19 +204,26 @@ int main(int argc, char **argv)
 			break;
 	}
 
+	// each step is logged: a hang at exit shows up as the last line
+	log_printf("exit: config\n");
 	config_save();
+	log_printf("exit: sound\n");
 	if (!sw_nosound)
 		uisound_exit();
+	log_printf("exit: covers\n");
 	if (!sw_nocovers)
 		covers_exit();
+	log_printf("exit: ui\n");
 	libui_exit();
 	romfsExit();
 	emu_deinit();
 	ui_exit();
+	log_printf("exit: video\n");
 	video_exit();
 	if (!sw_noirrst)
 		irrstExit();
 	cfguExit();
+	log_printf("exit: done\n");
 	log_close();
 	return 0;
 }

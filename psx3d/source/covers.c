@@ -326,7 +326,10 @@ static void worker_main(void *arg)
 {
 	(void)arg;
 	while (!quit) {
-		LightEvent_Wait(&wake);
+		// timed: a one-shot signal can be lost when two arrive together
+		// (LightEvent_Signal does nothing on an already-signalled event),
+		// so never rely on one to see quit
+		LightEvent_WaitTimeout(&wake, 100000000LL);
 		for (;;) {
 			while (paused && !quit)
 				svcSleepThread(100000000LL);
@@ -414,14 +417,21 @@ void covers_exit(void)
 	video_pre_draw = NULL;
 	aptUnhook(&apt_cookie);
 	quit = true;
-	for (int i = 0; i < WORKERS; i++)
-		LightEvent_Signal(&wake);
-	for (int i = 0; i < WORKERS; i++)
-		if (workers[i]) {
+	for (int i = 0; i < WORKERS; i++) {
+		if (!workers[i])
+			continue;
+		// workers notice quit within 100ms; give up after 3s rather than
+		// hang the exit (the system ends the thread with the app anyway)
+		bool done = false;
+		for (int t = 0; t < 30 && !done; t++) {
 			LightEvent_Signal(&wake);
-			threadJoin(workers[i], U64_MAX);
-			threadFree(workers[i]);
+			done = threadJoin(workers[i], 100000000LL) == 0;   // a timeout is not R_FAILED
 		}
+		log_printf("covers: worker %d %s\n", i, done ? "stopped" : "did not stop");
+		if (done)
+			threadFree(workers[i]);
+		workers[i] = NULL;
+	}
 	for (int i = 0; i < SLOTS; i++) {
 		free(slots[i].pixels);
 		if (slots[i].tex_ok)
