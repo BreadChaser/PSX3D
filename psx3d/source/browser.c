@@ -316,7 +316,7 @@ bool browser_run(char *out_path, size_t out_len)
 		}
 
 		ui_begin();
-		video_present(false, draw_top, draw_bottom, NULL);
+		video_present_vsync(false, draw_top, draw_bottom, NULL);
 	}
 	free_entries();
 	return false;
