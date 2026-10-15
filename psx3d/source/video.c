@@ -88,8 +88,8 @@ bool video_init(void)
 
 	// Top screen: render at 2x2 the resolution and let the display transfer
 	// average it down (4x supersampling) so lines and edges are smooth.
-	top = aa_target(GFX_LEFT);
-	top_r = aa_target(GFX_RIGHT);
+	top = sw_noaa ? NULL : aa_target(GFX_LEFT);
+	top_r = sw_noaa ? NULL : aa_target(GFX_RIGHT);
 	if (!top || !top_r) {
 		if (top) C3D_RenderTargetDelete(top);
 		if (top_r) C3D_RenderTargetDelete(top_r);

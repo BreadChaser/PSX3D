@@ -265,7 +265,7 @@ static u32 *load_cover(CURL *c, const game_t *g)
 	if (!px) {
 		while (!quit && osGetTime() < net_retry_at)
 			svcSleepThread(200000000LL);
-		if (!quit)
+		if (!quit && !sw_nonet)
 			px = download(c, g->cover_key);
 	}
 	if (px) {
@@ -341,7 +341,7 @@ void covers_init(void)
 	LightEvent_Init(&wake, RESET_ONESHOT);   // each Signal wakes one worker
 	// the network: 3dslink logging may already have started it
 	// (3dslink logging may already have started the network)
-	if (!soc_buf && (soc_buf = memalign(0x1000, 0x100000)))
+	if (!sw_nonet && !soc_buf && (soc_buf = memalign(0x1000, 0x100000)))
 		soc_started = R_SUCCEEDED(socInit(soc_buf, 0x100000));
 	curl_global_init(CURL_GLOBAL_DEFAULT);
 	aptHook(&apt_cookie, on_apt, NULL);
@@ -387,6 +387,8 @@ void covers_exit(void)
 // Texture for game i if it's ready; otherwise queue it and return NULL.
 C3D_Tex *covers_get(int game)
 {
+	if (sw_nocovers)
+		return NULL;
 	slot_t *s = NULL;
 	use_clock++;
 	LightLock_Lock(&lock);
@@ -462,11 +464,15 @@ static void covers_pump_in_frame(void)
 
 void covers_pump(void)
 {
+	if (sw_nocovers)
+		return;
 	video_pre_draw = covers_pump_in_frame;   // runs at the next frame start
 }
 
 bool covers_busy(void)
 {
+	if (sw_nocovers)
+		return false;
 	return busy > 0;
 }
 
@@ -475,6 +481,8 @@ bool covers_busy(void)
 // library holds HOME back while busy and calls this before going HOME.
 void covers_quiesce(bool on)
 {
+	if (sw_nocovers)
+		return;
 	paused = on;
 	if (!on) {
 		LightEvent_Signal(&wake);
@@ -488,6 +496,8 @@ void covers_quiesce(bool on)
 
 void covers_focus(int game)
 {
+	if (sw_nocovers)
+		return;
 	focus = game;
 	LightEvent_Signal(&wake);
 	LightEvent_Signal(&wake);
@@ -496,6 +506,8 @@ void covers_focus(int game)
 // forget everything (after a rescan the game indexes change)
 void covers_reset(void)
 {
+	if (sw_nocovers)
+		return;
 	LightLock_Lock(&lock);
 	for (int i = 0; i < SLOTS; i++) {
 		slots[i].game = -1;

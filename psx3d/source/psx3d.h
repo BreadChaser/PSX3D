@@ -181,6 +181,7 @@ void emu_deinit(void);
 bool emu_run_game(const char *path, const char *save_name, const char *title);
 
 extern int __ctr_svchax;
+extern bool sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 extern bool g_new3ds;
 
 #endif

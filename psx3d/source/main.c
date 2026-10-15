@@ -1,5 +1,6 @@
 // PSX3D entry point.
 #include <stdio.h>
+#include <string.h>
 #include <sys/stat.h>
 #include "psx3d.h"
 
@@ -93,13 +94,35 @@ static void show_error(const char *msg)
 	}
 }
 
-int main(void)
+// Diagnostic switches, passed as arguments (3dslink ... -- nonet nosound):
+// each turns one subsystem off so a problem can be bisected without
+// rebuilding.
+bool sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
+
+static void parse_switches(int argc, char **argv)
+{
+	for (int i = 1; i < argc; i++) {
+		const char *a = argv[i];
+		if (!strcmp(a, "nonet")) sw_nonet = true;
+		else if (!strcmp(a, "nosound")) sw_nosound = true;
+		else if (!strcmp(a, "noirrst")) sw_noirrst = true;
+		else if (!strcmp(a, "noaa")) sw_noaa = true;
+		else if (!strcmp(a, "nolcd")) sw_nolcd = true;
+		else if (!strcmp(a, "nocovers")) sw_nocovers = true;
+		else if (!strcmp(a, "minimal"))
+			sw_nonet = sw_nosound = sw_noirrst = sw_noaa = sw_nolcd = sw_nocovers = true;
+	}
+}
+
+int main(int argc, char **argv)
 {
 	char path[PATH_LEN];
+	parse_switches(argc, argv);
 
 	// New 3DS: 804 MHz + L2 cache
 	osSetSpeedupEnable(true);
-	irrstInit();
+	if (!sw_noirrst)
+		irrstInit();
 	// the core asks cfg:u for the console model to count CPU cores; without
 	// it, it assumes one core and never starts its graphics thread
 	cfguInit();
@@ -122,6 +145,8 @@ int main(void)
 		__ctr_svchax = 0;
 	}
 	log_printf("svc access: %d\n", __ctr_svchax);
+	log_printf("switches: nonet=%d nosound=%d noirrst=%d noaa=%d nolcd=%d nocovers=%d\n",
+		sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers);
 
 	config_load();
 	if (!video_init()) {
@@ -131,8 +156,10 @@ int main(void)
 	romfsInit();
 	ui_init();
 	libui_init();
-	covers_init();
-	uisound_init();
+	if (!sw_nocovers)
+		covers_init();
+	if (!sw_nosound)
+		uisound_init();
 	emu_init();
 
 	// Home screen: the game library (needs a games folder); Y switches to
@@ -177,14 +204,17 @@ int main(void)
 	}
 
 	config_save();
-	uisound_exit();
-	covers_exit();
+	if (!sw_nosound)
+		uisound_exit();
+	if (!sw_nocovers)
+		covers_exit();
 	libui_exit();
 	romfsExit();
 	emu_deinit();
 	ui_exit();
 	video_exit();
-	irrstExit();
+	if (!sw_noirrst)
+		irrstExit();
 	cfguExit();
 	log_close();
 	return 0;
