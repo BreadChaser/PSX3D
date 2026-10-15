@@ -37,6 +37,7 @@ static u64 net_retry_at;   // after a network failure, wait before trying again
 static u32 use_clock;
 static volatile int focus;   // the selected game: fetch nearest first
 static u32 *soc_buf;
+static bool soc_started;
 
 // ---------------------------------------------------------------- names
 
@@ -146,6 +147,13 @@ static size_t on_data(void *p, size_t sz, size_t n, void *ud)
 	return add;
 }
 
+// abort a transfer within a moment when the app is quitting
+static int on_progress(void *ud, curl_off_t a, curl_off_t b, curl_off_t c_, curl_off_t d)
+{
+	(void)ud; (void)a; (void)b; (void)c_; (void)d;
+	return quit ? 1 : 0;
+}
+
 static u32 *download(CURL *c, const char *key)
 {
 	char name[256], esc[768], url[1024];
@@ -168,12 +176,26 @@ static u32 *download(CURL *c, const char *key)
 	// the handle is reused for every cover: one TLS handshake (seconds on
 	// the 3DS CPU) instead of one per cover
 	curl_easy_setopt(c, CURLOPT_TCP_KEEPALIVE, 1L);
+	curl_easy_setopt(c, CURLOPT_NOPROGRESS, 0L);
+	curl_easy_setopt(c, CURLOPT_XFERINFOFUNCTION, on_progress);
 	CURLcode rc = curl_easy_perform(c);
 	curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &code);
+	{
+		double tc = 0, ta = 0, tt = 0, sp = 0;
+		curl_easy_getinfo(c, CURLINFO_CONNECT_TIME, &tc);
+		curl_easy_getinfo(c, CURLINFO_APPCONNECT_TIME, &ta);
+		curl_easy_getinfo(c, CURLINFO_TOTAL_TIME, &tt);
+		curl_easy_getinfo(c, CURLINFO_SPEED_DOWNLOAD, &sp);
+		log_printf("covers: http %ld %uKB connect %.2fs tls %.2fs total %.2fs (%.0fKB/s)\n",
+			code, (unsigned)(m.len / 1024), tc, ta, tt, sp / 1024);
+	}
+	u64 td = osGetTime();
 
 	u32 *px = NULL;
-	if (rc == CURLE_OK && code == 200)
+	if (rc == CURLE_OK && code == 200) {
 		px = decode_png(m.data, m.len, NULL);
+		log_printf("covers: decode %llums\n", osGetTime() - td);
+	}
 	else if (rc == CURLE_COULDNT_CONNECT || rc == CURLE_COULDNT_RESOLVE_HOST ||
 	         rc == CURLE_OPERATION_TIMEDOUT) {
 		log_printf("covers: network error %d, retrying in 15s\n", rc);
@@ -280,9 +302,9 @@ void covers_init(void)
 	LightLock_Init(&lock);
 	LightEvent_Init(&wake, RESET_ONESHOT);   // each Signal wakes one worker
 	// the network: 3dslink logging may already have started it
-	if (!soc_buf && (soc_buf = memalign(0x1000, 0x100000)) && R_FAILED(socInit(soc_buf, 0x100000))) {
-		// already initialised elsewhere (fine) or unavailable
-	}
+	// (3dslink logging may already have started the network)
+	if (!soc_buf && (soc_buf = memalign(0x1000, 0x100000)))
+		soc_started = R_SUCCEEDED(socInit(soc_buf, 0x100000));
 	curl_global_init(CURL_GLOBAL_DEFAULT);
 	s32 prio = 0x30;
 	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
@@ -312,6 +334,12 @@ void covers_exit(void)
 			C3D_TexDelete(&slots[i].tex);
 	}
 	curl_global_cleanup();
+	// close the network ourselves: leaving sockets for the system to tear
+	// down at exit crashed the 3DS's process manager
+	if (soc_started) {
+		socExit();
+		soc_started = false;
+	}
 }
 
 // Texture for game i if it's ready; otherwise queue it and return NULL.
