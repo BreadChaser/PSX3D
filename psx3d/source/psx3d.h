@@ -79,6 +79,14 @@ u64 video_take_wait_ticks(void);
 u64 video_take_xfer_ticks(void);
 bool video_snapshot(u16 *out, int w, int h);
 
+// csnd_out.c - sound without DSP firmware
+bool csnd_acquire(void);
+void csnd_release(void);
+int csnd_channel(int n);
+double csnd_real_rate(u32 rate);
+void csnd_setup(int chn, bool loop, u32 rate, float vol, float pan, const s16 *data, u32 bytes);
+void csnd_set_volume(int chn, float vol, float pan);
+
 // dspdump.c
 bool dsp_firmware_ensure(void);
 
@@ -191,7 +199,7 @@ void emu_deinit(void);
 bool emu_run_game(const char *path, const char *save_name, const char *title);
 
 extern int __ctr_svchax;
-extern bool sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
+extern bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 extern bool g_new3ds;
 
 #endif

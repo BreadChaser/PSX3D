@@ -596,7 +596,7 @@ static void game_draw_bottom(void *ud)
 	}
 	if (!has_audio)
 		ui_text(4, 186, 0.42f, C2D_Color32(255, 160, 120, 255),
-			"No sound: dump DSP firmware (dspfirm.cdc)");
+			"No sound available");
 }
 
 // In game the bottom screen goes fully dark (backlight off): it only shows
