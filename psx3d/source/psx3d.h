@@ -66,6 +66,7 @@ void video_present(bool show_game, void (*draw_top)(void *),
 void video_present_vsync(bool show_game, void (*draw_top)(void *),
 	void (*draw_bottom)(void *), void *ud);
 C3D_RenderTarget *video_bottom_target(void);
+extern void (*video_pre_draw)(void);
 extern int ui_eye;
 extern float ui_parallax;
 extern bool ui_wants_3d;

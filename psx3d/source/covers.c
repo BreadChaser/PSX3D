@@ -24,6 +24,7 @@ typedef struct {
 	u32 *pixels;         // COVER_SIZE^2, texture byte order
 	C3D_Tex tex;
 	bool tex_ok;
+	u32 *staging;        // linear copy the GPU reads from (kept for reuse)
 	u32 last_used;
 } slot_t;
 
@@ -353,6 +354,7 @@ void covers_init(void)
 
 void covers_exit(void)
 {
+	video_pre_draw = NULL;
 	aptUnhook(&apt_cookie);
 	quit = true;
 	for (int i = 0; i < WORKERS; i++)
@@ -367,6 +369,8 @@ void covers_exit(void)
 		free(slots[i].pixels);
 		if (slots[i].tex_ok)
 			C3D_TexDelete(&slots[i].tex);
+		if (slots[i].staging)
+			linearFree(slots[i].staging);
 	}
 	curl_global_cleanup();
 	// close the network ourselves: leaving sockets for the system to tear
@@ -413,10 +417,12 @@ C3D_Tex *covers_get(int game)
 	return s->state == 3 ? &s->tex : NULL;
 }
 
-// Upload decoded covers to textures. Must run outside a frame: the
-// transfer waits for the GPU, and inside a frame the GPU only starts once
-// the frame is submitted (that deadlock froze the library).
-void covers_pump(void)
+// Upload decoded covers to textures. Called inside the frame (from
+// video_present, after C3D_FrameBegin): the copy is queued on the GPU
+// ahead of the draw, like the game picture, and nothing waits for it.
+// (A blocking transfer, inside or outside the frame, raced citro3d's own
+// GPU queue and could hang the app.)
+static void covers_pump_in_frame(void)
 {
 	int done = 0;
 	for (int i = 0; i < SLOTS && done < 2; i++) {
@@ -425,30 +431,35 @@ void covers_pump(void)
 			continue;
 		if (!s->tex_ok)
 			s->tex_ok = C3D_TexInit(&s->tex, COVER_SIZE, COVER_SIZE, GPU_RGBA8);
-		u32 *lin = s->tex_ok ? linearAlloc(COVER_SIZE * COVER_SIZE * 4) : NULL;
-		if (!lin)
+		if (!s->staging)
+			s->staging = linearAlloc(COVER_SIZE * COVER_SIZE * 4);
+		if (!s->tex_ok || !s->staging)
 			return;
 		LightLock_Lock(&lock);
 		bool still = s->state == 2 && s->pixels;
 		if (still)
-			memcpy(lin, s->pixels, COVER_SIZE * COVER_SIZE * 4);
+			memcpy(s->staging, s->pixels, COVER_SIZE * COVER_SIZE * 4);
 		LightLock_Unlock(&lock);
-		if (still) {
-			GSPGPU_FlushDataCache(lin, COVER_SIZE * COVER_SIZE * 4);
-			C3D_SyncDisplayTransfer(lin, GX_BUFFER_DIM(COVER_SIZE, COVER_SIZE), (u32 *)s->tex.data,
-				GX_BUFFER_DIM(COVER_SIZE, COVER_SIZE),
-				GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_RAW_COPY(0) |
-				GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8) |
-				GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
-			C3D_TexSetFilter(&s->tex, GPU_LINEAR, GPU_LINEAR);
-			LightLock_Lock(&lock);
-			if (s->state == 2)
-				s->state = 3;
-			LightLock_Unlock(&lock);
-			done++;
-		}
-		linearFree(lin);
+		if (!still)
+			continue;
+		GSPGPU_FlushDataCache(s->staging, COVER_SIZE * COVER_SIZE * 4);
+		GX_DisplayTransfer(s->staging, GX_BUFFER_DIM(COVER_SIZE, COVER_SIZE), (u32 *)s->tex.data,
+			GX_BUFFER_DIM(COVER_SIZE, COVER_SIZE),
+			GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_RAW_COPY(0) |
+			GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8) |
+			GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
+		C3D_TexSetFilter(&s->tex, GPU_LINEAR, GPU_LINEAR);
+		LightLock_Lock(&lock);
+		if (s->state == 2)
+			s->state = 3;
+		LightLock_Unlock(&lock);
+		done++;
 	}
+}
+
+void covers_pump(void)
+{
+	video_pre_draw = covers_pump_in_frame;   // runs at the next frame start
 }
 
 void covers_focus(int game)
