@@ -16,6 +16,7 @@ static bool bg_ok;
 static C2D_TextBuf tbuf;
 
 static int sel, list_top;
+bool debug_trail;   // set from the APT hook: log every step around the freeze
 static float anim, anim_v;         // carousel position (spring toward sel) and velocity
 static float pop = 1, pop_v;       // selected cover scale (spring, overshoots)
 static float title_t = 1;          // 0..1 title slide/fade-in after a change
@@ -197,6 +198,10 @@ static void draw_grid(void)
 		for (int i = 0; i < MESH_COLS - 1; i++) {
 			if (hgt[j][i] + hgt[j][i + 1] + hgt[j + 1][i] + hgt[j + 1][i + 1] < 0.01f)
 				continue;   // flat floor: nothing to hide
+			float minx = fminf(fminf(px[j][i], px[j][i + 1]), fminf(px[j + 1][i], px[j + 1][i + 1]));
+			float maxx = fmaxf(fmaxf(px[j][i], px[j][i + 1]), fmaxf(px[j + 1][i], px[j + 1][i + 1]));
+			if (maxx < 0 || minx > 400)
+				continue;   // off-screen: don't spend draw budget on it
 			C2D_DrawTriangle(px[j][i], py[j][i], fillc, px[j][i + 1], py[j][i + 1], fillc,
 				px[j + 1][i + 1], py[j + 1][i + 1], fillc, 0.15f);
 			C2D_DrawTriangle(px[j][i], py[j][i], fillc, px[j + 1][i + 1], py[j + 1][i + 1], fillc,
@@ -359,11 +364,15 @@ int libui_run(char *out_path, size_t len)
 	music_play(true);
 	ui_wants_3d = true;
 	fade = 1;
+	static u32 frame_no;
 	while (aptMainLoop()) {
 		input_poll();
 		u32 k = input_keys_down(), h = input_keys_held();
 		n = library_count();
 		int before = sel;
+		// trail for hang diagnosis: last frames before a freeze end up in the log
+		if (k & KEY_HOME) log_printf("libui: HOME seen at frame %lu\n", frame_no);
+		frame_no++;
 
 		if (k & KEY_START) {
 			music_play(false);
@@ -460,7 +469,9 @@ int libui_run(char *out_path, size_t len)
 		covers_pump();
 		C2D_TextBufClear(tbuf);
 		ui_begin();
+		if (debug_trail) log_printf("libui: present %lu\n", frame_no);
 		video_present_vsync(false, draw_top, draw_bottom, NULL);
+		if (debug_trail) log_printf("libui: presented %lu\n", frame_no);
 	}
 	return 0;
 }

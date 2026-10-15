@@ -82,7 +82,7 @@ bool video_init(void)
 	if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE))
 		return false;
 	// the library's live floor mesh alone is a few thousand primitives
-	if (!C2D_Init(8192))
+	if (!C2D_Init(16384))
 		return false;
 	C2D_Prepare();
 

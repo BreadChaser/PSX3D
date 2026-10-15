@@ -44,6 +44,9 @@ static aptHookCookie apt_cookie;
 static void on_apt(APT_HookType hook, void *param)
 {
 	(void)param;
+	log_printf("apt: hook %d\n", (int)hook);
+	extern bool debug_trail;
+	debug_trail = true;
 	switch (hook) {
 	case APTHOOK_ONSUSPEND:
 	case APTHOOK_ONSLEEP:
