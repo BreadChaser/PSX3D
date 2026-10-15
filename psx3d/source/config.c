@@ -70,6 +70,8 @@ void config_load(void)
 			snprintf(g_cfg.last_title, sizeof(g_cfg.last_title), "%s", v);
 		else if (strcmp(k, "games_dir") == 0)
 			snprintf(g_cfg.games_dir, sizeof(g_cfg.games_dir), "%s", v);
+		else if (strcmp(k, "stretch") == 0)
+			g_cfg.stretch = atoi(v) != 0;
 		else if (strcmp(k, "sounds") == 0)
 			g_cfg.sounds = atoi(v) != 0;
 		else if (strcmp(k, "music") == 0)
@@ -109,6 +111,7 @@ void config_save(void)
 	fprintf(f, "smooth=%d\n", g_cfg.smooth);
 	fprintf(f, "show_fps=%d\n", g_cfg.show_fps);
 	fprintf(f, "stereo=%d\n", g_cfg.stereo);
+	fprintf(f, "stretch=%d\n", g_cfg.stretch);
 	fprintf(f, "sounds=%d\nmusic=%d\nbottom_off=%d\n", g_cfg.sounds, g_cfg.music, g_cfg.bottom_off);
 	if (g_cfg.debug)
 		fprintf(f, "debug=1\n");
@@ -183,4 +186,17 @@ void config_set_stereo_active(bool on)
 		return;
 	stereo_active = on;
 	config_sync_stereo();
+}
+
+// Screen: 0 = 4:3, 1 = stretched to 400x240, 2 = widescreen hack (3D games
+// draw a wider view, shown full width)
+int config_screen_mode(void)
+{
+	return config_widescreen() ? 2 : (g_cfg.stretch ? 1 : 0);
+}
+
+void config_set_screen_mode(int mode)
+{
+	g_cfg.stretch = mode == 1;
+	config_set_widescreen(mode == 2);
 }

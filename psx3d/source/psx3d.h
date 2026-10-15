@@ -33,6 +33,7 @@ typedef struct {
 	int  show_fps;
 	int  stereo;       // 3D slider: 0 off, 1 screen depth, 2 real (per-object)
 	int  debug;        // show debug tools in the menu
+	int  stretch;      // stretch the picture to 400x240
 	int  sounds;       // interface sounds
 	int  music;        // library music
 	int  bottom_off;   // backlight off on the bottom screen while playing
@@ -43,6 +44,8 @@ void config_load(void);
 void config_save(void);
 const char *config_core_override(const char *key);
 bool config_widescreen(void);
+int config_screen_mode(void);
+void config_set_screen_mode(int mode);
 void config_set_widescreen(bool on);
 void config_set_core_override(const char *key, const char *value);
 

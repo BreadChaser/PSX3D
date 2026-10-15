@@ -368,7 +368,8 @@ static void menu_draw_bottom(void *ud)
 	if (have_disk)
 		snprintf(m->val[M_DISC], 48, "%u of %u", menu_disc + 1, disk.get_num_images());
 	snprintf(m->val[M_SLOT], 48, "%d", state_slot);
-	snprintf(m->val[M_SCREEN], 48, "%s", config_widescreen() ? "widescreen" : "4:3");
+	static const char *const screen_names[] = { "4:3", "stretch", "widescreen" };
+	snprintf(m->val[M_SCREEN], 48, "%s", screen_names[config_screen_mode()]);
 	snprintf(m->val[M_3D], 48, "%s", s3d_names[g_cfg.stereo]);
 	snprintf(m->val[M_SMOOTH], 48, "%s", g_cfg.smooth ? "on" : "off");
 	snprintf(m->val[M_FPS], 48, "%s", g_cfg.show_fps ? "on" : "off");
@@ -436,7 +437,7 @@ static bool menu_run(void)
 				case M_SAVE: if (k & KEY_A) { state_save(); goto resume; } break;
 				case M_LOAD: if (k & KEY_A) { state_load(); goto resume; } break;
 				case M_SLOT: state_slot = (state_slot + dir + 10) % 10; break;
-				case M_SCREEN: config_set_widescreen(!config_widescreen()); break;
+				case M_SCREEN: config_set_screen_mode((config_screen_mode() + dir + 3) % 3); break;
 				case M_3D: {
 					// "real" per-object 3D is experimental: debug builds only
 					int modes = g_cfg.debug ? 3 : 2;
