@@ -140,9 +140,21 @@ void config_set_widescreen(bool on)
 	options_mark_updated();
 }
 
-// real 3D needs the core to record vertex depths
+// Real 3D needs the core to record vertex depths, which costs a few ms per
+// frame, so it's only on while the 3D slider is up (emu.c follows the slider).
+static bool stereo_active;
+
 void config_sync_stereo(void)
 {
-	config_set_core_override("pcsx_rearmed_psx3d_stereo", g_cfg.stereo == 2 ? "enabled" : "disabled");
+	config_set_core_override("pcsx_rearmed_psx3d_stereo",
+		g_cfg.stereo == 2 && stereo_active ? "enabled" : "disabled");
 	options_mark_updated();
+}
+
+void config_set_stereo_active(bool on)
+{
+	if (on == stereo_active)
+		return;
+	stereo_active = on;
+	config_sync_stereo();
 }

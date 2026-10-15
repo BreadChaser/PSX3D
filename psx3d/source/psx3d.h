@@ -66,8 +66,9 @@ u64 video_take_xfer_ticks(void);
 bool stereo_init(void);
 void stereo_exit(void);
 bool stereo_prepare(float max_px);
-void stereo_draw(C3D_Tex *tex, float x0, float dw, unsigned frame_w, unsigned frame_h, int eye);
+void stereo_draw(C3D_Tex *tex, float x0, float dw, unsigned frame_w, unsigned frame_h, int eye, float max_px);
 void config_sync_stereo(void);
+void config_set_stereo_active(bool on);
 void stereo_draw_preview(float x0, float y0, float cell);
 const char *stereo_stats(void);
 void psx3d_depth_frame(void);   // in the core

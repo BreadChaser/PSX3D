@@ -436,7 +436,7 @@ static void game_draw_top(void *ud)
 static void game_draw_bottom(void *ud)
 {
 	(void)ud;
-	if (g_cfg.stereo == 2) {
+	if (g_cfg.stereo == 2 && osGet3DSliderState() >= 0.05f) {
 		stereo_draw_preview(40, 4, 6);   // 240x180
 		ui_text(70, 200, 0.5f, C2D_Color32(140, 140, 160, 255), "Tap screen for menu");
 	} else {
@@ -525,6 +525,17 @@ bool emu_run_game(const char *path)
 		}
 		u64 t0 = svcGetSystemTick();
 		retro_run();
+		{
+			// real 3D only costs anything while the slider is up; a little
+			// hysteresis so a slider resting near 0 doesn't toggle it
+			static int below;
+			float slider = osGet3DSliderState();
+			below = slider < 0.02f ? below + 1 : 0;
+			if (g_cfg.stereo == 2 && slider >= 0.05f)
+				config_set_stereo_active(true);
+			else if (g_cfg.stereo != 2 || below > 30)
+				config_set_stereo_active(false);
+		}
 		if (g_cfg.stereo == 2)
 			psx3d_depth_frame();   // this frame's depth map is complete
 		u64 t1 = svcGetSystemTick();
@@ -564,8 +575,13 @@ bool emu_run_game(const char *path)
 			char abuf[160];
 			audio_stats(abuf, sizeof(abuf));
 			log_printf("  %s\n", abuf);
-			if (g_cfg.stereo == 2)
-				log_printf("  3d: %s\n", stereo_stats());
+			if (g_cfg.stereo == 2) {
+				extern u64 stereo_prep_ticks, stereo_draw_ticks;
+				log_printf("  3d: %s | prep %.2fms draw(L) %.2fms\n", stereo_stats(),
+					stereo_prep_ticks / (float)present_count / CPU_TICKS_PER_MSEC,
+					stereo_draw_ticks / (float)present_count / CPU_TICKS_PER_MSEC);
+				stereo_prep_ticks = stereo_draw_ticks = 0;
+			}
 			t_run = t_present = t_run_max = 0;
 			present_count = 0;
 			fps_frames = 0;

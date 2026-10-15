@@ -13,8 +13,9 @@
 
 #define GX 40
 #define GY 30
-#define NV ((GX + 1) * (GY + 1))
-#define NI (GX * GY * 6)
+#define NC (GX * GY)
+#define NV (NC * 4)        // each tile has its own 4 corners: tiles move as blocks
+#define NI (NC * 6)
 
 typedef struct { float x, y, z, u, v; } vtx_t;
 
@@ -25,7 +26,11 @@ static C3D_AttrInfo attr;
 static C3D_Mtx proj;
 static vtx_t *vbuf[2];          // one mesh per eye, linear memory
 static u16 *ibuf;
-static float disp[NV];          // per mesh point, in top-screen pixels
+static float level[NC];
+static vtx_t base[NV];          // the flat mesh; per eye only x shifts
+static float base_key[4];       // x0, dw, frame_w, frame_h it was built for
+static u16 cell_idx[NC][4];     // the 2x2 depth-map cells under each tile
+static u16 cell_key_w, cell_key_h;         // per tile: -HUD_POP (HUD) .. 0 (screen) .. 1 (back), smoothed
 static float fc_smooth = -1.0f; // convergence (0 nearest .. 1 farthest), smoothed
 static u32 last_seq;
 
@@ -50,12 +55,11 @@ bool stereo_init(void)
 	if (!(ibuf = linearAlloc(NI * sizeof(u16))))
 		return false;
 	int n = 0;
-	for (int y = 0; y < GY; y++)
-		for (int x = 0; x < GX; x++) {
-			u16 a = y * (GX + 1) + x, b = a + 1, c = a + GX + 1, d = c + 1;
-			ibuf[n++] = a; ibuf[n++] = c; ibuf[n++] = b;
-			ibuf[n++] = b; ibuf[n++] = c; ibuf[n++] = d;
-		}
+	for (int t = 0; t < NC; t++) {
+		u16 a = t * 4, b = a + 1, c = a + 2, d = a + 3;   // tl, tr, bl, br
+		ibuf[n++] = a; ibuf[n++] = c; ibuf[n++] = b;
+		ibuf[n++] = b; ibuf[n++] = c; ibuf[n++] = d;
+	}
 	GSPGPU_FlushDataCache(ibuf, NI * sizeof(u16));
 	return true;
 }
@@ -155,42 +159,105 @@ bool stereo_prepare(float max_px)
 	if (fc_smooth < 0.0f)
 		return false;
 
-	for (int gy = 0; gy <= GY; gy++)
-		for (int gx = 0; gx <= GX; gx++) {
-			u16 z = sample(m, (float)gx * m->w / GX, (float)gy * m->h / GY);
-			float d;
-			if (z == PSX3D_Z_OVERLAY)
-				d = -HUD_POP * max_px;           // HUD in front of the screen
-			else if (z == PSX3D_Z_FAR)
-				d = max_px;                      // backdrop at the back
-			else {
-				// nearest 10% at the screen surface, the rest recedes
-				float f = farness(m, z);
-				d = fc_smooth < 0.99f ? max_px * (f - fc_smooth) / (1.0f - fc_smooth) : 0.0f;
-				if (d < -0.3f * max_px) d = -0.3f * max_px;
+	if (m->w != cell_key_w || m->h != cell_key_h) {
+		for (int gy = 0; gy < GY; gy++)
+			for (int gx = 0; gx < GX; gx++) {
+				float px = (gx + 0.5f) * m->w / GX, py = (gy + 0.5f) * m->h / GY;
+				int cx = (int)(px / PSX3D_DM_CELL - 0.5f), cy = (int)(py / PSX3D_DM_CELL - 0.5f);
+				for (int k = 0; k < 4; k++) {
+					int x = cx + (k & 1), y = cy + (k >> 1);
+					if (x < 0) x = 0;
+					if (y < 0) y = 0;
+					if (x >= PSX3D_DM_W) x = PSX3D_DM_W - 1;
+					if (y >= PSX3D_DM_H) y = PSX3D_DM_H - 1;
+					cell_idx[gy * GX + gx][k] = y * PSX3D_DM_W + x;
+				}
 			}
-			disp[gy * (GX + 1) + gx] = d;
+		cell_key_w = m->w;
+		cell_key_h = m->h;
+	}
+
+	// Each tile gets one of a few distinct layers, eased over time so the
+	// picture doesn't flicker when the game's draw order shifts a little.
+	const u16 *zm = &m->z[0][0];
+
+	// HUD/text: a tile touching any overlay cell, grown by one tile all
+	// around, so whole words sit on one layer instead of splitting letters
+	static u8 ov[NC], ovd[NC];
+	for (int t = 0; t < NC; t++) {
+		ov[t] = 0;
+		for (int k = 0; k < 4; k++)
+			if (zm[cell_idx[t][k]] == PSX3D_Z_OVERLAY)
+				ov[t] = 1;
+	}
+	for (int gy = 0; gy < GY; gy++)
+		for (int gx = 0; gx < GX; gx++) {
+			u8 any = 0;
+			for (int dy = -1; dy <= 1 && !any; dy++)
+				for (int dx = -1; dx <= 1; dx++) {
+					int x = gx + dx, y = gy + dy;
+					if (x >= 0 && x < GX && y >= 0 && y < GY && ov[y * GX + x]) {
+						any = 1;
+						break;
+					}
+				}
+			ovd[gy * GX + gx] = any;
 		}
+
+	float inv_ranks = 1.0f / (m->ranks ? m->ranks : 1);
+	float inv_span = fc_smooth < 0.99f ? 1.0f / (1.0f - fc_smooth) : 0.0f;
+	for (int t = 0; t < NC; t++) {
+		u16 best = 0;
+		for (int k = 0; k < 4; k++) {
+			u16 z = zm[cell_idx[t][k]];
+			if (z != PSX3D_Z_NONE && z != PSX3D_Z_OVERLAY && z != PSX3D_Z_FAR && z > best)
+				best = z;
+		}
+		float target, rate = 0.15f;
+		if (ovd[t]) {
+			target = -HUD_POP;
+			rate = 0.5f;                 // HUD appears/disappears quickly
+		} else if (!best) {
+			target = 1.0f;               // backdrop
+		} else {
+			float f = 1.0f - (best - 2) * inv_ranks;
+			float u = (f - fc_smooth) * inv_span;
+			target = u <= 0.0f ? 0.0f : (float)(int)(u * 3.0f + 0.5f) * (1.0f / 3.0f);
+		}
+		level[t] += (target - level[t]) * rate;
+	}
+	(void)max_px;
 	return true;
 }
 
 // Draw the game texture through the mesh for one eye (-1 left, +1 right).
 // Must be called inside a citro2d scene; restores citro2d state afterwards.
-void stereo_draw(C3D_Tex *tex, float x0, float dw, unsigned frame_w, unsigned frame_h, int eye)
+void stereo_draw(C3D_Tex *tex, float x0, float dw, unsigned frame_w, unsigned frame_h, int eye, float max_px)
 {
 	vtx_t *v = vbuf[eye > 0];
 	float tu = (float)frame_w / tex->width, tv = (float)frame_h / tex->height;
 
-	for (int gy = 0; gy <= GY; gy++)
-		for (int gx = 0; gx <= GX; gx++) {
-			int i = gy * (GX + 1) + gx;
-			float fx = (float)gx / GX, fy = (float)gy / GY;
-			v[i].x = x0 + fx * dw + eye * 0.5f * disp[i];
-			v[i].y = fy * 240.0f;
-			v[i].z = 0.5f;
-			v[i].u = fx * tu;
-			v[i].v = 1.0f - fy * tv;
-		}
+	if (base_key[0] != x0 || base_key[1] != dw || base_key[2] != frame_w || base_key[3] != frame_h) {
+		for (int gy = 0; gy < GY; gy++)
+			for (int gx = 0; gx < GX; gx++)
+				for (int k = 0; k < 4; k++) {
+					float fx = (float)(gx + (k & 1)) / GX, fy = (float)(gy + (k >> 1)) / GY;
+					vtx_t *p = &base[(gy * GX + gx) * 4 + k];
+					p->x = x0 + fx * dw;
+					p->y = fy * 240.0f;
+					p->z = 0.5f;
+					p->u = fx * tu;
+					p->v = 1.0f - fy * tv;
+				}
+		base_key[0] = x0; base_key[1] = dw; base_key[2] = frame_w; base_key[3] = frame_h;
+	}
+	memcpy(v, base, sizeof(base));
+	float k = eye * 0.5f * max_px;
+	for (int t = 0; t < NC; t++) {
+		float dx = k * level[t];
+		vtx_t *p = &v[t * 4];
+		p[0].x += dx; p[1].x += dx; p[2].x += dx; p[3].x += dx;
+	}
 	GSPGPU_FlushDataCache(v, NV * sizeof(vtx_t));
 
 	C2D_Flush();
@@ -217,22 +284,21 @@ void stereo_draw(C3D_Tex *tex, float x0, float dw, unsigned frame_w, unsigned fr
 // far is dark, backdrop blue, HUD/overlays orange.
 void stereo_draw_preview(float x0, float y0, float cell)
 {
-	const psx3d_depthmap *m = psx3d_depth_get();
-	if (!m->seq || !m->w || !m->h || fc_smooth < 0.0f)
+	// 20x15 blocks (each averages 2x2 tiles): cheap enough to draw every frame
+	if (fc_smooth < 0.0f)
 		return;
-	for (int gy = 0; gy < GY; gy++)
-		for (int gx = 0; gx < GX; gx++) {
-			u16 z = sample(m, (gx + 0.5f) * m->w / GX, (gy + 0.5f) * m->h / GY);
+	for (int gy = 0; gy < GY; gy += 2)
+		for (int gx = 0; gx < GX; gx += 2) {
+			float l = (level[gy * GX + gx] + level[gy * GX + gx + 1] +
+				level[(gy + 1) * GX + gx] + level[(gy + 1) * GX + gx + 1]) * 0.25f;
 			u32 c;
-			if (z == PSX3D_Z_OVERLAY)
-				c = C2D_Color32(255, 160, 40, 255);
-			else if (z == PSX3D_Z_FAR)
-				c = C2D_Color32(20, 30, 90, 255);
+			if (l < -0.05f)
+				c = C2D_Color32(255, 160, 40, 255);      // HUD, in front
 			else {
-				int v = 30 + (int)((1.0f - farness(m, z)) * 225.0f);
-				c = C2D_Color32(v, v, v, 255);
+				int v = 255 - (int)(l * 210.0f);        // near bright, back dark
+				c = l > 0.95f ? C2D_Color32(20, 30, 90, 255) : C2D_Color32(v, v, v, 255);
 			}
-			C2D_DrawRectSolid(x0 + gx * cell, y0 + gy * cell, 0.5f, cell, cell, c);
+			C2D_DrawRectSolid(x0 + gx * cell, y0 + gy * cell, 0.5f, cell * 2, cell * 2, c);
 		}
 }
 

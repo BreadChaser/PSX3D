@@ -30,6 +30,7 @@ static u16 *pending;         // finished frame waiting to be copied to the textu
 static unsigned frame_w = 320, frame_h = 240;
 static bool have_frame;
 static u64 wait_ticks, xfer_ticks;
+u64 stereo_prep_ticks, stereo_draw_ticks;
 
 u64 video_take_wait_ticks(void)
 {
@@ -181,10 +182,9 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	}
 	float depth = stereo ? slider * MAX_DEPTH_PX : 0.0f;
 	// real 3D: warp the picture by the game's own depth, when it has any
-	// (prepared even with the slider down so the bottom-screen preview works)
-	bool real_ok = show_game && g_cfg.stereo == 2 && have_frame &&
-		stereo_prepare((slider > 0.01f ? slider : 1.0f) * MAX_REAL_PX);
-	bool real = stereo && real_ok;
+	u64 tp = svcGetSystemTick();
+	bool real = stereo && g_cfg.stereo == 2 && have_frame && stereo_prepare(slider * MAX_REAL_PX);
+	stereo_prep_ticks += svcGetSystemTick() - tp;
 	float gdw = config_widescreen() ? 400.0f : 320.0f, gx0 = (400.0f - gdw) / 2;
 	if (real)
 		C3D_TexSetFilter(&tex, g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST,
@@ -192,8 +192,12 @@ void video_present(bool show_game, void (*draw_top)(void *),
 
 	C2D_TargetClear(top, C2D_Color32(0, 0, 0, 255));
 	C2D_SceneBegin(top);
-	if (real)
-		stereo_draw(&tex, gx0, gdw, frame_w, frame_h, -1);
+	if (real) {
+		draw_game(0.0f);   // underlay: fills the hairline gaps between shifted tiles
+		u64 td = svcGetSystemTick();
+		stereo_draw(&tex, gx0, gdw, frame_w, frame_h, -1, slider * MAX_REAL_PX);
+		stereo_draw_ticks += svcGetSystemTick() - td;
+	}
 	else if (show_game)
 		draw_game(-depth);
 	if (draw_top)
@@ -202,8 +206,10 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	if (stereo) {
 		C2D_TargetClear(top_r, C2D_Color32(0, 0, 0, 255));
 		C2D_SceneBegin(top_r);
-		if (real)
-			stereo_draw(&tex, gx0, gdw, frame_w, frame_h, 1);
+		if (real) {
+			draw_game(0.0f);
+			stereo_draw(&tex, gx0, gdw, frame_w, frame_h, 1, slider * MAX_REAL_PX);
+		}
 		else
 			draw_game(depth);
 		if (draw_top)
