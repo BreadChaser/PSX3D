@@ -375,10 +375,12 @@ static bool menu_run(void)
 				case M_LOAD: if (k & KEY_A) { state_load(); goto resume; } break;
 				case M_SLOT: state_slot = (state_slot + dir + 10) % 10; break;
 				case M_SCREEN: config_set_widescreen(!config_widescreen()); break;
-				case M_3D:
-					g_cfg.stereo = (g_cfg.stereo + dir + 3) % 3;
+				case M_3D: {
+					// "real" per-object 3D is experimental: debug builds only
+					int modes = g_cfg.debug ? 3 : 2;
+					g_cfg.stereo = (g_cfg.stereo + dir + modes) % modes;
 					config_sync_stereo();
-					break;
+				} break;
 				case M_SMOOTH: g_cfg.smooth ^= 1; break;
 				case M_FPS: g_cfg.show_fps ^= 1; break;
 				case M_CORE: if (k & KEY_A) m.core_page = true; break;
