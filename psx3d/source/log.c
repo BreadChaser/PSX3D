@@ -39,7 +39,9 @@ void log_init(void)
 void log_printf(const char *fmt, ...)
 {
 	va_list ap;
+	unsigned ms = (unsigned)(osGetTime() % 1000000);   // stamp: seconds.millis
 	if (log_stdout) {
+		printf("%3u.%03u ", ms / 1000, ms % 1000);
 		va_start(ap, fmt);
 		vprintf(fmt, ap);
 		va_end(ap);
@@ -47,6 +49,7 @@ void log_printf(const char *fmt, ...)
 	}
 	if (!log_fp)
 		return;
+	fprintf(log_fp, "%3u.%03u ", ms / 1000, ms % 1000);
 	va_start(ap, fmt);
 	vfprintf(log_fp, fmt, ap);
 	va_end(ap);
