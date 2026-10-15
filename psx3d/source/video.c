@@ -211,7 +211,7 @@ static void draw_game(float eye_dx)
 
 	// 4:3 like a TV, or the full 400x240 when the widescreen hack makes
 	// 3D games draw a 5:3 view
-	dw = config_widescreen() ? 400 : 320;
+	dw = config_screen_mode() ? 400 : 320;   // stretch and widescreen fill the screen
 	dh = 240;
 	x = (400 - dw) / 2 + eye_dx;
 	y = (240 - dh) / 2;
@@ -331,7 +331,7 @@ void video_present(bool show_game, void (*draw_top)(void *),
 			GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
 	float hud_dx = 0.5f * HUD_POP * slider * MAX_REAL_PX;   // in front: left eye shifts right
 	stereo_prep_ticks += svcGetSystemTick() - tp;
-	float gdw = config_widescreen() ? 400.0f : 320.0f, gx0 = (400.0f - gdw) / 2;
+	float gdw = config_screen_mode() ? 400.0f : 320.0f, gx0 = (400.0f - gdw) / 2;
 	if (real)
 		C3D_TexSetFilter(&tex, g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST,
 			g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST);
