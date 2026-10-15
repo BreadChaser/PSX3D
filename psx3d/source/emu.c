@@ -518,7 +518,7 @@ static bool menu_run(void)
 						sfx_play(SFX_SELECT);
 					}
 					break;
-				case M_SCREEN: config_set_screen_mode((config_screen_mode() + dir + 3) % 3); break;
+				case M_SCREEN: config_game_set_screen((config_screen_mode() + dir + 3) % 3); break;
 				case M_3D: {
 					// "real" per-object 3D is experimental: debug builds only
 					int modes = g_cfg.debug ? 3 : 2;
@@ -684,11 +684,13 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	have_disk = false;
 	memset(&disk, 0, sizeof(disk));
 	log_printf("loading %s\n", path);
+	config_game_begin(game_name);   // before loading: the core reads the widescreen option at load
 
 	retro_init();
 	core_initialized = true;
 	if (!retro_load_game(&info)) {
 		log_printf("retro_load_game failed\n");
+		config_game_end();
 		retro_deinit();
 		core_initialized = false;
 		return false;
@@ -798,6 +800,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	bottom_backlight(true);
 	srm_save(false);
 	retro_unload_game();
+	config_game_end();
 	audio_exit();
 	retro_deinit();
 	core_initialized = false;
