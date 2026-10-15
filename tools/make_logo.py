@@ -48,8 +48,8 @@ def palm(d, x0, y0, h, lean, scale, col):
         ww = int(w * (1.2 - 0.5 * i / 20))
         d.line([pts[i], pts[i + 1]], fill=col, width=max(2, ww))
     tx, ty = pts[-1]
-    for k in range(9):
-        ang = -math.pi * 0.95 + k * (math.pi * 1.9 / 8)
+    for k in range(11):
+        ang = -math.pi * 0.95 + k * (math.pi * 1.9 / 10)
         L = h * 0.6 * (0.8 + 0.3 * math.sin(k * 2.3))
         fr = []
         for j in range(13):
@@ -57,22 +57,22 @@ def palm(d, x0, y0, h, lean, scale, col):
             fx = tx + math.cos(ang) * L * t
             fy = ty - math.sin(ang) * L * t * 0.5 + (L * 0.55) * t * t   # droop
             fr.append((fx, fy))
-        d.line(fr, fill=col, width=max(2, int(scale * 6)))
+        d.line(fr, fill=col, width=max(2, int(scale * 4)))
         for j in range(2, 12):
             fx, fy = fr[j]
             ll = L * 0.28 * (1 - j / 13)
             for sgn in (-1, 1):
-                d.line([(fx, fy), (fx + sgn * ll * 0.45, fy + ll)], fill=col, width=max(2, int(scale * 3)))
+                d.line([(fx, fy), (fx + sgn * ll * 0.45, fy + ll)], fill=col, width=max(1, int(scale * 1.5)))
 
 
-def scene(W, H, horizon, show_shapes=True, show_sun=True, show_grid=True, floor=True):
+def scene(W, H, horizon, show_shapes=True, show_sun=True, show_grid=True, floor=True, sun_scale=1.0):
     # purple -> magenta -> orange sunset sky
     sky = vgrad(W, H, [(0, (60, 14, 90, 255)), (0.25 * horizon / H, (110, 20, 110, 255)),
                        (0.65 * horizon / H, (225, 40, 120, 255)), (horizon / H, (255, 120, 60, 255)),
                        (horizon / H + 0.001, (20, 4, 50, 255)), (1, (8, 0, 24, 255))])
 
     # big striped sun
-    R = int(H * 0.32)
+    R = int(H * 0.32 * sun_scale)
     cx, cy = W // 2, horizon - int(R * 0.15)
     sun = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     if show_sun:
@@ -104,52 +104,56 @@ def scene(W, H, horizon, show_shapes=True, show_sun=True, show_grid=True, floor=
     else:
         floor_grid = True
 
-    # wireframe mountains on the sides + flat grid floor, drawn as a mesh
+    # wireframe hills along the horizon, rising toward both edges
     mesh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     md = ImageDraw.Draw(mesh)
-    cols, rows = 48, 22
-    lw = max(1, int(H / 200))
+    lw = max(1, int(H / 220))
 
-    def height(u, v):
+    def ridge(x):
+        u = x / W
         side = min(1.0, abs(u - 0.5) / 0.5)
-        side = max(0.0, (side - 0.35) / 0.65)
-        n = (math.sin(u * 23 + v * 3) * 0.5 + math.sin(u * 11 - v * 7) * 0.3 + math.sin(u * 37) * 0.2)
-        return side * (0.75 + 0.45 * n) * (1 - v * 0.5)
+        side = max(0.0, (side - 0.22) / 0.78) ** 1.3
+        n = 0.7 + 0.2 * math.sin(u * 31) + 0.15 * math.sin(u * 71 + 2) + 0.12 * math.sin(u * 13 + 1)
+        return side * n * H * 0.30
 
-    def proj(u, v):
-        z = 0.08 + v ** 1.6 * 1.0               # v=0 far (horizon), v=1 near
-        x = cx + (u - 0.5) * W * 3.0 * z
-        y = horizon + z * (H - horizon) * 1.05 - height(u, v) * H * 0.34 * (0.4 + z)
-        return x, y
+    xs = [i * W / 160 for i in range(161)]
+    rid = [ridge(x) for x in xs]
+    # dark fill under the ridge hides the sky
+    poly = [(x, horizon - r) for x, r in zip(xs, rid)] + [(W, horizon + 2), (0, horizon + 2)]
+    fill_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(fill_layer).polygon(poly, fill=(16, 0, 46, 255))
+    sky = Image.alpha_composite(sky, fill_layer)
+    # contour lines
+    K = 9
+    for k in range(1, K + 1):
+        t = k / K
+        pts = [(x, horizon - r * t) for x, r in zip(xs, rid)]
+        md.line(pts, fill=lerp((70, 60, 255, 255), (170, 60, 255, 255), t), width=lw)
+    # cross lines from the base to the ridge
+    for i in range(0, 161, 3):
+        if rid[i] > 1:
+            md.line([(xs[i] + (xs[i] - W / 2) * 0.04, horizon), (xs[i], horizon - rid[i])],
+                    fill=(110, 60, 255, 255), width=lw)
 
-    def cl(v):
-        return lerp((60, 70, 255, 255), (190, 40, 255, 255), v)
+    # flat perspective floor (title art; the library draws its own, animated)
+    if floor:
+        ImageDraw.Draw(sky).rectangle([0, horizon, W, H], fill=(14, 0, 40, 255))
+        col = (170, 60, 255, 255)
+        for i in range(-16, 17):
+            md.line([(cx + i * W * 0.03, horizon), (cx + i * W * 0.32, H)], fill=col, width=lw)
+        k = 0
+        while True:
+            y = horizon + ((k / 9.0) ** 2.2) * (H - horizon)
+            if y > H:
+                break
+            md.line([(0, y), (W, y)], fill=col, width=lw)
+            k += 1
+    else:
+        ImageDraw.Draw(sky).rectangle([0, horizon, W, H], fill=(14, 0, 40, 255))
 
-    def seg_ok(u0, v0, u1, v1):
-        return floor or height(u0, v0) > 0.03 or height(u1, v1) > 0.03
-
-    for r in range(rows + 1):
-        v = r / rows
-        for c in range(cols):
-            if seg_ok(c / cols, v, (c + 1) / cols, v):
-                md.line([proj(c / cols, v), proj((c + 1) / cols, v)], fill=cl(v), width=lw)
-    for c in range(cols + 1):
-        u = c / cols
-        for r in range(rows):
-            if seg_ok(u, r / rows, u, (r + 1) / rows):
-                md.line([proj(u, r / rows), proj(u, (r + 1) / rows)], fill=cl(0.5), width=lw)
-    # dark fill under the mesh lines so it occludes the sky below the horizon
-    floor = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    fd = ImageDraw.Draw(floor)
-    for r in range(rows * 2):
-        v0, v1 = r / (rows * 2), (r + 1) / (rows * 2)
-        for c in range(cols * 2):
-            u0, u1 = c / (cols * 2), (c + 1) / (cols * 2)
-            fd.polygon([proj(u0, v0), proj(u1, v0), proj(u1, v1), proj(u0, v1)], fill=(14, 0, 40, 255))
-    sky = Image.alpha_composite(sky, floor)
     # magenta glow down the centre of the floor
     g = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    if floor:
+    if True:
         ImageDraw.Draw(g).polygon([(cx - W * 0.08, horizon), (cx + W * 0.08, horizon), (cx + W * 0.3, H), (cx - W * 0.3, H)],
                                   fill=(200, 40, 230, 110))
     sky = Image.alpha_composite(sky, g.filter(ImageFilter.GaussianBlur(H / 25)))
@@ -261,6 +265,7 @@ print("ok")
 
 # library background: the scene without the logo, sun lower and dimmer so
 # box art stands out in front of it
-bg = scene(400, 240, 150, show_shapes=False, floor=False)   # the floor grid is drawn live
-dim = Image.new("RGBA", bg.size, (0, 0, 0, 50))
-Image.alpha_composite(bg, dim).convert("RGB").save(f"{OUT}/library_bg.png")
+# rendered 4x and scaled down so palms and wireframe stay crisp; the floor
+# grid is drawn live by the app
+bg = scene(1600, 960, 600, show_shapes=False, floor=False, sun_scale=1.35)
+bg.resize((400, 240), Image.LANCZOS).convert("RGB").save(f"{OUT}/library_bg.png")
