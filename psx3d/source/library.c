@@ -383,8 +383,13 @@ const char *library_launch_path(const game_t *g, char *buf, size_t len)
 		snprintf(buf, len, "%s", g->discs[0]);
 		return buf;
 	}
-	for (int d = 0; d < g->ndiscs; d++)
-		fprintf(f, "%s\n", g->discs[d]);
+	// the core only treats "/..." as absolute; on the 3DS "/x" is sdmc:/x
+	for (int d = 0; d < g->ndiscs; d++) {
+		const char *p = g->discs[d];
+		if (!strncmp(p, "sdmc:", 5))
+			p += 5;
+		fprintf(f, "%s\n", p);
+	}
 	fclose(f);
 	return buf;
 }

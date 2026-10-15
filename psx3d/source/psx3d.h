@@ -131,6 +131,7 @@ void libui_init(void);
 void libui_exit(void);
 int libui_run(char *out_path, size_t len);
 void libui_select_title(const char *title);
+const game_t *libui_picked(void);
 
 // browser.c - returns true and fills path when a game is chosen
 bool browser_run(char *out_path, size_t out_len);
@@ -138,7 +139,7 @@ bool browser_run(char *out_path, size_t out_len);
 // emu.c
 bool emu_init(void);
 void emu_deinit(void);
-bool emu_run_game(const char *path);
+bool emu_run_game(const char *path, const char *save_name, const char *title);
 
 extern int __ctr_svchax;
 extern bool g_new3ds;

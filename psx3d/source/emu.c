@@ -9,7 +9,8 @@
 #define SRM_CHECK_FRAMES 180
 #define DISPLAY_HZ 59.831        // 3DS LCD refresh rate   // look for memory card writes every ~3 seconds
 
-static char game_name[PATH_LEN];   // file name without extension
+static char game_name[PATH_LEN];   // save/state file name (disc 1's name)
+static char game_title[PATH_LEN];  // what the menu shows
 static char osd_msg[128];
 static int  osd_frames;
 static double fps_target = 60.0;
@@ -17,6 +18,8 @@ static float fps_measured, emu_ms, present_ms;
 static bool core_initialized;
 static bool has_audio;
 static retro_audio_buffer_status_callback_t abuf_status_cb;
+static struct retro_disk_control_callback disk;   // multi-disc games (via .m3u)
+static bool have_disk;
 
 static void core_log(enum retro_log_level level, const char *fmt, ...)
 {
@@ -107,6 +110,13 @@ static bool environment(unsigned cmd, void *data)
 		return true;
 	}
 	case RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY:
+		return true;
+	case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION:
+		*(unsigned *)data = 0;   // only the basic interface
+		return true;
+	case RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE:
+		memcpy(&disk, data, sizeof(disk));
+		have_disk = disk.get_num_images && disk.set_image_index && disk.set_eject_state;
 		return true;
 	case RETRO_ENVIRONMENT_SET_MESSAGE: {
 		const struct retro_message *m = data;
@@ -216,6 +226,7 @@ static void srm_save(bool force)
 }
 
 static int state_slot;
+static unsigned menu_disc;   // disc picked in the menu (left/right), inserted with A
 
 static void state_save(void)
 {
@@ -255,7 +266,7 @@ static void state_load(void)
 
 // ---------------------------------------------------------------- menu
 
-enum { M_RESUME, M_SAVE, M_LOAD, M_SLOT, M_SCREEN, M_3D, M_SMOOTH, M_FPS, M_CORE, M_RECORD, M_TONE, M_RESET, M_EXIT, M_COUNT };
+enum { M_RESUME, M_DISC, M_SAVE, M_LOAD, M_SLOT, M_SCREEN, M_3D, M_SMOOTH, M_FPS, M_CORE, M_RECORD, M_TONE, M_RESET, M_EXIT, M_COUNT };
 
 // items shown in the menu; the debug ones only with debug=1 in config.ini
 static int menu_items(int *items)
@@ -263,6 +274,8 @@ static int menu_items(int *items)
 	int n = 0;
 	for (int i = 0; i < M_COUNT; i++) {
 		if ((i == M_RECORD || i == M_TONE) && !g_cfg.debug)
+			continue;
+		if (i == M_DISC && !(have_disk && disk.get_num_images() > 1))
 			continue;
 		items[n++] = i;
 	}
@@ -312,6 +325,10 @@ static void menu_draw_bottom(void *ud)
 	snprintf(smooth, sizeof(smooth), "Smoothing: %s", g_cfg.smooth ? "on" : "off");
 	snprintf(fps, sizeof(fps), "Show FPS: %s", g_cfg.show_fps ? "on" : "off");
 	labels[M_RESUME] = "Resume";
+	static char disc[48];
+	if (have_disk)
+		snprintf(disc, sizeof(disc), "Disc: %u of %u  (A: change)", menu_disc + 1, disk.get_num_images());
+	labels[M_DISC] = disc;
 	labels[M_SAVE] = "Save state";
 	labels[M_LOAD] = "Load state";
 	labels[M_SLOT] = slot;
@@ -326,7 +343,7 @@ static void menu_draw_bottom(void *ud)
 	labels[M_EXIT] = "Exit to game list";
 
 	int items[M_COUNT], n = menu_items(items);
-	ui_text(8, 4, 0.5f, grey, "%.40s", game_name);
+	ui_text(8, 4, 0.5f, grey, "%.40s", game_title);
 	for (int i = 0; i < n; i++) {
 		float y = 22 + i * 18;
 		if (i == m->sel)
@@ -340,6 +357,8 @@ static bool menu_run(void)
 {
 	static menu_t m;   // keep the core options scroll position between visits
 	m.core_page = false;
+	if (have_disk && disk.get_image_index)
+		menu_disc = disk.get_image_index();
 	m.sel = 0;
 	int items[M_COUNT], nitems = menu_items(items);
 
@@ -371,6 +390,18 @@ static bool menu_run(void)
 			if (dir) {
 				switch (items[m.sel]) {
 				case M_RESUME: if (k & KEY_A) goto resume; break;
+				case M_DISC: {
+					unsigned n = disk.get_num_images();
+					if (k & KEY_A) {
+						// swap like a real console: open the lid, change, close
+						disk.set_eject_state(true);
+						disk.set_image_index(menu_disc);
+						disk.set_eject_state(false);
+						osd("Disc %u inserted", menu_disc + 1);
+						goto resume;
+					}
+					menu_disc = (menu_disc + dir + n) % n;
+				} break;
 				case M_SAVE: if (k & KEY_A) { state_save(); goto resume; } break;
 				case M_LOAD: if (k & KEY_A) { state_load(); goto resume; } break;
 				case M_SLOT: state_slot = (state_slot + dir + 10) % 10; break;
@@ -474,14 +505,22 @@ static void set_game_name(const char *path)
 		*dot = 0;
 }
 
-bool emu_run_game(const char *path)
+// save_name: base name for memory cards and states (NULL = from path);
+// title: shown in the menu (NULL = save name)
+bool emu_run_game(const char *path, const char *save_name, const char *title)
 {
 	struct retro_game_info info = { .path = path };
 	struct retro_system_av_info av;
 	u64 fps_t0;
 	int fps_frames = 0, present_count = 0, srm_counter = 0;
 
-	set_game_name(path);
+	if (save_name)
+		snprintf(game_name, sizeof(game_name), "%s", save_name);
+	else
+		set_game_name(path);
+	snprintf(game_title, sizeof(game_title), "%s", title ? title : game_name);
+	have_disk = false;
+	memset(&disk, 0, sizeof(disk));
 	log_printf("loading %s\n", path);
 
 	retro_init();
