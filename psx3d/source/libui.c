@@ -16,7 +16,6 @@ static bool bg_ok;
 static C2D_TextBuf tbuf;
 
 static int sel, list_top;
-bool debug_trail;   // set from the APT hook: log every step around the freeze
 static float anim, anim_v;         // carousel position (spring toward sel) and velocity
 static float pop = 1, pop_v;       // selected cover scale (spring, overshoots)
 static float title_t = 1;          // 0..1 title slide/fade-in after a change
@@ -375,11 +374,9 @@ int libui_run(char *out_path, size_t len)
 		// downloads cleanly, then go to the HOME Menu ourselves
 		aptSetHomeAllowed(!covers_busy());
 		if (aptCheckHomePressRejected()) {
-			log_printf("libui: HOME while downloading, quiescing\n");
 			covers_quiesce(true);
 			aptSetHomeAllowed(true);
 			aptJumpToHomeMenu();
-			log_printf("libui: back from HOME\n");
 			covers_quiesce(false);
 			continue;
 		}
@@ -484,9 +481,7 @@ int libui_run(char *out_path, size_t len)
 		covers_pump();
 		C2D_TextBufClear(tbuf);
 		ui_begin();
-		if (debug_trail) log_printf("libui: present %lu\n", frame_no);
 		video_present_vsync(false, draw_top, draw_bottom, NULL);
-		if (debug_trail) log_printf("libui: presented %lu\n", frame_no);
 	}
 	return 0;
 }

@@ -6,12 +6,27 @@
 #include <3ds/3dslink.h>
 
 static FILE *log_fp;
+static aptHookCookie log_cookie;
+
+// Close the log while suspended (HOME, sleep): an SD file held open across
+// the handoff left the HOME Menu waiting forever. Reopen on return.
+static void log_apt(APT_HookType hook, void *param)
+{
+	(void)param;
+	if ((hook == APTHOOK_ONSUSPEND || hook == APTHOOK_ONSLEEP || hook == APTHOOK_ONEXIT) && log_fp) {
+		fclose(log_fp);
+		log_fp = NULL;
+	} else if ((hook == APTHOOK_ONRESTORE || hook == APTHOOK_ONWAKEUP) && !log_fp) {
+		log_fp = fopen(PSX3D_LOG, "a");
+	}
+}
 static bool log_stdout;
 static u32 *soc_buf;
 
 void log_init(void)
 {
 	log_fp = fopen(PSX3D_LOG, "w");
+	aptHook(&log_cookie, log_apt, NULL);
 
 	// launched from a PC with 3dslink: mirror the log to its console (3dslink -s)
 	if (__3dslink_host.s_addr) {
