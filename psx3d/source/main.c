@@ -6,6 +6,12 @@
 // Main thread stack; the core warns below 1MB (dynarec recursion).
 u32 __stacksize__ = 0x100000;
 
+// By default libctru hands nearly all free memory to the heaps. Keep them
+// smaller so the core can map PS1 RAM/BIOS/LUTs at fixed addresses with
+// svcControlMemory, which makes the dynarec's memory accesses much faster.
+u32 __ctru_heap_size        = 40 * 1024 * 1024;
+u32 __ctru_linear_heap_size = 24 * 1024 * 1024;
+
 // Set when we may use the kernel calls the dynarec needs (Luma3DS gives
 // homebrew full SVC access). Without it the core uses the slow interpreter.
 int __ctr_svchax;
@@ -15,6 +21,16 @@ static bool detect_svc_access(void)
 	s64 out = 0;
 	// SystemInfo type 0x10000 is a Luma3DS extension; it errors elsewhere.
 	return R_SUCCEEDED(svcGetSystemInfo(&out, 0x10000, 0));
+}
+
+// Citra/Azahar answer SystemInfo type 0x20000 ("is emulator"); real consoles
+// return an error. Those emulators can't run Luma's cache-flush kernel call,
+// so the dynarec's freshly written code goes stale and crashes there.
+static bool running_in_emulator(void)
+{
+	s64 out = 0;
+	// Citra reports 1, Azahar 2
+	return R_SUCCEEDED(svcGetSystemInfo(&out, 0x20000, 0)) && out > 0;
 }
 
 static void draw_message(void *ud)
@@ -42,6 +58,9 @@ int main(void)
 	// New 3DS: 804 MHz + L2 cache
 	osSetSpeedupEnable(true);
 	irrstInit();
+	// the core asks cfg:u for the console model to count CPU cores; without
+	// it, it assumes one core and never starts its graphics thread
+	cfguInit();
 
 	mkdir(PSX3D_DIR, 0777);
 	mkdir(PSX3D_BIOS_DIR, 0777);
@@ -51,6 +70,10 @@ int main(void)
 	log_printf("PSX3D " PSX3D_VERSION "\n");
 
 	__ctr_svchax = detect_svc_access();
+	if (__ctr_svchax && running_in_emulator()) {
+		log_printf("running in Citra/Azahar: dynarec disabled\n");
+		__ctr_svchax = 0;
+	}
 	log_printf("svc access: %d\n", __ctr_svchax);
 
 	config_load();
@@ -73,6 +96,7 @@ int main(void)
 	ui_exit();
 	video_exit();
 	irrstExit();
+	cfguExit();
 	log_close();
 	return 0;
 }

@@ -55,7 +55,7 @@ CFLAGS	:=	-g -Wall -O2 -mword-relocations -fomit-frame-pointer -mfpu=vfp \
 			-ffunction-sections \
 			$(ARCH)
 
-CFLAGS	+=	$(INCLUDE) -D__3DS__ -I$(COREDIR)/deps/libretro-common/include
+CFLAGS	+=	$(INCLUDE) -D__3DS__ $(EXTRA_DEFS) -I$(COREDIR)/deps/libretro-common/include
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
 
