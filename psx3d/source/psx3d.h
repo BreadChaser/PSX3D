@@ -116,6 +116,7 @@ const char *cheats_desc(int i);
 bool cheats_on(int i);
 void cheats_toggle(int i);
 bool cheats_widescreen(bool on);
+const char *cheats_add_dialog(void);
 bool cheats_forced(int i);
 
 // dspdump.c

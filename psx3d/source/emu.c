@@ -316,8 +316,6 @@ static int menu_items(int *items, bool settings)
 			continue;
 		if (i == M_DISC && !(have_disk && disk.get_num_images() > 1))
 			continue;
-		if (i == M_CHEATS && !cheats_count())
-			continue;
 		items[n++] = i;
 	}
 	return n;
@@ -482,7 +480,10 @@ static void menu_draw_bottom(void *ud)
 		menu_header("CHEATS", n);
 		flist_draw(&m->cheat_fl, cheats_count(), m->cheat_sel, 0, MENU_Y0, 320, MENU_ROW_H, CORE_ROWS,
 			cheat_label, cheat_value, m, menu_accent_cols[m->cheat_sel & 3]);
-		ui_text_ex(NULL, 160, 222, 0.42f, hint, C2D_AlignCenter, "A on/off    B back");
+		if (!cheats_count())
+			ui_text_ex(NULL, 160, 110, 0.5f, C2D_Color32(170, 185, 230, 255), C2D_AlignCenter,
+				"No cheats for this game yet");
+		ui_text_ex(NULL, 160, 222, 0.42f, hint, C2D_AlignCenter, "A on/off    X add code    B back");
 		return;
 	}
 
@@ -588,6 +589,12 @@ static bool menu_run(void)
 				if (k & KEY_DOWN) { m.cheat_sel = (m.cheat_sel + 1) % n; sfx_play(SFX_MOVE); }
 				if (k & KEY_UP) { m.cheat_sel = (m.cheat_sel - 1 + n) % n; sfx_play(SFX_MOVE); }
 				if (k & (KEY_A | KEY_LEFT | KEY_RIGHT)) { cheats_toggle(m.cheat_sel); sfx_play(SFX_SELECT); }
+			}
+			if (k & KEY_X) {
+				const char *msg = cheats_add_dialog();
+				if (msg)
+					osd("%s", msg);
+				sync_widescreen();   // the reload dropped the automatic widescreen code
 			}
 		} else if (m.core_page) {
 			int n = options_count();
