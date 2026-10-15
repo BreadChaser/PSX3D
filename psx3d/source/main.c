@@ -97,13 +97,14 @@ static void show_error(const char *msg)
 // Diagnostic switches, passed as arguments (3dslink ... -- nonet nosound):
 // each turns one subsystem off so a problem can be bisected without
 // rebuilding.
-bool sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
+bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 
 static void parse_switches(int argc, char **argv)
 {
 	for (int i = 1; i < argc; i++) {
 		const char *a = argv[i];
 		if (!strcmp(a, "nonet")) sw_nonet = true;
+		if (!strcmp(a, "csnd")) sw_csnd = true;   // test the no-firmware sound path
 		else if (!strcmp(a, "nosound")) sw_nosound = true;
 		else if (!strcmp(a, "noirrst")) sw_noirrst = true;
 		else if (!strcmp(a, "noaa")) sw_noaa = true;
@@ -145,8 +146,8 @@ int main(int argc, char **argv)
 		__ctr_svchax = 0;
 	}
 	log_printf("svc access: %d\n", __ctr_svchax);
-	log_printf("switches: nonet=%d nosound=%d noirrst=%d noaa=%d nolcd=%d nocovers=%d\n",
-		sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers);
+	log_printf("switches: csnd=%d nonet=%d nosound=%d noirrst=%d noaa=%d nolcd=%d nocovers=%d\n",
+		sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers);
 
 	config_load();
 	if (!video_init()) {
