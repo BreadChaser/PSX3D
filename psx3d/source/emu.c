@@ -275,7 +275,7 @@ static void state_load(void)
 
 // ---------------------------------------------------------------- menu
 
-enum { M_RESUME, M_SAVE, M_LOAD, M_DISC, M_SETTINGS, M_RESET, M_EXIT,
+enum { M_RESUME, M_SAVE, M_LOAD, M_DISC, M_CHEATS, M_SETTINGS, M_RESET, M_EXIT,
        M_SCREEN, M_3D, M_SMOOTH, M_FPS, M_CORE, M_RECORD, M_TONE, M_COUNT };
 #define M_FIRST_SETTING M_SCREEN
 
@@ -289,6 +289,8 @@ static int menu_items(int *items, bool settings)
 			continue;
 		if (i == M_DISC && !(have_disk && disk.get_num_images() > 1))
 			continue;
+		if (i == M_CHEATS && !cheats_count())
+			continue;
 		items[n++] = i;
 	}
 	return n;
@@ -297,7 +299,9 @@ static int menu_items(int *items, bool settings)
 typedef struct {
 	int sel, main_sel;
 	bool settings;
-	bool core_page;
+	bool core_page, cheat_page;
+	int cheat_sel;
+	flist_t cheat_fl;
 	int core_sel, core_scroll;
 	flist_t fl, core_fl;
 	int items[M_COUNT], nitems;
@@ -326,7 +330,7 @@ static void menu_draw_top(void *ud)
 }
 
 static const char *const menu_names[M_COUNT] = {
-	[M_RESUME] = "Resume", [M_SAVE] = "Save state", [M_LOAD] = "Load state", [M_DISC] = "Swap disc",
+	[M_RESUME] = "Resume", [M_SAVE] = "Save state", [M_LOAD] = "Load state", [M_DISC] = "Swap disc", [M_CHEATS] = "Cheats",
 	[M_SETTINGS] = "Settings", [M_RESET] = "Reset game", [M_EXIT] = "Exit to library",
 	[M_SCREEN] = "Screen", [M_3D] = "3D", [M_SMOOTH] = "Smoothing",
 	[M_FPS] = "Show FPS", [M_CORE] = "Core options", [M_RECORD] = "Debug: record audio",
@@ -372,11 +376,35 @@ static void menu_header(const char *title, const char *right)
 		C2D_DrawRectSolid(10 + i * 18, 26, 0.2f, 16, 2, menu_accent_cols[i]);
 }
 
+static const char *cheat_label(int i, void *ud)
+{
+	(void)ud;
+	static char b[48];
+	snprintf(b, sizeof(b), "%.30s", cheats_desc(i));
+	return b;
+}
+
+static const char *cheat_value(int i, void *ud)
+{
+	(void)ud;
+	return cheats_on(i) ? "on" : "off";
+}
+
 static void menu_draw_bottom(void *ud)
 {
 	menu_t *m = ud;
 	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
 	u32 hint = C2D_Color32(110, 120, 160, 255);
+
+	if (m->cheat_page) {
+		char n[24];
+		snprintf(n, sizeof(n), "%d", cheats_count());
+		menu_header("CHEATS", n);
+		flist_draw(&m->cheat_fl, cheats_count(), m->cheat_sel, 0, MENU_Y0, 320, MENU_ROW_H, CORE_ROWS,
+			cheat_label, cheat_value, m, menu_accent_cols[m->cheat_sel & 3]);
+		ui_text_ex(NULL, 160, 222, 0.42f, hint, C2D_AlignCenter, "A on/off    B back");
+		return;
+	}
 
 	if (m->core_page) {
 		menu_header("CORE OPTIONS", NULL);
@@ -423,6 +451,7 @@ static bool menu_run(void)
 	bottom_backlight(true);
 	static menu_t m;   // keep the core options scroll position between visits
 	m.core_page = false;
+	m.cheat_page = false;
 	m.settings = false;
 	if (have_disk && disk.get_image_index)
 		menu_disc = disk.get_image_index();
@@ -438,7 +467,7 @@ static bool menu_run(void)
 		u32 k = input_keys_down();
 
 		// touch a row to select it, touch it again to use it
-		if (!m.core_page && (k & KEY_TOUCH)) {
+		if (!m.core_page && !m.cheat_page && (k & KEY_TOUCH)) {
 			touchPosition tp;
 			hidTouchRead(&tp);
 			int row = flist_row_at(&m.fl, MENU_Y0, MENU_ROW_H, tp.py);
@@ -452,7 +481,18 @@ static bool menu_run(void)
 			}
 		}
 
-		if (m.core_page) {
+		if (m.cheat_page) {
+			int n = cheats_count();
+			if (k & KEY_B) {
+				m.cheat_page = false;
+				sfx_play(SFX_BACK);
+			}
+			if (n) {
+				if (k & KEY_DOWN) { m.cheat_sel = (m.cheat_sel + 1) % n; sfx_play(SFX_MOVE); }
+				if (k & KEY_UP) { m.cheat_sel = (m.cheat_sel - 1 + n) % n; sfx_play(SFX_MOVE); }
+				if (k & (KEY_A | KEY_LEFT | KEY_RIGHT)) { cheats_toggle(m.cheat_sel); sfx_play(SFX_SELECT); }
+			}
+		} else if (m.core_page) {
 			int n = options_count();
 			if (k & KEY_B) {
 				m.core_page = false;
@@ -512,6 +552,13 @@ static bool menu_run(void)
 					menu_disc = (menu_disc + dir + dn) % dn;
 					sfx_play(SFX_MOVE);
 				} break;
+				case M_CHEATS:
+					if (k & KEY_A) {
+						m.cheat_page = true;
+						m.cheat_fl.init = false;
+						sfx_play(SFX_SELECT);
+					}
+					break;
 				case M_SETTINGS:
 					if (k & KEY_A) {
 						menu_open_page(&m, true);
@@ -556,7 +603,9 @@ static bool menu_run(void)
 			}
 		}
 
-		if (m.core_page)
+		if (m.cheat_page)
+			flist_update(&m.cheat_fl, m.cheat_sel, cheats_count(), CORE_ROWS);
+		else if (m.core_page)
 			flist_update(&m.core_fl, m.core_sel, options_count(), CORE_ROWS);
 		else
 			flist_update(&m.fl, m.sel, m.nitems, MENU_ROWS);
@@ -703,6 +752,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	fps_target = av.timing.fps;
 	has_audio = audio_init(av.timing.sample_rate);
 	srm_load();
+	cheats_load(game_name);
 	osd("%s", __ctr_svchax ? "Dynarec enabled" : "Interpreter mode (no Luma SVC access) - slow");
 
 	fps_t0 = osGetTime();
@@ -799,6 +849,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	aptUnhook(&apt_cookie);
 	bottom_backlight(true);
 	srm_save(false);
+	cheats_unload();
 	retro_unload_game();
 	config_game_end();
 	audio_exit();

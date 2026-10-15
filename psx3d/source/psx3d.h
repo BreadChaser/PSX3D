@@ -90,6 +90,14 @@ double csnd_real_rate(u32 rate);
 void csnd_setup(int chn, bool loop, u32 rate, float vol, float pan, const s16 *data, u32 bytes);
 void csnd_set_volume(int chn, float vol, float pan);
 
+// cheats.c
+void cheats_load(const char *game);
+void cheats_unload(void);
+int cheats_count(void);
+const char *cheats_desc(int i);
+bool cheats_on(int i);
+void cheats_toggle(int i);
+
 // dspdump.c
 bool dsp_firmware_ensure(void);
 
