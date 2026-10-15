@@ -148,6 +148,7 @@ void covers_exit(void);
 C3D_Tex *covers_get(int game);
 void covers_reset(void);
 void covers_focus(int game);
+void covers_pump(void);
 
 // uisound.c - interface sounds and library music
 enum { SFX_MOVE, SFX_SELECT, SFX_BACK, SFX_LAUNCH, SFX_COUNT };

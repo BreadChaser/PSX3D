@@ -376,6 +376,7 @@ int libui_run(char *out_path, size_t len)
 			if (d && sel - d >= 0) covers_get(sel - d);
 		}
 
+		covers_pump();
 		C2D_TextBufClear(tbuf);
 		ui_begin();
 		video_present_vsync(false, draw_top, draw_bottom, NULL);
