@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
+#include <sys/socket.h>
 #include "psx3d.h"
 
 #include <malloc.h>
@@ -20,7 +22,9 @@ static void log_apt(APT_HookType hook, void *param)
 		log_fp = fopen(PSX3D_LOG, "a");
 	}
 }
-static bool log_stdout;
+// Netloaded with 3dslink: the log is also sent to the PC. Never block on
+// it: if the PC stops reading, a blocking send froze the whole game.
+static int link_fd = -1;
 static u32 *soc_buf;
 
 void log_init(void)
@@ -31,8 +35,8 @@ void log_init(void)
 	// launched from a PC with 3dslink: mirror the log to its console (3dslink -s)
 	if (__3dslink_host.s_addr) {
 		soc_buf = memalign(0x1000, 0x100000);
-		if (soc_buf && R_SUCCEEDED(socInit(soc_buf, 0x100000)) && link3dsStdio() >= 0)
-			log_stdout = true;
+		if (soc_buf && R_SUCCEEDED(socInit(soc_buf, 0x100000)))
+			link_fd = link3dsConnectToHost(false, false);
 	}
 }
 
@@ -40,12 +44,13 @@ void log_printf(const char *fmt, ...)
 {
 	va_list ap;
 	unsigned ms = (unsigned)(osGetTime() % 1000000);   // stamp: seconds.millis
-	if (log_stdout) {
-		printf("%3u.%03u ", ms / 1000, ms % 1000);
+	if (link_fd >= 0) {
+		char line[512];
+		int n = snprintf(line, sizeof(line), "%3u.%03u ", ms / 1000, ms % 1000);
 		va_start(ap, fmt);
-		vprintf(fmt, ap);
+		vsnprintf(line + n, sizeof(line) - n, fmt, ap);
 		va_end(ap);
-		fflush(stdout);
+		send(link_fd, line, strlen(line), MSG_DONTWAIT);   // dropped if the PC is behind
 	}
 	if (!log_fp)
 		return;
@@ -62,7 +67,9 @@ void log_close(void)
 	if (log_fp)
 		fclose(log_fp);
 	log_fp = NULL;
-	if (log_stdout)
+	if (link_fd >= 0) {
+		closesocket(link_fd);
 		socExit();
-	log_stdout = false;
+	}
+	link_fd = -1;
 }
