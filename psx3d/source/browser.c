@@ -298,6 +298,7 @@ bool browser_run(char *out_path, size_t out_len)
 			snprintf(msg, sizeof(msg), "Games folder set");
 			msg_frames = 120;
 		} else if (k & KEY_B) {
+			sfx_play(SFX_BACK);
 			go_up();
 		} else if ((k & KEY_A) && nentries) {
 			char path[PATH_LEN], from[PATH_LEN], name[PATH_LEN];

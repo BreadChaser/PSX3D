@@ -223,15 +223,21 @@ int libui_run(char *out_path, size_t len)
 	if (sel < 0) sel = 0;
 	clamp_list();
 
+	music_play(true);
 	while (aptMainLoop()) {
 		input_poll();
 		u32 k = input_keys_down(), h = input_keys_held();
 		n = library_count();
+		int before = sel;
 
-		if (k & KEY_START)
+		if (k & KEY_START) {
+			music_play(false);
 			return 0;
-		if (k & KEY_Y)
+		}
+		if (k & KEY_Y) {
+			sfx_play(SFX_SELECT);
 			return 2;
+		}
 		if (k & KEY_SELECT) {
 			covers_reset();
 			library_load(g_cfg.games_dir, true);
@@ -259,15 +265,27 @@ int libui_run(char *out_path, size_t len)
 			}
 			clamp_list();
 
+			if (sel != before)
+				sfx_play(SFX_MOVE);
+
 			if (k & KEY_A) {
 				const game_t *g = library_get(sel);
 				library_launch_path(g, out_path, len);
 				snprintf(g_cfg.last_title, sizeof(g_cfg.last_title), "%s", g->title);
 				config_save();
+				// launch sound, music fades out while it plays
+				sfx_play(SFX_LAUNCH);
+				for (int f = 0; f < 30 && aptMainLoop(); f++) {
+					C2D_TextBufClear(tbuf);
+					ui_begin();
+					video_present_vsync(false, draw_top, draw_bottom, NULL);
+				}
+				music_play(false);
 				return 1;
 			}
 		}
 
+		music_update();
 		// ease the carousel toward the selection
 		anim += (sel - anim) * 0.25f;
 		if (fabsf(sel - anim) < 0.01f)

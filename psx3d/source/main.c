@@ -132,6 +132,7 @@ int main(void)
 	ui_init();
 	libui_init();
 	covers_init();
+	uisound_init();
 	emu_init();
 
 	// Home screen: the game library (needs a games folder); Y switches to
@@ -176,6 +177,7 @@ int main(void)
 	}
 
 	config_save();
+	uisound_exit();
 	covers_exit();
 	libui_exit();
 	romfsExit();
