@@ -311,7 +311,9 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	}
 
 	if (draw_bottom) {
-		C2D_TargetClear(bottom, C2D_Color32(16, 16, 24, 255));
+		// in game the bottom screen is black; menus keep their dark blue
+		C2D_TargetClear(bottom, show_game && !draw_top ? C2D_Color32(0, 0, 0, 255)
+			: C2D_Color32(16, 16, 24, 255));
 		C2D_SceneBegin(bottom);
 		draw_bottom(ud);
 	}

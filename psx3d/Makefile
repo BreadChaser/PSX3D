@@ -32,6 +32,7 @@ include $(DEVKITARM)/3ds_rules
 #     - <libctru folder>/default_icon.png
 #---------------------------------------------------------------------------------
 TARGET		:=	PSX3D
+ICON		:=	meta/icon.png
 APP_TITLE	:=	PSX3D
 APP_DESCRIPTION	:=	PS1 emulator (PCSX-ReARMed based)
 APP_AUTHOR	:=	PSX3D team

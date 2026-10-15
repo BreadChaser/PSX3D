@@ -422,30 +422,25 @@ resume:
 
 // ---------------------------------------------------------------- run loop
 
-static void game_draw_top(void *ud)
-{
-	(void)ud;
-	u32 white = C2D_Color32(255, 255, 255, 255);
-	if (g_cfg.show_fps)
-		ui_text(2, 0, 0.45f, white, "%.1f fps  emu %.1fms", fps_measured, emu_ms);
-	if (osd_frames > 0) {
-		osd_frames--;
-		ui_rect(0, 222, 400, 18, C2D_Color32(0, 0, 0, 160));
-		ui_text(4, 223, 0.45f, white, "%s", osd_msg);
-	}
-}
-
+// In game the top screen shows only the game. Everything else lives on
+// the otherwise black bottom screen.
 static void game_draw_bottom(void *ud)
 {
 	(void)ud;
-	if (g_cfg.stereo == 2 && osGet3DSliderState() >= 0.05f) {
-		stereo_draw_preview(40, 4, 6);   // 240x180
-		ui_text(70, 200, 0.5f, C2D_Color32(140, 140, 160, 255), "Tap screen for menu");
-	} else {
-		ui_text(70, 100, 0.6f, C2D_Color32(140, 140, 160, 255), "Tap screen for menu");
+	u32 dim = C2D_Color32(110, 110, 125, 255), white = C2D_Color32(230, 230, 240, 255);
+
+	if (touch_buttons_active())
+		touch_buttons_draw();
+	if (g_cfg.stereo == 2 && osGet3DSliderState() >= 0.05f)
+		stereo_draw_preview(40, 30, 6);
+	if (g_cfg.show_fps)
+		ui_text(4, 222, 0.42f, dim, "%.1f fps  %.1fms", fps_measured, emu_ms);
+	if (osd_frames > 0) {
+		osd_frames--;
+		ui_text(4, 204, 0.45f, white, "%s", osd_msg);
 	}
 	if (!has_audio)
-		ui_text(20, 180, 0.42f, C2D_Color32(255, 160, 120, 255),
+		ui_text(4, 186, 0.42f, C2D_Color32(255, 160, 120, 255),
 			"No sound: dump DSP firmware (dspfirm.cdc)");
 }
 
@@ -547,7 +542,7 @@ bool emu_run_game(const char *path)
 			t_run_max = t1 - t0;
 
 		// touch the bottom screen to open the menu
-		if (input_keys_down() & KEY_TOUCH) {
+		if (menu_touched()) {
 			if (!menu_run())
 				break;
 			fps_t0 = osGetTime();
@@ -557,7 +552,7 @@ bool emu_run_game(const char *path)
 
 		ui_begin();
 		t1 = svcGetSystemTick();
-		video_present(true, game_draw_top, game_draw_bottom, NULL);
+		video_present(true, NULL, game_draw_bottom, NULL);
 		t_present += svcGetSystemTick() - t1;
 
 		if (++srm_counter >= SRM_CHECK_FRAMES) {
