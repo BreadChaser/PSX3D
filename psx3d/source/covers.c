@@ -45,9 +45,7 @@ static aptHookCookie apt_cookie;
 static void on_apt(APT_HookType hook, void *param)
 {
 	(void)param;
-	log_printf("apt: hook %d\n", (int)hook);
-	extern bool debug_trail;
-	debug_trail = true;
+
 	switch (hook) {
 	case APTHOOK_ONSUSPEND:
 	case APTHOOK_ONSLEEP:
@@ -485,7 +483,7 @@ void covers_quiesce(bool on)
 	}
 	for (int i = 0; i < 150 && busy > 0; i++)   // transfers abort via on_progress
 		svcSleepThread(10000000LL);
-	log_printf("covers: quiesced, busy=%d\n", busy);
+
 }
 
 void covers_focus(int game)
