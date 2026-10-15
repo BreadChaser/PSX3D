@@ -370,15 +370,30 @@ int libui_run(char *out_path, size_t len)
 		u32 k = input_keys_down(), h = input_keys_held();
 		n = library_count();
 		int before = sel;
+
+		// HOME: held back while covers download; when pressed, stop the
+		// downloads cleanly, then go to the HOME Menu ourselves
+		aptSetHomeAllowed(!covers_busy());
+		if (aptCheckHomePressRejected()) {
+			log_printf("libui: HOME while downloading, quiescing\n");
+			covers_quiesce(true);
+			aptSetHomeAllowed(true);
+			aptJumpToHomeMenu();
+			log_printf("libui: back from HOME\n");
+			covers_quiesce(false);
+			continue;
+		}
 		// trail for hang diagnosis: last frames before a freeze end up in the log
 		frame_no++;
 
 		if (k & KEY_START) {
+			aptSetHomeAllowed(true);
 			music_play(false);
 			ui_wants_3d = false;
 			return 0;
 		}
 		if (k & KEY_Y) {
+			aptSetHomeAllowed(true);
 			sfx_play(SFX_SELECT);
 			ui_wants_3d = false;
 			return 2;
@@ -431,6 +446,7 @@ int libui_run(char *out_path, size_t len)
 				}
 				launch_t = -1;
 				fade = 1;
+				aptSetHomeAllowed(true);
 				music_play(false);
 				ui_wants_3d = false;
 				return 1;

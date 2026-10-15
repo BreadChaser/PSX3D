@@ -36,6 +36,7 @@ static LightEvent wake;
 static volatile bool quit;
 static u64 net_retry_at;   // after a network failure, wait before trying again
 static volatile bool paused; // HOME menu / sleep: don't start new downloads
+static volatile int busy;    // workers currently fetching/decoding a cover
 static aptHookCookie apt_cookie;
 
 // The system tells us about HOME, sleep and closing right away (from inside
@@ -312,7 +313,9 @@ static void worker_main(void *arg)
 				break;
 			const game_t *g = library_get(game);
 			u64 t0 = osGetTime();
+			__atomic_add_fetch(&busy, 1, __ATOMIC_SEQ_CST);
 			u32 *px = g ? load_cover(c, g) : NULL;
+			__atomic_sub_fetch(&busy, 1, __ATOMIC_SEQ_CST);
 			log_printf("covers: #%d %s -> %s in %llums\n", game, g ? g->cover_key : "?",
 				px ? "ok" : "none", osGetTime() - t0);
 			LightLock_Lock(&lock);
@@ -462,6 +465,27 @@ static void covers_pump_in_frame(void)
 void covers_pump(void)
 {
 	video_pre_draw = covers_pump_in_frame;   // runs at the next frame start
+}
+
+bool covers_busy(void)
+{
+	return busy > 0;
+}
+
+// Stop all network work and wait (bounded) until the workers are idle.
+// Pressing HOME while a download was in flight froze the app, so the
+// library holds HOME back while busy and calls this before going HOME.
+void covers_quiesce(bool on)
+{
+	paused = on;
+	if (!on) {
+		LightEvent_Signal(&wake);
+		LightEvent_Signal(&wake);
+		return;
+	}
+	for (int i = 0; i < 150 && busy > 0; i++)   // transfers abort via on_progress
+		svcSleepThread(10000000LL);
+	log_printf("covers: quiesced, busy=%d\n", busy);
 }
 
 void covers_focus(int game)
