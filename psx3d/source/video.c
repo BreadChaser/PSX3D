@@ -59,7 +59,8 @@ bool video_init(void)
 	gfxSet3D(false);  // switched on per frame when the game is shown in 3D
 	if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE))
 		return false;
-	if (!C2D_Init(C2D_DEFAULT_MAX_OBJECTS))
+	// the library's live floor mesh alone is a few thousand primitives
+	if (!C2D_Init(8192))
 		return false;
 	C2D_Prepare();
 

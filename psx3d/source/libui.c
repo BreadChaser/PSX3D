@@ -115,25 +115,85 @@ static void draw_cover(int i, float cx, float cy, float size, float dim, float z
 
 // the neon floor, scrolling toward the viewer; each line gets its own depth
 // so the floor recedes into the screen in 3D
+// The floor: one wireframe mesh, flat in the middle and rising into hills
+// toward the sides, rolling toward the viewer. Same maths as
+// tools/make_art.py (height(), colour()), which draws it for the title art.
+#define MESH_COLS 37            // x = -18 .. 18
+#define MESH_ROWS 28
+#define MESH_DZ   1.4f
+#define HORIZON   140.0f
+
+static float mesh_height(float x, float z_world, float z)
+{
+	float a = fabsf(x) - 2.0f;
+	if (a <= 0)
+		return 0;
+	float rise = powf(a, 1.15f) * 0.32f;
+	float n = 0.8f + 0.22f * sinf(x * 0.9f + z_world * 0.35f) + 0.12f * sinf(x * 1.7f - z_world * 0.5f);
+	float near = (z - 1.0f) / 6.0f;
+	if (near > 1) near = 1;
+	return rise * n * (0.35f + 0.65f * near);
+}
+
+static u32 mesh_colour(float x, float z, u8 alpha)
+{
+	float side = fabsf(x) / 9.0f, depth = (z - 1.0f) / 25.0f;
+	if (side > 1) side = 1;
+	if (depth > 1) depth = 1;
+	if (depth < 0) depth = 0;
+	float t = powf(side, 0.8f);
+	float r = 150 + (40 - 150) * t, g = 60 + (90 - 60) * t, b = 255;
+	float p = powf(depth, 0.7f) * (1 - side) * 0.85f;
+	r += (255 - r) * p; g += (70 - g) * p; b += (200 - b) * p;
+	return C2D_Color32((u8)r, (u8)g, (u8)b, alpha);
+}
+
 static void draw_grid(void)
 {
-	const float hy = 150, cx = 200;
-	u32 col = C2D_Color32(170, 60, 255, 255), glow = C2D_Color32(190, 50, 255, 70);
-	float scroll = fmodf(clock_s * 0.35f, 1.0f);
-	for (int k = 0; k < 9; k++) {
-		float u = (k + scroll) / 8.0f;           // 0 at the horizon .. 1 at the bottom
-		float y = hy + powf(u, 2.2f) * (240 - hy);
-		if (y > 240) continue;
-		float d = 3.0f * (1.0f - u) - 0.5f;      // far lines deep behind, near ones at the surface
-		float dx = ui_depth(d);
-		C2D_DrawRectSolid(dx, y - 1, 0.15f, 400, 3, glow);
-		C2D_DrawRectSolid(dx, y, 0.16f, 400, 1.2f + 1.2f * u, col);
+	static float px[MESH_ROWS + 1][MESH_COLS], py[MESH_ROWS + 1][MESH_COLS];
+	static float hgt[MESH_ROWS + 1][MESH_COLS];
+	static float rz[MESH_ROWS + 1];
+	const float cx = 200, f = 225;
+	float zoff = clock_s * 1.6f;                       // world units scrolled
+	float phase = fmodf(zoff, MESH_DZ);
+
+	for (int j = 0; j <= MESH_ROWS; j++) {
+		float z = 1.0f + j * MESH_DZ + (MESH_DZ - phase);
+		rz[j] = z;
+		float zw = z + zoff;
+		for (int i = 0; i < MESH_COLS; i++) {
+			float x = i - 18.0f;
+			float h = mesh_height(x, zw, z);
+			hgt[j][i] = h;
+			// far rows sit deeper behind the screen in 3D
+			px[j][i] = cx + x / z * f + ui_depth(2.5f * (z - 1) / 40.0f - 0.5f);
+			py[j][i] = HORIZON + (1.0f - h) / z * f * 0.45f;
+		}
 	}
-	for (int i = -12; i <= 12; i++) {
-		float x0 = cx + i * 16.0f, x1 = cx + i * 168.0f;
-		C2D_DrawLine(x0 + ui_depth(2.5f), hy, glow, x1 + ui_depth(-0.5f), 240, glow, 4, 0.15f);
-		C2D_DrawLine(x0 + ui_depth(2.5f), hy, col, x1 + ui_depth(-0.5f), 240, col, 1.5f, 0.16f);
+	u32 fillc = C2D_Color32(16, 2, 44, 255);
+	// back to front: hill cells hide the lines behind them
+	for (int j = MESH_ROWS - 1; j >= 0; j--) {
+		for (int i = 0; i < MESH_COLS - 1; i++) {
+			if (hgt[j][i] + hgt[j][i + 1] + hgt[j + 1][i] + hgt[j + 1][i + 1] < 0.01f)
+				continue;   // flat floor: nothing to hide
+			C2D_DrawTriangle(px[j][i], py[j][i], fillc, px[j][i + 1], py[j][i + 1], fillc,
+				px[j + 1][i + 1], py[j + 1][i + 1], fillc, 0.15f);
+			C2D_DrawTriangle(px[j][i], py[j][i], fillc, px[j + 1][i + 1], py[j + 1][i + 1], fillc,
+				px[j + 1][i], py[j + 1][i], fillc, 0.15f);
+		}
+		// this strip's lines: the far edge across, and the lines toward the viewer
+		float zf = rz[j + 1];
+		u8 fade = zf > 32 ? (u8)(255 * (40 - zf) / 8) : 255;   // fade in at the horizon
+		for (int i = 0; i < MESH_COLS - 1; i++)
+			C2D_DrawLine(px[j + 1][i], py[j + 1][i], mesh_colour(i - 18.0f, zf, fade),
+				px[j + 1][i + 1], py[j + 1][i + 1], mesh_colour(i - 17.0f, zf, fade), 1.2f, 0.16f);
+		for (int i = 0; i < MESH_COLS; i++)
+			C2D_DrawLine(px[j + 1][i], py[j + 1][i], mesh_colour(i - 18.0f, zf, fade),
+				px[j][i], py[j][i], mesh_colour(i - 18.0f, rz[j], 255), 1.2f, 0.16f);
 	}
+	for (int i = 0; i < MESH_COLS - 1; i++)
+		C2D_DrawLine(px[0][i], py[0][i], mesh_colour(i - 18.0f, rz[0], 255),
+			px[0][i + 1], py[0][i + 1], mesh_colour(i - 17.0f, rz[0], 255), 1.4f, 0.16f);
 }
 
 static void draw_top(void *ud)
