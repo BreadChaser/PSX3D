@@ -158,6 +158,7 @@ u32 input_keys_held(void);
 bool touch_buttons_active(void);
 bool menu_touched(void);
 bool input_fast_forward(void);
+void input_fast_forward_off(void);
 bool input_rewind(void);
 #define INPUT_REMAP_N 10
 const char *input_map_key_name(int i);
