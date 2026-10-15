@@ -255,7 +255,7 @@ static void state_load(void)
 
 // ---------------------------------------------------------------- menu
 
-enum { M_RESUME, M_SAVE, M_LOAD, M_SLOT, M_SCREEN, M_SMOOTH, M_FPS, M_CORE, M_RECORD, M_TONE, M_RESET, M_EXIT, M_COUNT };
+enum { M_RESUME, M_SAVE, M_LOAD, M_SLOT, M_SCREEN, M_3D, M_SMOOTH, M_FPS, M_CORE, M_RECORD, M_TONE, M_RESET, M_EXIT, M_COUNT };
 
 // items shown in the menu; the debug ones only with debug=1 in config.ini
 static int menu_items(int *items)
@@ -304,7 +304,9 @@ static void menu_draw_bottom(void *ud)
 	}
 
 	const char *labels[M_COUNT];
-	char slot[32], screen[48], smooth[32], fps[32];
+	char slot[32], screen[48], smooth[32], fps[32], s3d[48];
+	static const char *const s3d_names[] = { "off", "screen depth", "real (experimental)" };
+	snprintf(s3d, sizeof(s3d), "3D: %s", s3d_names[g_cfg.stereo]);
 	snprintf(slot, sizeof(slot), "State slot: %d", state_slot);
 	snprintf(screen, sizeof(screen), "Screen: %s", config_widescreen() ? "widescreen (3D games)" : "4:3");
 	snprintf(smooth, sizeof(smooth), "Smoothing: %s", g_cfg.smooth ? "on" : "off");
@@ -314,6 +316,7 @@ static void menu_draw_bottom(void *ud)
 	labels[M_LOAD] = "Load state";
 	labels[M_SLOT] = slot;
 	labels[M_SCREEN] = screen;
+	labels[M_3D] = s3d;
 	labels[M_SMOOTH] = smooth;
 	labels[M_FPS] = fps;
 	labels[M_CORE] = "Core options...";
@@ -372,6 +375,10 @@ static bool menu_run(void)
 				case M_LOAD: if (k & KEY_A) { state_load(); goto resume; } break;
 				case M_SLOT: state_slot = (state_slot + dir + 10) % 10; break;
 				case M_SCREEN: config_set_widescreen(!config_widescreen()); break;
+				case M_3D:
+					g_cfg.stereo = (g_cfg.stereo + dir + 3) % 3;
+					config_sync_stereo();
+					break;
 				case M_SMOOTH: g_cfg.smooth ^= 1; break;
 				case M_FPS: g_cfg.show_fps ^= 1; break;
 				case M_CORE: if (k & KEY_A) m.core_page = true; break;
@@ -429,7 +436,12 @@ static void game_draw_top(void *ud)
 static void game_draw_bottom(void *ud)
 {
 	(void)ud;
-	ui_text(70, 100, 0.6f, C2D_Color32(140, 140, 160, 255), "Tap screen for menu");
+	if (g_cfg.stereo == 2) {
+		stereo_draw_preview(40, 4, 6);   // 240x180
+		ui_text(70, 200, 0.5f, C2D_Color32(140, 140, 160, 255), "Tap screen for menu");
+	} else {
+		ui_text(70, 100, 0.6f, C2D_Color32(140, 140, 160, 255), "Tap screen for menu");
+	}
 	if (!has_audio)
 		ui_text(20, 180, 0.42f, C2D_Color32(255, 160, 120, 255),
 			"No sound: dump DSP firmware (dspfirm.cdc)");
@@ -513,6 +525,8 @@ bool emu_run_game(const char *path)
 		}
 		u64 t0 = svcGetSystemTick();
 		retro_run();
+		if (g_cfg.stereo == 2)
+			psx3d_depth_frame();   // this frame's depth map is complete
 		u64 t1 = svcGetSystemTick();
 		fps_frames++;
 		t_run += t1 - t0;
@@ -550,6 +564,8 @@ bool emu_run_game(const char *path)
 			char abuf[160];
 			audio_stats(abuf, sizeof(abuf));
 			log_printf("  %s\n", abuf);
+			if (g_cfg.stereo == 2)
+				log_printf("  3d: %s\n", stereo_stats());
 			t_run = t_present = t_run_max = 0;
 			present_count = 0;
 			fps_frames = 0;

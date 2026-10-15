@@ -29,7 +29,7 @@ typedef struct {
 	char last_dir[PATH_LEN];
 	int  smooth;       // bilinear filtering
 	int  show_fps;
-	int  stereo;       // 3D slider moves the picture behind the screen
+	int  stereo;       // 3D slider: 0 off, 1 screen depth, 2 real (per-object)
 	int  debug;        // show debug tools in the menu
 } psx3d_config;
 
@@ -61,6 +61,16 @@ void video_present(bool show_game, void (*draw_top)(void *),
 C3D_RenderTarget *video_bottom_target(void);
 u64 video_take_wait_ticks(void);
 u64 video_take_xfer_ticks(void);
+
+// stereo.c - real 3D from the core's depth map
+bool stereo_init(void);
+void stereo_exit(void);
+bool stereo_prepare(float max_px);
+void stereo_draw(C3D_Tex *tex, float x0, float dw, unsigned frame_w, unsigned frame_h, int eye);
+void config_sync_stereo(void);
+void stereo_draw_preview(float x0, float y0, float cell);
+const char *stereo_stats(void);
+void psx3d_depth_frame(void);   // in the core
 
 // audio.c
 bool audio_init(double sample_rate);
