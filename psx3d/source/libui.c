@@ -149,6 +149,26 @@ static u32 mesh_colour(float x, float z, u8 alpha)
 	return C2D_Color32((u8)r, (u8)g, (u8)b, alpha);
 }
 
+// Line clipped to just beyond the screen. Far off-screen vertices (the
+// nearest grid rows land thousands of pixels out) can make the GPU drop the
+// whole line, so lines vanished before reaching the screen edges.
+static void clip_line(float x0, float y0, u32 c0, float x1, float y1, u32 c1, float w)
+{
+	const float xmin = -8, xmax = 408, ymin = -8, ymax = 248;
+	float t0 = 0, t1 = 1, dx = x1 - x0, dy = y1 - y0;
+	float p[4] = { -dx, dx, -dy, dy }, q[4] = { x0 - xmin, xmax - x0, y0 - ymin, ymax - y0 };
+	for (int i = 0; i < 4; i++) {
+		if (p[i] == 0) {
+			if (q[i] < 0) return;
+			continue;
+		}
+		float r = q[i] / p[i];
+		if (p[i] < 0) { if (r > t1) return; if (r > t0) t0 = r; }
+		else { if (r < t0) return; if (r < t1) t1 = r; }
+	}
+	C2D_DrawLine(x0 + dx * t0, y0 + dy * t0, c0, x0 + dx * t1, y0 + dy * t1, c1, w, 0.16f);
+}
+
 static void draw_grid(void)
 {
 	static float px[MESH_ROWS + 1][MESH_COLS], py[MESH_ROWS + 1][MESH_COLS];
@@ -186,15 +206,15 @@ static void draw_grid(void)
 		float zf = rz[j + 1];
 		u8 fade = zf > 32 ? (u8)(255 * (40 - zf) / 8) : 255;   // fade in at the horizon
 		for (int i = 0; i < MESH_COLS - 1; i++)
-			C2D_DrawLine(px[j + 1][i], py[j + 1][i], mesh_colour(i - 18.0f, zf, fade),
-				px[j + 1][i + 1], py[j + 1][i + 1], mesh_colour(i - 17.0f, zf, fade), 1.2f, 0.16f);
+			clip_line(px[j + 1][i], py[j + 1][i], mesh_colour(i - 18.0f, zf, fade),
+				px[j + 1][i + 1], py[j + 1][i + 1], mesh_colour(i - 17.0f, zf, fade), 1.2f);
 		for (int i = 0; i < MESH_COLS; i++)
-			C2D_DrawLine(px[j + 1][i], py[j + 1][i], mesh_colour(i - 18.0f, zf, fade),
-				px[j][i], py[j][i], mesh_colour(i - 18.0f, rz[j], 255), 1.2f, 0.16f);
+			clip_line(px[j + 1][i], py[j + 1][i], mesh_colour(i - 18.0f, zf, fade),
+				px[j][i], py[j][i], mesh_colour(i - 18.0f, rz[j], 255), 1.2f);
 	}
 	for (int i = 0; i < MESH_COLS - 1; i++)
-		C2D_DrawLine(px[0][i], py[0][i], mesh_colour(i - 18.0f, rz[0], 255),
-			px[0][i + 1], py[0][i + 1], mesh_colour(i - 17.0f, rz[0], 255), 1.4f, 0.16f);
+		clip_line(px[0][i], py[0][i], mesh_colour(i - 18.0f, rz[0], 255),
+			px[0][i + 1], py[0][i + 1], mesh_colour(i - 17.0f, rz[0], 255), 1.4f);
 }
 
 static void draw_top(void *ud)

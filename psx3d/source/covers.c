@@ -343,13 +343,12 @@ void covers_init(void)
 	aptHook(&apt_cookie, on_apt, NULL);
 	s32 prio = 0x30;
 	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
-	// New 3DS: core 2 is free outside games; otherwise share core 0 at a
-	// lower priority than the UI
-	for (int i = 0; i < WORKERS; i++) {
-		workers[i] = g_new3ds ? threadCreate(worker_main, NULL, 64 * 1024, prio + 1, 2, false) : NULL;
-		if (!workers[i])
-			workers[i] = threadCreate(worker_main, NULL, 64 * 1024, prio + 4, -2, false);
-	}
+	// Same core as the app (core 0), below the UI's priority. They used to
+	// run on the New 3DS's core 2, and the app then froze whenever HOME was
+	// pressed during a download.
+	for (int i = 0; i < WORKERS; i++)
+		workers[i] = threadCreate(worker_main, NULL, 64 * 1024, prio + 4, 0, false);
+
 }
 
 void covers_exit(void)
