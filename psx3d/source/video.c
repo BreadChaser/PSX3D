@@ -53,6 +53,28 @@ u64 video_take_wait_ticks(void)
 	return t;
 }
 
+static bool top_aa = true;
+
+static C3D_RenderTarget *aa_target(gfx3dSide_t side)
+{
+	C3D_RenderTarget *t = C3D_RenderTargetCreate(480, 800, GPU_RB_RGBA8, GPU_RB_DEPTH16);   // 2.3MB each in VRAM
+	if (!t)
+		return NULL;
+	C3D_RenderTargetSetOutput(t, GFX_TOP, side,
+		GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) | GX_TRANSFER_RAW_COPY(0) |
+		GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) |
+		GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_XY));
+	return t;
+}
+
+// begin drawing on a top target in the usual 400x240 coordinates
+static void top_begin(C3D_RenderTarget *t)
+{
+	C2D_SceneBegin(t);
+	if (top_aa)
+		C2D_SceneSize(240, 400, true);
+}
+
 bool video_init(void)
 {
 	gfxInitDefault();
@@ -64,8 +86,18 @@ bool video_init(void)
 		return false;
 	C2D_Prepare();
 
-	top = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
-	top_r = C2D_CreateScreenTarget(GFX_TOP, GFX_RIGHT);
+	// Top screen: render at 2x2 the resolution and let the display transfer
+	// average it down (4x supersampling) so lines and edges are smooth.
+	top = aa_target(GFX_LEFT);
+	top_r = aa_target(GFX_RIGHT);
+	if (!top || !top_r) {
+		if (top) C3D_RenderTargetDelete(top);
+		if (top_r) C3D_RenderTargetDelete(top_r);
+		log_printf("supersampled top screen unavailable, using 1x\n");
+		top = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
+		top_r = C2D_CreateScreenTarget(GFX_TOP, GFX_RIGHT);
+		top_aa = false;
+	}
 	bottom = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
 
 	for (int i = 0; i < 2; i++) {
@@ -305,7 +337,7 @@ void video_present(bool show_game, void (*draw_top)(void *),
 			g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST);
 
 	C2D_TargetClear(top, C2D_Color32(0, 0, 0, 255));
-	C2D_SceneBegin(top);
+	top_begin(top);
 	if (real) {
 		draw_game(0.0f);   // underlay: fills the hairline gaps between shifted tiles
 		u64 td = svcGetSystemTick();
@@ -322,7 +354,7 @@ void video_present(bool show_game, void (*draw_top)(void *),
 
 	if (stereo) {
 		C2D_TargetClear(top_r, C2D_Color32(0, 0, 0, 255));
-		C2D_SceneBegin(top_r);
+		top_begin(top_r);
 		if (real) {
 			draw_game(0.0f);
 			stereo_draw(&tex, gx0, gdw, frame_w, frame_h, 1, slider * MAX_REAL_PX);
