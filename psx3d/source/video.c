@@ -133,8 +133,8 @@ static void draw_game(void)
 	subtex.top = 1.0f;
 	subtex.bottom = 1.0f - (float)frame_h / TEX_H;
 
-	switch (g_cfg.scale_mode) {
-	case 1: // stretch to fill
+	switch (config_widescreen() ? 1 : g_cfg.scale_mode) {
+	case 1: // stretch to fill (also widescreen: the game already drew a 5:3 view)
 		dw = 400; dh = 240;
 		break;
 	case 2: // fit height, keep the game's pixel aspect

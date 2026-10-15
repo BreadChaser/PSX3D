@@ -251,7 +251,7 @@ static void state_load(void)
 
 // ---------------------------------------------------------------- menu
 
-enum { M_RESUME, M_SAVE, M_LOAD, M_SLOT, M_SCALE, M_SMOOTH, M_FPS, M_CORE, M_RECORD, M_TONE, M_RESET, M_EXIT, M_COUNT };
+enum { M_RESUME, M_SAVE, M_LOAD, M_SLOT, M_WIDE, M_SCALE, M_SMOOTH, M_FPS, M_CORE, M_RECORD, M_TONE, M_RESET, M_EXIT, M_COUNT };
 
 typedef struct {
 	int sel;
@@ -289,15 +289,17 @@ static void menu_draw_bottom(void *ud)
 	}
 
 	const char *labels[M_COUNT];
-	char slot[32], scale[40], smooth[32], fps[32];
+	char slot[32], scale[40], smooth[32], fps[32], wide[48];
 	snprintf(slot, sizeof(slot), "State slot: %d", state_slot);
-	snprintf(scale, sizeof(scale), "Screen: %s", scale_names[g_cfg.scale_mode]);
+	snprintf(wide, sizeof(wide), "Widescreen (3D games): %s", config_widescreen() ? "on" : "off");
+	snprintf(scale, sizeof(scale), "Screen: %s", config_widescreen() ? "full (widescreen)" : scale_names[g_cfg.scale_mode]);
 	snprintf(smooth, sizeof(smooth), "Smoothing: %s", g_cfg.smooth ? "on" : "off");
 	snprintf(fps, sizeof(fps), "Show FPS: %s", g_cfg.show_fps ? "on" : "off");
 	labels[M_RESUME] = "Resume";
 	labels[M_SAVE] = "Save state";
 	labels[M_LOAD] = "Load state";
 	labels[M_SLOT] = slot;
+	labels[M_WIDE] = wide;
 	labels[M_SCALE] = scale;
 	labels[M_SMOOTH] = smooth;
 	labels[M_FPS] = fps;
@@ -354,6 +356,7 @@ static bool menu_run(void)
 				case M_SAVE: if (k & KEY_A) { state_save(); goto resume; } break;
 				case M_LOAD: if (k & KEY_A) { state_load(); goto resume; } break;
 				case M_SLOT: state_slot = (state_slot + dir + 10) % 10; break;
+				case M_WIDE: config_set_widescreen(!config_widescreen()); break;
 				case M_SCALE: g_cfg.scale_mode = (g_cfg.scale_mode + dir + 3) % 3; break;
 				case M_SMOOTH: g_cfg.smooth ^= 1; break;
 				case M_FPS: g_cfg.show_fps ^= 1; break;

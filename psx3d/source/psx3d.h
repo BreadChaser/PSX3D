@@ -36,6 +36,8 @@ extern psx3d_config g_cfg;
 void config_load(void);
 void config_save(void);
 const char *config_core_override(const char *key);
+bool config_widescreen(void);
+void config_set_widescreen(bool on);
 void config_set_core_override(const char *key, const char *value);
 
 // options.c - core option definitions (from SET_VARIABLES) and lookup
