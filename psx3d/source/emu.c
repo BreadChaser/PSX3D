@@ -939,6 +939,8 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		}
 		u64 t0 = svcGetSystemTick();
 		static bool rewind_hint;
+		if (input_rewind() && input_fast_forward())
+			input_fast_forward_off();   // rewinding ends fast-forward
 		speed_icon = input_rewind() && rewind_active() ? -1 : input_fast_forward() ? 1 : 0;
 		if (input_rewind() && rewind_active()) {
 			// step back about 6 times a second of game time, shown at 20/s
@@ -1040,6 +1042,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	}
 
 	aptUnhook(&apt_cookie);
+	input_fast_forward_off();
 	options_fast_forward(false);
 	log_printf("game: leaving\n");
 	rewind_stop();

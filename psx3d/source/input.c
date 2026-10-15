@@ -90,11 +90,16 @@ static const struct { u32 key; unsigned id; } map[] = {
 	{ KEY_DRIGHT, RETRO_DEVICE_ID_JOYPAD_RIGHT },
 };
 
+static bool ff_on;
+
 void input_poll(void)
 {
 	hidScanInput();
 	held = hidKeysHeld();
 	down = hidKeysDown();
+	// SELECT + R switches fast-forward on and off
+	if (((down & KEY_R) && (held & KEY_SELECT)) || ((down & KEY_SELECT) && (held & KEY_R)))
+		ff_on = !ff_on;
 	hidCircleRead(&cpad);
 	irrstCstickRead(&cstick);
 	hidTouchRead(&touch);
@@ -103,7 +108,7 @@ void input_poll(void)
 u32 input_keys_down(void) { return down; }
 u32 input_keys_held(void) { return held; }
 
-// Hotkeys: SELECT + R fast-forwards, SELECT + L rewinds (while held).
+// Hotkeys: SELECT + R toggles fast-forward, SELECT + L rewinds while held.
 // While one is held those buttons don't reach the game.
 static u32 hotkey_mask(void)
 {
@@ -112,7 +117,8 @@ static u32 hotkey_mask(void)
 	return KEY_SELECT | (held & (KEY_L | KEY_R));
 }
 
-bool input_fast_forward(void) { return (held & (KEY_SELECT | KEY_R)) == (KEY_SELECT | KEY_R); }
+bool input_fast_forward(void) { return ff_on; }
+void input_fast_forward_off(void) { ff_on = false; }
 bool input_rewind(void) { return (held & (KEY_SELECT | KEY_L)) == (KEY_SELECT | KEY_L); }
 
 static u16 joypad_mask(void)
