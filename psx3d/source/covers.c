@@ -20,7 +20,7 @@
 
 typedef struct {
 	int game;            // library index, -1 = free
-	volatile int state;  // 0 empty, 1 wanted, 2 pixels ready, 3 uploaded, 4 failed
+	volatile int state;  // 0 empty, 1 wanted, 2 pixels ready, 3 uploaded, 4 failed, 5 loading
 	u32 *pixels;         // COVER_SIZE^2, texture byte order
 	C3D_Tex tex;
 	bool tex_ok;
@@ -28,7 +28,8 @@ typedef struct {
 } slot_t;
 
 static slot_t slots[SLOTS];
-static Thread worker;
+#define WORKERS 2
+static Thread workers[WORKERS];
 static LightLock lock;
 static LightEvent wake;
 static volatile bool quit;
@@ -145,14 +146,13 @@ static size_t on_data(void *p, size_t sz, size_t n, void *ud)
 	return add;
 }
 
-static u32 *download(const char *key)
+static u32 *download(CURL *c, const char *key)
 {
 	char name[256], esc[768], url[1024];
 	thumb_name(key, name, sizeof(name));
 	url_escape(name, esc, sizeof(esc));
 	snprintf(url, sizeof(url), "%s%s.png", THUMB_URL, esc);
 
-	CURL *c = curl_easy_init();
 	if (!c)
 		return NULL;
 	membuf_t m = { 0 };
@@ -165,9 +165,11 @@ static u32 *download(const char *key)
 	curl_easy_setopt(c, CURLOPT_TIMEOUT, 30L);
 	curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
 	curl_easy_setopt(c, CURLOPT_USERAGENT, "PSX3D/" PSX3D_VERSION);
+	// the handle is reused for every cover: one TLS handshake (seconds on
+	// the 3DS CPU) instead of one per cover
+	curl_easy_setopt(c, CURLOPT_TCP_KEEPALIVE, 1L);
 	CURLcode rc = curl_easy_perform(c);
 	curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &code);
-	curl_easy_cleanup(c);
 
 	u32 *px = NULL;
 	if (rc == CURLE_OK && code == 200)
@@ -185,7 +187,7 @@ static u32 *download(const char *key)
 
 // ---------------------------------------------------------------- worker
 
-static u32 *load_cover(const game_t *g)
+static u32 *load_cover(CURL *c, const game_t *g)
 {
 	char path[PATH_LEN];
 	u32 *px;
@@ -209,7 +211,7 @@ static u32 *load_cover(const game_t *g)
 		while (!quit && osGetTime() < net_retry_at)
 			svcSleepThread(200000000LL);
 		if (!quit)
-			px = download(g->cover_key);
+			px = download(c, g->cover_key);
 	}
 	if (px) {
 		cache_path(g->cover_key, ".bin", path, sizeof(path));
@@ -224,6 +226,7 @@ static u32 *load_cover(const game_t *g)
 static void worker_main(void *arg)
 {
 	(void)arg;
+	CURL *c = curl_easy_init();
 	while (!quit) {
 		LightEvent_Wait(&wake);
 		for (;;) {
@@ -244,16 +247,18 @@ static void worker_main(void *arg)
 					game = slots[i].game;
 				}
 			}
+			if (pick >= 0)
+				slots[pick].state = 5;   // ours: the other worker skips it
 			LightLock_Unlock(&lock);
 			if (pick < 0 || quit)
 				break;
 			const game_t *g = library_get(game);
 			u64 t0 = osGetTime();
-			u32 *px = g ? load_cover(g) : NULL;
+			u32 *px = g ? load_cover(c, g) : NULL;
 			log_printf("covers: #%d %s -> %s in %llums\n", game, g ? g->cover_key : "?",
 				px ? "ok" : "none", osGetTime() - t0);
 			LightLock_Lock(&lock);
-			if (slots[pick].game == game && slots[pick].state == 1) {
+			if (slots[pick].game == game && slots[pick].state == 5) {
 				slots[pick].pixels = px;
 				slots[pick].state = px ? 2 : 4;
 			} else {
@@ -262,6 +267,7 @@ static void worker_main(void *arg)
 			LightLock_Unlock(&lock);
 		}
 	}
+	curl_easy_cleanup(c);
 }
 
 // ---------------------------------------------------------------- API
@@ -272,7 +278,7 @@ void covers_init(void)
 	for (int i = 0; i < SLOTS; i++)
 		slots[i].game = -1;
 	LightLock_Init(&lock);
-	LightEvent_Init(&wake, RESET_ONESHOT);
+	LightEvent_Init(&wake, RESET_ONESHOT);   // each Signal wakes one worker
 	// the network: 3dslink logging may already have started it
 	if (!soc_buf && (soc_buf = memalign(0x1000, 0x100000)) && R_FAILED(socInit(soc_buf, 0x100000))) {
 		// already initialised elsewhere (fine) or unavailable
@@ -280,17 +286,26 @@ void covers_init(void)
 	curl_global_init(CURL_GLOBAL_DEFAULT);
 	s32 prio = 0x30;
 	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
-	worker = threadCreate(worker_main, NULL, 64 * 1024, prio + 4, -2, false);
+	// New 3DS: core 2 is free outside games; otherwise share core 0 at a
+	// lower priority than the UI
+	for (int i = 0; i < WORKERS; i++) {
+		workers[i] = g_new3ds ? threadCreate(worker_main, NULL, 64 * 1024, prio + 1, 2, false) : NULL;
+		if (!workers[i])
+			workers[i] = threadCreate(worker_main, NULL, 64 * 1024, prio + 4, -2, false);
+	}
 }
 
 void covers_exit(void)
 {
 	quit = true;
-	LightEvent_Signal(&wake);
-	if (worker) {
-		threadJoin(worker, U64_MAX);
-		threadFree(worker);
-	}
+	for (int i = 0; i < WORKERS; i++)
+		LightEvent_Signal(&wake);
+	for (int i = 0; i < WORKERS; i++)
+		if (workers[i]) {
+			LightEvent_Signal(&wake);
+			threadJoin(workers[i], U64_MAX);
+			threadFree(workers[i]);
+		}
 	for (int i = 0; i < SLOTS; i++) {
 		free(slots[i].pixels);
 		if (slots[i].tex_ok)
@@ -376,6 +391,7 @@ void covers_pump(void)
 void covers_focus(int game)
 {
 	focus = game;
+	LightEvent_Signal(&wake);
 	LightEvent_Signal(&wake);
 }
 
