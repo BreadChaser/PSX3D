@@ -89,6 +89,9 @@ void input_poll(void);
 int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id);
 u32 input_keys_down(void);
 u32 input_keys_held(void);
+bool touch_buttons_active(void);
+bool menu_touched(void);
+void touch_buttons_draw(void);
 
 // ui.c - text drawing on the bottom screen
 void ui_init(void);
