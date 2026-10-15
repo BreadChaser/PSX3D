@@ -79,6 +79,9 @@ u64 video_take_wait_ticks(void);
 u64 video_take_xfer_ticks(void);
 bool video_snapshot(u16 *out, int w, int h);
 
+// dspdump.c
+bool dsp_firmware_ensure(void);
+
 // savestates.c - save state browser with screenshots
 bool state_thumb_write(const char *prefix, int slot);
 int states_run(bool saving, const char *prefix, const char *title, int *slot);

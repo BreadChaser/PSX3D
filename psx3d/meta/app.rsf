@@ -26,6 +26,10 @@ AccessControlInfo:
   FileSystemAccess:
     - DirectSdmc
     - DirectSdmcWrite
+    # read the HOME Menu's code to copy the DSP firmware (dspdump.c)
+    - CategorySystemApplication
+    - CategoryFileSystemTool
+    - CtrNandRo
   IoAccessControl:
   # DSP memory (ndsp writes the sound chip's shared RAM) and VRAM
   IORegisterMapping:
