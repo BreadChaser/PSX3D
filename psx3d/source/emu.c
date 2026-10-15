@@ -6,7 +6,8 @@
 #include <stdarg.h>
 #include "psx3d.h"
 
-#define SRM_CHECK_FRAMES 180   // look for memory card writes every ~3 seconds
+#define SRM_CHECK_FRAMES 180
+#define DISPLAY_HZ 59.831        // 3DS LCD refresh rate   // look for memory card writes every ~3 seconds
 
 static char game_name[PATH_LEN];   // file name without extension
 static char osd_msg[128];
@@ -94,7 +95,6 @@ static bool environment(unsigned cmd, void *data)
 	case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO: {
 		const struct retro_system_av_info *av = data;
 		fps_target = av->timing.fps;
-		video_set_fps(fps_target);
 		return true;
 	}
 	case RETRO_ENVIRONMENT_SET_GEOMETRY:
@@ -242,7 +242,7 @@ static void state_load(void)
 
 // ---------------------------------------------------------------- menu
 
-enum { M_RESUME, M_SAVE, M_LOAD, M_SLOT, M_SCALE, M_SMOOTH, M_FPS, M_CORE, M_RESET, M_EXIT, M_COUNT };
+enum { M_RESUME, M_SAVE, M_LOAD, M_SLOT, M_SCALE, M_SMOOTH, M_FPS, M_CORE, M_RECORD, M_TONE, M_RESET, M_EXIT, M_COUNT };
 
 typedef struct {
 	int sel;
@@ -293,22 +293,26 @@ static void menu_draw_bottom(void *ud)
 	labels[M_SMOOTH] = smooth;
 	labels[M_FPS] = fps;
 	labels[M_CORE] = "Core options...";
+	labels[M_RECORD] = "Debug: record 10s of audio";
+	labels[M_TONE] = "Debug: audio test tone";
 	labels[M_RESET] = "Reset game";
 	labels[M_EXIT] = "Exit to game list";
 
 	ui_text(8, 4, 0.5f, grey, "%.40s", game_name);
 	for (int i = 0; i < M_COUNT; i++) {
-		float y = 24 + i * 20;
+		float y = 22 + i * 18;
 		if (i == m->sel)
-			ui_rect(0, y, 320, 20, hl);
-		ui_text(12, y + 2, 0.55f, white, "%s", labels[i]);
+			ui_rect(0, y, 320, 18, hl);
+		ui_text(12, y + 1, 0.5f, white, "%s", labels[i]);
 	}
 }
 
 // returns false when the user wants to leave the game
 static bool menu_run(void)
 {
-	menu_t m = { 0 };
+	static menu_t m;   // keep the core options scroll position between visits
+	m.core_page = false;
+	m.sel = M_RESUME;
 
 	audio_pause(true);
 	srm_save(false);
@@ -345,6 +349,18 @@ static bool menu_run(void)
 				case M_SMOOTH: g_cfg.smooth ^= 1; break;
 				case M_FPS: g_cfg.show_fps ^= 1; break;
 				case M_CORE: if (k & KEY_A) m.core_page = true; break;
+				case M_RECORD:
+					if (k & KEY_A) {
+						osd(audio_capture_start() ? "Recording 10s of audio..." : "Could not start recording");
+						goto resume;
+					}
+					break;
+				case M_TONE:
+					if (k & KEY_A) {
+						osd(audio_test_tone_toggle() ? "Test tone ON" : "Test tone off");
+						goto resume;
+					}
+					break;
 				case M_RESET: if (k & KEY_A) { retro_reset(); goto resume; } break;
 				case M_EXIT:
 					if (k & KEY_A) {
@@ -428,7 +444,7 @@ bool emu_run_game(const char *path)
 	struct retro_game_info info = { .path = path };
 	struct retro_system_av_info av;
 	u64 fps_t0;
-	int fps_frames = 0, srm_counter = 0;
+	int fps_frames = 0, present_count = 0, srm_counter = 0;
 
 	set_game_name(path);
 	log_printf("loading %s\n", path);
@@ -445,25 +461,41 @@ bool emu_run_game(const char *path)
 
 	retro_get_system_av_info(&av);
 	fps_target = av.timing.fps;
-	video_set_fps(fps_target);
 	has_audio = audio_init(av.timing.sample_rate);
 	srm_load();
 	osd("%s", __ctr_svchax ? "Dynarec enabled" : "Interpreter mode (no Luma SVC access) - slow");
 
 	fps_t0 = osGetTime();
-	u64 t_run = 0, t_present = 0;
+	u64 t_run = 0, t_present = 0, t_run_max = 0;
+	u64 next_deadline = svcGetSystemTick();
 	while (aptMainLoop()) {
+		// Pace by the clock, not by vsync: a heavy frame (Silent Hill
+		// alternates ~4ms and ~17ms ones) can borrow time from the next light
+		// one instead of always missing a refresh. The GPU still flips the
+		// screen only at vblank, so there is no tearing.
+		u64 frame_ticks = (u64)(SYSCLOCK_ARM11 / fps_target);
+		u64 now_t = svcGetSystemTick();
+		if (now_t < next_deadline)
+			svcSleepThread((next_deadline - now_t) * 1000000000ULL / SYSCLOCK_ARM11);
+		else if (now_t > next_deadline + 3 * frame_ticks)
+			next_deadline = now_t;   // far behind (loading, menu): don't race to catch up
+		next_deadline += frame_ticks;
+
 		u64 t0 = svcGetSystemTick();
 		retro_run();
 		u64 t1 = svcGetSystemTick();
+		fps_frames++;
 		t_run += t1 - t0;
+		if (t1 - t0 > t_run_max)
+			t_run_max = t1 - t0;
 
 		// touch the bottom screen to open the menu
 		if (input_keys_down() & KEY_TOUCH) {
 			if (!menu_run())
 				break;
 			fps_t0 = osGetTime();
-			fps_frames = 0;
+			fps_frames = present_count = 0;
+			next_deadline = svcGetSystemTick();
 		}
 
 		ui_begin();
@@ -475,14 +507,21 @@ bool emu_run_game(const char *path)
 			srm_counter = 0;
 			srm_save(false);
 		}
-		fps_frames++;
+		present_count++;
 		u64 now = osGetTime();
 		if (now - fps_t0 >= 1000) {
 			fps_measured = fps_frames * 1000.0f / (now - fps_t0);
-			emu_ms = t_run / (float)fps_frames / CPU_TICKS_PER_MSEC;
-			present_ms = t_present / (float)fps_frames / CPU_TICKS_PER_MSEC;
-			log_printf("fps %.1f  emu %.2fms  present %.2fms\n", fps_measured, emu_ms, present_ms);
-			t_run = t_present = 0;
+			emu_ms = t_run / (float)present_count / CPU_TICKS_PER_MSEC;
+			present_ms = t_present / (float)present_count / CPU_TICKS_PER_MSEC;
+			log_printf("fps %.1f  emu %.2fms (max %.2f)  present %.2fms (wait %.2f) xfer %.2f\n",
+				fps_measured, emu_ms, t_run_max / (float)CPU_TICKS_PER_MSEC, present_ms,
+				video_take_wait_ticks() / (float)present_count / CPU_TICKS_PER_MSEC,
+				video_take_xfer_ticks() / (float)present_count / CPU_TICKS_PER_MSEC);
+			char abuf[160];
+			audio_stats(abuf, sizeof(abuf));
+			log_printf("  %s\n", abuf);
+			t_run = t_present = t_run_max = 0;
+			present_count = 0;
 			fps_frames = 0;
 			fps_t0 = now;
 		}
@@ -493,6 +532,5 @@ bool emu_run_game(const char *path)
 	audio_exit();
 	retro_deinit();
 	core_initialized = false;
-	video_set_fps(60.0);
 	return true;
 }

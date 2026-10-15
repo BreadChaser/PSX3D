@@ -19,6 +19,14 @@ static Tex3DS_SubTexture subtex;
 static u16 *fb;              // linear memory, TEX_W pixels per row
 static unsigned frame_w = 320, frame_h = 240;
 static bool have_frame;
+static u64 wait_ticks, xfer_ticks;
+
+u64 video_take_wait_ticks(void)
+{
+	u64 t = wait_ticks;
+	wait_ticks = 0;
+	return t;
+}
 
 bool video_init(void)
 {
@@ -82,15 +90,20 @@ void video_frame(const void *data, unsigned width, unsigned height, size_t pitch
 	frame_h = height;
 	have_frame = true;
 
+	u64 t0 = svcGetSystemTick();
 	GSPGPU_FlushDataCache(fb, TEX_W * TEX_H * 2);
 	C3D_SyncDisplayTransfer((u32 *)fb, GX_BUFFER_DIM(TEX_W, TEX_H),
 		(u32 *)tex.data, GX_BUFFER_DIM(TEX_W, TEX_H), TRANSFER_FLAGS);
+	xfer_ticks += svcGetSystemTick() - t0;
 }
 
-void video_set_fps(double fps)
+u64 video_take_xfer_ticks(void)
 {
-	C3D_FrameRate(fps > 0 ? (float)fps : 60.0f);
+	u64 t = xfer_ticks;
+	xfer_ticks = 0;
+	return t;
 }
+
 
 static void draw_game(void)
 {
@@ -134,7 +147,10 @@ static void draw_game(void)
 void video_present(bool show_game, void (*draw_top)(void *),
 	void (*draw_bottom)(void *), void *ud)
 {
-	C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
+	u64 t0 = svcGetSystemTick();
+	// no vsync wait here: emu.c paces frames; this only waits for the GPU
+	C3D_FrameBegin(0);
+	wait_ticks += svcGetSystemTick() - t0;
 
 	C2D_TargetClear(top, C2D_Color32(0, 0, 0, 255));
 	C2D_SceneBegin(top);
