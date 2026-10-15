@@ -15,13 +15,12 @@ without RetroArch, behind a frontend written for the 3DS.
 - Bottom screen backlight turned off during play; touch the bottom screen to open the menu
 - Safe handling of HOME, sleep and power-off at any point
 - On-screen buttons for Old 3DS models (untested)
+- No DSP1 needed: the DSP firmware is copied from the system on first start
 
 ## Requirements
 
 - New 3DS, New 3DS XL or New 2DS XL running Luma3DS. Old 3DS, 3DS XL and 2DS
   support is included but untested, and demanding titles will not run at full speed.
-- A DSP firmware dump at `sdmc:/3ds/dspfirm.cdc`. If you don't have one, create it with
-  [DSP1](https://github.com/zoogie/DSP1).
 - Game images in `.cue/.bin`, `.chd`, `.pbp`, `.iso` or `.m3u` format. No games are included.
 - Optional: a PlayStation BIOS image (for example `scph1001.bin`) in
   `sdmc:/3ds/PSX3D/bios/`. Without one, the core's HLE BIOS is used.
@@ -91,6 +90,7 @@ make cia    # psx3d/PSX3D.cia (requires makerom and bannertool)
   P.E.Op.S. plugins
 - The authors of the PCSX-ReARMed 3DS port
 - devkitPro: libctru, citro2d, citro3d
+- [DSP1](https://github.com/zoogie/DSP1) by zoogie: the method for copying the DSP firmware
 - Artwork and font credits: [tools/art/CREDITS.md](tools/art/CREDITS.md)
 
 PSX3D is not affiliated with Sony, Nintendo, libretro or the PCSX-ReARMed developers.
