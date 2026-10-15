@@ -28,6 +28,7 @@ void log_close(void);
 typedef struct {
 	char last_dir[PATH_LEN];
 	char games_dir[PATH_LEN];   // Y in the browser jumps here
+	char last_title[256];       // library: game to select on start
 	int  smooth;       // bilinear filtering
 	int  show_fps;
 	int  stereo;       // 3D slider: 0 off, 1 screen depth, 2 real (per-object)
@@ -101,6 +102,35 @@ void ui_exit(void);
 void ui_text(float x, float y, float size, u32 color, const char *fmt, ...);
 void ui_rect(float x, float y, float w, float h, u32 color);
 void ui_begin(void);
+
+// library.c - one entry per game, clean titles, discs grouped
+typedef struct {
+	char *title;        // "Metal Gear Solid"
+	char *cover_key;    // No-Intro name of disc 1, used to find box art
+	char *group;        // scan-time only
+	u32 dir_id;         // scan-time only
+	int ndiscs;
+	char *discs[8];
+	int disc_no[8];
+} game_t;
+bool library_load(const char *root, bool rescan);
+int library_count(void);
+const game_t *library_get(int i);
+const char *library_launch_path(const game_t *g, char *buf, size_t len);
+
+// covers.c - box art
+#define COVER_SIZE 128
+void covers_init(void);
+void covers_exit(void);
+C3D_Tex *covers_get(int game);
+void covers_reset(void);
+void covers_focus(int game);
+
+// libui.c - the game library screen
+void libui_init(void);
+void libui_exit(void);
+int libui_run(char *out_path, size_t len);
+void libui_select_title(const char *title);
 
 // browser.c - returns true and fills path when a game is chosen
 bool browser_run(char *out_path, size_t out_len);

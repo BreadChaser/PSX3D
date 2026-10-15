@@ -61,6 +61,8 @@ void config_load(void)
 			config_set_core_override(k + 5, v);
 		else if (strcmp(k, "last_dir") == 0)
 			snprintf(g_cfg.last_dir, sizeof(g_cfg.last_dir), "%s", v);
+		else if (strcmp(k, "last_title") == 0)
+			snprintf(g_cfg.last_title, sizeof(g_cfg.last_title), "%s", v);
 		else if (strcmp(k, "games_dir") == 0)
 			snprintf(g_cfg.games_dir, sizeof(g_cfg.games_dir), "%s", v);
 		else if (strcmp(k, "debug") == 0)
@@ -88,6 +90,8 @@ void config_save(void)
 	fprintf(f, "last_dir=%s\n", g_cfg.last_dir);
 	if (g_cfg.games_dir[0])
 		fprintf(f, "games_dir=%s\n", g_cfg.games_dir);
+	if (g_cfg.last_title[0])
+		fprintf(f, "last_title=%s\n", g_cfg.last_title);
 	fprintf(f, "smooth=%d\n", g_cfg.smooth);
 	fprintf(f, "show_fps=%d\n", g_cfg.show_fps);
 	fprintf(f, "stereo=%d\n", g_cfg.stereo);
