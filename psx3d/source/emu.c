@@ -360,7 +360,7 @@ static const char *const menu_names[M_COUNT] = {
 	[M_RESUME] = "Resume", [M_SAVE] = "Save state", [M_LOAD] = "Load state", [M_DISC] = "Swap disc", [M_CHEATS] = "Cheats",
 	[M_SETTINGS] = "Settings", [M_RESET] = "Reset game", [M_EXIT] = "Exit to library",
 	[M_SCREEN] = "Screen", [M_3D] = "3D", [M_SMOOTH] = "Smoothing",
-	[M_FPS] = "Show FPS", [M_CONTROLS] = "Controls", [M_REWIND] = "Rewind (this game)",
+	[M_FPS] = "Show FPS", [M_CONTROLS] = "Controls", [M_REWIND] = "Rewind",
 	[M_AUTOSAVE] = "Continue where I left off", [M_CORE] = "Core options", [M_RECORD] = "Debug: record audio",
 	[M_TONE] = "Debug: test tone",
 };
@@ -930,6 +930,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			if (!input_rewind())
 				rewind_hint = false;
 			bool ff = input_fast_forward();
+			options_fast_forward(ff);
 			// fast-forward: up to 3 more frames per shown frame, no sound
 			for (int extra = ff ? 3 : 0; extra > 0; extra--) {
 				audio_muted = true;
@@ -1010,6 +1011,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	}
 
 	aptUnhook(&apt_cookie);
+	options_fast_forward(false);
 	log_printf("game: leaving\n");
 	rewind_stop();
 	if (g_cfg.autosave)

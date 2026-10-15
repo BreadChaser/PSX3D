@@ -60,6 +60,7 @@ const char *options_get(const char *key);
 bool options_take_updated(void);
 void options_mark_updated(void);
 int  options_count(void);
+void options_fast_forward(bool on);
 const char *options_key(int i);
 const char *options_desc(int i);
 const char *options_cycle(int i, int dir);
