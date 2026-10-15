@@ -23,7 +23,6 @@ static void set_defaults(void)
 {
 	memset(&g_cfg, 0, sizeof(g_cfg));
 	strcpy(g_cfg.last_dir, "sdmc:/");
-	g_cfg.scale_mode = 0;
 	g_cfg.smooth = 1;
 	g_cfg.show_fps = 0;
 	g_cfg.stereo = 1;
@@ -62,8 +61,8 @@ void config_load(void)
 			config_set_core_override(k + 5, v);
 		else if (strcmp(k, "last_dir") == 0)
 			snprintf(g_cfg.last_dir, sizeof(g_cfg.last_dir), "%s", v);
-		else if (strcmp(k, "scale_mode") == 0)
-			g_cfg.scale_mode = atoi(v) % 3;
+		else if (strcmp(k, "debug") == 0)
+			g_cfg.debug = atoi(v) != 0;
 		else if (strcmp(k, "smooth") == 0)
 			g_cfg.smooth = atoi(v) != 0;
 		else if (strcmp(k, "show_fps") == 0)
@@ -81,10 +80,11 @@ void config_save(void)
 		return;
 	fprintf(f, "# PSX3D settings\n");
 	fprintf(f, "last_dir=%s\n", g_cfg.last_dir);
-	fprintf(f, "scale_mode=%d\n", g_cfg.scale_mode);
 	fprintf(f, "smooth=%d\n", g_cfg.smooth);
 	fprintf(f, "show_fps=%d\n", g_cfg.show_fps);
 	fprintf(f, "stereo=%d\n", g_cfg.stereo);
+	if (g_cfg.debug)
+		fprintf(f, "debug=1\n");
 	for (int i = 0; i < novr; i++) {
 		// built-in defaults aren't saved, so improving them reaches old installs
 		bool is_default = false;

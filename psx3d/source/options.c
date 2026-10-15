@@ -52,6 +52,15 @@ static const char *const hidden_prefix[] = {
 
 static const char *locked_value(const char *key)
 {
+	// Old 3DS: no core 2, and the syscore gives Homebrew Launcher apps no
+	// CPU time, so the core's helper threads would starve. Run everything
+	// on the main core there.
+	if (!g_new3ds) {
+		if (strcmp(key, "pcsx_rearmed_gpu_thread_rendering") == 0)
+			return "disabled";
+		if (strcmp(key, "pcsx_rearmed_cd_readahead") == 0)
+			return "0";
+	}
 	for (size_t i = 0; i < sizeof(locked) / sizeof(locked[0]); i++)
 		if (strcmp(locked[i][0], key) == 0)
 			return locked[i][1];
@@ -128,6 +137,10 @@ const char *options_get(const char *key)
 
 	if (!ov)
 		ov = config_core_override(key);
+	// Old 3DS can't hold 60fps in most 3D games: skip drawing instead of
+	// slowing down (still changeable in the menu)
+	if (!ov && !g_new3ds && strcmp(key, "pcsx_rearmed_frameskip_type") == 0)
+		ov = "auto";
 	if (o && ov) {
 		// only hand the core values it actually knows about
 		for (int j = 0; j < o->nvalues; j++)

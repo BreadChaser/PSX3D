@@ -224,7 +224,7 @@ static void state_save(void)
 	void *buf = size ? malloc(size) : NULL;
 
 	if (!buf || !retro_serialize(buf, size)) {
-		osd("Save state failed");
+		osd(buf ? "Save state failed" : "Not enough memory to save a state");
 		free(buf);
 		return;
 	}
@@ -242,8 +242,12 @@ static void state_load(void)
 
 	snprintf(ext, sizeof(ext), ".st%d", state_slot);
 	make_path(path, sizeof(path), PSX3D_STATE_DIR, ext);
-	if (!buf || read_file(path, buf, size) == 0 || !retro_unserialize(buf, size))
+	if (!buf)
+		osd("Not enough memory to load a state");
+	else if (read_file(path, buf, size) == 0)
 		osd("No state in slot %d", state_slot);
+	else if (!retro_unserialize(buf, size))
+		osd("State %d is from an incompatible version", state_slot);
 	else
 		osd("Loaded state %d", state_slot);
 	free(buf);
@@ -251,7 +255,19 @@ static void state_load(void)
 
 // ---------------------------------------------------------------- menu
 
-enum { M_RESUME, M_SAVE, M_LOAD, M_SLOT, M_WIDE, M_SCALE, M_SMOOTH, M_FPS, M_CORE, M_RECORD, M_TONE, M_RESET, M_EXIT, M_COUNT };
+enum { M_RESUME, M_SAVE, M_LOAD, M_SLOT, M_SCREEN, M_SMOOTH, M_FPS, M_CORE, M_RECORD, M_TONE, M_RESET, M_EXIT, M_COUNT };
+
+// items shown in the menu; the debug ones only with debug=1 in config.ini
+static int menu_items(int *items)
+{
+	int n = 0;
+	for (int i = 0; i < M_COUNT; i++) {
+		if ((i == M_RECORD || i == M_TONE) && !g_cfg.debug)
+			continue;
+		items[n++] = i;
+	}
+	return n;
+}
 
 typedef struct {
 	int sel;
@@ -259,7 +275,6 @@ typedef struct {
 	int core_sel, core_scroll;
 } menu_t;
 
-static const char *scale_names[] = { "4:3", "Stretch", "Pixel aspect" };
 
 static void menu_draw_top(void *ud)
 {
@@ -289,18 +304,16 @@ static void menu_draw_bottom(void *ud)
 	}
 
 	const char *labels[M_COUNT];
-	char slot[32], scale[40], smooth[32], fps[32], wide[48];
+	char slot[32], screen[48], smooth[32], fps[32];
 	snprintf(slot, sizeof(slot), "State slot: %d", state_slot);
-	snprintf(wide, sizeof(wide), "Widescreen (3D games): %s", config_widescreen() ? "on" : "off");
-	snprintf(scale, sizeof(scale), "Screen: %s", config_widescreen() ? "full (widescreen)" : scale_names[g_cfg.scale_mode]);
+	snprintf(screen, sizeof(screen), "Screen: %s", config_widescreen() ? "widescreen (3D games)" : "4:3");
 	snprintf(smooth, sizeof(smooth), "Smoothing: %s", g_cfg.smooth ? "on" : "off");
 	snprintf(fps, sizeof(fps), "Show FPS: %s", g_cfg.show_fps ? "on" : "off");
 	labels[M_RESUME] = "Resume";
 	labels[M_SAVE] = "Save state";
 	labels[M_LOAD] = "Load state";
 	labels[M_SLOT] = slot;
-	labels[M_WIDE] = wide;
-	labels[M_SCALE] = scale;
+	labels[M_SCREEN] = screen;
 	labels[M_SMOOTH] = smooth;
 	labels[M_FPS] = fps;
 	labels[M_CORE] = "Core options...";
@@ -309,12 +322,13 @@ static void menu_draw_bottom(void *ud)
 	labels[M_RESET] = "Reset game";
 	labels[M_EXIT] = "Exit to game list";
 
+	int items[M_COUNT], n = menu_items(items);
 	ui_text(8, 4, 0.5f, grey, "%.40s", game_name);
-	for (int i = 0; i < M_COUNT; i++) {
+	for (int i = 0; i < n; i++) {
 		float y = 22 + i * 18;
 		if (i == m->sel)
 			ui_rect(0, y, 320, 18, hl);
-		ui_text(12, y + 1, 0.5f, white, "%s", labels[i]);
+		ui_text(12, y + 1, 0.5f, white, "%s", labels[items[i]]);
 	}
 }
 
@@ -323,7 +337,8 @@ static bool menu_run(void)
 {
 	static menu_t m;   // keep the core options scroll position between visits
 	m.core_page = false;
-	m.sel = M_RESUME;
+	m.sel = 0;
+	int items[M_COUNT], nitems = menu_items(items);
 
 	audio_pause(true);
 	srm_save(false);
@@ -345,19 +360,18 @@ static bool menu_run(void)
 				if (m.core_sel >= m.core_scroll + 12) m.core_scroll = m.core_sel - 11;
 			}
 		} else {
-			if (k & KEY_DOWN) m.sel = (m.sel + 1) % M_COUNT;
-			if (k & KEY_UP) m.sel = (m.sel - 1 + M_COUNT) % M_COUNT;
+			if (k & KEY_DOWN) m.sel = (m.sel + 1) % nitems;
+			if (k & KEY_UP) m.sel = (m.sel - 1 + nitems) % nitems;
 			if (k & KEY_B)
 				break;
 			int dir = (k & KEY_RIGHT) ? 1 : (k & KEY_LEFT) ? -1 : (k & KEY_A) ? 1 : 0;
 			if (dir) {
-				switch (m.sel) {
+				switch (items[m.sel]) {
 				case M_RESUME: if (k & KEY_A) goto resume; break;
 				case M_SAVE: if (k & KEY_A) { state_save(); goto resume; } break;
 				case M_LOAD: if (k & KEY_A) { state_load(); goto resume; } break;
 				case M_SLOT: state_slot = (state_slot + dir + 10) % 10; break;
-				case M_WIDE: config_set_widescreen(!config_widescreen()); break;
-				case M_SCALE: g_cfg.scale_mode = (g_cfg.scale_mode + dir + 3) % 3; break;
+				case M_SCREEN: config_set_widescreen(!config_widescreen()); break;
 				case M_SMOOTH: g_cfg.smooth ^= 1; break;
 				case M_FPS: g_cfg.show_fps ^= 1; break;
 				case M_CORE: if (k & KEY_A) m.core_page = true; break;

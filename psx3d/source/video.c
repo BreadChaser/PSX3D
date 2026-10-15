@@ -138,22 +138,10 @@ static void draw_game(float eye_dx)
 	subtex.top = 1.0f;
 	subtex.bottom = 1.0f - (float)frame_h / TEX_H;
 
-	switch (config_widescreen() ? 1 : g_cfg.scale_mode) {
-	case 1: // stretch to fill (also widescreen: the game already drew a 5:3 view)
-		dw = 400; dh = 240;
-		break;
-	case 2: // fit height, keep the game's pixel aspect
-		dh = 240;
-		dw = frame_w * 240.0f / frame_h;
-		if (frame_h <= 256 && frame_w > 400)
-			dw = frame_w / 2.0f; // hi-res 512/640 wide modes
-		if (dw > 400)
-			dw = 400;
-		break;
-	default: // 4:3, like a TV
-		dw = 320; dh = 240;
-		break;
-	}
+	// 4:3 like a TV, or the full 400x240 when the widescreen hack makes
+	// 3D games draw a 5:3 view
+	dw = config_widescreen() ? 400 : 320;
+	dh = 240;
 	x = (400 - dw) / 2 + eye_dx;
 	y = (240 - dh) / 2;
 

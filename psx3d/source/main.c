@@ -6,15 +6,57 @@
 // Main thread stack; the core warns below 1MB (dynarec recursion).
 u32 __stacksize__ = 0x100000;
 
-// By default libctru hands nearly all free memory to the heaps. Keep them
-// smaller so the core can map PS1 RAM/BIOS/LUTs at fixed addresses with
-// svcControlMemory, which makes the dynarec's memory accesses much faster.
-u32 __ctru_heap_size        = 40 * 1024 * 1024;
-u32 __ctru_linear_heap_size = 24 * 1024 * 1024;
+// Replaces libctru's heap setup (same steps, libctru 2.6). The default hands
+// nearly all free memory to the heaps; we size them from what this console
+// actually gives us (~124MB on New 3DS, far less on Old 3DS) and leave a
+// reserve so the core can map PS1 RAM/BIOS/LUTs at fixed addresses, which
+// makes the dynarec's memory accesses much faster.
+extern u32 __ctru_heap, __ctru_heap_size, __ctru_linear_heap, __ctru_linear_heap_size;
+extern char *fake_heap_start, *fake_heap_end;
+void mappableInit(u32 addrMin, u32 addrMax);
+
+#define MB (1024 * 1024)
+
+void __system_allocateHeaps(void)
+{
+	Handle reslimit = 0;
+	s64 max_commit = 0, cur_commit = 0;
+	ResourceLimitType type = RESLIMIT_COMMIT;
+
+	if (R_FAILED(svcGetResourceLimit(&reslimit, CUR_PROCESS_HANDLE)))
+		svcBreak(USERBREAK_PANIC);
+	svcGetResourceLimitLimitValues(&max_commit, reslimit, &type, 1);
+	svcGetResourceLimitCurrentValues(&cur_commit, reslimit, &type, 1);
+	svcCloseHandle(reslimit);
+
+	u32 remaining = (u32)(max_commit - cur_commit) & ~0xFFF;
+	u32 reserve = remaining > 80 * MB ? 12 * MB : 8 * MB;
+	u32 linear = remaining / 3;
+	if (linear > 24 * MB) linear = 24 * MB;
+	if (linear < 12 * MB) linear = 12 * MB;
+	u32 heap = remaining > linear + reserve + 8 * MB ? remaining - linear - reserve : 8 * MB;
+	if (heap > 64 * MB) heap = 64 * MB;
+	if (heap + linear > remaining)
+		heap = remaining - linear;   // tiny console: give up the reserve
+	__ctru_heap_size = heap & ~0xFFF;
+	__ctru_linear_heap_size = linear & ~0xFFF;
+
+	if (R_FAILED(svcControlMemory(&__ctru_heap, OS_HEAP_AREA_BEGIN, 0x0, __ctru_heap_size,
+			MEMOP_ALLOC, MEMPERM_READ | MEMPERM_WRITE)))
+		svcBreak(USERBREAK_PANIC);
+	if (R_FAILED(svcControlMemory(&__ctru_linear_heap, 0x0, 0x0, __ctru_linear_heap_size,
+			MEMOP_ALLOC_LINEAR, MEMPERM_READ | MEMPERM_WRITE)))
+		svcBreak(USERBREAK_PANIC);
+	mappableInit(OS_MAP_AREA_BEGIN, OS_MAP_AREA_END);
+
+	fake_heap_start = (char *)__ctru_heap;
+	fake_heap_end = fake_heap_start + __ctru_heap_size;
+}
 
 // Set when we may use the kernel calls the dynarec needs (Luma3DS gives
 // homebrew full SVC access). Without it the core uses the slow interpreter.
 int __ctr_svchax;
+bool g_new3ds;
 
 static bool detect_svc_access(void)
 {
@@ -68,6 +110,11 @@ int main(void)
 	mkdir(PSX3D_STATE_DIR, 0777);
 	log_init();
 	log_printf("PSX3D " PSX3D_VERSION "\n");
+	{
+		APT_CheckNew3DS(&g_new3ds);
+		log_printf("%s 3DS, heap %luMB, linear %luMB (%luMB free)\n", g_new3ds ? "New" : "Old",
+			__ctru_heap_size / MB, __ctru_linear_heap_size / MB, linearSpaceFree() / MB);
+	}
 
 	__ctr_svchax = detect_svc_access();
 	if (__ctr_svchax && running_in_emulator()) {

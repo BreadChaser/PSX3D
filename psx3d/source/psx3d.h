@@ -27,10 +27,10 @@ void log_close(void);
 // config.c - frontend settings plus core option overrides
 typedef struct {
 	char last_dir[PATH_LEN];
-	int  scale_mode;   // 0 = 4:3, 1 = stretch to 400x240, 2 = integer/pixel 1:1
 	int  smooth;       // bilinear filtering
 	int  show_fps;
 	int  stereo;       // 3D slider moves the picture behind the screen
+	int  debug;        // show debug tools in the menu
 } psx3d_config;
 
 extern psx3d_config g_cfg;
@@ -94,5 +94,6 @@ void emu_deinit(void);
 bool emu_run_game(const char *path);
 
 extern int __ctr_svchax;
+extern bool g_new3ds;
 
 #endif
