@@ -524,7 +524,7 @@ static void bottom_backlight(bool on)
 	// gsp::Lcd allows very few sessions and the HOME Menu needs one: keeping
 	// ours open across a HOME press left the HOME Menu waiting forever.
 	// Open it only for the switch.
-	if (R_FAILED(gspLcdInit()))
+	if (sw_nolcd || R_FAILED(gspLcdInit()))
 		return;
 	if (on)
 		GSPLCD_PowerOnBacklight(GSPLCD_SCREEN_BOTTOM);
