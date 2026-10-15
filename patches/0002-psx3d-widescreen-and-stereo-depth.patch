@@ -1,5 +1,5 @@
 diff --git a/frontend/libretro.c b/frontend/libretro.c
-index 9dd3502..8131b01 100644
+index 9dd3502..a281df0 100644
 --- a/frontend/libretro.c
 +++ b/frontend/libretro.c
 @@ -31,6 +31,8 @@
@@ -40,7 +40,7 @@ index 9dd3502..8131b01 100644
 +      int on = environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value &&
 +         strcmp(var.value, "enabled") == 0;
 +      if (on != psx3d_stereo_enabled) {
-+         psx3d_stereo_enabled = on;
++         psx3d_stereo_set(on);
 +#ifndef DRC_DISABLE
 +         if (in_flight && Config.Cpu == CPU_DYNAREC)
 +            new_dynarec_clear_full();
@@ -154,10 +154,10 @@ index 6719602..cd6a4a3 100644
  #elif defined(HAVE_ARMV5)
 diff --git a/libpcsxcore/psx3d_depth.h b/libpcsxcore/psx3d_depth.h
 new file mode 100644
-index 0000000..2c5dffa
+index 0000000..8c1b533
 --- /dev/null
 +++ b/libpcsxcore/psx3d_depth.h
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,98 @@
 +/*
 + * PSX3D stereo 3D support: per-vertex depth tracking.
 + *
@@ -217,6 +217,9 @@ index 0000000..2c5dffa
 +	return (key * 2654435761u) >> (32 - PSX3D_ZT_BITS);
 +}
 +
++// turn tracking on/off safely (main thread)
++void psx3d_stereo_set(int on);
++
 +// GTE side (main thread)
 +static inline void psx3d_zput(int sx, int sy, int sz)
 +{
@@ -275,7 +278,7 @@ index adede2b..199882b 100644
  
  #ifdef  ENABLE_GPU_NULL_SUPPORT
 diff --git a/plugins/gpu_unai/gpulib_if.cpp b/plugins/gpu_unai/gpulib_if.cpp
-index 4b9b57e..08d5202 100644
+index 4b9b57e..a8e11c6 100644
 --- a/plugins/gpu_unai/gpulib_if.cpp
 +++ b/plugins/gpu_unai/gpulib_if.cpp
 @@ -26,6 +26,8 @@
@@ -307,7 +310,7 @@ index 4b9b57e..08d5202 100644
      } break;
  
      case 6: {
-@@ -227,6 +231,321 @@ static inline void textured_sprite(int &cpu_cycles_sum, int &cpu_cycles)
+@@ -227,6 +231,346 @@ static inline void textured_sprite(int &cpu_cycles_sum, int &cpu_cycles)
    gput_sum(cpu_cycles_sum, cpu_cycles, gput_sprite(w, h));
  }
  
@@ -411,6 +414,31 @@ index 4b9b57e..08d5202 100644
 +    psx3d_ov_clear(psx3d_ov_buf[i]);
 +  }
 +  return true;
++}
++
++// Turn stereo depth/HUD tracking on or off (main thread). The GPU thread
++// may still have queued primitives that never got a flag; let it finish
++// them first, then start both sides of the flag queue from zero, so flags
++// and primitives can't end up offset from each other.
++extern "C" void psx3d_stereo_set(int on)
++{
++  if (on == psx3d_stereo_enabled)
++    return;
++  gpu_async_sync(&gpu);
++  psx3d_stereo_enabled = 0;
++  __sync_synchronize();
++  psx3d_ov_head = psx3d_ov_tail = 0;
++  psx3d_prims = 0;
++  psx3d_rank = 0;
++  psx3d_seen_3d = false;
++  memset(psx3d_cur, 0, sizeof(psx3d_cur));
++  if (on && psx3d_ov_buf[0]) {
++    psx3d_ov_clear(psx3d_ov_buf[0]);
++    psx3d_ov_clear(psx3d_ov_buf[1]);
++    memset(psx3d_ov_rows, 0, sizeof(psx3d_ov_rows));
++  }
++  __sync_synchronize();
++  psx3d_stereo_enabled = on;
 +}
 +
 +// GPU thread: flag for the next primitive (true = draw it into the HUD layer)
@@ -629,7 +657,7 @@ index 4b9b57e..08d5202 100644
  extern const unsigned char cmd_lengths[256];
  
  int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
-@@ -237,6 +556,7 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
+@@ -237,6 +581,7 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
    le32_t *list = (le32_t *)list_;
    le32_t *list_start = list;
    le32_t *list_end = list + list_len;
@@ -637,7 +665,7 @@ index 4b9b57e..08d5202 100644
  
    if (IS_OLD_RENDERER()) {
      return oldunai_do_cmd_list(list_, list_len, ex_regs,
-@@ -252,6 +572,18 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
+@@ -252,6 +597,18 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
        break;
      }
  
@@ -656,7 +684,7 @@ index 4b9b57e..08d5202 100644
      #define PRIM cmd
      gpu_unai.PacketBuffer.U4[0] = list[0];
      for (i = 1; i <= len; i++)
-@@ -663,9 +995,13 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
+@@ -663,9 +1020,13 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
          gpuGP0Cmd_0xEx(gpu_unai, cmd_word);
        } break;
      }

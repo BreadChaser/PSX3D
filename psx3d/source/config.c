@@ -69,8 +69,11 @@ void config_load(void)
 			g_cfg.show_fps = atoi(v) != 0;
 		else if (strcmp(k, "stereo") == 0)
 			g_cfg.stereo = atoi(v) % 3;
+
 	}
 	fclose(f);
+	if (g_cfg.stereo == 2 && !g_cfg.debug)
+		g_cfg.stereo = 1;   // experimental real 3D needs debug=1
 	config_sync_stereo();
 }
 
