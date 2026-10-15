@@ -274,7 +274,8 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	float slider = osGet3DSliderState();
 	bool ui3d = !show_game && ui_wants_3d && g_cfg.stereo && slider > 0.01f;
 	bool stereo = (show_game && g_cfg.stereo && slider > 0.01f) || ui3d;
-	ui_parallax = ui3d ? slider * 6.0f : 0.0f;
+	// layers span depth -1.2..3: keep the whole range within a few pixels
+	ui_parallax = ui3d ? slider * 1.5f : 0.0f;
 	if (stereo != stereo_on) {
 		gfxSet3D(stereo);
 		stereo_on = stereo;

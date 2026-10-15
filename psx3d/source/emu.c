@@ -226,7 +226,9 @@ static void srm_save(bool force)
 }
 
 static int state_slot;
-static unsigned menu_disc;   // disc picked in the menu (left/right), inserted with A
+static void bottom_backlight(bool on);
+static unsigned menu_disc;
+static int game_frames;      // frames since the game (re)started showing   // disc picked in the menu (left/right), inserted with A
 
 static void state_save(void)
 {
@@ -355,6 +357,7 @@ static void menu_draw_bottom(void *ud)
 // returns false when the user wants to leave the game
 static bool menu_run(void)
 {
+	bottom_backlight(true);
 	static menu_t m;   // keep the core options scroll position between visits
 	m.core_page = false;
 	if (have_disk && disk.get_image_index)
@@ -447,6 +450,7 @@ static bool menu_run(void)
 
 resume:
 	config_save();
+	game_frames = 0;   // dim again a moment after resuming
 	audio_pause(false);
 	return true;
 }
@@ -473,6 +477,21 @@ static void game_draw_bottom(void *ud)
 	if (!has_audio)
 		ui_text(4, 186, 0.42f, C2D_Color32(255, 160, 120, 255),
 			"No sound: dump DSP firmware (dspfirm.cdc)");
+}
+
+// In game the bottom screen goes fully dark (backlight off): it only shows
+// the FPS counter. Touch still works, so tapping it opens the menu.
+static bool bottom_dark;
+
+static void bottom_backlight(bool on)
+{
+	if (on == !bottom_dark)
+		return;
+	if (on)
+		GSPLCD_PowerOnBacklight(GSPLCD_SCREEN_BOTTOM);
+	else
+		GSPLCD_PowerOffBacklight(GSPLCD_SCREEN_BOTTOM);
+	bottom_dark = !on;
 }
 
 bool emu_init(void)
@@ -596,6 +615,9 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		video_present(true, NULL, game_draw_bottom, NULL);
 		t_present += svcGetSystemTick() - t1;
 
+		if (++game_frames == 120 && g_cfg.bottom_off && !touch_buttons_active() && !g_cfg.show_fps)
+			bottom_backlight(false);
+
 		if (++srm_counter >= SRM_CHECK_FRAMES) {
 			srm_counter = 0;
 			srm_save(false);
@@ -627,6 +649,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		}
 	}
 
+	bottom_backlight(true);
 	srm_save(false);
 	retro_unload_game();
 	audio_exit();
