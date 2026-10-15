@@ -4,3 +4,4 @@ psx3d/build/
 *.smdh
 *.map
 psx3d/romfs/gfx/
+*.cia
