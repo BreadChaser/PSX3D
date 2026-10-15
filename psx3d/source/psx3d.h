@@ -148,6 +148,7 @@ void flist_update(flist_t *f, int sel, int n, int rows);
 void flist_draw(const flist_t *f, int n, int sel, float x, float y0, float w, float row_h, int rows,
 	const char *(*label)(int, void *), const char *(*value)(int, void *), void *ud, u32 accent);
 int flist_row_at(const flist_t *f, float y0, float row_h, float py);
+void flist_snap(flist_t *f, int sel, int n, int rows);
 
 // library.c - one entry per game, clean titles, discs grouped
 typedef struct {
