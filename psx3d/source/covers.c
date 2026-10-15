@@ -31,7 +31,8 @@ static slot_t slots[SLOTS];
 static Thread worker;
 static LightLock lock;
 static LightEvent wake;
-static volatile bool quit, net_ok = true;
+static volatile bool quit;
+static u64 net_retry_at;   // after a network failure, wait before trying again
 static u32 use_clock;
 static volatile int focus;   // the selected game: fetch nearest first
 static u32 *soc_buf;
@@ -173,8 +174,8 @@ static u32 *download(const char *key)
 		px = decode_png(m.data, m.len, NULL);
 	else if (rc == CURLE_COULDNT_CONNECT || rc == CURLE_COULDNT_RESOLVE_HOST ||
 	         rc == CURLE_OPERATION_TIMEDOUT) {
-		log_printf("covers: no network (%d), stopping downloads\n", rc);
-		net_ok = false;
+		log_printf("covers: network error %d, retrying in 15s\n", rc);
+		net_retry_at = osGetTime() + 15000;
 	} else {
 		log_printf("covers: %s -> %d / HTTP %ld\n", name, rc, code);
 	}
@@ -204,8 +205,12 @@ static u32 *load_cover(const game_t *g)
 	// 2. the user's own PNG, 3. download
 	cache_path(g->cover_key, ".png", path, sizeof(path));
 	px = decode_png(NULL, 0, path);
-	if (!px && net_ok)
-		px = download(g->cover_key);
+	if (!px) {
+		while (!quit && osGetTime() < net_retry_at)
+			svcSleepThread(200000000LL);
+		if (!quit)
+			px = download(g->cover_key);
+	}
 	if (px) {
 		cache_path(g->cover_key, ".bin", path, sizeof(path));
 		if ((f = fopen(path, "wb"))) {
