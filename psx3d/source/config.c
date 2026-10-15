@@ -117,3 +117,20 @@ void config_set_core_override(const char *key, const char *value)
 		novr++;
 	}
 }
+
+// Widescreen hack: the GTE squeezes 3D geometry horizontally by 4:3 / 5:3 =
+// 0.8, so games draw a wider view that fills the 400x240 top screen.
+#define WS_KEY "pcsx_rearmed_psx3d_widescreen"
+#define WS_Q16 "52429"   // 0.8 in 16.16 fixed point
+
+bool config_widescreen(void)
+{
+	const char *v = config_core_override(WS_KEY);
+	return v && strcmp(v, "0") != 0;
+}
+
+void config_set_widescreen(bool on)
+{
+	config_set_core_override(WS_KEY, on ? WS_Q16 : "0");
+	options_mark_updated();
+}

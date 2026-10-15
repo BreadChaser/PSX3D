@@ -1,0 +1,113 @@
+diff --git a/frontend/libretro.c b/frontend/libretro.c
+index 9dd3502..bb16ba4 100644
+--- a/frontend/libretro.c
++++ b/frontend/libretro.c
+@@ -31,6 +31,7 @@
+ #include "../libpcsxcore/psxcounters.h"
+ #include "../libpcsxcore/psxmem_map.h"
+ #include "../libpcsxcore/new_dynarec/new_dynarec.h"
++#include "../libpcsxcore/gte.h"
+ #include "../libpcsxcore/cdrom.h"
+ #include "../libpcsxcore/cdrom-async.h"
+ #include "../libpcsxcore/cdriso.h"
+@@ -3068,6 +3069,24 @@ static void update_variables(bool in_flight)
+    }
+ 
+ #ifdef _3DS
++   // PSX3D: widescreen hack, value is the horizontal GTE scale in 16.16
++   // fixed point (0 = off). Compiled code bakes in the GTE handler choice,
++   // so flush the dynarec when it changes.
++   var.value = NULL;
++   var.key = "pcsx_rearmed_psx3d_widescreen";
++   {
++      int ws = 0;
++      if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
++         ws = strtol(var.value, NULL, 10);
++      if (ws != gte_hack_widescreen_q16) {
++         gte_hack_widescreen_q16 = ws;
++#ifndef DRC_DISABLE
++         if (in_flight && Config.Cpu == CPU_DYNAREC)
++            new_dynarec_clear_full();
++#endif
++      }
++   }
++
+    var.value = NULL;
+    var.key = "pcsx_rearmed_3ds_appcputime";
+    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+diff --git a/libpcsxcore/gte.c b/libpcsxcore/gte.c
+index d1f18df..d1f6093 100644
+--- a/libpcsxcore/gte.c
++++ b/libpcsxcore/gte.c
+@@ -561,6 +561,15 @@ static u32 gteMAC123f(psxCP2Regs *regs, s32 vx, s32 vy, s32 vz,
+ 
+ #endif
+ 
++#ifndef FLAGLESS
++int gte_hack_widescreen_q16;
++#endif
++
++static inline force_inline s64 ws_x(s64 x)
++{
++	return gte_hack_widescreen_q16 ? (x * gte_hack_widescreen_q16) >> 16 : x;
++}
++
+ static inline force_inline void gteRTPS(psxCP2Regs *regs, int shift, int lm)
+ {
+ 	s32 vx = gteVX0, vy = gteVY0, vz = gteVZ0;
+@@ -588,7 +597,7 @@ static inline force_inline void gteRTPS(psxCP2Regs *regs, int shift, int lm)
+ 	gteSXY0 = gteSXY1;
+ 	gteSXY1 = gteSXY2;
+ 
+-	gteSX2 = limG1(&flags, mac0flags(&flags, gteOFX + (s64)gteIR1 * quotient) >> 16);
++	gteSX2 = limG1(&flags, mac0flags(&flags, gteOFX + ws_x((s64)gteIR1 * quotient)) >> 16);
+ 	gteSY2 = limG2(&flags, mac0flags(&flags, gteOFY + (s64)gteIR2 * quotient) >> 16);
+ 
+ 	gteMAC0 = mac0 = mac0flags(&flags, gteDQB + (s64)gteDQA * quotient);
+@@ -624,7 +633,7 @@ static inline force_inline void gteRTPT(psxCP2Regs *regs, int shift, int lm)
+ 		sz3 = limD(&flags, sz3);
+ 		quotient = divide(&flags, h, sz3);
+ 		fSZ(v) = sz3;
+-		fSX(v) = limG1(&flags, mac0flags(&flags, gteOFX + (s64)ir1 * quotient) >> 16);
++		fSX(v) = limG1(&flags, mac0flags(&flags, gteOFX + ws_x((s64)ir1 * quotient)) >> 16);
+ 		fSY(v) = limG2(&flags, mac0flags(&flags, gteOFY + (s64)ir2 * quotient) >> 16);
+ 	}
+ 
+diff --git a/libpcsxcore/gte.h b/libpcsxcore/gte.h
+index a7baf6f..8e68227 100644
+--- a/libpcsxcore/gte.h
++++ b/libpcsxcore/gte.h
+@@ -66,6 +66,10 @@ void MTC2(struct psxCP2Regs *regs, u32 value, int reg);
+ void CTC2(struct psxCP2Regs *regs, u32 value, int reg);
+ 
+ typedef void (gte_handler)(psxCP2Regs *regs, u32 code);
++// PSX3D widescreen hack: horizontal scale applied to RTPS/RTPT projection,
++// 16.16 fixed point; 0 = off. Fits a wider view into the same screen width.
++extern int gte_hack_widescreen_q16;
++
+ gte_handler *gteGetHandler(u32 code);
+ gte_handler *gteGetHandler_nf(u32 code);
+ 
+diff --git a/libpcsxcore/new_dynarec/assem_arm.c b/libpcsxcore/new_dynarec/assem_arm.c
+index 6719602..ffd79f8 100644
+--- a/libpcsxcore/new_dynarec/assem_arm.c
++++ b/libpcsxcore/new_dynarec/assem_arm.c
+@@ -2070,7 +2070,8 @@ static void c2op_assemble(struct compile_state *st, int i, const struct regstat
+       }
+ #endif // HAVE_ARMV5
+       case GTEOP_RTPS:
+-        if (shift && !lm) {
++        // the asm fast paths don't know the widescreen hack
++        if (shift && !lm && !gte_hack_widescreen_q16) {
+ #if defined(__ARM_NEON__)
+           handler = need_flags ? gteRTPS_sf1lm0_neon : gteRTPS_sf1lm0_nf_neon;
+ #elif defined(HAVE_ARMV5)
+@@ -2079,7 +2080,7 @@ static void c2op_assemble(struct compile_state *st, int i, const struct regstat
+         }
+         goto do_handler;
+       case GTEOP_RTPT:
+-        if (shift && !lm) {
++        if (shift && !lm && !gte_hack_widescreen_q16) {
+ #if defined(__ARM_NEON__)
+           handler = need_flags ? gteRTPT_sf1lm0_neon : gteRTPT_sf1lm0_nf_neon;
+ #elif defined(HAVE_ARMV5)
