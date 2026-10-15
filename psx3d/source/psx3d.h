@@ -35,6 +35,7 @@ typedef struct {
 	int  debug;        // show debug tools in the menu
 	int  sounds;       // interface sounds
 	int  music;        // library music
+	int  bottom_off;   // backlight off on the bottom screen while playing
 } psx3d_config;
 
 extern psx3d_config g_cfg;

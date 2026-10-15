@@ -28,6 +28,7 @@ static void set_defaults(void)
 	g_cfg.stereo = 1;
 	g_cfg.sounds = 1;
 	g_cfg.music = 1;
+	g_cfg.bottom_off = 1;
 	for (size_t i = 0; i < sizeof(tuned_defaults) / sizeof(tuned_defaults[0]); i++)
 		if (tuned_defaults[i][0])
 			config_set_core_override(tuned_defaults[i][0], tuned_defaults[i][1]);
@@ -71,6 +72,8 @@ void config_load(void)
 			g_cfg.sounds = atoi(v) != 0;
 		else if (strcmp(k, "music") == 0)
 			g_cfg.music = atoi(v) != 0;
+		else if (strcmp(k, "bottom_off") == 0)
+			g_cfg.bottom_off = atoi(v) != 0;
 		else if (strcmp(k, "debug") == 0)
 			g_cfg.debug = atoi(v) != 0;
 		else if (strcmp(k, "smooth") == 0)
@@ -85,7 +88,8 @@ void config_load(void)
 	if (g_cfg.stereo == 2 && !g_cfg.debug)
 		g_cfg.stereo = 1;
 	g_cfg.sounds = 1;
-	g_cfg.music = 1;   // experimental real 3D needs debug=1
+	g_cfg.music = 1;
+	g_cfg.bottom_off = 1;   // experimental real 3D needs debug=1
 	config_sync_stereo();
 }
 
@@ -103,7 +107,7 @@ void config_save(void)
 	fprintf(f, "smooth=%d\n", g_cfg.smooth);
 	fprintf(f, "show_fps=%d\n", g_cfg.show_fps);
 	fprintf(f, "stereo=%d\n", g_cfg.stereo);
-	fprintf(f, "sounds=%d\nmusic=%d\n", g_cfg.sounds, g_cfg.music);
+	fprintf(f, "sounds=%d\nmusic=%d\nbottom_off=%d\n", g_cfg.sounds, g_cfg.music, g_cfg.bottom_off);
 	if (g_cfg.debug)
 		fprintf(f, "debug=1\n");
 	for (int i = 0; i < novr; i++) {
