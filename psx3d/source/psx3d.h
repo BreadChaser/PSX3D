@@ -30,6 +30,7 @@ typedef struct {
 	int  scale_mode;   // 0 = 4:3, 1 = stretch to 400x240, 2 = integer/pixel 1:1
 	int  smooth;       // bilinear filtering
 	int  show_fps;
+	int  stereo;       // 3D slider moves the picture behind the screen
 } psx3d_config;
 
 extern psx3d_config g_cfg;

@@ -15,7 +15,11 @@
 	 GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGB565) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB565) | \
 	 GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO))
 
-static C3D_RenderTarget *top, *bottom;
+static C3D_RenderTarget *top, *top_r, *bottom;
+static bool stereo_on;
+
+// 3D slider fully up pushes the game picture this many pixels behind the screen
+#define MAX_DEPTH_PX 8.0f
 static C3D_Tex tex;
 static Tex3DS_SubTexture subtex;
 static u16 *fbs[2];          // linear memory, TEX_W pixels per row
@@ -35,7 +39,7 @@ u64 video_take_wait_ticks(void)
 bool video_init(void)
 {
 	gfxInitDefault();
-	gfxSet3D(false);
+	gfxSet3D(false);  // switched on per frame when the game is shown in 3D
 	if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE))
 		return false;
 	if (!C2D_Init(C2D_DEFAULT_MAX_OBJECTS))
@@ -43,6 +47,7 @@ bool video_init(void)
 	C2D_Prepare();
 
 	top = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
+	top_r = C2D_CreateScreenTarget(GFX_TOP, GFX_RIGHT);
 	bottom = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
 
 	for (int i = 0; i < 2; i++) {
@@ -118,7 +123,7 @@ u64 video_take_xfer_ticks(void)
 }
 
 
-static void draw_game(void)
+static void draw_game(float eye_dx)
 {
 	float dw, dh, x, y;
 	C2D_Image img = { &tex, &subtex };
@@ -149,7 +154,7 @@ static void draw_game(void)
 		dw = 320; dh = 240;
 		break;
 	}
-	x = (400 - dw) / 2;
+	x = (400 - dw) / 2 + eye_dx;
 	y = (240 - dh) / 2;
 
 	C3D_TexSetFilter(&tex, g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST,
@@ -172,12 +177,31 @@ void video_present(bool show_game, void (*draw_top)(void *),
 		pending = NULL;
 	}
 
+	// Stereo 3D "screen depth": the game picture sits behind the screen,
+	// PSX3D's overlays (FPS, messages) stay on the screen surface. Each eye
+	// sees the picture shifted the opposite way.
+	float slider = osGet3DSliderState();
+	bool stereo = show_game && g_cfg.stereo && slider > 0.01f;
+	if (stereo != stereo_on) {
+		gfxSet3D(stereo);
+		stereo_on = stereo;
+	}
+	float depth = stereo ? slider * MAX_DEPTH_PX : 0.0f;
+
 	C2D_TargetClear(top, C2D_Color32(0, 0, 0, 255));
 	C2D_SceneBegin(top);
 	if (show_game)
-		draw_game();
+		draw_game(-depth);
 	if (draw_top)
 		draw_top(ud);
+
+	if (stereo) {
+		C2D_TargetClear(top_r, C2D_Color32(0, 0, 0, 255));
+		C2D_SceneBegin(top_r);
+		draw_game(depth);
+		if (draw_top)
+			draw_top(ud);
+	}
 
 	if (draw_bottom) {
 		C2D_TargetClear(bottom, C2D_Color32(16, 16, 24, 255));
