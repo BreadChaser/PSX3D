@@ -20,12 +20,30 @@
 
 static game_t games[MAX_GAMES];
 static int ngames;
+static char lib_root[PATH_LEN];
+
+// series: games sharing a folder (or, failing that, a title stem)
+#define MAX_SERIES 512
+typedef struct { char *name; int n, *members; } series_t;
+static series_t series[MAX_SERIES];
+static int nseries;
+static int game_series[MAX_GAMES];   // series index, or -1
 
 int library_count(void) { return ngames; }
 const game_t *library_get(int i) { return (i >= 0 && i < ngames) ? &games[i] : NULL; }
 
+static void series_free(void)
+{
+	for (int i = 0; i < nseries; i++) {
+		free(series[i].name);
+		free(series[i].members);
+	}
+	nseries = 0;
+}
+
 static void library_free(void)
 {
+	series_free();
 	for (int i = 0; i < ngames; i++) {
 		free(games[i].title);
 		free(games[i].cover_key);
@@ -338,13 +356,156 @@ static bool load_cache(const char *root)
 	return ngames > 0;
 }
 
+// ---------------------------------------------------------------- series
+
+// a word that's a number: "2", "III"; value or 0
+static int number_word(const char *w, size_t n)
+{
+	if (n && isdigit((unsigned char)w[0])) {
+		for (size_t i = 0; i < n; i++)
+			if (!isdigit((unsigned char)w[i]))
+				return 0;
+		return atoi(w);
+	}
+	static const char *const roman[] = { "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+		"XI", "XII", "XIII", "XIV", "XV" };
+	for (int i = 0; i < 15; i++)
+		if (strlen(roman[i]) == n && !strncmp(w, roman[i], n))
+			return i + 1;
+	return 0;
+}
+
+// natural order inside a series: "Tekken" < "Tekken 2" < "Tekken 3",
+// "Final Fantasy VII" < "VIII" < "IX", numbered games before named ones
+static int cmp_natural(const char *a, const char *b)
+{
+	while (*a && *b) {
+		size_t na = strcspn(a, " "), nb = strcspn(b, " ");
+		int va = number_word(a, na), vb = number_word(b, nb);
+		int c;
+		if (va && vb)
+			c = va - vb;
+		else if (va || vb)
+			c = va ? -1 : 1;
+		else {
+			c = strncasecmp(a, b, na < nb ? na : nb);
+			if (!c)
+				c = (int)na - (int)nb;
+		}
+		if (c)
+			return c;
+		a += na; b += nb;
+		while (*a == ' ') a++;
+		while (*b == ' ') b++;
+	}
+	return *a ? 1 : *b ? -1 : 0;
+}
+
+// the folder right under the games folder, when the game sits deeper
+static void folder_key(const game_t *g, char *out, size_t len)
+{
+	out[0] = 0;
+	size_t rl = strlen(lib_root);
+	const char *p = g->ndiscs ? g->discs[0] : "";
+	if (strncmp(p, lib_root, rl) || p[rl] != '/')
+		return;
+	p += rl + 1;
+	const char *slash = strchr(p, '/');
+	if (!slash)
+		return;   // directly in the games folder
+	char name[PATH_LEN];
+	snprintf(name, sizeof(name), "%.*s", (int)(slash - p), p);
+	char *t = clean_title(name);
+	snprintf(out, len, "%s", t);
+	free(t);
+}
+
+// "Spyro 2 - Ripto's Rage!" -> "Spyro", "Final Fantasy VII" -> "Final Fantasy"
+static void title_key(const game_t *g, char *out, size_t len)
+{
+	snprintf(out, len, "%s", g->title);
+	char *cut = strstr(out, " - ");
+	if (cut) *cut = 0;
+	if ((cut = strchr(out, ':'))) *cut = 0;
+	for (;;) {
+		char *sp = strrchr(out, ' ');
+		if (!sp || !number_word(sp + 1, strlen(sp + 1)))
+			break;
+		*sp = 0;
+	}
+}
+
+static int find_series(const char *name)
+{
+	for (int i = 0; i < nseries; i++)
+		if (!strcasecmp(series[i].name, name))
+			return i;
+	return -1;
+}
+
+static const char *sort_title(const game_t *g)
+{
+	return strncasecmp(g->title, "The ", 4) ? g->title : g->title + 4;
+}
+
+static int cmp_members(const void *a, const void *b)
+{
+	return cmp_natural(sort_title(&games[*(const int *)a]), sort_title(&games[*(const int *)b]));
+}
+
+static void build_series(void)
+{
+	static char keys[MAX_GAMES][96];
+	series_free();
+	// folders first: a folder holding two or more games is a series
+	for (int i = 0; i < ngames; i++)
+		folder_key(&games[i], keys[i], sizeof(keys[i]));
+	for (int i = 0; i < ngames; i++) {
+		int same = 0;
+		for (int j = 0; j < ngames && keys[i][0]; j++)
+			same += !strcasecmp(keys[i], keys[j]);
+		if (same < 2)   // not grouped by folder: try the title
+			title_key(&games[i], keys[i], sizeof(keys[i]));
+	}
+	for (int i = 0; i < ngames; i++) {
+		game_series[i] = -1;
+		int same = 0;
+		for (int j = 0; j < ngames; j++)
+			same += !strcasecmp(keys[i], keys[j]);
+		if (same < 2 || !keys[i][0])
+			continue;
+		int s = find_series(keys[i]);
+		if (s < 0) {
+			if (nseries == MAX_SERIES)
+				continue;
+			s = nseries++;
+			series[s].name = strdup(keys[i]);
+			series[s].members = malloc(sizeof(int) * same);
+			series[s].n = 0;
+		}
+		series[s].members[series[s].n++] = i;
+		game_series[i] = s;
+	}
+	for (int s = 0; s < nseries; s++)
+		qsort(series[s].members, series[s].n, sizeof(int), cmp_members);
+	log_printf("library: %d series\n", nseries);
+}
+
+int library_series_count(void) { return nseries; }
+int library_game_series(int game) { return game >= 0 && game < ngames ? game_series[game] : -1; }
+const char *library_series_name(int s) { return s >= 0 && s < nseries ? series[s].name : ""; }
+int library_series_size(int s) { return s >= 0 && s < nseries ? series[s].n : 0; }
+int library_series_game(int s, int k) { return s >= 0 && s < nseries && k >= 0 && k < series[s].n ? series[s].members[k] : -1; }
+
 bool library_load(const char *root, bool rescan)
 {
 	library_free();
 	if (!root || !root[0])
 		return false;
+	snprintf(lib_root, sizeof(lib_root), "%s", root);
 	if (!rescan && load_cache(root)) {
 		log_printf("library: %d games from cache\n", ngames);
+		build_series();
 		return true;
 	}
 	library_free();
@@ -360,6 +521,7 @@ bool library_load(const char *root, bool rescan)
 	qsort(games, ngames, sizeof(games[0]), cmp_games);
 	log_printf("library: scanned %d games in %llums\n", ngames, osGetTime() - t0);
 	save_cache(root);
+	build_series();
 	return ngames > 0;
 }
 

@@ -25,6 +25,64 @@ static float fade = 1;             // 1 = black, eases to 0 on open
 static float launch_t = -1;        // >= 0 while the launch zoom plays
 static int rep_l, rep_r, rep_u, rep_d, rep_pl, rep_pr;
 
+// What the list shows: the top level (series and the games not in one), or
+// the games of one open series. Entries >= 0 are games, < 0 are series -(s+1).
+static int view[2048 + 512];
+static int nview;
+static int open_series = -1;
+static int top_sel;                // selection to go back to when leaving a series
+
+static void build_view(void)
+{
+	nview = 0;
+	if (open_series >= 0) {
+		for (int k = 0; k < library_series_size(open_series); k++)
+			view[nview++] = library_series_game(open_series, k);
+		return;
+	}
+	// top level, alphabetical: each series sits where its name sorts
+	int n = library_count(), ns = library_series_count(), si = 0;
+	static int order[512];
+	for (int s = 0; s < ns; s++)
+		order[s] = s;
+	for (int a = 1; a < ns; a++)   // insertion sort by name (few series)
+		for (int b = a; b > 0 && strcasecmp(library_series_name(order[b]), library_series_name(order[b - 1])) < 0; b--) {
+			int t = order[b]; order[b] = order[b - 1]; order[b - 1] = t;
+		}
+	for (int i = 0; i < n; i++) {
+		if (library_game_series(i) >= 0)
+			continue;
+		while (si < ns && strcasecmp(library_series_name(order[si]), library_get(i)->title) < 0)
+			view[nview++] = -(order[si++] + 1);
+		view[nview++] = i;
+	}
+	while (si < ns)
+		view[nview++] = -(order[si++] + 1);
+}
+
+// the game an entry stands for (a series shows its first game's cover)
+static int entry_game(int e)
+{
+	if (e < 0 || e >= nview)
+		return -1;
+	int v = view[e];
+	return v >= 0 ? v : library_series_game(-v - 1, 0);
+}
+
+static int entry_series(int e)
+{
+	return e >= 0 && e < nview && view[e] < 0 ? -view[e] - 1 : -1;
+}
+
+static const char *entry_title(int e)
+{
+	int s = entry_series(e);
+	if (s >= 0)
+		return library_series_name(s);
+	const game_t *g = library_get(entry_game(e));
+	return g ? g->title : "";
+}
+
 // PS-era accent colours, one per game in turn
 static const u32 *accent(int i)
 {
@@ -85,12 +143,24 @@ static float text_width(C2D_Font font, float size, const char *s)
 }
 
 // a cover, or a placeholder card with the game's initial
-static void draw_cover(int i, float cx, float cy, float size, float dim, float z)
+static void draw_cover(int e, float cx, float cy, float size, float dim, float z)
 {
+	int i = entry_game(e);
 	const game_t *g = library_get(i);
 	if (!g)
 		return;
 	float x = cx - size / 2, y = cy - size / 2;
+	if (entry_series(e) >= 0) {
+		// a series: a stack of cards behind its cover
+		for (int k = 2; k >= 1; k--) {
+			float o = k * size * 0.06f;
+			u8 c = (u8)(40 - k * 8);
+			C2D_DrawRectSolid(x + o + ui_depth(0.3f * k), y - o, z - 0.004f * k, size, size,
+				C2D_Color32(c, c + 6, c + 30, (u8)(255 * (1 - dim * 0.6f))));
+			C2D_DrawRectSolid(x + o + ui_depth(0.3f * k), y - o, z - 0.004f * k + 0.001f, size, 2,
+				(*accent(e + k) & 0x00ffffff) | ((u32)(200 * (1 - dim)) << 24));
+		}
+	}
 	// drop shadow on the "floor", a little behind the cover
 	C2D_DrawRectSolid(x + 4 + ui_depth(1.5f), y + 6, z - 0.01f, size, size, C2D_Color32(0, 0, 0, 110));
 	C3D_Tex *t = covers_get(i);
@@ -101,7 +171,7 @@ static void draw_cover(int i, float cx, float cy, float size, float dim, float z
 		C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim);
 		C2D_DrawImageAt(img, x, y, z, dim > 0 ? &tint : NULL, size / COVER_SIZE, size / COVER_SIZE);
 	} else {
-		u32 c = *accent(i);
+		u32 c = *accent(e);
 		C2D_DrawRectangle(x, y, z, size, size, C2D_Color32(20, 26, 60, 255), C2D_Color32(20, 26, 60, 255),
 			C2D_Color32(8, 10, 28, 255), C2D_Color32(8, 10, 28, 255));
 		C2D_DrawRectSolid(x, y + size - 6, z, size, 6, c);
@@ -231,7 +301,7 @@ static void draw_grid(void)
 static void draw_top(void *ud)
 {
 	(void)ud;
-	int n = library_count();
+	int n = nview;
 	if (bg_ok)
 		C2D_DrawImageAt(bg_img, ui_depth(3.0f), 0, 0.1f, NULL, 1.0f, 1.0f);   // sky: far back
 	draw_grid();
@@ -267,23 +337,28 @@ static void draw_top(void *ud)
 			draw_cover(i, cx, cy, size, dim, 0.5f - ad * 0.02f);
 		}
 
-	const game_t *g = library_get(sel);
+	const game_t *g = library_get(entry_game(sel));
+	int ser = entry_series(sel);
 	if (g && launch_t < 0) {
+		const char *title = entry_title(sel);
 		// title slides up and fades in after the selection changes
 		float e = 1 - (1 - title_t) * (1 - title_t);
 		u8 a = (u8)(255 * e);
 		float ty = 178 + (1 - e) * 10;
 		C2D_Font f = title_font;
 		float size = 0.9f;
-		float w = text_width(f, size, g->title);
+		float w = text_width(f, size, title);
 		if (w > 380)
 			size *= 380 / w;
 		float tx = 200 + ui_depth(-0.8f);   // floats just in front of the screen
-		text(f, tx + 1, ty + 1, size, C2D_Color32(0, 0, 0, a * 5 / 8), C2D_AlignCenter, g->title);
-		text(f, tx, ty, size, C2D_Color32(255, 255, 255, a), C2D_AlignCenter, g->title);
-		if (g->ndiscs > 1) {
+		text(f, tx + 1, ty + 1, size, C2D_Color32(0, 0, 0, a * 5 / 8), C2D_AlignCenter, title);
+		text(f, tx, ty, size, C2D_Color32(255, 255, 255, a), C2D_AlignCenter, title);
+		if (ser >= 0 || g->ndiscs > 1) {
 			char dd[32];
-			snprintf(dd, sizeof(dd), "%d discs", g->ndiscs);
+			if (ser >= 0)
+				snprintf(dd, sizeof(dd), "%d games", library_series_size(ser));
+			else
+				snprintf(dd, sizeof(dd), "%d discs", g->ndiscs);
 			text(NULL, tx, ty + 36, 0.45f, C2D_Color32(170, 185, 230, a), C2D_AlignCenter, dd);
 		}
 	}
@@ -302,23 +377,35 @@ static const char *game_label(int i, void *ud)
 {
 	(void)ud;
 	static char line[96];
-	const game_t *g = library_get(i);
-	snprintf(line, sizeof(line), "%.40s", g ? g->title : "");
+	snprintf(line, sizeof(line), "%.36s", entry_title(i));
 	return line;
+}
+
+static const char *game_value(int i, void *ud)
+{
+	(void)ud;
+	static char v[16];
+	int s = entry_series(i);
+	if (s < 0)
+		return NULL;
+	snprintf(v, sizeof(v), "%d  >", library_series_size(s));
+	return v;
 }
 
 static void draw_bottom(void *ud)
 {
 	(void)ud;
-	int n = library_count();
+	int n = nview;
 	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
-	flist_draw(&lst, n, sel, 0, 4, 314, ROW_H, ROWS, game_label, NULL, NULL, *accent(sel));
+	flist_draw(&lst, n, sel, 0, 4, 314, ROW_H, ROWS, game_label, game_value, NULL, *accent(sel));
 	// scroll indicator
 	if (n > ROWS) {
 		float h = 216.0f * ROWS / n, y = 4 + 216.0f * lst.scroll / n;
 		C2D_DrawRectSolid(315, y, 0.3f, 3, h, C2D_Color32(60, 80, 140, 255));
 	}
 	ui_text_ex(NULL, 8, 222, 0.4f, C2D_Color32(90, 100, 135, 255), 0,
+		open_series >= 0 ? "A play    B back    START quit" :
+		entry_series(sel) >= 0 ? "A open    Y folders    SELECT rescan    START quit" :
 		"A play    Y folders    SELECT rescan    START quit");
 }
 
@@ -332,7 +419,7 @@ static bool repeat(u32 down, u32 held, u32 key, int *c)
 
 static void clamp_list(void)
 {
-	int n = library_count();
+	int n = nview;
 	if (sel < list_top) list_top = sel;
 	if (sel >= list_top + ROWS) list_top = sel - ROWS + 1;
 	if (list_top > n - ROWS) list_top = n - ROWS;
@@ -344,12 +431,38 @@ void libui_select_title(const char *title)
 {
 	for (int i = 0; i < library_count(); i++)
 		if (!strcmp(library_get(i)->title, title)) {
-			sel = i;
-			anim = i;
-			title_for = i;
+			int s = library_game_series(i);
+			open_series = -1;
+			build_view();
+			for (int e = 0; e < nview; e++)
+				if (view[e] == (s >= 0 ? -(s + 1) : i))
+					top_sel = sel = e;
+			if (s >= 0) {
+				open_series = s;
+				build_view();
+				for (int e = 0; e < nview; e++)
+					if (view[e] == i)
+						sel = e;
+			}
+			anim = sel;
+			title_for = sel;
 			clamp_list();
 			return;
 		}
+}
+
+static void enter_view(int series_idx, int new_sel)
+{
+	open_series = series_idx;
+	build_view();
+	sel = new_sel < nview ? new_sel : nview - 1;
+	if (sel < 0)
+		sel = 0;
+	anim = sel;
+	anim_v = 0;
+	title_for = -1;
+	lst.init = false;
+	clamp_list();
 }
 
 // Returns 1 with path filled to play a game, 2 to open the folder browser,
@@ -357,12 +470,15 @@ void libui_select_title(const char *title)
 // the game picked last time libui_run returned 1
 const game_t *libui_picked(void)
 {
-	return library_get(sel);
+	return library_get(entry_game(sel));
 }
 
 int libui_run(char *out_path, size_t len)
 {
-	int n = library_count();
+	if (open_series >= library_series_count())
+		open_series = -1;
+	build_view();
+	int n = nview;
 	if (sel >= n) sel = n - 1;
 	if (sel < 0) sel = 0;
 	clamp_list();
@@ -376,7 +492,7 @@ int libui_run(char *out_path, size_t len)
 	while (aptMainLoop()) {
 		input_poll();
 		u32 k = input_keys_down(), h = input_keys_held();
-		n = library_count();
+		n = nview;
 		int before = sel;
 
 		// HOME: held back while the covers use the network. When pressed,
@@ -413,9 +529,8 @@ int libui_run(char *out_path, size_t len)
 		if (k & KEY_SELECT) {
 			covers_reset();
 			library_load(g_cfg.games_dir, true);
-			n = library_count();
-			if (sel >= n) sel = n - 1;
-			if (sel < 0) sel = 0;
+			enter_view(-1, 0);
+			n = nview;
 		}
 		if (n) {
 			if (repeat(k, h, KEY_DRIGHT | KEY_CPAD_RIGHT, &rep_r) || repeat(k, h, KEY_DDOWN | KEY_CPAD_DOWN, &rep_d))
@@ -441,8 +556,19 @@ int libui_run(char *out_path, size_t len)
 			if (sel != before)
 				sfx_play(SFX_MOVE);
 
+			if ((k & KEY_B) && open_series >= 0) {
+				sfx_play(SFX_BACK);
+				enter_view(-1, top_sel);
+				continue;
+			}
+			if ((k & KEY_A) && entry_series(sel) >= 0) {
+				sfx_play(SFX_SELECT);
+				top_sel = sel;
+				enter_view(entry_series(sel), 0);
+				continue;
+			}
 			if (k & KEY_A) {
-				const game_t *g = library_get(sel);
+				const game_t *g = library_get(entry_game(sel));
 				library_launch_path(g, out_path, len);
 				snprintf(g_cfg.last_title, sizeof(g_cfg.last_title), "%s", g->title);
 				config_save();
@@ -488,10 +614,10 @@ int libui_run(char *out_path, size_t len)
 		if (title_t < 1) title_t = fminf(1, title_t + dt * 5);
 		if (fade > 0) fade = fmaxf(0, fade - dt * 3);
 		// the selection first, then outward: what's on screen loads first
-		covers_focus(sel);
+		covers_focus(entry_game(sel));
 		for (int d = 0; d <= 4; d++) {
-			if (sel + d < n) covers_get(sel + d);
-			if (d && sel - d >= 0) covers_get(sel - d);
+			if (sel + d < n) covers_get(entry_game(sel + d));
+			if (d && sel - d >= 0) covers_get(entry_game(sel - d));
 		}
 
 		covers_pump();
