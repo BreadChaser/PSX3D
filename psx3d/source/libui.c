@@ -118,7 +118,7 @@ static void draw_cover(int i, float cx, float cy, float size, float dim, float z
 static void draw_grid(void)
 {
 	const float hy = 150, cx = 200;
-	u32 col = C2D_Color32(40, 140, 255, 255), glow = C2D_Color32(40, 140, 255, 70);
+	u32 col = C2D_Color32(170, 60, 255, 255), glow = C2D_Color32(190, 50, 255, 70);
 	float scroll = fmodf(clock_s * 0.35f, 1.0f);
 	for (int k = 0; k < 9; k++) {
 		float u = (k + scroll) / 8.0f;           // 0 at the horizon .. 1 at the bottom

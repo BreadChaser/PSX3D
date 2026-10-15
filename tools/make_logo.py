@@ -37,96 +37,132 @@ def glow(layer, radius, strength=1.0):
         g.putalpha(a)
     return g
 
-def scene(W, H, horizon, show_shapes=True, show_sun=True, show_grid=True):
-    sky = vgrad(W, H, [(0, (3, 6, 22, 255)), (0.45, (10, 24, 64, 255)),
-                       (horizon / H, (30, 90, 170, 255)), (horizon / H + 0.001, (3, 6, 20, 255)),
-                       (1, (1, 2, 10, 255))])
-    d = ImageDraw.Draw(sky)
-    rnd = random.Random(7)
-    for _ in range(int(W * H / 18000)):
-        x, y = rnd.randrange(W), rnd.randrange(int(horizon * 0.8))
-        b = rnd.randrange(150, 255)
-        r = max(1, H // 220) * rnd.choice([1, 1, 2])
-        d.ellipse([x - r, y - r, x + r, y + r], fill=(b, b, 255, 255))
+def palm(d, x0, y0, h, lean, scale, col):
+    """palm tree silhouette: curved trunk and drooping fronds"""
+    pts = []
+    for i in range(21):
+        t = i / 20
+        pts.append((x0 + lean * h * t * t, y0 - h * t))
+    w = max(2, int(scale * 7))
+    for i in range(20):
+        ww = int(w * (1.2 - 0.5 * i / 20))
+        d.line([pts[i], pts[i + 1]], fill=col, width=max(2, ww))
+    tx, ty = pts[-1]
+    for k in range(9):
+        ang = -math.pi * 0.95 + k * (math.pi * 1.9 / 8)
+        L = h * 0.6 * (0.8 + 0.3 * math.sin(k * 2.3))
+        fr = []
+        for j in range(13):
+            t = j / 12
+            fx = tx + math.cos(ang) * L * t
+            fy = ty - math.sin(ang) * L * t * 0.5 + (L * 0.55) * t * t   # droop
+            fr.append((fx, fy))
+        d.line(fr, fill=col, width=max(2, int(scale * 6)))
+        for j in range(2, 12):
+            fx, fy = fr[j]
+            ll = L * 0.28 * (1 - j / 13)
+            for sgn in (-1, 1):
+                d.line([(fx, fy), (fx + sgn * ll * 0.45, fy + ll)], fill=col, width=max(2, int(scale * 3)))
 
-    # a few faint controller shapes among the stars
-    sd = ImageDraw.Draw(sky)
-    shapes = [("tri", (60, 210, 140)), ("circ", (235, 60, 70)), ("cross", (80, 140, 255)), ("sq", (240, 110, 200))]
-    rnd2 = random.Random(11)
-    spots = [(0.09, 0.20), (0.91, 0.16)]
-    for i in range(2 if show_shapes else 0):
-        kind, c = shapes[i % 4]
-        x, y = int(W * spots[i][0]), int(horizon * spots[i][1])
-        r = int(H * 0.035)
-        col = c + (190,)
-        w = max(2, r // 3)
-        if kind == "tri":
-            sd.polygon([(x, y - r), (x - r, y + r * 0.8), (x + r, y + r * 0.8)], outline=col, width=w)
-        elif kind == "circ":
-            sd.ellipse([x - r, y - r, x + r, y + r], outline=col, width=w)
-        elif kind == "cross":
-            sd.line([(x - r, y - r), (x + r, y + r)], fill=col, width=w)
-            sd.line([(x - r, y + r), (x + r, y - r)], fill=col, width=w)
-        else:
-            sd.rectangle([x - r, y - r, x + r, y + r], outline=col, width=w)
 
-    # striped sun
-    R = int(H * 0.30)
-    cx, cy = W // 2, horizon - int(R * 0.35)
+def scene(W, H, horizon, show_shapes=True, show_sun=True, show_grid=True, floor=True):
+    # purple -> magenta -> orange sunset sky
+    sky = vgrad(W, H, [(0, (60, 14, 90, 255)), (0.25 * horizon / H, (110, 20, 110, 255)),
+                       (0.65 * horizon / H, (225, 40, 120, 255)), (horizon / H, (255, 120, 60, 255)),
+                       (horizon / H + 0.001, (20, 4, 50, 255)), (1, (8, 0, 24, 255))])
+
+    # big striped sun
+    R = int(H * 0.32)
+    cx, cy = W // 2, horizon - int(R * 0.15)
     sun = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    sg = vgrad(2 * R, 2 * R, [(0, (255, 230, 60, 255)), (0.55, (255, 120, 40, 255)), (1, (230, 20, 50, 255))])
-    mask = Image.new("L", (2 * R, 2 * R), 0)
-    md = ImageDraw.Draw(mask)
-    md.ellipse([0, 0, 2 * R - 1, 2 * R - 1], fill=255)
-    # horizontal cut stripes, thicker toward the bottom
-    y, gap = int(R * 0.55), max(2, R // 22)
-    while y < 2 * R:
-        md.rectangle([0, y, 2 * R, y + gap], fill=0)
-        y += gap * 3 + int((2 * R - y) * 0.05)
-        gap += max(1, R // 60)
-    sun.paste(sg, (cx - R, cy - R), mask)
-    # the sun sets behind the horizon: nothing of it below
-    ImageDraw.Draw(sun).rectangle([0, horizon, W, H], fill=(0, 0, 0, 0))
     if show_sun:
-        sky = Image.alpha_composite(sky, glow(sun, R * 0.25, 1.6))
+        sg = vgrad(2 * R, 2 * R, [(0, (255, 225, 60, 255)), (0.6, (255, 190, 40, 255)), (1, (255, 120, 40, 255))])
+        mask = Image.new("L", (2 * R, 2 * R), 0)
+        md = ImageDraw.Draw(mask)
+        md.ellipse([0, 0, 2 * R - 1, 2 * R - 1], fill=255)
+        y, gap = int(R * 0.6), max(2, R // 45)
+        while y < 2 * R:
+            md.rectangle([0, y, 2 * R, y + gap], fill=0)
+            gap += max(1, R // 70)
+            y += gap * 3
+        sun.paste(sg, (cx - R, cy - R), mask)
+        ImageDraw.Draw(sun).rectangle([0, horizon, W, H], fill=(0, 0, 0, 0))
+        sky = Image.alpha_composite(sky, glow(sun, R * 0.3, 1.4))
         sky = Image.alpha_composite(sky, sun)
 
-    # mountains with a neon rim
-    mtn = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    md = ImageDraw.Draw(mtn)
-    pts = [(0, horizon)]
-    rnd = random.Random(3)
-    x = 0
-    while x < W:
-        x += rnd.randrange(W // 16, W // 7)
-        far_from_sun = abs(x - cx) / (W / 2)
-        pts.append((x, horizon - int(H * (0.03 + 0.22 * far_from_sun ** 1.5) * rnd.uniform(0.55, 1.0))))
-    pts.append((W, horizon))
-    md.polygon(pts, fill=(4, 10, 32, 255))
-    md.line(pts, fill=(60, 170, 255, 255), width=max(1, H // 160))
-    sky = Image.alpha_composite(sky, glow(mtn, H / 200, 1.0))
-    sky = Image.alpha_composite(sky, mtn)
+    # palm silhouettes (dark teal), two per side
+    pl = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    pd = ImageDraw.Draw(pl)
+    col = (20, 70, 90, 255)
+    sc = H / 240
+    for x, hh, lean in ((0.13, 0.46, 0.18), (0.25, 0.32, 0.12), (0.75, 0.32, -0.12), (0.87, 0.46, -0.18)):
+        palm(pd, W * x, horizon + H * 0.02, H * hh, lean, sc, col)
+    sky = Image.alpha_composite(sky, pl)
 
     if not show_grid:
-        return sky
-    # perspective grid floor
-    grid = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(grid)
-    lw = max(2, H // 110)
-    col = (40, 140, 255, 255)
-    for i in range(-12, 13):
-        gd.line([(cx + i * W * 0.04, horizon), (cx + i * W * 0.42, H)], fill=col, width=lw)
-    k = 0
-    while True:
-        t = (k / 6.0) ** 2.2
-        y = horizon + t * (H - horizon)
-        if y > H:
-            break
-        gd.line([(0, y), (W, y)], fill=col, width=lw)
-        k += 1
-    sky = Image.alpha_composite(sky, glow(grid, H / 120, 1.1))
-    sky = Image.alpha_composite(sky, grid)
-    return sky
+        floor_grid = False
+    else:
+        floor_grid = True
+
+    # wireframe mountains on the sides + flat grid floor, drawn as a mesh
+    mesh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    md = ImageDraw.Draw(mesh)
+    cols, rows = 48, 22
+    lw = max(1, int(H / 200))
+
+    def height(u, v):
+        side = min(1.0, abs(u - 0.5) / 0.5)
+        side = max(0.0, (side - 0.35) / 0.65)
+        n = (math.sin(u * 23 + v * 3) * 0.5 + math.sin(u * 11 - v * 7) * 0.3 + math.sin(u * 37) * 0.2)
+        return side * (0.75 + 0.45 * n) * (1 - v * 0.5)
+
+    def proj(u, v):
+        z = 0.08 + v ** 1.6 * 1.0               # v=0 far (horizon), v=1 near
+        x = cx + (u - 0.5) * W * 3.0 * z
+        y = horizon + z * (H - horizon) * 1.05 - height(u, v) * H * 0.34 * (0.4 + z)
+        return x, y
+
+    def cl(v):
+        return lerp((60, 70, 255, 255), (190, 40, 255, 255), v)
+
+    def seg_ok(u0, v0, u1, v1):
+        return floor or height(u0, v0) > 0.03 or height(u1, v1) > 0.03
+
+    for r in range(rows + 1):
+        v = r / rows
+        for c in range(cols):
+            if seg_ok(c / cols, v, (c + 1) / cols, v):
+                md.line([proj(c / cols, v), proj((c + 1) / cols, v)], fill=cl(v), width=lw)
+    for c in range(cols + 1):
+        u = c / cols
+        for r in range(rows):
+            if seg_ok(u, r / rows, u, (r + 1) / rows):
+                md.line([proj(u, r / rows), proj(u, (r + 1) / rows)], fill=cl(0.5), width=lw)
+    # dark fill under the mesh lines so it occludes the sky below the horizon
+    floor = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    fd = ImageDraw.Draw(floor)
+    for r in range(rows * 2):
+        v0, v1 = r / (rows * 2), (r + 1) / (rows * 2)
+        for c in range(cols * 2):
+            u0, u1 = c / (cols * 2), (c + 1) / (cols * 2)
+            fd.polygon([proj(u0, v0), proj(u1, v0), proj(u1, v1), proj(u0, v1)], fill=(14, 0, 40, 255))
+    sky = Image.alpha_composite(sky, floor)
+    # magenta glow down the centre of the floor
+    g = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    if floor:
+        ImageDraw.Draw(g).polygon([(cx - W * 0.08, horizon), (cx + W * 0.08, horizon), (cx + W * 0.3, H), (cx - W * 0.3, H)],
+                                  fill=(200, 40, 230, 110))
+    sky = Image.alpha_composite(sky, g.filter(ImageFilter.GaussianBlur(H / 25)))
+    sky = Image.alpha_composite(sky, glow(mesh, H / 140, 1.3))
+    sky = Image.alpha_composite(sky, mesh)
+
+    # faint scanlines
+    sl = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(sl)
+    step = max(2, H // 120)
+    for y in range(0, H, step):
+        sd.line([(0, y), (W, y)], fill=(0, 0, 0, 28))
+    return Image.alpha_composite(sky, sl)
 
 PS = {"P": (230, 30, 50), "S": (250, 205, 20), "X": (30, 190, 120), "3": (40, 110, 230), "D": (230, 30, 50)}
 
@@ -212,7 +248,7 @@ banner = compose(1024, 512, 240, 215, 365, show_shapes=False)
 banner.resize((256, 128), Image.LANCZOS).save(f"{OUT}/banner.png")
 
 # icon: the whole name, stacked PSX over 3D, chunky enough for 48x48
-ic = scene(384, 384, 300, show_shapes=False, show_sun=False)
+ic = scene(384, 384, 300, show_shapes=False)
 top = wordmark("PSX", 126)
 bot = wordmark("3D", 158)
 for wm_, cy_ in ((top, 116), (bot, 262)):
@@ -225,6 +261,6 @@ print("ok")
 
 # library background: the scene without the logo, sun lower and dimmer so
 # box art stands out in front of it
-bg = scene(400, 240, 150, show_shapes=False, show_grid=False)  # grid is drawn live
-dim = Image.new("RGBA", bg.size, (0, 0, 0, 90))
+bg = scene(400, 240, 150, show_shapes=False, floor=False)   # the floor grid is drawn live
+dim = Image.new("RGBA", bg.size, (0, 0, 0, 50))
 Image.alpha_composite(bg, dim).convert("RGB").save(f"{OUT}/library_bg.png")
