@@ -16,7 +16,9 @@ static int novr;
 // Defaults tuned for the 3DS that differ from the core's own defaults.
 // (Options with only one sensible value on the 3DS are locked in options.c.)
 static const char *const tuned_defaults[][2] = {
-	{ NULL, NULL },
+	// read ~600KB of disc ahead on the CD thread: fewer stalls when games
+	// stream from the SD card (Old 3DS turns the CD thread off, see options.c)
+	{ "pcsx_rearmed_cd_readahead", "256" },
 };
 
 static void set_defaults(void)
