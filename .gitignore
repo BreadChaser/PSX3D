@@ -1,0 +1,5 @@
+psx3d/build/
+*.3dsx
+*.elf
+*.smdh
+*.map
