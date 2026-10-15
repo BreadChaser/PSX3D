@@ -531,7 +531,9 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		core_initialized = false;
 		return false;
 	}
-	retro_set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
+	// DualShock: starts in digital mode, games switch it to analog themselves,
+	// and analog-only games (Ape Escape) need it plugged in
+	retro_set_controller_port_device(0, RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_ANALOG, 1));
 
 	retro_get_system_av_info(&av);
 	fps_target = av.timing.fps;

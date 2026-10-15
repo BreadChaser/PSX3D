@@ -33,6 +33,8 @@ typedef struct {
 	int  show_fps;
 	int  stereo;       // 3D slider: 0 off, 1 screen depth, 2 real (per-object)
 	int  debug;        // show debug tools in the menu
+	int  sounds;       // interface sounds
+	int  music;        // library music
 } psx3d_config;
 
 extern psx3d_config g_cfg;
@@ -125,6 +127,14 @@ void covers_exit(void);
 C3D_Tex *covers_get(int game);
 void covers_reset(void);
 void covers_focus(int game);
+
+// uisound.c - interface sounds and library music
+enum { SFX_MOVE, SFX_SELECT, SFX_BACK, SFX_LAUNCH, SFX_COUNT };
+void uisound_init(void);
+void uisound_exit(void);
+void sfx_play(int which);
+void music_play(bool on);
+void music_update(void);
 
 // libui.c - the game library screen
 void libui_init(void);
