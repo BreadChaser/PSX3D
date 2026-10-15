@@ -210,6 +210,12 @@ void libui_select_title(const char *title)
 
 // Returns 1 with path filled to play a game, 2 to open the folder browser,
 // 0 to quit.
+// the game picked last time libui_run returned 1
+const game_t *libui_picked(void)
+{
+	return library_get(sel);
+}
+
 int libui_run(char *out_path, size_t len)
 {
 	int n = library_count();

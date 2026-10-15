@@ -141,6 +141,7 @@ int main(void)
 		libui_select_title(g_cfg.last_title);
 	for (;;) {
 		bool play;
+		const game_t *picked = NULL;
 		if (use_library) {
 			int r = libui_run(path, sizeof(path));
 			if (r == 0)
@@ -154,6 +155,7 @@ int main(void)
 				}
 			} else {
 				play = true;
+				picked = libui_picked();
 			}
 		} else {
 			play = browser_run(path, sizeof(path));
@@ -165,7 +167,9 @@ int main(void)
 				break;
 			}
 		}
-		if (!emu_run_game(path))
+		// library games save under disc 1's name, same as starting that
+		// disc from the folder browser
+		if (!emu_run_game(path, picked ? picked->cover_key : NULL, picked ? picked->title : NULL))
 			show_error("Could not load that game.\nCheck sdmc:/3ds/PSX3D/log.txt");
 		if (aptShouldClose())
 			break;
