@@ -20,7 +20,10 @@ static bool active, started;
 static u32 wpos, last_ppos;
 static double base_rate;
 static double avg_fill;   // smoothed buffer level for rate control
-static float cur_rate;
+
+// resampler state: last three input frames and the fractional read position
+static float rs_hist[3][2];
+static float rs_pos;
 
 // debug capture: what the core produced vs what the DSP actually read
 #define CAP_FRAMES (44100 * 10)
@@ -71,7 +74,8 @@ bool audio_init(double sample_rate)
 
 	wpos = TARGET_FILL;  // start with a cushion of silence
 	avg_fill = TARGET_FILL;
-	cur_rate = (float)base_rate;
+	memset(rs_hist, 0, sizeof(rs_hist));
+	rs_pos = 0;
 	last_ppos = 0;
 	started = false;
 	active = true;
@@ -165,6 +169,59 @@ bool audio_test_tone_toggle(void)
 	return test_tone;
 }
 
+// Cubic (Hermite) resampler for the small rate corrections. Keeps the last
+// three input frames between calls so the output is continuous.
+
+static inline float hermite(float xm1, float x0, float x1, float x2, float t)
+{
+	float c1 = 0.5f * (x1 - xm1);
+	float c2 = xm1 - 2.5f * x0 + 2.0f * x1 - 0.5f * x2;
+	float c3 = 0.5f * (x2 - xm1) + 1.5f * (x0 - x1);
+	return ((c3 * t + c2) * t + c1) * t + x0;
+}
+
+static inline int16_t clamp16(float v)
+{
+	if (v > 32767.0f) return 32767;
+	if (v < -32768.0f) return -32768;
+	return (int16_t)lrintf(v);
+}
+
+static size_t resample(const int16_t *in, size_t frames, float step, int16_t *out, size_t max_out)
+{
+	static float src[(4096 + 3) * 2];
+	size_t len = frames + 3, n = 0;
+
+	if (frames > 4096)
+		frames = 4096, len = frames + 3;
+	for (int i = 0; i < 3; i++) {
+		src[i * 2] = rs_hist[i][0];
+		src[i * 2 + 1] = rs_hist[i][1];
+	}
+	for (size_t i = 0; i < frames; i++) {
+		src[(i + 3) * 2] = in[i * 2];
+		src[(i + 3) * 2 + 1] = in[i * 2 + 1];
+	}
+	// interpolate between src[k+1] and src[k+2] with neighbours src[k], src[k+3]
+	while (n < max_out) {
+		int k = (int)rs_pos;
+		if ((size_t)k + 3 >= len)
+			break;
+		float t = rs_pos - k;
+		for (int c = 0; c < 2; c++)
+			out[n * 2 + c] = clamp16(hermite(src[k * 2 + c], src[(k + 1) * 2 + c],
+				src[(k + 2) * 2 + c], src[(k + 3) * 2 + c], t));
+		n++;
+		rs_pos += step;
+	}
+	rs_pos -= frames;
+	for (int i = 0; i < 3; i++) {
+		rs_hist[i][0] = src[(len - 3 + i) * 2];
+		rs_hist[i][1] = src[(len - 3 + i) * 2 + 1];
+	}
+	return n;
+}
+
 size_t audio_write(const int16_t *data, size_t frames)
 {
 	static int16_t tone_buf[4096];
@@ -226,31 +283,29 @@ size_t audio_write(const int16_t *data, size_t frames)
 	if (fill < 256)
 		st.starved_writes++;
 
-	size_t space = RING_FRAMES - 256 - fill;
-	size_t n = frames < space ? frames : space;  // drop the rest on overflow
-	st.dropped += frames - n;
-	u32 start = wpos;
-	for (size_t i = 0; i < n; i++) {
-		((u32 *)ring)[wpos] = ((const u32 *)data)[i];
-		wpos = (wpos + 1) % RING_FRAMES;
-	}
-	if (n)
-		flush_range(start, n);
-
-	// dynamic rate control around the target fill level
-	// The raw fill level saws up and down by a whole video frame of audio
-	// on every write; steer by a slow average so the pitch doesn't wobble,
-	// and only touch the DSP when the rate really changes.
+	// Dynamic rate control, done on the CPU: the DSP rate never changes
+	// (changing it makes the DSP click). Steer by a slow average of the fill
+	// level - the raw level saws by a frame of audio on every write.
 	avg_fill += ((double)fill - avg_fill) * 0.02;
 	double err = (avg_fill - TARGET_FILL) / TARGET_FILL;
 	if (err > 1.0) err = 1.0;
 	if (err < -1.0) err = -1.0;
-	float rate = (float)(base_rate * (1.0 + err * MAX_ADJUST));
-	if (fabsf(rate - cur_rate) >= 2.0f) {
-		cur_rate = rate;
-		ndspChnSetRate(0, cur_rate);
+	float step = (float)(1.0 + err * MAX_ADJUST);   // input frames per output frame
+	st.rate = (float)(base_rate * step);
+
+	static int16_t out[4096 * 2];
+	size_t nout = resample((const int16_t *)data, frames, step, out, sizeof(out) / 4);
+
+	size_t space = RING_FRAMES - 256 - fill;
+	size_t n = nout < space ? nout : space;  // drop the rest on overflow
+	st.dropped += nout - n;
+	u32 start = wpos;
+	for (size_t i = 0; i < n; i++) {
+		((u32 *)ring)[wpos] = ((const u32 *)out)[i];
+		wpos = (wpos + 1) % RING_FRAMES;
 	}
-	st.rate = cur_rate;
+	if (n)
+		flush_range(start, n);
 
 	return frames;
 }
