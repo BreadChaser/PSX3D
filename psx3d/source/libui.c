@@ -371,7 +371,6 @@ int libui_run(char *out_path, size_t len)
 		n = library_count();
 		int before = sel;
 		// trail for hang diagnosis: last frames before a freeze end up in the log
-		if (k & KEY_HOME) log_printf("libui: HOME seen at frame %lu\n", frame_no);
 		frame_no++;
 
 		if (k & KEY_START) {
