@@ -314,8 +314,9 @@ int libui_run(char *out_path, size_t len)
 			if (k & KEY_TOUCH) {
 				touchPosition tp;
 				hidTouchRead(&tp);
-				int r = (tp.py - 4) / ROW_H;
-				if (tp.py < 220 && r >= 0 && r < ROWS && list_top + r < n) {
+				int r = tp.py >= 4 ? (tp.py - 4) / ROW_H : -1;
+				// (0,0) is what a touch with no position reads as: ignore it
+				if ((tp.px || tp.py) && tp.py < 220 && r >= 0 && r < ROWS && list_top + r < n) {
 					if (list_top + r == sel)
 						k |= KEY_A;     // tap the selected game again to play
 					sel = list_top + r;
