@@ -18,8 +18,9 @@ static const char *const tuned_defaults[][2] = {
 	// The core's 3DS defaults turn these off to save CPU. Without
 	// interpolation, low-pitched samples are stretched by repeating each
 	// value (96% of Silent Hill's output was repeats), which sounds harsh and
-	// crackly. On a New 3DS both together cost well under 1ms per frame.
-	{ "pcsx_rearmed_spu_interpolation", "simple" },
+	// crackly. Gaussian is what the real PS1 SPU does: compared with
+	// "simple" it has ~20dB less 2-5kHz grit on Silent Hill.
+	{ "pcsx_rearmed_spu_interpolation", "gaussian" },
 	{ "pcsx_rearmed_spu_reverb", "enabled" },
 };
 
@@ -84,8 +85,16 @@ void config_save(void)
 	fprintf(f, "scale_mode=%d\n", g_cfg.scale_mode);
 	fprintf(f, "smooth=%d\n", g_cfg.smooth);
 	fprintf(f, "show_fps=%d\n", g_cfg.show_fps);
-	for (int i = 0; i < novr; i++)
-		fprintf(f, "core.%s=%s\n", ovr[i].key, ovr[i].value);
+	for (int i = 0; i < novr; i++) {
+		// built-in defaults aren't saved, so improving them reaches old installs
+		bool is_default = false;
+		for (size_t j = 0; j < sizeof(tuned_defaults) / sizeof(tuned_defaults[0]); j++)
+			if (strcmp(ovr[i].key, tuned_defaults[j][0]) == 0 &&
+			    strcmp(ovr[i].value, tuned_defaults[j][1]) == 0)
+				is_default = true;
+		if (!is_default)
+			fprintf(f, "core.%s=%s\n", ovr[i].key, ovr[i].value);
+	}
 	fclose(f);
 }
 

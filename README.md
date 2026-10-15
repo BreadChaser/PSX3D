@@ -49,6 +49,12 @@ Copy `PSX3D.3dsx` to `sdmc:/3ds/` and start it from the Homebrew Launcher.
 Files live in `sdmc:/3ds/PSX3D/`: `saves/` holds memory cards (`.srm`),
 `states/` holds save states, and `config.ini` and `log.txt` are also there.
 
+## Known issues
+
+- Heavy Wi-Fi traffic (for example NTR screen streaming) causes audible clicks
+  in the 3DS speaker and headphone output. That's interference in the 3DS
+  itself, not the emulator. Normal play doesn't use Wi-Fi.
+
 ## Building
 
 Needs [devkitPro](https://devkitpro.org/) with devkitARM, libctru, citro3d and citro2d.
