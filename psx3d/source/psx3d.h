@@ -77,6 +77,11 @@ extern bool ui_wants_3d;
 static inline float ui_depth(float d) { return ui_eye * d * ui_parallax; }
 u64 video_take_wait_ticks(void);
 u64 video_take_xfer_ticks(void);
+bool video_snapshot(u16 *out, int w, int h);
+
+// savestates.c - save state browser with screenshots
+bool state_thumb_write(const char *prefix, int slot);
+int states_run(bool saving, const char *prefix, const char *title, int *slot);
 
 // stereo.c - real 3D from the core's depth map
 bool stereo_init(void);

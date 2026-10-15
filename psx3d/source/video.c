@@ -186,6 +186,31 @@ void video_frame(const void *data, unsigned width, unsigned height, size_t pitch
 	fb_cur = (fb == fbs[0]) ? 1 : 0;
 }
 
+// Shrink the last finished game frame to w x h (RGB565) for a save state
+// thumbnail. Each output pixel averages 2x2 samples of its source area.
+bool video_snapshot(u16 *out, int w, int h)
+{
+	if (!have_frame)
+		return false;
+	const u16 *src = fbs[fb_cur ^ 1];   // fb_cur is the one being drawn next
+	for (int y = 0; y < h; y++) {
+		int sy0 = (int)((y + 0.25f) * frame_h / h), sy1 = (int)((y + 0.75f) * frame_h / h);
+		for (int x = 0; x < w; x++) {
+			int sx0 = (int)((x + 0.25f) * frame_w / w), sx1 = (int)((x + 0.75f) * frame_w / w);
+			u16 p[4] = { src[sy0 * TEX_W + sx0], src[sy0 * TEX_W + sx1],
+			             src[sy1 * TEX_W + sx0], src[sy1 * TEX_W + sx1] };
+			u32 r = 0, g = 0, b = 0;
+			for (int i = 0; i < 4; i++) {
+				r += p[i] >> 11;
+				g += (p[i] >> 5) & 63;
+				b += p[i] & 31;
+			}
+			out[y * w + x] = (u16)(((r / 4) << 11) | ((g / 4) << 5) | (b / 4));
+		}
+	}
+	return true;
+}
+
 u64 video_take_xfer_ticks(void)
 {
 	u64 t = xfer_ticks;
