@@ -65,6 +65,7 @@ void audio_exit(void);
 size_t audio_write(const int16_t *data, size_t frames);
 void audio_pause(bool paused);
 void audio_stats(char *buf, size_t len);
+unsigned audio_occupancy(void);
 bool audio_capture_start(void);
 bool audio_test_tone_toggle(void);
 

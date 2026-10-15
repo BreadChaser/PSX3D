@@ -16,6 +16,7 @@ static double fps_target = 60.0;
 static float fps_measured, emu_ms, present_ms;
 static bool core_initialized;
 static bool has_audio;
+static retro_audio_buffer_status_callback_t abuf_status_cb;
 
 static void core_log(enum retro_log_level level, const char *fmt, ...)
 {
@@ -98,6 +99,14 @@ static bool environment(unsigned cmd, void *data)
 		return true;
 	}
 	case RETRO_ENVIRONMENT_SET_GEOMETRY:
+		return true;
+	case RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK: {
+		// lets the core's "auto" frameskip skip drawing when audio runs low
+		const struct retro_audio_buffer_status_callback *cb = data;
+		abuf_status_cb = cb ? cb->callback : NULL;
+		return true;
+	}
+	case RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY:
 		return true;
 	case RETRO_ENVIRONMENT_SET_MESSAGE: {
 		const struct retro_message *m = data;
@@ -293,7 +302,7 @@ static void menu_draw_bottom(void *ud)
 	labels[M_SMOOTH] = smooth;
 	labels[M_FPS] = fps;
 	labels[M_CORE] = "Core options...";
-	labels[M_RECORD] = "Debug: record 10s of audio";
+	labels[M_RECORD] = "Debug: record 30s of audio";
 	labels[M_TONE] = "Debug: audio test tone";
 	labels[M_RESET] = "Reset game";
 	labels[M_EXIT] = "Exit to game list";
@@ -351,7 +360,7 @@ static bool menu_run(void)
 				case M_CORE: if (k & KEY_A) m.core_page = true; break;
 				case M_RECORD:
 					if (k & KEY_A) {
-						osd(audio_capture_start() ? "Recording 10s of audio..." : "Could not start recording");
+						osd(audio_capture_start() ? "Recording 30s of audio..." : "Could not start recording");
 						goto resume;
 					}
 					break;
@@ -481,6 +490,10 @@ bool emu_run_game(const char *path)
 			next_deadline = now_t;   // far behind (loading, menu): don't race to catch up
 		next_deadline += frame_ticks;
 
+		if (abuf_status_cb) {
+			unsigned occ = has_audio ? audio_occupancy() : 50;
+			abuf_status_cb(has_audio, occ, occ < 20);
+		}
 		u64 t0 = svcGetSystemTick();
 		retro_run();
 		u64 t1 = svcGetSystemTick();
