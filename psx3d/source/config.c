@@ -14,14 +14,9 @@ static struct { char *key, *value; } ovr[MAX_OVERRIDES];
 static int novr;
 
 // Defaults tuned for the 3DS that differ from the core's own defaults.
+// (Options with only one sensible value on the 3DS are locked in options.c.)
 static const char *const tuned_defaults[][2] = {
-	// The core's 3DS defaults turn these off to save CPU. Without
-	// interpolation, low-pitched samples are stretched by repeating each
-	// value (96% of Silent Hill's output was repeats), which sounds harsh and
-	// crackly. Gaussian is what the real PS1 SPU does: compared with
-	// "simple" it has ~20dB less 2-5kHz grit on Silent Hill.
-	{ "pcsx_rearmed_spu_interpolation", "gaussian" },
-	{ "pcsx_rearmed_spu_reverb", "enabled" },
+	{ NULL, NULL },
 };
 
 static void set_defaults(void)
@@ -32,7 +27,8 @@ static void set_defaults(void)
 	g_cfg.smooth = 1;
 	g_cfg.show_fps = 0;
 	for (size_t i = 0; i < sizeof(tuned_defaults) / sizeof(tuned_defaults[0]); i++)
-		config_set_core_override(tuned_defaults[i][0], tuned_defaults[i][1]);
+		if (tuned_defaults[i][0])
+			config_set_core_override(tuned_defaults[i][0], tuned_defaults[i][1]);
 }
 
 static char *trim(char *s)
@@ -89,7 +85,7 @@ void config_save(void)
 		// built-in defaults aren't saved, so improving them reaches old installs
 		bool is_default = false;
 		for (size_t j = 0; j < sizeof(tuned_defaults) / sizeof(tuned_defaults[0]); j++)
-			if (strcmp(ovr[i].key, tuned_defaults[j][0]) == 0 &&
+			if (tuned_defaults[j][0] && strcmp(ovr[i].key, tuned_defaults[j][0]) == 0 &&
 			    strcmp(ovr[i].value, tuned_defaults[j][1]) == 0)
 				is_default = true;
 		if (!is_default)
