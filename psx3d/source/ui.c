@@ -2,6 +2,7 @@
 #include <stdarg.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 #include "psx3d.h"
 
 static C2D_TextBuf textbuf;
@@ -85,6 +86,20 @@ void flist_update(flist_t *f, int sel, int n, int rows)
 		float target = i == sel ? 1.0f : 0.0f;
 		f->lift[i] += (target - f->lift[i]) * 0.2f;
 	}
+}
+
+// jump straight to a selection: no scrolling or highlight glide
+void flist_snap(flist_t *f, int sel, int n, int rows)
+{
+	memset(f, 0, sizeof(*f));
+	int top = sel - rows / 2;
+	if (top > n - rows) top = n - rows;
+	if (top < 0) top = 0;
+	f->scroll = f->scroll_target = top;
+	f->hl = sel;
+	if (sel >= 0 && sel < FLIST_MAX)
+		f->lift[sel] = 1;
+	f->init = true;
 }
 
 int flist_row_at(const flist_t *f, float y0, float row_h, float py)

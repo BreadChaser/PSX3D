@@ -372,6 +372,7 @@ static void draw_top(void *ud)
 }
 
 static flist_t lst;
+static flist_t top_lst;   // the top-level list as it was when a series was opened
 
 static const char *game_label(int i, void *ud)
 {
@@ -434,6 +435,7 @@ void libui_select_title(const char *title)
 			int s = library_game_series(i);
 			open_series = -1;
 			build_view();
+			int top_n = nview;
 			for (int e = 0; e < nview; e++)
 				if (view[e] == (s >= 0 ? -(s + 1) : i))
 					top_sel = sel = e;
@@ -446,13 +448,22 @@ void libui_select_title(const char *title)
 			}
 			anim = sel;
 			title_for = sel;
+			flist_snap(&lst, sel, nview, ROWS);
+			if (s >= 0) {   // going back out lands on the series without scrolling
+				flist_snap(&top_lst, top_sel, top_n, ROWS);
+			}
 			clamp_list();
 			return;
 		}
 }
 
+// switch views without any scrolling: opening a series starts at its top,
+// going back puts the list exactly where it was
 static void enter_view(int series_idx, int new_sel)
 {
+	bool back = series_idx < 0 && open_series >= 0;
+	if (series_idx >= 0 && open_series < 0)
+		top_lst = lst;
 	open_series = series_idx;
 	build_view();
 	sel = new_sel < nview ? new_sel : nview - 1;
@@ -461,7 +472,13 @@ static void enter_view(int series_idx, int new_sel)
 	anim = sel;
 	anim_v = 0;
 	title_for = -1;
-	lst.init = false;
+	if (back) {
+		lst = top_lst;
+		lst.hl = sel;
+		lst.hl_v = lst.scroll_v = 0;
+	} else {
+		flist_snap(&lst, sel, nview, ROWS);
+	}
 	clamp_list();
 }
 
