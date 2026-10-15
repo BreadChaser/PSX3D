@@ -132,6 +132,7 @@ static float mesh_height(float x, float z_world, float z)
 	float n = 0.8f + 0.22f * sinf(x * 0.9f + z_world * 0.35f) + 0.12f * sinf(x * 1.7f - z_world * 0.5f);
 	float near = (z - 1.0f) / 6.0f;
 	if (near > 1) near = 1;
+	if (near < 0) near = 0;
 	return rise * n * (0.35f + 0.65f * near);
 }
 
@@ -154,11 +155,11 @@ static void draw_grid(void)
 	static float hgt[MESH_ROWS + 1][MESH_COLS];
 	static float rz[MESH_ROWS + 1];
 	const float cx = 200, f = 225;
-	float zoff = clock_s * 1.6f;                       // world units scrolled
+	float zoff = clock_s * 0.45f;                      // world units scrolled (slow drift)
 	float phase = fmodf(zoff, MESH_DZ);
 
 	for (int j = 0; j <= MESH_ROWS; j++) {
-		float z = 1.0f + j * MESH_DZ + (MESH_DZ - phase);
+		float z = 0.45f + j * MESH_DZ + (MESH_DZ - phase);
 		rz[j] = z;
 		float zw = z + zoff;
 		for (int i = 0; i < MESH_COLS; i++) {
