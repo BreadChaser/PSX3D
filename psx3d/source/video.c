@@ -20,6 +20,8 @@ static bool stereo_on;
 
 // 3D slider fully up pushes the game picture this many pixels behind the screen
 #define MAX_DEPTH_PX 8.0f
+// real 3D: full slider gives this much separation between near and far
+#define MAX_REAL_PX 14.0f
 static C3D_Tex tex;
 static Tex3DS_SubTexture subtex;
 static u16 *fbs[2];          // linear memory, TEX_W pixels per row
@@ -58,12 +60,15 @@ bool video_init(void)
 	}
 	if (!C3D_TexInit(&tex, TEX_W, TEX_H, GPU_RGB565))
 		return false;
+	if (!stereo_init())
+		log_printf("stereo_init failed: real 3D unavailable\n");
 	C3D_TexSetWrap(&tex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
 	return true;
 }
 
 void video_exit(void)
 {
+	stereo_exit();
 	C3D_TexDelete(&tex);
 	for (int i = 0; i < 2; i++) {
 		if (fbs[i])
@@ -175,10 +180,21 @@ void video_present(bool show_game, void (*draw_top)(void *),
 		stereo_on = stereo;
 	}
 	float depth = stereo ? slider * MAX_DEPTH_PX : 0.0f;
+	// real 3D: warp the picture by the game's own depth, when it has any
+	// (prepared even with the slider down so the bottom-screen preview works)
+	bool real_ok = show_game && g_cfg.stereo == 2 && have_frame &&
+		stereo_prepare((slider > 0.01f ? slider : 1.0f) * MAX_REAL_PX);
+	bool real = stereo && real_ok;
+	float gdw = config_widescreen() ? 400.0f : 320.0f, gx0 = (400.0f - gdw) / 2;
+	if (real)
+		C3D_TexSetFilter(&tex, g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST,
+			g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST);
 
 	C2D_TargetClear(top, C2D_Color32(0, 0, 0, 255));
 	C2D_SceneBegin(top);
-	if (show_game)
+	if (real)
+		stereo_draw(&tex, gx0, gdw, frame_w, frame_h, -1);
+	else if (show_game)
 		draw_game(-depth);
 	if (draw_top)
 		draw_top(ud);
@@ -186,7 +202,10 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	if (stereo) {
 		C2D_TargetClear(top_r, C2D_Color32(0, 0, 0, 255));
 		C2D_SceneBegin(top_r);
-		draw_game(depth);
+		if (real)
+			stereo_draw(&tex, gx0, gdw, frame_w, frame_h, 1);
+		else
+			draw_game(depth);
 		if (draw_top)
 			draw_top(ud);
 	}

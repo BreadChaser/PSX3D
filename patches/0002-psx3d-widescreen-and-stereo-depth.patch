@@ -1,0 +1,497 @@
+diff --git a/frontend/libretro.c b/frontend/libretro.c
+index 9dd3502..8131b01 100644
+--- a/frontend/libretro.c
++++ b/frontend/libretro.c
+@@ -31,6 +31,8 @@
+ #include "../libpcsxcore/psxcounters.h"
+ #include "../libpcsxcore/psxmem_map.h"
+ #include "../libpcsxcore/new_dynarec/new_dynarec.h"
++#include "../libpcsxcore/gte.h"
++#include "../libpcsxcore/psx3d_depth.h"
+ #include "../libpcsxcore/cdrom.h"
+ #include "../libpcsxcore/cdrom-async.h"
+ #include "../libpcsxcore/cdriso.h"
+@@ -3068,6 +3070,39 @@ static void update_variables(bool in_flight)
+    }
+ 
+ #ifdef _3DS
++   // PSX3D: widescreen hack, value is the horizontal GTE scale in 16.16
++   // fixed point (0 = off). Compiled code bakes in the GTE handler choice,
++   // so flush the dynarec when it changes.
++   var.value = NULL;
++   var.key = "pcsx_rearmed_psx3d_widescreen";
++   {
++      int ws = 0;
++      if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
++         ws = strtol(var.value, NULL, 10);
++      if (ws != gte_hack_widescreen_q16) {
++         gte_hack_widescreen_q16 = ws;
++#ifndef DRC_DISABLE
++         if (in_flight && Config.Cpu == CPU_DYNAREC)
++            new_dynarec_clear_full();
++#endif
++      }
++   }
++
++   // PSX3D: real stereo 3D needs the GTE to record vertex depths
++   var.value = NULL;
++   var.key = "pcsx_rearmed_psx3d_stereo";
++   {
++      int on = environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value &&
++         strcmp(var.value, "enabled") == 0;
++      if (on != psx3d_stereo_enabled) {
++         psx3d_stereo_enabled = on;
++#ifndef DRC_DISABLE
++         if (in_flight && Config.Cpu == CPU_DYNAREC)
++            new_dynarec_clear_full();
++#endif
++      }
++   }
++
+    var.value = NULL;
+    var.key = "pcsx_rearmed_3ds_appcputime";
+    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+diff --git a/libpcsxcore/gte.c b/libpcsxcore/gte.c
+index d1f18df..6192102 100644
+--- a/libpcsxcore/gte.c
++++ b/libpcsxcore/gte.c
+@@ -24,6 +24,7 @@
+ */
+ 
+ #include "gte.h"
++#include "psx3d_depth.h"
+ #include "gte_arm.h"
+ #include "psxmem.h"
+ #include "../include/compiler_features.h"
+@@ -561,6 +562,17 @@ static u32 gteMAC123f(psxCP2Regs *regs, s32 vx, s32 vy, s32 vz,
+ 
+ #endif
+ 
++#ifndef FLAGLESS
++int gte_hack_widescreen_q16;
++psx3d_zent psx3d_ztable[1 << PSX3D_ZT_BITS];
++int psx3d_stereo_enabled;
++#endif
++
++static inline force_inline s64 ws_x(s64 x)
++{
++	return gte_hack_widescreen_q16 ? (x * gte_hack_widescreen_q16) >> 16 : x;
++}
++
+ static inline force_inline void gteRTPS(psxCP2Regs *regs, int shift, int lm)
+ {
+ 	s32 vx = gteVX0, vy = gteVY0, vz = gteVZ0;
+@@ -588,8 +600,10 @@ static inline force_inline void gteRTPS(psxCP2Regs *regs, int shift, int lm)
+ 	gteSXY0 = gteSXY1;
+ 	gteSXY1 = gteSXY2;
+ 
+-	gteSX2 = limG1(&flags, mac0flags(&flags, gteOFX + (s64)gteIR1 * quotient) >> 16);
++	gteSX2 = limG1(&flags, mac0flags(&flags, gteOFX + ws_x((s64)gteIR1 * quotient)) >> 16);
+ 	gteSY2 = limG2(&flags, mac0flags(&flags, gteOFY + (s64)gteIR2 * quotient) >> 16);
++	if (psx3d_stereo_enabled)
++		psx3d_zput(gteSX2, gteSY2, sz3);
+ 
+ 	gteMAC0 = mac0 = mac0flags(&flags, gteDQB + (s64)gteDQA * quotient);
+ 	gteIR0 = limH(&flags, mac0 >> 12);
+@@ -624,8 +638,10 @@ static inline force_inline void gteRTPT(psxCP2Regs *regs, int shift, int lm)
+ 		sz3 = limD(&flags, sz3);
+ 		quotient = divide(&flags, h, sz3);
+ 		fSZ(v) = sz3;
+-		fSX(v) = limG1(&flags, mac0flags(&flags, gteOFX + (s64)ir1 * quotient) >> 16);
++		fSX(v) = limG1(&flags, mac0flags(&flags, gteOFX + ws_x((s64)ir1 * quotient)) >> 16);
+ 		fSY(v) = limG2(&flags, mac0flags(&flags, gteOFY + (s64)ir2 * quotient) >> 16);
++		if (psx3d_stereo_enabled)
++			psx3d_zput(fSX(v), fSY(v), sz3);
+ 	}
+ 
+ 	gteMAC1 = mac1;
+diff --git a/libpcsxcore/gte.h b/libpcsxcore/gte.h
+index a7baf6f..8e68227 100644
+--- a/libpcsxcore/gte.h
++++ b/libpcsxcore/gte.h
+@@ -66,6 +66,10 @@ void MTC2(struct psxCP2Regs *regs, u32 value, int reg);
+ void CTC2(struct psxCP2Regs *regs, u32 value, int reg);
+ 
+ typedef void (gte_handler)(psxCP2Regs *regs, u32 code);
++// PSX3D widescreen hack: horizontal scale applied to RTPS/RTPT projection,
++// 16.16 fixed point; 0 = off. Fits a wider view into the same screen width.
++extern int gte_hack_widescreen_q16;
++
+ gte_handler *gteGetHandler(u32 code);
+ gte_handler *gteGetHandler_nf(u32 code);
+ 
+diff --git a/libpcsxcore/new_dynarec/assem_arm.c b/libpcsxcore/new_dynarec/assem_arm.c
+index 6719602..cd6a4a3 100644
+--- a/libpcsxcore/new_dynarec/assem_arm.c
++++ b/libpcsxcore/new_dynarec/assem_arm.c
+@@ -22,6 +22,7 @@
+ #include <strings.h> // ffs
+ #define FLAGLESS
+ #include "../gte.h"
++#include "../psx3d_depth.h"
+ #undef FLAGLESS
+ #include "../gte_arm.h"
+ #include "../gte_neon.h"
+@@ -2070,7 +2071,8 @@ static void c2op_assemble(struct compile_state *st, int i, const struct regstat
+       }
+ #endif // HAVE_ARMV5
+       case GTEOP_RTPS:
+-        if (shift && !lm) {
++        // the asm fast paths don't know the widescreen hack
++        if (shift && !lm && !gte_hack_widescreen_q16 && !psx3d_stereo_enabled) {
+ #if defined(__ARM_NEON__)
+           handler = need_flags ? gteRTPS_sf1lm0_neon : gteRTPS_sf1lm0_nf_neon;
+ #elif defined(HAVE_ARMV5)
+@@ -2079,7 +2081,7 @@ static void c2op_assemble(struct compile_state *st, int i, const struct regstat
+         }
+         goto do_handler;
+       case GTEOP_RTPT:
+-        if (shift && !lm) {
++        if (shift && !lm && !gte_hack_widescreen_q16 && !psx3d_stereo_enabled) {
+ #if defined(__ARM_NEON__)
+           handler = need_flags ? gteRTPT_sf1lm0_neon : gteRTPT_sf1lm0_nf_neon;
+ #elif defined(HAVE_ARMV5)
+diff --git a/libpcsxcore/psx3d_depth.h b/libpcsxcore/psx3d_depth.h
+new file mode 100644
+index 0000000..7401e18
+--- /dev/null
++++ b/libpcsxcore/psx3d_depth.h
+@@ -0,0 +1,81 @@
++/*
++ * PSX3D stereo 3D support: per-vertex depth tracking.
++ *
++ * The GTE records the depth (SZ) of every point it projects, keyed by the
++ * screen position it produced. Games copy those screen positions straight
++ * into GPU polygon packets, so the GPU side can look each corner's depth
++ * back up and build a coarse depth map of the frame. The frontend uses that
++ * map to shift each part of the picture per eye.
++ */
++#ifndef PSX3D_DEPTH_H
++#define PSX3D_DEPTH_H
++
++#include <stdint.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++#define PSX3D_ZT_BITS  14
++#define PSX3D_DM_W     80     // depth map cells, each 8x8 PS1 pixels,
++#define PSX3D_DM_H     60     // covering up to 640x480
++#define PSX3D_DM_CELL  8
++
++typedef struct {
++	uint32_t key;   // packed screen x/y as the GTE wrote it (SXY)
++	uint32_t z;     // GTE SZ (0..65535)
++} psx3d_zent;
++
++typedef struct {
++	uint32_t seq;            // bumped every time a new frame's map is published
++	uint16_t w, h;           // PS1 display resolution the map was built for
++	uint32_t ranks;          // 3D polygons drawn this frame (max depth value - 2)
++	uint16_t z[PSX3D_DM_H][PSX3D_DM_W];  // see PSX3D_Z_* below
++} psx3d_depthmap;
++
++// Depth values 2..65534 are the draw-order rank of 3D polygons in the
++// frame: PS1 games have no depth buffer and must draw back to front, so a
++// higher rank is nearer. (Raw GTE depth can't be trusted for this: games
++// draw skyboxes and backdrops as small geometry close to the camera.)
++// Other values:
++#define PSX3D_Z_NONE     0       // nothing drawn here
++#define PSX3D_Z_OVERLAY  1       // 2D drawn after 3D this frame: HUD, text
++#define PSX3D_Z_FAR      0xffff  // 2D drawn before any 3D: clears, backdrops
++
++extern psx3d_zent psx3d_ztable[1 << PSX3D_ZT_BITS];
++extern int psx3d_stereo_enabled;
++
++static inline uint32_t psx3d_zkey(int x, int y)
++{
++	return ((uint32_t)(y & 0xffff) << 16) | (uint32_t)(x & 0xffff);
++}
++
++static inline uint32_t psx3d_zhash(uint32_t key)
++{
++	return (key * 2654435761u) >> (32 - PSX3D_ZT_BITS);
++}
++
++// GTE side (main thread)
++static inline void psx3d_zput(int sx, int sy, int sz)
++{
++	uint32_t key = psx3d_zkey(sx, sy);
++	psx3d_zent *e = &psx3d_ztable[psx3d_zhash(key)];
++	e->z = (uint32_t)sz;
++	e->key = key;
++}
++
++// GPU command side (main thread at submit time)
++void psx3d_depth_cmd(const uint32_t *list, uint32_t cmd);
++void psx3d_depth_poly(const uint32_t *words, uint32_t cmd);
++void psx3d_depth_rect(int x, int y, int w, int h);
++void psx3d_depth_publish(int disp_w, int disp_h);
++
++// frontend: call once per emulated frame, then read the latest map
++void psx3d_depth_frame(void);
++const psx3d_depthmap *psx3d_depth_get(void);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif
+diff --git a/plugins/gpu_unai/gpulib_if.cpp b/plugins/gpu_unai/gpulib_if.cpp
+index 4b9b57e..a1781d1 100644
+--- a/plugins/gpu_unai/gpulib_if.cpp
++++ b/plugins/gpu_unai/gpulib_if.cpp
+@@ -26,6 +26,8 @@
+ #include <string.h>
+ #include "arm_features.h"
+ #include "../gpulib/gpu.h"
++#include "../gpulib/gpu_async.h"
++#include "../../libpcsxcore/psx3d_depth.h"
+ #include "old/if.h"
+ 
+ //#include "port.h"
+@@ -111,6 +113,7 @@ void renderer_finish(void)
+ 
+ void renderer_notify_screen_change(const struct psx_gpu_screen *screen)
+ {
++
+   gpu_unai.inn.ilace_mask = gpu_unai.config.ilace_force;
+ 
+   if (gpu.state.downscale_enable)
+@@ -179,8 +182,9 @@ static void gpuGP0Cmd_0xEx(gpu_unai_t &gpu_unai, u32 cmd_word)
+ 
+     case 5: {
+       // GP0(E5h) - Set Drawing Offset (X,Y)
+-      gpu_unai.DrawingOffset[0] = GPU_EXPANDSIGN(cmd_word);
+-      gpu_unai.DrawingOffset[1] = GPU_EXPANDSIGN(cmd_word >> 11);
++      s32 ox = GPU_EXPANDSIGN(cmd_word), oy = GPU_EXPANDSIGN(cmd_word >> 11);
++      gpu_unai.DrawingOffset[0] = ox;
++      gpu_unai.DrawingOffset[1] = oy;
+     } break;
+ 
+     case 6: {
+@@ -227,6 +231,189 @@ static inline void textured_sprite(int &cpu_cycles_sum, int &cpu_cycles)
+   gput_sum(cpu_cycles_sum, cpu_cycles, gput_sprite(w, h));
+ }
+ 
++
++/////////////////////////////////////////////////////////////////////////////
++// PSX3D stereo: build a coarse depth map of the frame being drawn.
++// Polygon corners are matched to the depths the GTE recorded for the same
++// screen positions; PS1 games draw back to front, so later polygons simply
++// overwrite earlier ones. Sprites and anything without depth data count as
++// the screen plane (0), which keeps HUDs and text on the screen surface.
++
++static u16 psx3d_cur[PSX3D_DM_H][PSX3D_DM_W];
++static psx3d_depthmap psx3d_pub;
++static bool psx3d_seen_3d;   // any 3D geometry drawn yet in this frame
++static u32 psx3d_prims;      // primitives recorded since the last publish
++static u32 psx3d_rank;       // 3D polygons drawn so far this frame
++
++// 2D drawn after the 3D scene is an overlay (HUD); before it, a backdrop
++static inline u16 psx3d_flat_z(void)
++{
++  return psx3d_seen_3d ? PSX3D_Z_OVERLAY : PSX3D_Z_FAR;
++}
++
++// called by the frontend once per emulated frame
++extern "C" void psx3d_depth_frame(void)
++{
++  if (psx3d_stereo_enabled)
++    psx3d_depth_publish(gpu.screen.hres, gpu.screen.vres);
++}
++
++extern "C" const psx3d_depthmap *psx3d_depth_get(void)
++{
++  return &psx3d_pub;
++}
++
++extern "C" void psx3d_depth_publish(int disp_w, int disp_h)
++{
++  // both a buffer flip and a draw-offset change can end a frame; only the
++  // first one has anything to publish
++  if (!psx3d_prims)
++    return;
++  psx3d_prims = 0;
++  memcpy(psx3d_pub.z, psx3d_cur, sizeof(psx3d_cur));
++  psx3d_pub.w = disp_w;
++  psx3d_pub.h = disp_h;
++  psx3d_pub.ranks = psx3d_rank;
++  psx3d_pub.seq++;
++  memset(psx3d_cur, 0, sizeof(psx3d_cur));
++  psx3d_seen_3d = false;
++  psx3d_rank = 0;
++}
++
++static inline int psx3d_sext11(u32 v) { return ((s32)(v << 21)) >> 21; }
++
++extern "C" void psx3d_depth_rect(int x, int y, int w, int h)
++{
++  int x0 = x / PSX3D_DM_CELL, y0 = y / PSX3D_DM_CELL;
++  int x1 = (x + w - 1) / PSX3D_DM_CELL, y1 = (y + h - 1) / PSX3D_DM_CELL;
++  if (x0 < 0) x0 = 0;
++  if (y0 < 0) y0 = 0;
++  if (x1 >= PSX3D_DM_W) x1 = PSX3D_DM_W - 1;
++  if (y1 >= PSX3D_DM_H) y1 = PSX3D_DM_H - 1;
++  u16 z = psx3d_flat_z();
++  for (int cy = y0; cy <= y1; cy++)
++    for (int cx = x0; cx <= x1; cx++)
++      psx3d_cur[cy][cx] = z;
++}
++
++static inline u16 psx3d_clampz(float zz)
++{
++  return zz < 2.0f ? 2 : (zz > 65534.0f ? 65534 : (u16)zz);
++}
++
++// z: per-corner depths, or NULL for a flat 2D polygon
++static void psx3d_tri(const int *x, const int *y, const float *z)
++{
++  int minx = x[0], maxx = x[0], miny = y[0], maxy = y[0];
++  for (int i = 1; i < 3; i++) {
++    if (x[i] < minx) minx = x[i];
++    if (x[i] > maxx) maxx = x[i];
++    if (y[i] < miny) miny = y[i];
++    if (y[i] > maxy) maxy = y[i];
++  }
++  float area = (float)(x[1] - x[0]) * (y[2] - y[0]) - (float)(x[2] - x[0]) * (y[1] - y[0]);
++  int cx0 = minx / PSX3D_DM_CELL, cx1 = maxx / PSX3D_DM_CELL;
++  int cy0 = miny / PSX3D_DM_CELL, cy1 = maxy / PSX3D_DM_CELL;
++  if (cx0 < 0) cx0 = 0;
++  if (cy0 < 0) cy0 = 0;
++  if (cx1 >= PSX3D_DM_W) cx1 = PSX3D_DM_W - 1;
++  if (cy1 >= PSX3D_DM_H) cy1 = PSX3D_DM_H - 1;
++  if (cx0 > cx1 || cy0 > cy1)
++    return;
++
++  bool hit = false;
++  if (area != 0.0f) {
++    float inv = 1.0f / area;
++    for (int cy = cy0; cy <= cy1; cy++) {
++      float py = cy * PSX3D_DM_CELL + PSX3D_DM_CELL * 0.5f;
++      for (int cx = cx0; cx <= cx1; cx++) {
++        float px = cx * PSX3D_DM_CELL + PSX3D_DM_CELL * 0.5f;
++        float w0 = ((x[1] - px) * (y[2] - py) - (x[2] - px) * (y[1] - py)) * inv;
++        float w1 = ((x[2] - px) * (y[0] - py) - (x[0] - px) * (y[2] - py)) * inv;
++        float w2 = 1.0f - w0 - w1;
++        if (w0 < 0.0f || w1 < 0.0f || w2 < 0.0f)
++          continue;
++        psx3d_cur[cy][cx] = z ? psx3d_clampz(w0 * z[0] + w1 * z[1] + w2 * z[2])
++                              : psx3d_flat_z();
++        hit = true;
++      }
++    }
++  }
++  if (!hit) {
++    // smaller than a cell: still mark the cell it sits in, so distant
++    // geometry made of tiny triangles doesn't fall to the screen plane
++    int cx = (x[0] + x[1] + x[2]) / 3 / PSX3D_DM_CELL;
++    int cy = (y[0] + y[1] + y[2]) / 3 / PSX3D_DM_CELL;
++    if (cx >= 0 && cx < PSX3D_DM_W && cy >= 0 && cy < PSX3D_DM_H) {
++      psx3d_cur[cy][cx] = z ? psx3d_clampz((z[0] + z[1] + z[2]) * (1.0f / 3.0f))
++                            : psx3d_flat_z();
++    }
++  }
++}
++
++extern "C" void psx3d_depth_poly(const u32 *w, u32 cmd)
++{
++  int n = (cmd & 8) ? 4 : 3, tex = (cmd & 4) != 0, gouraud = (cmd & 0x10) != 0;
++  int x[4], y[4], found = 0;
++  float z[4], zsum = 0.0f;
++  int idx = 1;
++  for (int v = 0; v < n; v++) {
++    if (v > 0 && gouraud)
++      idx++;
++    u32 word = le32_to_u32(((const le32_t *)w)[idx++]);
++    if (tex)
++      idx++;
++    x[v] = psx3d_sext11(word);
++    y[v] = psx3d_sext11(word >> 16);
++    u32 key = psx3d_zkey(x[v], y[v]);
++    const psx3d_zent *e = &psx3d_ztable[psx3d_zhash(key)];
++    if (e->key == key && e->z) {
++      z[v] = (float)e->z;
++      zsum += z[v];
++      found++;
++    } else {
++      z[v] = -1.0f;
++    }
++  }
++  if (!found) {
++    // 2D polygon: backdrop or overlay depending on draw order
++    psx3d_tri(x, y, NULL);
++    if (n == 4)
++      psx3d_tri(x + 1, y + 1, NULL);
++    return;
++  }
++  // depth = draw order (see psx3d_depth.h), flat over the polygon
++  psx3d_rank++;
++  for (int v = 0; v < n; v++)
++    z[v] = (float)(psx3d_rank < 65532 ? psx3d_rank + 2 : 65534);
++  psx3d_seen_3d = true;
++  psx3d_tri(x, y, z);
++  if (n == 4)
++    psx3d_tri(x + 1, y + 1, z + 1);
++}
++
++extern "C" void psx3d_depth_cmd(const u32 *list_, u32 cmd)
++{
++  const le32_t *list = (const le32_t *)list_;
++  psx3d_prims++;
++  if (cmd >= 0x20 && cmd < 0x40) {
++    psx3d_depth_poly((const u32 *)list, cmd);
++  } else if (cmd >= 0x60 && cmd < 0x80) {
++    u32 xy = le32_to_u32(list[1]);
++    int x = psx3d_sext11(xy), y = psx3d_sext11(xy >> 16), w, h;
++    switch (cmd & 0x18) {
++    case 0x00: {   // variable size
++      u32 wh = le32_to_u32(list[(cmd & 4) ? 3 : 2]);
++      w = wh & 0x3ff; h = (wh >> 16) & 0x1ff;
++    } break;
++    case 0x08: w = h = 1; break;
++    case 0x10: w = h = 8; break;
++    default:   w = h = 16; break;
++    }
++    psx3d_depth_rect(x, y, w, h);
++  }
++}
++
+ extern const unsigned char cmd_lengths[256];
+ 
+ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
+@@ -252,6 +439,10 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
+       break;
+     }
+ 
++    // with the async GPU, gpu_async.c records depth on the main thread
++    if (psx3d_stereo_enabled && !gpu_async_enabled(&gpu))
++      psx3d_depth_cmd((const u32 *)list, cmd);
++
+     #define PRIM cmd
+     gpu_unai.PacketBuffer.U4[0] = list[0];
+     for (i = 1; i <= len; i++)
+diff --git a/plugins/gpulib/gpu_async.c b/plugins/gpulib/gpu_async.c
+index a67509b..4f6d259 100644
+--- a/plugins/gpulib/gpu_async.c
++++ b/plugins/gpulib/gpu_async.c
+@@ -13,6 +13,7 @@
+ #include <assert.h>
+ #include "gpu.h"
+ #include "gpu_async.h"
++#include "../../libpcsxcore/psx3d_depth.h"
+ #include "gpu_timing.h"
+ #include "../../include/arm_features.h"
+ #include "../../include/compiler_features.h"
+@@ -273,6 +274,10 @@ int gpu_async_do_cmd_list(struct psx_gpu *gpu, const uint32_t *list_data, int li
+       cmd = -1;
+       break; // incomplete cmd
+     }
++    // PSX3D: look depths up now, while the GTE's table matches this frame
++    // (the GPU thread runs behind and would see the next frame's values)
++    if (psx3d_stereo_enabled)
++      psx3d_depth_cmd(list, cmd);
+ 
+     switch (cmd) {
+       case 0x02:

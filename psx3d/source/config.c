@@ -68,9 +68,10 @@ void config_load(void)
 		else if (strcmp(k, "show_fps") == 0)
 			g_cfg.show_fps = atoi(v) != 0;
 		else if (strcmp(k, "stereo") == 0)
-			g_cfg.stereo = atoi(v) != 0;
+			g_cfg.stereo = atoi(v) % 3;
 	}
 	fclose(f);
+	config_sync_stereo();
 }
 
 void config_save(void)
@@ -136,5 +137,12 @@ bool config_widescreen(void)
 void config_set_widescreen(bool on)
 {
 	config_set_core_override(WS_KEY, on ? WS_Q16 : "0");
+	options_mark_updated();
+}
+
+// real 3D needs the core to record vertex depths
+void config_sync_stereo(void)
+{
+	config_set_core_override("pcsx_rearmed_psx3d_stereo", g_cfg.stereo == 2 ? "enabled" : "disabled");
 	options_mark_updated();
 }
