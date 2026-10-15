@@ -34,6 +34,36 @@ static LightLock lock;
 static LightEvent wake;
 static volatile bool quit;
 static u64 net_retry_at;   // after a network failure, wait before trying again
+static volatile bool paused; // HOME menu / sleep: don't start new downloads
+static aptHookCookie apt_cookie;
+
+// The system tells us about HOME, sleep and closing right away (from inside
+// aptMainLoop). Stop network work immediately instead of whenever the main
+// loop next looks.
+static void on_apt(APT_HookType hook, void *param)
+{
+	(void)param;
+	switch (hook) {
+	case APTHOOK_ONSUSPEND:
+	case APTHOOK_ONSLEEP:
+		paused = true;
+		break;
+	case APTHOOK_ONRESTORE:
+	case APTHOOK_ONWAKEUP:
+		paused = false;
+		net_retry_at = osGetTime() + 1000;   // the network needs a moment back
+		LightEvent_Signal(&wake);
+		LightEvent_Signal(&wake);
+		break;
+	case APTHOOK_ONEXIT:
+		quit = true;                         // aborts transfers in progress
+		LightEvent_Signal(&wake);
+		LightEvent_Signal(&wake);
+		break;
+	default:
+		break;
+	}
+}
 static u32 use_clock;
 static volatile int focus;   // the selected game: fetch nearest first
 static u32 *soc_buf;
@@ -151,7 +181,7 @@ static size_t on_data(void *p, size_t sz, size_t n, void *ud)
 static int on_progress(void *ud, curl_off_t a, curl_off_t b, curl_off_t c_, curl_off_t d)
 {
 	(void)ud; (void)a; (void)b; (void)c_; (void)d;
-	return quit ? 1 : 0;
+	return (quit || paused) ? 1 : 0;   // a paused transfer is retried later
 }
 
 static u32 *download(CURL *c, const char *key)
@@ -252,6 +282,8 @@ static void worker_main(void *arg)
 	while (!quit) {
 		LightEvent_Wait(&wake);
 		for (;;) {
+			while (paused && !quit)
+				svcSleepThread(100000000LL);
 			int pick = -1, game = -1, best = 1 << 30;
 			LightLock_Lock(&lock);
 			for (int i = 0; i < SLOTS; i++) {
@@ -282,7 +314,8 @@ static void worker_main(void *arg)
 			LightLock_Lock(&lock);
 			if (slots[pick].game == game && slots[pick].state == 5) {
 				slots[pick].pixels = px;
-				slots[pick].state = px ? 2 : 4;
+				// interrupted by HOME/sleep: try again later, not "no cover"
+				slots[pick].state = px ? 2 : (paused ? 1 : 4);
 			} else {
 				free(px);
 			}
@@ -306,6 +339,7 @@ void covers_init(void)
 	if (!soc_buf && (soc_buf = memalign(0x1000, 0x100000)))
 		soc_started = R_SUCCEEDED(socInit(soc_buf, 0x100000));
 	curl_global_init(CURL_GLOBAL_DEFAULT);
+	aptHook(&apt_cookie, on_apt, NULL);
 	s32 prio = 0x30;
 	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
 	// New 3DS: core 2 is free outside games; otherwise share core 0 at a
@@ -319,6 +353,7 @@ void covers_init(void)
 
 void covers_exit(void)
 {
+	aptUnhook(&apt_cookie);
 	quit = true;
 	for (int i = 0; i < WORKERS; i++)
 		LightEvent_Signal(&wake);
