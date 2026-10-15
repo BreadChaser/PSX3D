@@ -1,65 +1,88 @@
 # PSX3D
 
-A standalone PlayStation 1 emulator for the **New Nintendo 3DS**, built on
-[PCSX-ReARMed](https://github.com/libretro/pcsx_rearmed) but without RetroArch.
+A PlayStation 1 emulator for the New 3DS that you install like any other app.
+No RetroArch, no core menus, just your games.
 
-> **Status: early work in progress.** It builds, boots, and shows the game
-> browser in the Azahar emulator. It has **not been tested on real hardware
-> or with real games yet**. Expect bugs. Much of the frontend code was written
-> with help from an AI assistant (Claude) and is being tested and fixed as it goes.
+I wanted a PS1 emulator that actually worked on my 3DS. RetroArch's PS1 core kept
+crashing on my 1TB SD card, and when it did run, it never felt like it belonged on
+the system. PSX3D takes PCSX-ReARMed, which already runs PS1 games really well on
+ARM, and gives it a proper 3DS home.
 
-## What this is (and isn't)
+## Features
 
-- The emulation itself, including the CPU dynarec and the graphics and sound
-  engines, is **PCSX-ReARMed**, unmodified, by notaz and the libretro
-  contributors. PSX3D did not write the emulator.
-- PSX3D is a new, small **3DS frontend** that hosts that core directly instead of
-  going through RetroArch:
-  - A game browser that reads one folder at a time and never scans the card for
-    free space, aimed at large (e.g. 1TB) SD cards
-  - Video copied to the screen by the 3DS GPU's DMA engine (no CPU pixel copying)
-  - Audio through a single NDSP ring buffer with small automatic rate
-    adjustment to stay in sync
-  - New 3DS 804 MHz mode + L2 cache always on
-  - An in-game menu: save/load states (10 slots), screen modes, smoothing, FPS
-    counter, and all core options
-- It is **not** affiliated with Sony, Nintendo, libretro, or the PCSX-ReARMed authors.
+- **Game library**: your games show up with cover art and clean titles. Multi-disc
+  games are grouped into one entry, so Final Fantasy VII is one game, not three.
+- **Full speed on New 3DS**: uses the 804MHz mode, the L2 cache and the dynarec.
+  Most games run at a steady 60.
+- **Big SD cards**: never scans the whole card, so 1TB cards are fine.
+- **Dark bottom screen**: goes dark while you play. Tap it to open the menu.
+- **Save states**: 10 slots, plus normal memory card saves.
+- **Screen modes**: 4:3, stretched, or widescreen (the game renders more of the
+  scene instead of stretching, in games where it works).
+- **Disc swapping**: switch discs from the menu.
+- **HOME and sleep**: work at any time, including while covers are downloading.
 
-## Requirements
+## What you need
 
-- New 3DS / New 2DS XL recommended. Old 3DS / 2DS is supported on a best-effort
-  basis (untested on real hardware): it sizes memory to fit, runs everything on
-  one core and turns on auto frameskip, but heavy 3D games will be slow.
-- Custom firmware with **Luma3DS** (needed for the fast dynarec; without it,
-  PSX3D falls back to a very slow interpreter)
-- `sdmc:/3ds/dspfirm.cdc` for sound (dump it with DSP1)
-- Your own game dumps (`.cue/.bin`, `.chd`, `.pbp`, `.iso`, `.m3u`, ...).
-  None are provided.
-- Optional: a PS1 BIOS (e.g. `scph1001.bin`) in `sdmc:/3ds/PSX3D/bios/`.
-  Without one, the built-in HLE BIOS is used. BIOS files are not provided.
+- A **New 3DS / New 3DS XL / New 2DS XL** with custom firmware (Luma3DS). An Old
+  3DS will start it and has on-screen buttons, but heavy 3D games will be slow.
+- `sdmc:/3ds/dspfirm.cdc` for sound. If you've never made it, run
+  [DSP1](https://github.com/zoogie/DSP1) once.
+- Your own PS1 game dumps: `.cue/.bin`, `.chd`, `.pbp`, `.iso`, `.m3u`.
+- Optional: a PS1 BIOS such as `scph1001.bin` in `sdmc:/3ds/PSX3D/bios/`. Without
+  one, a built-in replacement BIOS is used, which works for most games.
 
-## Usage
+## Installing
 
-Copy `PSX3D.3dsx` to `sdmc:/3ds/` and start it from the Homebrew Launcher.
+Grab `PSX3D.cia` from the [releases page](https://github.com/BreadChaser/PSX3D/releases)
+and install it with FBI.
 
-| Where | Controls |
-|---|---|
-| Game list | A open, B up a folder, L/R page, START quit |
-| In game | 3DS buttons map 1:1 to PS1 buttons (A=○, B=✕, X=△, Y=□), ZL/ZR = L2/R2, circle pad = d-pad/left stick, C-stick = right stick |
-| In game | **Tap the bottom screen** for the menu |
+Put your games in `sdmc:/roms/psx/` (or `sdmc:/roms/`). PSX3D looks there first.
+If they're somewhere else, press Y in the library to pick the folder.
 
-Files live in `sdmc:/3ds/PSX3D/`: `saves/` holds memory cards (`.srm`),
-`states/` holds save states, and `config.ini` and `log.txt` are also there.
+## Controls
+
+| Where | Button | Does |
+|---|---|---|
+| Library | A | Play |
+| Library | Y | Choose the games folder |
+| Library | SELECT | Rescan the folder |
+| Library | START | Quit |
+| In game | A / B / X / Y | ○ / ✕ / △ / □ |
+| In game | L / R, ZL / ZR | L1 / R1, L2 / R2 |
+| In game | Circle pad / C-stick | D-pad or left stick / right stick |
+| In game | Tap the bottom screen | Menu: states, discs, screen, options, exit |
+
+## Cover art
+
+Covers come from the [libretro thumbnails](https://github.com/libretro-thumbnails/libretro-thumbnails)
+project the first time a game shows up, so you'll need Wi-Fi for that. After
+that they're cached on your SD card. The 3DS's network is slow, so each new
+cover takes a few seconds. To use your own cover, put a PNG in
+`sdmc:/3ds/PSX3D/covers/` with the same name as the downloaded one.
+
+## Files
+
+Everything lives in `sdmc:/3ds/PSX3D/`:
+
+- `saves/`: memory cards
+- `states/`: save states
+- `covers/`: cover art cache
+- `config.ini`: settings
+- `log.txt`: what happened last run, handy for bug reports
 
 ## Known issues
 
-- Heavy Wi-Fi traffic (for example NTR screen streaming) causes audible clicks
-  in the 3DS speaker and headphone output. That's interference in the 3DS
-  itself, not the emulator. Normal play doesn't use Wi-Fi.
+- Wi-Fi traffic (like streaming the screen with NTR) can cause small clicks in
+  the audio. That comes from the 3DS itself, not the emulator.
+- A few games still need a real BIOS. If a game hangs on boot, try one.
+
+Found a bug? Open an issue and attach `log.txt` if you can.
 
 ## Building
 
-Needs [devkitPro](https://devkitpro.org/) with devkitARM, libctru, citro3d and citro2d.
+You'll need [devkitPro](https://devkitpro.org/) with devkitARM, libctru,
+citro2d and citro3d.
 
 ```bash
 git clone --recursive https://github.com/BreadChaser/PSX3D.git
@@ -68,16 +91,21 @@ git -C core submodule update --init deps/libchdr deps/libretro-common
 make
 ```
 
-The output is `psx3d/PSX3D.3dsx`.
-
-## License
-
-GPL v2, the same as PCSX-ReARMed (see `LICENSE`). The core is included as a
-git submodule pointing at the upstream libretro repository.
+That gives you `psx3d/PSX3D.3dsx`. `make cia` builds the CIA (needs `makerom`
+and `bannertool` on your PATH).
 
 ## Credits
 
-- PCSX-ReARMed: notaz, Exophase, senquack, and the libretro contributors
-- PCSX / PCSX-Reloaded and P.E.Op.S. plugin authors
-- 3DS port work inside PCSX-ReARMed: Justin Weiss and others
-- devkitPro, libctru, citro3d, citro2d
+PSX3D is a frontend. The emulator itself is
+[PCSX-ReARMed](https://github.com/libretro/pcsx_rearmed), by notaz, Exophase,
+senquack and the libretro contributors, built on PCSX, PCSX-Reloaded and the
+P.E.Op.S. plugins. Thanks as well to the people who did the 3DS port of PCSX-ReARMed,
+and to devkitPro for libctru, citro2d and citro3d.
+
+Fonts and artwork are credited in `tools/art/CREDITS.md`.
+
+PSX3D isn't affiliated with Sony, Nintendo, libretro or the PCSX-ReARMed authors.
+
+## License
+
+GPL v2, same as PCSX-ReARMed. See `LICENSE`.
