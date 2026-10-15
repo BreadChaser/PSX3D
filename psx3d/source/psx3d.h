@@ -110,6 +110,21 @@ void ui_exit(void);
 void ui_text(float x, float y, float size, u32 color, const char *fmt, ...);
 void ui_rect(float x, float y, float w, float h, u32 color);
 void ui_begin(void);
+void ui_text_ex(C2D_Font font, float x, float y, float size, u32 color, u32 flags, const char *s);
+
+#define FLIST_MAX 2048
+typedef struct {
+	bool init;
+	float hl, hl_v;               // highlighted row (fractional), spring
+	float scroll, scroll_v;       // first visible row (fractional), spring
+	float scroll_target;
+	float lift[FLIST_MAX];        // 0..1, eases toward 1 for the selected row
+	float t;
+} flist_t;
+void flist_update(flist_t *f, int sel, int n, int rows);
+void flist_draw(const flist_t *f, int n, int sel, float x, float y0, float w, float row_h, int rows,
+	const char *(*label)(int, void *), const char *(*value)(int, void *), void *ud, u32 accent);
+int flist_row_at(const flist_t *f, float y0, float row_h, float py);
 
 // library.c - one entry per game, clean titles, discs grouped
 typedef struct {
@@ -144,6 +159,7 @@ void music_update(void);
 
 // libui.c - the game library screen
 void libui_init(void);
+C2D_Font libui_font(void);
 void libui_exit(void);
 int libui_run(char *out_path, size_t len);
 void libui_select_title(const char *title);

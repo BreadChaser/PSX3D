@@ -204,31 +204,29 @@ static void draw_top(void *ud)
 		C2D_DrawRectSolid(0, 0, 0.9f, 400, 240, C2D_Color32(0, 0, 0, (u8)(255 * (f > 1 ? 1 : f))));
 }
 
+static flist_t lst;
+
+static const char *game_label(int i, void *ud)
+{
+	(void)ud;
+	static char line[96];
+	const game_t *g = library_get(i);
+	snprintf(line, sizeof(line), "%.40s", g ? g->title : "");
+	return line;
+}
+
 static void draw_bottom(void *ud)
 {
 	(void)ud;
 	int n = library_count();
 	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
-	for (int r = 0; r < ROWS; r++) {
-		int i = list_top + r;
-		if (i >= n)
-			break;
-		const game_t *g = library_get(i);
-		float y = 4 + r * ROW_H;
-		if (i == sel) {
-			C2D_DrawRectSolid(0, y, 0.2f, 320, ROW_H, C2D_Color32(28, 38, 86, 255));
-			C2D_DrawRectSolid(0, y, 0.3f, 4, ROW_H, *accent(i));
-		}
-		char line[96];
-		snprintf(line, sizeof(line), "%.40s", g->title);
-		text(NULL, 12, y + 4, 0.5f, i == sel ? C2D_Color32(255, 255, 255, 255) : C2D_Color32(150, 160, 190, 255), 0, line);
-	}
+	flist_draw(&lst, n, sel, 0, 4, 314, ROW_H, ROWS, game_label, NULL, NULL, *accent(sel));
 	// scroll indicator
 	if (n > ROWS) {
-		float h = 216.0f * ROWS / n, y = 4 + 216.0f * list_top / n;
-		C2D_DrawRectSolid(314, y, 0.3f, 3, h, C2D_Color32(60, 80, 140, 255));
+		float h = 216.0f * ROWS / n, y = 4 + 216.0f * lst.scroll / n;
+		C2D_DrawRectSolid(315, y, 0.3f, 3, h, C2D_Color32(60, 80, 140, 255));
 	}
-	text(NULL, 8, 222, 0.4f, C2D_Color32(90, 100, 135, 255), 0,
+	ui_text_ex(NULL, 8, 222, 0.4f, C2D_Color32(90, 100, 135, 255), 0,
 		"A play    Y folders    SELECT rescan    START quit");
 }
 
@@ -314,12 +312,12 @@ int libui_run(char *out_path, size_t len)
 			if (k & KEY_TOUCH) {
 				touchPosition tp;
 				hidTouchRead(&tp);
-				int r = tp.py >= 4 ? (tp.py - 4) / ROW_H : -1;
+				int i = flist_row_at(&lst, 4, ROW_H, tp.py);
 				// (0,0) is what a touch with no position reads as: ignore it
-				if ((tp.px || tp.py) && tp.py < 220 && r >= 0 && r < ROWS && list_top + r < n) {
-					if (list_top + r == sel)
+				if ((tp.px || tp.py) && tp.py >= 4 && tp.py < 220 && i >= 0 && i < n) {
+					if (i == sel)
 						k |= KEY_A;     // tap the selected game again to play
-					sel = list_top + r;
+					sel = i;
 				}
 			}
 			clamp_list();
@@ -351,6 +349,7 @@ int libui_run(char *out_path, size_t len)
 		}
 
 		music_update();
+		flist_update(&lst, sel, n, ROWS);
 		// springs: carousel glides to the selection, the new cover pops
 		const float dt = 1.0f / 60.0f;
 		clock_s += dt;
@@ -382,4 +381,9 @@ int libui_run(char *out_path, size_t len)
 		video_present_vsync(false, draw_top, draw_bottom, NULL);
 	}
 	return 0;
+}
+
+C2D_Font libui_font(void)
+{
+	return title_font;
 }

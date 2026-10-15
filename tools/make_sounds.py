@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # PSX3D UI sounds and library music, synthesized from scratch (original,
-# no samples). Writes raw signed 16-bit little-endian PCM:
-#   move.pcm select.pcm back.pcm launch.pcm  (mono, 32000 Hz)
-#   music.pcm                                 (stereo, 32000 Hz, seamless loop)
+# no samples): soft FM glass bells and slow pads in a big airy reverb, in the
+# spirit of late-90s console menus. Writes raw signed 16-bit LE PCM, 32000 Hz:
+#   move.pcm select.pcm back.pcm launch.pcm  (mono)
+#   music.pcm                                 (stereo, seamless loop)
 #
 #   python3 tools/make_sounds.py <out dir>     (needs numpy)
 import sys
@@ -10,134 +11,144 @@ import numpy as np
 
 SR = 32000
 OUT = sys.argv[1]
-rng = np.random.default_rng(3)
+rng = np.random.default_rng(7)
 
 
 def t(sec):
     return np.arange(int(SR * sec)) / SR
 
 
-def env(n, attack, release, sustain=1.0):
-    e = np.ones(n) * sustain
-    a = max(1, int(SR * attack))
-    r = max(1, int(SR * release))
-    e[:a] = np.linspace(0, 1, a)
-    e[-r:] *= np.linspace(1, 0, r) ** 2
-    return e
-
-
-def saw(freq, tt, detune=0.0):
-    ph = (freq * (1 + detune)) * tt
-    return 2.0 * (ph - np.floor(ph + 0.5))
-
-
-def lowpass(x, cutoff):
-    # one-pole low-pass, cutoff in Hz (array or scalar)
-    a = np.exp(-2 * np.pi * np.broadcast_to(cutoff, x.shape) / SR)
-    y = np.empty_like(x)
-    acc = 0.0
-    for i in range(len(x)):
-        acc = (1 - a[i]) * x[i] + a[i] * acc
-        y[i] = acc
-    return y
-
-
-def save(name, x, stereo=False):
-    x = np.clip(x, -1, 1)
-    pcm = (x * 32000).astype("<i2")
-    pcm.tofile(f"{OUT}/{name}.pcm")
-
-
-def blip(f0, f1, dur, vol):
-    tt = t(dur)
-    f = np.linspace(f0, f1, len(tt))
-    ph = np.cumsum(f) / SR
-    x = np.sin(2 * np.pi * ph) + 0.25 * np.sin(4 * np.pi * ph)
-    return x * env(len(tt), 0.002, dur * 0.9) * vol
-
-
-# move: short soft tick
-save("move", blip(1400, 1100, 0.045, 0.35))
-
-# select: two-note rising chime (E6 -> B6)
-a = blip(1319, 1319, 0.16, 0.35)
-b = blip(1976, 1976, 0.22, 0.3)
-sel = np.zeros(int(SR * 0.3))
-sel[: len(a)] += a
-sel[int(SR * 0.07): int(SR * 0.07) + len(b)] += b
-save("select", sel)
-
-# back: falling blip
-save("back", blip(900, 520, 0.09, 0.35))
-
-# launch: filtered saw sweep up into a bright chord, with a bit of air
-dur = 0.9
-tt = t(dur)
-chord = sum(saw(f, tt, d) for f in (220, 277.2, 329.6, 440) for d in (-0.004, 0.004)) / 6
-cut = np.geomspace(300, 6000, len(tt))
-x = lowpass(chord, cut) * env(len(tt), 0.01, 0.5) * 0.6
-x += rng.normal(0, 1, len(tt)) * np.linspace(0.12, 0, len(tt)) * env(len(tt), 0.2, 0.3)
-save("launch", x)
-
-# ---------------------------------------------------------------- music
-# 4 bars of Am - F - C - G at 96 bpm, 2 beats per chord, pad + arpeggio +
-# soft kick, looped seamlessly (the reverb tail wraps around).
-bpm = 96
-beat = 60 / bpm
-chords = [(57, 60, 64), (53, 57, 60), (48, 52, 55), (55, 59, 62)]  # MIDI
-bar = beat * 4
-total = bar * 4
-n = int(SR * total)
-L = np.zeros(n)
-R = np.zeros(n)
-
-
 def midi(m):
     return 440.0 * 2 ** ((m - 69) / 12)
 
 
-for ci, ch in enumerate(chords):
-    start = int(SR * ci * bar)
-    tt = t(bar)
-    pad = np.zeros(len(tt))
-    for m in ch:
-        for d in (-0.006, 0.0, 0.006):
-            pad += saw(midi(m), tt, d)
-    pad = lowpass(pad / 9, 900 + 500 * np.sin(np.pi * tt / bar)) * env(len(tt), 0.25, 0.4)
-    L[start:start + len(tt)] += pad * 0.35
-    R[start:start + len(tt)] += pad * 0.33
-    # bass
-    bass = np.sin(2 * np.pi * midi(ch[0] - 24) * tt) * env(len(tt), 0.01, 0.2)
-    L[start:start + len(tt)] += bass * 0.22
-    R[start:start + len(tt)] += bass * 0.22
-    # arpeggio: 8th notes up through the chord
-    step = beat / 2
-    notes = [ch[0] + 12, ch[1] + 12, ch[2] + 12, ch[1] + 24]
-    for k in range(8):
-        s = start + int(SR * k * step)
-        tn = t(step * 0.9)
-        f = midi(notes[k % 4])
-        tone = (saw(f, tn) * 0.5 + np.sin(2 * np.pi * f * tn)) * env(len(tn), 0.003, step * 0.8)
-        tone = lowpass(tone, 2500)
-        pan = 0.5 + 0.35 * np.sin(k)
-        L[s:s + len(tn)] += tone * 0.13 * (1 - pan)
-        R[s:s + len(tn)] += tone * 0.13 * pan
-    # soft kick on beats
-    for k in range(4):
-        s = start + int(SR * k * beat)
-        tk = t(0.25)
-        kick = np.sin(2 * np.pi * np.cumsum(np.geomspace(120, 45, len(tk))) / SR) * env(len(tk), 0.002, 0.2)
-        L[s:s + len(tk)] += kick * 0.3
-        R[s:s + len(tk)] += kick * 0.3
+def bell(f, dur, vol, ratio=3.5, index=1.6, decay=3.0):
+    """FM glass bell: bright attack that mellows as the modulation decays."""
+    tt = t(dur)
+    mod_env = np.exp(-tt * decay * 2.2)
+    amp_env = np.exp(-tt * decay) * np.minimum(1, tt / 0.004)
+    mod = index * mod_env * np.sin(2 * np.pi * f * ratio * tt)
+    return vol * amp_env * np.sin(2 * np.pi * f * tt + mod)
 
-# simple stereo echo, wrapping around so the loop point is seamless
-d = int(SR * beat * 0.75)
-for src, dst, g in ((L, R, 0.28), (R, L, 0.28)):
-    dst += np.roll(src, d) * g
-L = L / max(1e-6, np.max(np.abs(L))) * 0.55
-R = R / max(1e-6, np.max(np.abs(R))) * 0.55
-st = np.empty(n * 2)
-st[0::2] = L
-st[1::2] = R
-save("music", st)
+
+def pad(freqs, dur, vol, attack, release):
+    tt = t(dur)
+    x = np.zeros(len(tt))
+    for f in freqs:
+        for d in (-0.003, 0.0, 0.0031):
+            # sine + a little 2nd harmonic, slow chorus wobble
+            ph = 2 * np.pi * f * (1 + d) * tt + 0.3 * np.sin(2 * np.pi * 0.2 * tt + f)
+            x += np.sin(ph) + 0.15 * np.sin(2 * ph)
+    x /= 3 * len(freqs)
+    e = np.ones(len(tt))
+    a, r = int(SR * attack), int(SR * release)
+    e[:a] = np.sin(np.linspace(0, np.pi / 2, a)) ** 2
+    e[-r:] *= np.cos(np.linspace(0, np.pi / 2, r)) ** 2
+    return vol * x * e
+
+
+def reverb_ir(seconds, damp_hz=5000, predelay=0.012):
+    n = int(SR * seconds)
+    tt = np.arange(n) / SR
+    ir = rng.normal(0, 1, (2, n)) * np.exp(-tt * 6.9 / seconds)   # -60 dB at the end
+    # darken the tail over time (air absorption)
+    spec = np.fft.rfft(ir, axis=1)
+    f = np.fft.rfftfreq(n, 1 / SR)
+    spec *= 1 / (1 + (f / damp_hz) ** 2)
+    ir = np.fft.irfft(spec, n, axis=1)
+    pd = int(SR * predelay)
+    ir = np.pad(ir, ((0, 0), (pd, 0)))[:, :n]
+    return ir / np.sqrt((ir ** 2).sum(axis=1, keepdims=True))
+
+
+def wet(x, ir, mix, circular=False):
+    """stereo reverb of mono x; circular=True wraps the tail (seamless loops)"""
+    out = []
+    for ch in range(2):
+        if circular:
+            n = len(x)
+            h = ir[ch][:n] if len(ir[ch]) >= n else np.pad(ir[ch], (0, n - len(ir[ch])))
+            y = np.fft.irfft(np.fft.rfft(x) * np.fft.rfft(h), n)
+        else:
+            n = len(x) + len(ir[ch])
+            y = np.fft.irfft(np.fft.rfft(x, n) * np.fft.rfft(ir[ch], n), n)
+        out.append(y)
+    dry = np.pad(x, (0, len(out[0]) - len(x)))
+    return np.stack([dry * (1 - mix) + out[0] * mix, dry * (1 - mix) + out[1] * mix])
+
+
+def save_mono(name, st, vol, max_s=None):
+    x = st.mean(axis=0)
+    if max_s:
+        x = x[: int(SR * max_s)]
+    # trim the silent end of the tail
+    nz = np.nonzero(np.abs(x) > 1e-4 * np.abs(x).max())[0]
+    x = x[: nz[-1] + 1] if len(nz) else x
+    x = x / np.abs(x).max() * vol
+    fade = min(len(x), int(SR * (0.15 if max_s else 0.05)))
+    x[-fade:] *= np.linspace(1, 0, fade)
+    (np.clip(x, -1, 1) * 32000).astype("<i2").tofile(f"{OUT}/{name}.pcm")
+
+
+small = reverb_ir(1.2, damp_hz=6000)
+big = reverb_ir(3.5, damp_hz=4000, predelay=0.03)
+
+# move: tiny soft glass tick
+save_mono("move", wet(bell(midi(96), 0.12, 1.0, ratio=2.0, index=0.6, decay=40), small, 0.35), 0.16, max_s=0.4)
+
+# select: two airy bell notes a fifth apart
+x = np.zeros(int(SR * 0.6))
+for i, (m, d) in enumerate(((84, 0.0), (91, 0.07))):
+    b = bell(midi(m), 0.5, 1.0 if i == 0 else 0.8, ratio=3.5, index=1.2, decay=7)
+    s = int(SR * d)
+    x[s:s + len(b)] += b[: len(x) - s]
+save_mono("select", wet(x, small, 0.45), 0.30)
+
+# back: one soft lower bell
+save_mono("back", wet(bell(midi(76), 0.4, 1.0, ratio=2.0, index=0.9, decay=9), small, 0.45), 0.24)
+
+# launch: a slow shimmering swell (Cmaj9) with rising bell sparkles
+dur = 2.2
+x = pad([midi(m) for m in (60, 64, 67, 71, 74)], dur, 1.0, attack=0.6, release=1.2)
+for k, m in enumerate((79, 83, 86, 91)):
+    b = bell(midi(m), 1.2, 0.35, ratio=3.5, index=1.0, decay=3)
+    s = int(SR * (0.25 + k * 0.12))
+    x[s:s + len(b)] += b[: len(x) - s]
+save_mono("launch", wet(x, big, 0.55), 0.32)
+
+# ---------------------------------------------------------------- music
+# Slow ambient loop: Cmaj7 - Am9 - Fmaj7 - G6/9, 4 s per chord, soft pad,
+# sparse bell melody, big reverb wrapped around the loop.
+chords = [
+    (48, (60, 64, 67, 71)),       # Cmaj7
+    (45, (60, 64, 67, 71, 74)),   # Am9
+    (41, (60, 64, 65, 69, 72)),   # Fmaj7
+    (43, (59, 62, 64, 67, 69)),   # G6/9
+]
+seg = 4.0
+total = seg * len(chords)
+n = int(SR * total)
+mono = np.zeros(n)
+for ci, (root, notes) in enumerate(chords):
+    s = int(SR * ci * seg)
+    # pads overlap into the next chord a little (crossfade)
+    p = pad([midi(m) for m in notes], seg + 1.0, 0.5, attack=1.0, release=1.4)
+    p += pad([midi(root)], seg + 1.0, 0.35, attack=0.8, release=1.2)
+    idx = (s + np.arange(len(p))) % n
+    np.add.at(mono, idx, p)
+# bell melody: a few notes per chord, pentatonic, unhurried
+mel = [(0.5, 79), (1.75, 76), (3.0, 74),
+       (4.5, 76), (5.25, 72), (6.5, 69),
+       (8.5, 72), (9.75, 77), (11.0, 76),
+       (12.5, 74), (13.5, 71), (14.75, 74)]
+for when, m in mel:
+    b = bell(midi(m), 2.0, 0.22, ratio=3.5, index=1.1, decay=2.2)
+    idx = (int(SR * when) + np.arange(len(b))) % n
+    np.add.at(mono, idx, b)
+st = wet(mono, big, 0.6, circular=True)
+st = st / np.abs(st).max() * 0.5
+out = np.empty(n * 2)
+out[0::2] = st[0]
+out[1::2] = st[1]
+(np.clip(out, -1, 1) * 32000).astype("<i2").tofile(f"{OUT}/music.pcm")
 print("ok", total, "s loop")
