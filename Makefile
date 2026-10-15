@@ -10,11 +10,11 @@ patch:
 	done
 
 core: patch
-	$(MAKE) -C core -f Makefile.libretro platform=ctr EXTRA_EXTERN_SYMS="psx3d_depth_get psx3d_depth_frame"
+	$(MAKE) -C core -f Makefile.libretro platform=ctr EXTRA_EXTERN_SYMS="psx3d_depth_get psx3d_depth_frame psx3d_overlay_get psx3d_ov_seq"
 
 app: core
 	$(MAKE) -C psx3d
 
 clean:
-	$(MAKE) -C core -f Makefile.libretro platform=ctr EXTRA_EXTERN_SYMS="psx3d_depth_get psx3d_depth_frame" clean
+	$(MAKE) -C core -f Makefile.libretro platform=ctr EXTRA_EXTERN_SYMS="psx3d_depth_get psx3d_depth_frame psx3d_overlay_get psx3d_ov_seq" clean
 	$(MAKE) -C psx3d clean

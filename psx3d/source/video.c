@@ -6,6 +6,7 @@
 // other buffer; the CPU never waits for the copy.
 #include <string.h>
 #include "psx3d.h"
+#include "../../core/libpcsxcore/psx3d_depth.h"
 
 #define TEX_W 1024
 #define TEX_H 512
@@ -23,6 +24,12 @@ static bool stereo_on;
 // real 3D: full slider gives this much separation between near and far
 #define MAX_REAL_PX 14.0f
 static C3D_Tex tex;
+static C3D_Tex hud_tex;           // real 3D: the game's HUD layer, RGBA5551
+static u16 *hud_lin;               // linear staging for hud_tex
+static unsigned hud_w, hud_h;
+#define HUD_W 1024
+#define HUD_H 256
+#define HUD_POP 0.4f               // HUD sits this fraction of max depth in front
 static Tex3DS_SubTexture subtex;
 static u16 *fbs[2];          // linear memory, TEX_W pixels per row
 static int fb_cur;           // buffer the core renders into next
@@ -63,6 +70,10 @@ bool video_init(void)
 		return false;
 	if (!stereo_init())
 		log_printf("stereo_init failed: real 3D unavailable\n");
+	hud_lin = linearAlloc(HUD_W * HUD_H * 2);
+	if (!hud_lin || !C3D_TexInit(&hud_tex, HUD_W, HUD_H, GPU_RGBA5551))
+		log_printf("HUD layer texture failed\n");
+	C3D_TexSetFilter(&hud_tex, GPU_LINEAR, GPU_LINEAR);
 	C3D_TexSetWrap(&tex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
 	return true;
 }
@@ -70,6 +81,10 @@ bool video_init(void)
 void video_exit(void)
 {
 	stereo_exit();
+	C3D_TexDelete(&hud_tex);
+	if (hud_lin)
+		linearFree(hud_lin);
+	hud_lin = NULL;
 	C3D_TexDelete(&tex);
 	for (int i = 0; i < 2; i++) {
 		if (fbs[i])
@@ -156,6 +171,72 @@ static void draw_game(float eye_dx)
 	C2D_DrawImageAt(img, x, y, 0.5f, NULL, dw / frame_w, dh / frame_h);
 }
 
+// Convert the core's HUD layer (PS1 BGR555, key colour = nothing drawn) to
+// a transparent texture. 480-line modes keep every other line, like the
+// game picture.
+// 0: no HUD, 1: new HUD in staging (upload it), 2: keep the current texture
+static int hud_update(void)
+{
+	static u8 prev_dirty[HUD_H];   // staging rows that hold HUD from last time
+	int x, y, w, h;
+	const u32 *rows;
+	u32 seq = psx3d_ov_seq;
+	if (seq & 1)
+		return hud_w > 0 ? 2 : 0;   // GPU thread is swapping layers: keep the last HUD
+	__sync_synchronize();
+	const u16 *src = psx3d_overlay_get(&x, &y, &w, &h, &rows);
+	if (!src || !hud_lin || w <= 0 || h <= 0)
+		return 0;
+	int step = h > 256 ? 2 : 1, oh = h / step;
+	if (w > HUD_W) w = HUD_W;
+	if (oh > HUD_H) oh = HUD_H;
+	bool any = false;
+	// only rows the HUD drew to (or drew to last time and must be emptied)
+	for (int r = 0; r < oh; r++) {
+		int vy = (y + r * step) & 511;
+		bool dirty = rows[vy >> 5] & (1u << (vy & 31));
+		u16 *out = hud_lin + r * HUD_W;
+		if (!dirty) {
+			if (prev_dirty[r]) {
+				memset(out, 0, w * 2);
+				prev_dirty[r] = 0;
+			}
+			continue;
+		}
+		const u16 *in = src + vy * 1024;
+		for (int c = 0; c < w; c++) {
+			u16 p = in[(x + c) & 1023];
+			out[c] = p == PSX3D_OV_KEY ? 0 :
+				((p & 31) << 11) | (((p >> 5) & 31) << 6) | (((p >> 10) & 31) << 1) | 1;
+		}
+		prev_dirty[r] = 1;
+		any = true;
+	}
+	__sync_synchronize();
+	if (psx3d_ov_seq != seq) {
+		// swapped while we read: rows may be torn. Keep showing the last
+		// uploaded HUD; force a full refresh of the staging rows next time.
+		memset(prev_dirty, 1, sizeof(prev_dirty));
+		return hud_w > 0 ? 2 : 0;
+	}
+	hud_w = w;
+	hud_h = oh;
+	if (!any)
+		return 0;
+	GSPGPU_FlushDataCache(hud_lin, HUD_W * oh * 2);
+	return 1;
+}
+
+static void draw_hud(float x0, float dw, float dx)
+{
+	Tex3DS_SubTexture st = {
+		(u16)hud_w, (u16)hud_h, 0.0f, 1.0f,
+		(float)hud_w / HUD_W, 1.0f - (float)hud_h / HUD_H,
+	};
+	C2D_Image img = { &hud_tex, &st };
+	C2D_DrawImageAt(img, x0 + dx, 0.0f, 0.6f, NULL, dw / hud_w, 240.0f / hud_h);
+}
+
 void video_present(bool show_game, void (*draw_top)(void *),
 	void (*draw_bottom)(void *), void *ud)
 {
@@ -184,6 +265,15 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	// real 3D: warp the picture by the game's own depth, when it has any
 	u64 tp = svcGetSystemTick();
 	bool real = stereo && g_cfg.stereo == 2 && have_frame && stereo_prepare(slider * MAX_REAL_PX);
+	int hud_state = real ? hud_update() : 0;
+	bool hud = hud_state != 0;
+	if (hud_state == 1)
+		GX_DisplayTransfer((u32 *)hud_lin, GX_BUFFER_DIM(HUD_W, HUD_H), (u32 *)hud_tex.data,
+			GX_BUFFER_DIM(HUD_W, HUD_H),
+			GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_RAW_COPY(0) |
+			GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGB5A1) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB5A1) |
+			GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
+	float hud_dx = 0.5f * HUD_POP * slider * MAX_REAL_PX;   // in front: left eye shifts right
 	stereo_prep_ticks += svcGetSystemTick() - tp;
 	float gdw = config_widescreen() ? 400.0f : 320.0f, gx0 = (400.0f - gdw) / 2;
 	if (real)
@@ -197,6 +287,8 @@ void video_present(bool show_game, void (*draw_top)(void *),
 		u64 td = svcGetSystemTick();
 		stereo_draw(&tex, gx0, gdw, frame_w, frame_h, -1, slider * MAX_REAL_PX);
 		stereo_draw_ticks += svcGetSystemTick() - td;
+		if (hud)
+			draw_hud(gx0, gdw, hud_dx);
 	}
 	else if (show_game)
 		draw_game(-depth);
@@ -209,6 +301,8 @@ void video_present(bool show_game, void (*draw_top)(void *),
 		if (real) {
 			draw_game(0.0f);
 			stereo_draw(&tex, gx0, gdw, frame_w, frame_h, 1, slider * MAX_REAL_PX);
+			if (hud)
+				draw_hud(gx0, gdw, -hud_dx);
 		}
 		else
 			draw_game(depth);
