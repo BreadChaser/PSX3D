@@ -1,5 +1,6 @@
 // Hosts the PCSX-ReARMed libretro core: implements the callbacks it needs
 // and runs the per-frame loop plus the in-game menu.
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -146,7 +147,33 @@ static void audio_sample_cb(int16_t l, int16_t r)
 	audio_write(s, 1);
 }
 
-static bool audio_muted;   // fast-forward / rewind frames make no sound
+static bool audio_muted;
+static int speed_icon;     // 1 fast-forward, -1 rewind, 0 normal: shown top right
+
+// ▶▶ or ◀◀ in the top right corner while fast-forward or rewind is held
+static void game_draw_top(void *ud)
+{
+	(void)ud;
+	if (!speed_icon)
+		return;
+	static float t;
+	t += 1.0f / 60.0f;
+	float x = 400 - 46 + ui_depth(-0.6f), y = 10, h = 16, w = 13;
+	u8 a = (u8)(200 + 55 * sinf(t * 6));
+	u32 c = C2D_Color32(255, 255, 255, a), sh = C2D_Color32(0, 0, 0, 120);
+	C2D_DrawRectSolid(x - 6, y - 4, 0.8f, 2 * w + 12, h + 8, C2D_Color32(0, 0, 0, 90));
+	for (int k = 0; k < 2; k++) {
+		float x0 = x + k * w;
+		for (int pass = 0; pass < 2; pass++) {
+			float o = pass ? 0 : 1;
+			u32 col = pass ? c : sh;
+			if (speed_icon > 0)
+				C2D_DrawTriangle(x0 + o, y + o, col, x0 + o, y + h + o, col, x0 + w + o, y + h / 2 + o, col, 0.81f + pass * 0.01f);
+			else
+				C2D_DrawTriangle(x0 + w + o, y + o, col, x0 + w + o, y + h + o, col, x0 + o, y + h / 2 + o, col, 0.81f + pass * 0.01f);
+		}
+	}
+}   // fast-forward / rewind frames make no sound
 
 static size_t audio_batch_cb(const int16_t *data, size_t frames)
 {
@@ -754,6 +781,7 @@ static void game_draw_bottom(void *ud)
 {
 	(void)ud;
 	u32 dim = C2D_Color32(110, 110, 125, 255), white = C2D_Color32(230, 230, 240, 255);
+	C2D_DrawRectSolid(0, 0, 0.05f, 320, 240, C2D_Color32(0, 0, 0, 255));   // in game it's always black
 
 	if (touch_buttons_active())
 		touch_buttons_draw();
@@ -911,6 +939,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		}
 		u64 t0 = svcGetSystemTick();
 		static bool rewind_hint;
+		speed_icon = input_rewind() && rewind_active() ? -1 : input_fast_forward() ? 1 : 0;
 		if (input_rewind() && rewind_active()) {
 			// step back about 6 times a second of game time, shown at 20/s
 			static int rw;
@@ -973,7 +1002,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 
 		ui_begin();
 		t1 = svcGetSystemTick();
-		video_present(true, NULL, game_draw_bottom, NULL);
+		video_present(true, speed_icon ? game_draw_top : NULL, game_draw_bottom, NULL);
 		t_present += svcGetSystemTick() - t1;
 
 		if (++game_frames == 120 && g_cfg.bottom_off && !touch_buttons_active() && !g_cfg.show_fps)
