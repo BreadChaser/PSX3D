@@ -98,7 +98,7 @@ extern unsigned int psx3d_prof_c[6];
 extern int psx3d_prof_on;
 void new_dynarec_print_stats(void);
 extern bool sw_prof, sw_stats, sw_o3ds, sw_fs1, sw_noskip;
-extern int sw_state, sw_gldbg;
+extern int sw_state, sw_gldbg, sw_vramdump;
 void psx3d_stats(float *zc, int *n3d, int *n2d, int *dmin, int *dmax, int *zmin, int *zmax);
 const uint16_t *psx3d_right_get(int *x, int *y, int *w, int *h, int *rgb24);
 bool video_snapshot(u16 *out, int w, int h);

@@ -469,10 +469,10 @@ index 76f76af..0dbd6a9 100644
   int cycle_diff;
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 0000000..6b88afc
+index 0000000..9ba70cb
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,1727 @@
+@@ -0,0 +1,1759 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -597,6 +597,7 @@ index 0000000..6b88afc
 +	u8 blend;      // BL_*
 +	u8 texmode;    // TX_*
 +	u8 pass;       // two-pass modes: 0 opaque texels, 1 semi-transparent texels
++	u8 mask;       // GP0 E6: bit 0 drawn pixels get the mask bit, bit 1 masked pixels are kept
 +	int sc[4];     // scissor x1, y1, x2, y2 in VRAM coordinates
 +} drawstate;
 +static drawstate cur, sent;
@@ -823,10 +824,9 @@ index 0000000..6b88afc
 +				for (int c = 0; c < 64; c++) {
 +					// render target memory holds VRAM rows top-down (the
 +					// display samples VRAM row y at t = 1 - y / 512)
-+					u16 p = src[tiled(bx * 64 + c, py, VRAM_W)];
-+					// RGBA5551 -> PS1 15-bit; the target's alpha is not the
-+					// PS1 mask bit, so drawn pixels come back unmasked
-+					dst[c] = (p >> 11) | (((p >> 6) & 31) << 5) | (((p >> 1) & 31) << 10);
++					u16 p = src[tiled(bx * 64 + c, (pica_debug & 16384) ? VRAM_H - 1 - py : py, VRAM_W)];
++					// RGBA5551 -> PS1 15-bit, the alpha bit is the mask bit
++					dst[c] = (p >> 11) | (((p >> 6) & 31) << 5) | (((p >> 1) & 31) << 10) | ((p & 1) << 15);
 +				}
 +			}
 +		}
@@ -851,6 +851,21 @@ index 0000000..6b88afc
 +}
 +
 +void pica_readback_all(void) { readback_part(0, 0, VRAM_W, VRAM_H); }
++
++// test: all of VRAM, GPU drawing included, to a file (compared against the
++// software renderer's VRAM in the PC simulator)
++void pica_dump_vram(const char *path)
++{
++	pica_readback_all();
++	for (int i = 0; i < nfills; i++)
++		apply_fill(&fills[i]);
++	nfills = 0;
++	FILE *f = fopen(path, "wb");
++	if (f) {
++		fwrite(gpu.vram, 2, VRAM_W * VRAM_H, f);
++		fclose(f);
++	}
++}
 +
 +// ------------------------------------------------------------------ GPU frame / sync
 +
@@ -1240,7 +1255,7 @@ index 0000000..6b88afc
 +		set_area(0, 0, VRAM_W, VRAM_H);
 +		C3D_SetScissor(GPU_SCISSOR_NORMAL, d->sc[0], 0, d->sc[2], VRAM_H);
 +	}
-+	if (!sent_valid || sent.blend != d->blend || sent.texmode != d->texmode || sent.pass != d->pass) {
++	if (!sent_valid || sent.blend != d->blend || sent.texmode != d->texmode || sent.pass != d->pass || sent.mask != d->mask) {
 +		bool tx = d->texmode != TX_NONE;
 +		C3D_TexEnv *env = C3D_GetTexEnv(0);
 +		C3D_TexEnvInit(env);
@@ -1276,44 +1291,56 @@ index 0000000..6b88afc
 +			}
 +		}
 +
-+		// blending and the alpha test
++		// blending and the alpha test. The target's alpha bit is the PS1
++		// mask bit: 1 where drawn with E6 mask-set on (any texel that passes
++		// has combiner alpha >= 128), else 0
++		GPU_BLENDFACTOR MASK_SA = (d->mask & 1) ? GPU_ONE : GPU_ZERO;
 +		switch (d->blend) {
 +		case BL_OPAQUE:
-+			C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
++			C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, MASK_SA, GPU_ZERO);
 +			C3D_AlphaTest(tx, GPU_GREATER, 0);
 +			break;
 +		case BL_HALF:
 +			if (tx) {   // a = 0.5 for semi-transparent texels, 1 for opaque ones
-+				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA, GPU_ONE, GPU_ZERO);
++				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA, MASK_SA, GPU_ZERO);
 +				C3D_AlphaTest(true, GPU_GREATER, 0);
 +			} else {
 +				C3D_BlendingColor(0x80000000);
-+				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_CONSTANT_ALPHA, GPU_ONE_MINUS_CONSTANT_ALPHA, GPU_ONE, GPU_ZERO);
++				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_CONSTANT_ALPHA, GPU_ONE_MINUS_CONSTANT_ALPHA, MASK_SA, GPU_ZERO);
 +				C3D_AlphaTest(false, GPU_ALWAYS, 0);
 +			}
 +			break;
 +		case BL_ADD:
 +			if (tx)
-+				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_SRC_ALPHA, GPU_ONE, GPU_ZERO);
++				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_SRC_ALPHA, MASK_SA, GPU_ZERO);
 +			else
-+				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ONE, GPU_ONE, GPU_ZERO);
++				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ONE, MASK_SA, GPU_ZERO);
 +			C3D_AlphaTest(false, GPU_ALWAYS, 0);
 +			break;
 +		case BL_SUB:
 +		case BL_QUARTER:
 +			if (tx && d->pass == 0) {   // the opaque texels, unblended
-+				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
++				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, MASK_SA, GPU_ZERO);
 +				C3D_AlphaTest(true, GPU_EQUAL, 255);
 +				break;
 +			}
 +			if (d->blend == BL_SUB)
-+				C3D_AlphaBlend(GPU_BLEND_REVERSE_SUBTRACT, GPU_BLEND_ADD, GPU_ONE, GPU_ONE, GPU_ONE, GPU_ZERO);
++				C3D_AlphaBlend(GPU_BLEND_REVERSE_SUBTRACT, GPU_BLEND_ADD, GPU_ONE, GPU_ONE, MASK_SA, GPU_ZERO);
 +			else {
 +				C3D_BlendingColor(0x40000000);
-+				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_CONSTANT_ALPHA, GPU_ONE, GPU_ONE, GPU_ZERO);
++				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_CONSTANT_ALPHA, GPU_ONE, MASK_SA, GPU_ZERO);
 +			}
 +			C3D_AlphaTest(tx, GPU_EQUAL, 128);
 +			break;
++		}
++		if (d->mask & 2) {
++			// mask check: pixels whose mask bit (target alpha) is set are
++			// kept. Exact for solid, additive and subtractive drawing:
++			// out = src * (1 - dst alpha) + dst * (dst alpha or 1); half and
++			// quarter blending are drawn like solid there (close enough)
++			bool add = d->blend == BL_ADD || ((d->blend == BL_SUB || d->blend == BL_QUARTER) && (d->pass == 1 || !tx));
++			C3D_AlphaBlend(d->blend == BL_SUB && add ? GPU_BLEND_REVERSE_SUBTRACT : GPU_BLEND_ADD, GPU_BLEND_ADD,
++				GPU_ONE_MINUS_DST_ALPHA, add ? GPU_ONE : GPU_DST_ALPHA, MASK_SA, GPU_ONE);
 +		}
 +	}
 +	if (d->texmode != TX_NONE && (!sent_valid || sent.atlas != d->atlas || sent.texmode == TX_NONE || atlas[d->atlas].rebind)) {
@@ -1365,8 +1392,9 @@ index 0000000..6b88afc
 +
 +static inline void use_state(int at, int blend, int texmode, int pass)
 +{
++	u8 mask = ps.mask & 3;
 +	if (at == cur.atlas && blend == cur.blend && texmode == cur.texmode && pass == cur.pass &&
-+		ps.area_gen == cur_area_gen && !atlas[at].rebind)
++		mask == cur.mask && ps.area_gen == cur_area_gen && !atlas[at].rebind)
 +		return;
 +	st_why[at != cur.atlas ? 0 : (blend != cur.blend || texmode != cur.texmode || pass != cur.pass) ? 1 :
 +		ps.area_gen != cur_area_gen ? 2 : 3]++;
@@ -1375,6 +1403,7 @@ index 0000000..6b88afc
 +	cur.blend = blend;
 +	cur.texmode = texmode;
 +	cur.pass = pass;
++	cur.mask = mask;
 +	cur.sc[0] = ps.dx1; cur.sc[1] = ps.dy1; cur.sc[2] = ps.dx2; cur.sc[3] = ps.dy2;
 +	cur_area_gen = ps.area_gen;
 +	state_dirty = true;
@@ -1764,6 +1793,8 @@ index 0000000..6b88afc
 +	mark_vram(x, y, fw, fh);
 +	u32 col = (w[0] & 0xffffff) | 0xff000000;
 +	int save[4] = { ps.dx1, ps.dy1, ps.dx2, ps.dy2 };
++	u32 save_mask = ps.mask;
++	ps.mask = 0;   // fills write mask 0 whatever E6 says
 +	ps.dx1 = 0; ps.dy1 = 0; ps.dx2 = VRAM_W; ps.dy2 = VRAM_H;
 +	ps.area_gen++;
 +	pvtx q[6] = {
@@ -1772,6 +1803,7 @@ index 0000000..6b88afc
 +	emit_tris(q, 2, BL_OPAQUE, TX_NONE, NULL);
 +	ps.dx1 = save[0]; ps.dy1 = save[1]; ps.dx2 = save[2]; ps.dy2 = save[3];
 +	ps.area_gen++;
++	ps.mask = save_mask;
 +}
 +
 +static void set_ex(u32 word)

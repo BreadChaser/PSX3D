@@ -1,3 +1,4 @@
+#define _GNU_SOURCE   // strcasestr
 // PSX3D entry point.
 #include <stdio.h>
 #include <stdlib.h>
@@ -108,6 +109,8 @@ bool sw_o3ds;           // test: behave like an Old 3DS (settings not saved)
 bool sw_fs1;            // test: force frameskip, every other frame
 bool sw_noskip;         // test: no frameskip (benchmarks)
 int sw_gldbg;           // test: hardware renderer debug bits (1 no alpha test, 2 no textures)
+char sw_game[64];       // test: start the first library game whose title contains this
+int sw_vramdump;         // test: dump PS1 VRAM this many frames after the game starts
 int sw_state = -1;       // test: load this save state slot when the game starts (state0, state=N)
 bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 
@@ -128,6 +131,8 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "state0")) sw_state = 0;
 		else if (!strncmp(a, "state=", 6)) sw_state = atoi(a + 6);
 		else if (!strncmp(a, "gldbg=", 6)) sw_gldbg = atoi(a + 6);
+		else if (!strncmp(a, "vramdump=", 9)) sw_vramdump = atoi(a + 9);
+		else if (!strncmp(a, "game=", 5)) snprintf(sw_game, sizeof(sw_game), "%s", a + 5);
 		else if (!strcmp(a, "nosound")) sw_nosound = true;
 		else if (!strcmp(a, "noirrst")) sw_noirrst = true;
 		else if (!strcmp(a, "noaa")) sw_noaa = true;
@@ -262,6 +267,27 @@ int main(int argc, char **argv)
 	for (;;) {
 		bool play;
 		const game_t *picked = NULL;
+		if (use_library && sw_game[0]) {
+			// test: straight into a game ("_" stands for a space in the switch)
+			char want[64];
+			snprintf(want, sizeof(want), "%s", sw_game);
+			for (char *c = want; *c; c++)
+				if (*c == '_') *c = ' ';
+			sw_game[0] = 0;   // once
+			for (int i = 0; i < library_count() && !picked; i++)
+				if (strcasestr(library_get(i)->title, want))
+					picked = library_get(i);
+			if (picked && library_launch_path(picked, path, sizeof(path))) {
+				log_printf("test: starting %s\n", picked->title);
+				if (!emu_run_game(path, picked->cover_key, picked->title))
+					show_error("Could not load that game.\nCheck sdmc:/3ds/PSX3D/log.txt");
+				if (aptShouldClose())
+					break;
+				continue;
+			}
+			log_printf("test: no game matches %s\n", want);
+			picked = NULL;
+		}
 		if (use_library) {
 			int r = libui_run(path, sizeof(path));
 			if (r == 0)
