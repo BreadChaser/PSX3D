@@ -509,10 +509,10 @@ index 76f76af..0dbd6a9 100644
   int cycle_diff;
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 0000000..9ba70cb
+index 0000000..9f9f6f0
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,1759 @@
+@@ -0,0 +1,1779 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -608,6 +608,19 @@ index 0000000..9ba70cb
 +static u32 seq = 1, synced_seq;
 +static tcache cache[NENTRIES];       // pool 0 first, then 1, 2, 3
 +static tcache *plain;
++#ifdef PICA_SIM_HASH
++unsigned long long pica_sim_hash = 1469598103934665603ull;
++static void sim_hash(const void *p, size_t n)
++{
++	const unsigned char *b = p;
++	for (size_t i = 0; i < n; i++)
++		pica_sim_hash = (pica_sim_hash ^ b[i]) * 1099511628211ull;
++}
++void pica_sim_final(void)
++{
++	sim_hash(atlas[0].tex.data, (size_t)atlas[0].w * atlas[0].h * 4);
++}
++#endif
 +static tcache *last_tex;             // the previous lookup's result
 +static bool have_last;                // reserved square: texels for untextured drawing
 +static tcache *buckets[256];
@@ -1416,6 +1429,13 @@ index 0000000..9ba70cb
 +#endif
 +	if (!(pica_debug & 1024))   // debug: no GPU drawing (CPU cost alone)
 +		C3D_DrawArrays(GPU_TRIANGLES, vstart, vpos - vstart);
++#ifdef PICA_SIM_HASH
++	{   // simulator: what was drawn, to compare builds
++		u32 st[4] = { cur.atlas, cur.blend, cur.texmode, cur.pass };
++		sim_hash(st, sizeof(st));
++		sim_hash(vbuf + vstart, (vpos - vstart) * sizeof(pvtx));
++	}
++#endif
 +#ifdef PICA_TIMERS
 +	t_state += t1 - t0;
 +	t_draw += svcGetSystemTick() - t1;
