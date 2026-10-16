@@ -21,6 +21,7 @@
 
 // log.c
 void log_init(void);
+bool log_linked(void);
 void log_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void log_close(void);
 
@@ -74,6 +75,7 @@ bool video_init(void);
 void video_exit(void);
 void *video_framebuffer(unsigned width, unsigned height, size_t *pitch);
 void video_frame(const void *data, unsigned width, unsigned height, size_t pitch);
+void video_gpu_frame_begin(void);
 void video_present(bool show_game, void (*draw_top)(void *),
 	void (*draw_bottom)(void *), void *ud);
 void video_present_vsync(bool show_game, void (*draw_top)(void *),
@@ -95,7 +97,8 @@ extern unsigned long long psx3d_prof_t[6];
 extern unsigned int psx3d_prof_c[6];
 extern int psx3d_prof_on;
 void new_dynarec_print_stats(void);
-extern bool sw_prof;
+extern bool sw_prof, sw_stats, sw_o3ds, sw_fs1;
+extern int sw_state, sw_gldbg;
 void psx3d_stats(float *zc, int *n3d, int *n2d, int *dmin, int *dmax, int *zmin, int *zmax);
 const uint16_t *psx3d_right_get(int *x, int *y, int *w, int *h, int *rgb24);
 bool video_snapshot(u16 *out, int w, int h);
@@ -247,6 +250,10 @@ void covers_resume(void);
 enum { SFX_MOVE, SFX_SELECT, SFX_BACK, SFX_LAUNCH, SFX_COUNT };
 void uisound_init(void);
 void uisound_exit(void);
+void music_unload(void);
+void covers_release_gpu(void);
+void video_gpu_idle(void);
+void music_reload(void);
 void sfx_play(int which);
 void music_play(bool on);
 void music_update(void);

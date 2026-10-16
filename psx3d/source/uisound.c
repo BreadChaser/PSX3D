@@ -181,6 +181,29 @@ void music_play(bool on)
 	music_on = on;
 }
 
+// The music is several MB of GPU-visible memory: games get it back
+// (the hardware renderer needs it on an Old 3DS) and the library reloads it.
+void music_unload(void)
+{
+	if (!ok || !music.data)
+		return;
+	music_play(false);
+	svcSleepThread(30000000LL);   // let the DSP stop reading it
+	linearFree(music.data);
+	music.data = NULL;
+	if (music_l) linearFree(music_l);
+	if (music_r) linearFree(music_r);
+	music_l = music_r = NULL;
+}
+
+void music_reload(void)
+{
+	if (!ok || music.data)
+		return;
+	if (load("romfs:/sfx/music.pcm", &music, 2) && csnd)
+		split_music();
+}
+
 // call once per UI frame: eases the music volume
 void music_update(void)
 {

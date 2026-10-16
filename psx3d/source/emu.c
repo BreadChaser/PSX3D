@@ -7,6 +7,9 @@
 #include <stdarg.h>
 #include <time.h>
 #include "psx3d.h"
+#ifdef PSX3D_PICA
+#include "../../core/plugins/gpu_pica/gpu_pica.h"
+#endif
 
 #define SRM_CHECK_FRAMES 180
 #define DISPLAY_HZ 59.831        // 3DS LCD refresh rate   // look for memory card writes every ~3 seconds
@@ -85,6 +88,16 @@ static bool environment(unsigned cmd, void *data)
 	case RETRO_ENVIRONMENT_GET_VARIABLE: {
 		struct retro_variable *v = data;
 		v->value = options_get(v->key);
+		if (sw_prof) {
+			// each option once, so a hardware run can be replayed in the simulator
+			static char seen[2048];
+			char tag[80];
+			snprintf(tag, sizeof(tag), "|%s|", v->key);
+			if (!strstr(seen, tag) && strlen(seen) + strlen(tag) < sizeof(seen)) {
+				strcat(seen, tag);
+				log_printf("opt %s=%s\n", v->key, v->value ? v->value : "(none)");
+			}
+		}
 		return v->value != NULL;
 	}
 	case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
@@ -152,8 +165,12 @@ static bool environment(unsigned cmd, void *data)
 	}
 }
 
+static unsigned dup_frames, late_frames;   // per log line: frames not drawn, frames started late
+
 static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
 {
+	if (!data)
+		dup_frames++;
 	video_frame(data, w, h, pitch);
 }
 
@@ -308,6 +325,7 @@ static bool state_save_to(int slot)
 	free(buf);
 	return ok;
 }
+
 
 static bool state_load_from(int slot)
 {
@@ -905,6 +923,14 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	memset(&disk, 0, sizeof(disk));
 	log_printf("loading %s\n", path);
 	config_game_begin(game_name);   // before loading: the core reads the widescreen option at load
+#ifdef PSX3D_PICA
+	// the hardware renderer's textures need the memory the library music used
+	music_unload();
+	video_gpu_idle();
+	covers_release_gpu();
+	log_printf("gpu_pica: game buffers %s, %uK GPU memory left\n",
+		pica_game_begin(!g_new3ds) ? "ready" : "FAILED", (unsigned)(linearSpaceFree() / 1024));
+#endif
 
 	retro_init();
 	core_initialized = true;
@@ -913,6 +939,10 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		config_game_end();
 		retro_deinit();
 		core_initialized = false;
+#ifdef PSX3D_PICA
+		pica_game_end();
+		music_reload();
+#endif
 		return false;
 	}
 	// DualShock: starts in digital mode, games switch it to analog themselves,
@@ -931,11 +961,15 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	{
 		char prefix[PATH_LEN];
 		make_path(prefix, sizeof(prefix), PSX3D_STATE_DIR, "");
-		if (g_cfg.autosave && states_resume_prompt(prefix) && state_load_from(STATE_AUTO))
+		if (g_cfg.autosave && sw_state < 0 && states_resume_prompt(prefix) && state_load_from(STATE_AUTO))
 			osd("Continuing where you left off");
 	}
 	if (gamecfg_int("rewind", 0))
 		rewind_start();
+	if (sw_state >= 0) {
+		state_slot = sw_state;
+		log_printf("test: slot %d %s\n", sw_state, state_load_from(sw_state) ? "loaded" : "failed");
+	}
 	osd("%s", __ctr_svchax ? "Dynarec enabled" : "Interpreter mode (no Luma SVC access) - slow");
 
 	fps_t0 = osGetTime();
@@ -950,6 +984,8 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		// screen only at vblank, so there is no tearing.
 		u64 frame_ticks = (u64)(SYSCLOCK_ARM11 / fps_target);
 		u64 now_t = svcGetSystemTick();
+		bool late = now_t > next_deadline + frame_ticks / 8;   // last frame overran its slot
+		late_frames += late;
 		if (now_t < next_deadline)
 			svcSleepThread((next_deadline - now_t) * 1000000000ULL / SYSCLOCK_ARM11);
 		else if (now_t > next_deadline + 3 * frame_ticks)
@@ -958,8 +994,13 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 
 		if (abuf_status_cb) {
 			unsigned occ = has_audio ? audio_occupancy() : 50;
-			abuf_status_cb(has_audio, occ, occ < 20);
+			// auto frameskip: skip drawing when sound runs low or the frame
+			// clock says we are behind (the sound buffer alone rarely shows it)
+			abuf_status_cb(true, occ, occ < 20 || late);
 		}
+#ifdef PSX3D_PICA
+		video_gpu_frame_begin();   // the hardware renderer draws while the core runs
+#endif
 		u64 t0 = svcGetSystemTick();
 		static bool rewind_hint;
 		if (input_rewind() && input_fast_forward())
@@ -1043,13 +1084,28 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			fps_measured = fps_frames * 1000.0f / (now - fps_t0);
 			emu_ms = t_run / (float)present_count / CPU_TICKS_PER_MSEC;
 			present_ms = t_present / (float)present_count / CPU_TICKS_PER_MSEC;
-			log_printf("fps %.1f  emu %.2fms (max %.2f)  present %.2fms (wait %.2f) xfer %.2f\n",
-				fps_measured, emu_ms, t_run_max / (float)CPU_TICKS_PER_MSEC, present_ms,
-				video_take_wait_ticks() / (float)present_count / CPU_TICKS_PER_MSEC,
-				video_take_xfer_ticks() / (float)present_count / CPU_TICKS_PER_MSEC);
+			// SD writes cost a ~40ms hitch on Old 3DS: per-second stats
+			// only when sent to a PC or profiling
+			float wait_ms = video_take_wait_ticks() / (float)present_count / CPU_TICKS_PER_MSEC;
+			float xfer_ms = video_take_xfer_ticks() / (float)present_count / CPU_TICKS_PER_MSEC;
+			if (log_linked() || sw_prof || sw_stats)
+				log_printf("fps %.1f  emu %.2fms (max %.2f)  present %.2fms (wait %.2f) xfer %.2f  skip %u late %u cb %d\n",
+					fps_measured, emu_ms, t_run_max / (float)CPU_TICKS_PER_MSEC, present_ms,
+					wait_ms, xfer_ms, dup_frames, late_frames, abuf_status_cb != NULL);
+			dup_frames = late_frames = 0;
 			char abuf[160];
 			audio_stats(abuf, sizeof(abuf));
-			log_printf("  %s\n", abuf);
+			if (log_linked() || sw_prof || sw_stats)
+				log_printf("  %s\n", abuf);
+#ifdef PSX3D_PICA
+			{
+				void pica_stats(char *buf, int n);
+				char pb[512];
+				pica_stats(pb, sizeof(pb));
+				if (log_linked() || sw_prof || sw_stats)
+					log_printf("  %s\n", pb);
+			}
+#endif
 			if (sw_prof) {
 				static const char *const names[6] = { "compile", "inval", "spu", "gpu", "irq", "cdr" };
 				char pb[200]; int n = 0;
@@ -1058,7 +1114,9 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 						psx3d_prof_t[k] / (double)fps_frames / CPU_TICKS_PER_MSEC, psx3d_prof_c[k] / (fps_frames ? fps_frames : 1));
 					psx3d_prof_t[k] = 0; psx3d_prof_c[k] = 0;
 				}
-				log_printf("  prof (per frame):%s\n", pb);
+				log_printf("  prof (per frame):%s gpu words drawn %llu skipped %u\n", pb,
+					psx3d_prof_t[5] / (fps_frames ? fps_frames : 1), psx3d_prof_c[5] / (fps_frames ? fps_frames : 1));
+				psx3d_prof_t[5] = 0; psx3d_prof_c[5] = 0;
 				new_dynarec_print_stats();
 			}
 			t_run = t_present = t_run_max = 0;
@@ -1083,5 +1141,9 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	audio_exit();
 	retro_deinit();
 	core_initialized = false;
+#ifdef PSX3D_PICA
+	pica_game_end();
+	music_reload();
+#endif
 	return true;
 }

@@ -6,6 +6,10 @@
 // other buffer; the CPU never waits for the copy.
 #include <string.h>
 #include "psx3d.h"
+#ifdef PSX3D_PICA
+#include "../../core/plugins/gpu_pica/gpu_pica.h"
+#include "pica_shbin.h"
+#endif
 #include "../../core/libpcsxcore/psx3d_depth.h"
 
 #define TEX_W 1024
@@ -79,12 +83,24 @@ bool video_init(void)
 {
 	gfxInitDefault();
 	gfxSet3D(false);  // switched on per frame when the game is shown in 3D
+#ifdef PSX3D_PICA
+	if (!C3D_Init(0x100000))   // the hardware renderer issues many small draws
+#else
 	if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE))
+#endif
 		return false;
 	// the library's live floor mesh alone is a few thousand primitives
 	if (!C2D_Init(16384))
 		return false;
 	C2D_Prepare();
+#ifdef PSX3D_PICA
+	log_printf("gpu_pica: %s, %uK GPU memory left\n",
+		pica_init(pica_shbin, pica_shbin_size) ? "ready" : "init failed", (unsigned)(linearSpaceFree() / 1024));
+	{
+		extern int pica_debug;
+		pica_debug = sw_gldbg;
+	}
+#endif
 
 	// Top screen: render at 2x2 the resolution and let the display transfer
 	// average it down (4x supersampling) so lines and edges are smooth.
@@ -108,9 +124,11 @@ bool video_init(void)
 	}
 	if (!C3D_TexInit(&tex, TEX_W, TEX_H, GPU_RGB565))
 		return false;
+#ifndef PSX3D_PICA   // the hardware renderer has no use for the software stereo buffers
 	right_lin = linearAlloc(TEX_W * TEX_H * 2);
 	if (!right_lin || !C3D_TexInit(&tex_r, TEX_W, TEX_H, GPU_RGB565))
 		log_printf("right eye texture failed: real 3D unavailable\n");
+#endif
 	C3D_TexSetWrap(&tex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
 	C3D_TexSetWrap(&tex_r, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
 	return true;
@@ -118,7 +136,8 @@ bool video_init(void)
 
 void video_exit(void)
 {
-	C3D_TexDelete(&tex_r);
+	if (tex_r.data)
+		C3D_TexDelete(&tex_r);
 	if (right_lin)
 		linearFree(right_lin);
 	right_lin = NULL;
@@ -128,6 +147,9 @@ void video_exit(void)
 			linearFree(fbs[i]);
 		fbs[i] = NULL;
 	}
+#ifdef PSX3D_PICA
+	pica_exit();
+#endif
 	C2D_Fini();
 	C3D_Fini();
 	gfxExit();
@@ -290,16 +312,64 @@ static void draw_game_tex(C3D_Tex *t, float eye_dx)
 
 static void draw_game(float eye_dx)
 {
+#ifdef PSX3D_PICA
+	// hardware renderer: the picture is already a GPU texture
+	C3D_Tex *t;
+	float l, tp, r, b, w, h;
+	if (!pica_picture(&t, &l, &tp, &r, &b, &w, &h)) {
+		draw_game_tex(&tex, eye_dx);   // 24-bit (movies): the core's own picture
+		return;
+	}
+	Tex3DS_SubTexture st = { (u16)w, (u16)h, l, tp, r, b };
+	C2D_Image img = { t, &st };
+	float dw = config_screen_mode() ? 400 : 320, dh = 240;
+	C3D_TexSetFilter(t, g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST, g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST);
+	C2D_DrawImageAt(img, (400 - dw) / 2 + eye_dx, (240 - dh) / 2, 0.5f, NULL, dw / w, dh / h);
+#else
 	draw_game_tex(&tex, eye_dx);
+#endif
+}
+
+// One GPU frame per shown frame. The hardware renderer draws into it
+// while the core runs, so emu.c opens it before retro_run; video_present
+// uses the same frame.
+static bool gpu_frame;
+
+void video_gpu_frame_begin(void)
+{
+	if (gpu_frame)
+		return;
+	u64 t0 = svcGetSystemTick();
+	C3D_FrameBegin(0);
+	wait_ticks += svcGetSystemTick() - t0;
+	gpu_frame = true;
+#ifdef PSX3D_PICA
+	pica_frame_started();
+#endif
+}
+
+// wait until the GPU has finished everything queued (before freeing memory it reads)
+void video_gpu_idle(void)
+{
+	if (gpu_frame)
+		return;   // inside a frame: nothing has been sent yet
+	C3D_FrameBegin(0);   // waits for the previous frame
+	C3D_FrameEnd(0);
+	C3D_FrameBegin(0);   // ...and for this empty one
+	C3D_FrameEnd(0);
 }
 
 void video_present(bool show_game, void (*draw_top)(void *),
 	void (*draw_bottom)(void *), void *ud)
 {
-	u64 t0 = svcGetSystemTick();
 	// no vsync wait here: emu.c paces frames; this only waits for the GPU
-	C3D_FrameBegin(0);
-	wait_ticks += svcGetSystemTick() - t0;
+	video_gpu_frame_begin();
+#ifdef PSX3D_PICA
+	C2D_Prepare();   // the hardware renderer changed the GPU state
+#endif
+#ifdef PSX3D_PICA
+	pica_state_lost();
+#endif
 
 	if (video_pre_draw && !show_game)
 		video_pre_draw();
@@ -377,6 +447,10 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	}
 
 	C3D_FrameEnd(0);
+	gpu_frame = false;
+#ifdef PSX3D_PICA
+	pica_frame_ended();
+#endif
 }
 
 // UI screens (browser, menus): one frame per refresh. In game, emu.c paces
