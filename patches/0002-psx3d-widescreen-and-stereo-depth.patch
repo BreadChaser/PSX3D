@@ -469,10 +469,10 @@ index 76f76af..0dbd6a9 100644
   int cycle_diff;
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 0000000..04ecf30
+index 0000000..6b88afc
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,1697 @@
+@@ -0,0 +1,1727 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -559,7 +559,7 @@ index 0000000..04ecf30
 +// the last drawn picture is still intact (skipped frames draw nothing)
 +static bool disp_used;
 +static int disp_x, disp_y, disp_w, disp_h;
-+static bool stage_used;               // stage_tex is read by unexecuted draws
++static int stage_y;                   // stage rows used by uploads the GPU hasn't run yet
 +static pvtx *vbuf;
 +static int vpos, vstart;
 +static int sent_vpos;   // vertex buffer position at the last hand-off to the GPU
@@ -861,7 +861,7 @@ index 0000000..04ecf30
 +	sent_valid = false;
 +	vpos = vstart = sent_vpos = 0;
 +	synced_seq = seq;
-+	stage_used = false;
++	stage_y = 0;
 +	if (npend) {
 +		prect p[16];
 +		int n = npend;
@@ -1672,6 +1672,44 @@ index 0000000..04ecf30
 +	emit_tris(tri, ntri, blend_of(cmd), texmode, tex);
 +}
 +
++// one sprite (or a part of one) at x, y with page texels from u, v
++static void sprite(int x, int y, int sw, int sh, int u, int v, u32 col, u32 cmd, u32 clut)
++{
++	bool textured = cmd & 4;
++	int u0 = 0, v0 = 0, u1 = 0, v1 = 0;
++	tcache *tex = NULL;
++	if (textured) {
++		bool fx = ps.texpage & (1 << 12), fy = ps.texpage & (1 << 13);
++		// texture coordinates wrap at 256: split where they do (not flipped)
++		if (!fx && u + sw > 256 && u < 256) {
++			int k = 256 - u;
++			sprite(x, y, k, sh, u, v, col, cmd, clut);
++			sprite(x + k, y, sw - k, sh, 0, v, col, cmd, clut);
++			return;
++		}
++		if (!fy && v + sh > 256 && v < 256) {
++			int k = 256 - v;
++			sprite(x, y, sw, k, u, v, col, cmd, clut);
++			sprite(x, y + k, sw, sh - k, u, 0, col, cmd, clut);
++			return;
++		}
++		u0 = u; v0 = v;
++		u1 = u0 + sw; v1 = v0 + sh;
++		if (fx) { u0 = u0 + 1; u1 = u0 - sw; }   // x flip
++		if (fy) { v0 = v0 + 1; v1 = v0 - sh; }   // y flip
++		int ua = u0 < u1 ? u0 : u1, ub = u0 < u1 ? u1 : u0;
++		int va = v0 < v1 ? v0 : v1, vb = v0 < v1 ? v1 : v0;
++		tex = texture_for(ps.texpage, clut, ua, ub - 1, va, vb - 1);
++		u0 += tex->ax - tex->rx; u1 += tex->ax - tex->rx;
++		v0 += tex->ay - tex->ry; v1 += tex->ay - tex->ry;
++	}
++	pvtx q[6] = {
++		{ x, y, u0, v0, col }, { x + sw, y, u1, v0, col }, { x, y + sh, u0, v1, col },
++		{ x + sw, y, u1, v0, col }, { x + sw, y + sh, u1, v1, col }, { x, y + sh, u0, v1, col } };
++	int texmode = !textured ? TX_NONE : (cmd & 1) ? TX_RAW : TX_MOD;
++	emit_tris(q, 2, blend_of(cmd), texmode, tex);
++}
++
 +static void draw_rect(const u32 *w, u32 cmd)
 +{
 +	bool textured = cmd & 4;
@@ -1689,25 +1727,8 @@ index 0000000..04ecf30
 +		return;
 +	int x = sext11(sext11(w[1]) + ps.ox), y = sext11(sext11(w[1] >> 16) + ps.oy);
 +	u32 col = (w[0] & 0xffffff) | 0xff000000;
-+	int u0 = 0, v0 = 0, u1 = 0, v1 = 0;
-+	tcache *tex = NULL;
-+	if (textured) {
-+		u32 uv = w[2];
-+		u0 = uv & 0xff; v0 = (uv >> 8) & 0xff;
-+		u1 = u0 + sw; v1 = v0 + sh;
-+		if (ps.texpage & (1 << 12)) { u0 = u0 + 1; u1 = u0 - sw; }   // x flip
-+		if (ps.texpage & (1 << 13)) { v0 = v0 + 1; v1 = v0 - sh; }   // y flip
-+		int ua = u0 < u1 ? u0 : u1, ub = u0 < u1 ? u1 : u0;
-+		int va = v0 < v1 ? v0 : v1, vb = v0 < v1 ? v1 : v0;
-+		tex = texture_for(ps.texpage, uv >> 16, ua, ub - 1, va, vb - 1);
-+		u0 += tex->ax - tex->rx; u1 += tex->ax - tex->rx;
-+		v0 += tex->ay - tex->ry; v1 += tex->ay - tex->ry;
-+	}
-+	pvtx q[6] = {
-+		{ x, y, u0, v0, col }, { x + sw, y, u1, v0, col }, { x, y + sh, u0, v1, col },
-+		{ x + sw, y, u1, v0, col }, { x + sw, y + sh, u1, v1, col }, { x, y + sh, u0, v1, col } };
-+	int texmode = !textured ? TX_NONE : (cmd & 1) ? TX_RAW : TX_MOD;
-+	emit_tris(q, 2, blend_of(cmd), texmode, tex);
++	u32 uv = textured ? w[2] : 0;
++	sprite(x, y, sw, sh, uv & 0xff, (uv >> 8) & 0xff, col, cmd, uv >> 16);
 +}
 +
 +// a line becomes a quad one pixel thick across its main direction
@@ -1801,17 +1822,23 @@ index 0000000..04ecf30
 +					y + h - py < STAGE_H ? y + h - py : STAGE_H);
 +		return;
 +	}
-+	if (stage_used)
++	// uploads stack up in the stage; the GPU must run them before it is reused
++	if (stage_y + h > STAGE_H)
 +		gpu_sync();
++	int sy = stage_y;
++	stage_y += h;
 +	u16 *dst = stage_tex.data;
 +	const u16 *vram = gpu.vram;
 +	for (int r = 0; r < h; r++) {
 +		const u16 *src = vram + (y + r) * VRAM_W;
 +		// like the texture pages: stage row r is sampled at t = (r + 0.5) / STAGE_H
 +		for (int c = 0; c < w; c++)
-+			dst[tiled(c, STAGE_H - 1 - r, STAGE_W)] = pixel_5551(src[x + c]);
++			dst[tiled(c, STAGE_H - 1 - (sy + r), STAGE_W)] = pixel_5551(src[x + c]);
 +	}
-+	GSPGPU_FlushDataCache(dst, STAGE_W * STAGE_H * 2);
++	{   // the 8-row tile rows written
++		int tr0 = (STAGE_H - 1 - (sy + h - 1)) >> 3, tr1 = (STAGE_H - 1 - sy) >> 3;
++		GSPGPU_FlushDataCache(dst + tr0 * (STAGE_W / 8) * 64, (tr1 - tr0 + 1) * (STAGE_W / 8) * 64 * 2);
++	}
 +	flush();
 +	if (vpos + 6 > MAX_VERTS)
 +		gpu_sync();
@@ -1830,11 +1857,11 @@ index 0000000..04ecf30
 +	tex_alias[alias_i] = stage_tex;
 +	C3D_TexBind(0, &tex_alias[alias_i]);
 +	clear_tex_cache();
-+	s16 x0 = x, y0 = y, x1 = x + w, y1 = y + h, sw = w, sh = h;
++	s16 x0 = x, y0 = y, x1 = x + w, y1 = y + h, sw = w, v0 = sy, v1 = sy + h;
 +	// u, v in stage texels; the shader scale is switched to the stage size
 +	pvtx q[6] = {
-+		{ x0, y0, 0, 0, 0 }, { x1, y0, sw, 0, 0 }, { x0, y1, 0, sh, 0 },
-+		{ x1, y0, sw, 0, 0 }, { x1, y1, sw, sh, 0 }, { x0, y1, 0, sh, 0 } };
++		{ x0, y0, 0, v0, 0 }, { x1, y0, sw, v0, 0 }, { x0, y1, 0, v1, 0 },
++		{ x1, y0, sw, v0, 0 }, { x1, y1, sw, v1, 0 }, { x0, y1, 0, v1, 0 } };
 +	to_gpu(q, 6);
 +	memcpy(vbuf + vpos, q, sizeof(q));
 +	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_texscale, 1.0f / STAGE_W, 1.0f / STAGE_H, 0, 0);
@@ -1842,7 +1869,6 @@ index 0000000..04ecf30
 +	vpos += 6;
 +	vstart = vpos;
 +	seq++;
-+	stage_used = true;
 +	sent_valid = false;
 +	state_dirty = true;
 +	st_uploads++;
@@ -2107,12 +2133,16 @@ index 0000000..04ecf30
 +	disp_h = gpu.screen.h;
 +}
 +
-+// called by the frontend once per shown frame: the displayed VRAM area
-+bool pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h)
++// called by the frontend once per shown frame: the displayed VRAM area.
++// PICA_PIC_GPU: draw tex; PICA_PIC_NONE: the display is off (black);
++// PICA_PIC_CPU: 24-bit mode (movies), the core's own picture
++int pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h)
 +{
 +	flush();
-+	if (!ready || (gpu.status & PSX_GPU_STATUS_RGB24) || gpu.screen.w <= 0 || gpu.screen.h <= 0)
-+		return false;
++	if (!ready || (gpu.status & PSX_GPU_STATUS_RGB24))
++		return PICA_PIC_CPU;
++	if ((gpu.status & PSX_GPU_STATUS_BLANKING) || gpu.screen.w <= 0 || gpu.screen.h <= 0)
++		return PICA_PIC_NONE;
 +	int x = gpu.screen.src_x, y = gpu.screen.src_y, sw = gpu.screen.w, sh = gpu.screen.h;
 +	if (pica_debug & 32) {   // debug: the whole of VRAM
 +		x = 0; y = 0; sw = VRAM_W; sh = VRAM_H;
@@ -2126,7 +2156,7 @@ index 0000000..04ecf30
 +	*b = 1.0f - (float)(y + sh) / VRAM_H;
 +	*w = sw;
 +	*h = sh;
-+	return true;
++	return PICA_PIC_GPU;
 +}
 +
 +void pica_stats(char *buf, int n)
@@ -2172,10 +2202,10 @@ index 0000000..04ecf30
 +}
 diff --git a/plugins/gpu_pica/gpu_pica.h b/plugins/gpu_pica/gpu_pica.h
 new file mode 100644
-index 0000000..9b3163c
+index 0000000..043e3b6
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.h
-@@ -0,0 +1,18 @@
+@@ -0,0 +1,19 @@
 +/* gpu_pica: PS1 GPU on the 3DS GPU. Frontend interface (PSX3D). */
 +#ifndef GPU_PICA_H
 +#define GPU_PICA_H
@@ -2190,7 +2220,8 @@ index 0000000..9b3163c
 +void pica_frame_ended(void);
 +void pica_state_lost(void);      // someone else drew with citro3d/citro2d
 +// the displayed PS1 picture: texture, edges in texture coordinates (t > b), size
-+bool pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h);
++enum { PICA_PIC_NONE, PICA_PIC_GPU, PICA_PIC_CPU };
++int pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h);
 +void pica_stats(char *buf, int n);
 +extern void (*pica_open_frame)(void);   // opens a GPU frame when drawing starts
 +#endif

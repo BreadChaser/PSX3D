@@ -337,10 +337,11 @@ static void draw_game(float eye_dx)
 	// hardware renderer: the picture is already a GPU texture
 	C3D_Tex *t;
 	float l, tp, r, b, w, h;
-	if (!pica_picture(&t, &l, &tp, &r, &b, &w, &h)) {
+	int pic = pica_picture(&t, &l, &tp, &r, &b, &w, &h);
+	if (pic == PICA_PIC_CPU)
 		draw_game_tex(&tex, eye_dx);   // 24-bit (movies): the core's own picture
-		return;
-	}
+	if (pic != PICA_PIC_GPU)
+		return;   // (PICA_PIC_NONE: the display is off, the screen stays black)
 	Tex3DS_SubTexture st = { (u16)w, (u16)h, l, tp, r, b };
 	C2D_Image img = { t, &st };
 	float dw = config_screen_mode() ? 400 : 320, dh = 240;
