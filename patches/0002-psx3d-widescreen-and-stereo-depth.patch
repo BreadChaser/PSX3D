@@ -469,10 +469,10 @@ index 76f76af..0dbd6a9 100644
   int cycle_diff;
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 0000000..c28fdf3
+index 0000000..bce33a7
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,1382 @@
+@@ -0,0 +1,1464 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -1079,8 +1079,18 @@ index 0000000..c28fdf3
 +				C3D_TexEnvSrc(env, C3D_RGB, GPU_TEXTURE0, 0, 0);
 +				C3D_TexEnvFunc(env, C3D_RGB, GPU_REPLACE);
 +			}
-+			C3D_TexEnvSrc(env, C3D_Alpha, GPU_TEXTURE0, 0, 0);
-+			C3D_TexEnvFunc(env, C3D_Alpha, GPU_REPLACE);
++			if (d->blend == BL_HALF) {
++				// solid and half-transparent primitives share this state:
++				// alpha = texel alpha * vertex alpha * 2, vertex alpha 255 for
++				// solid primitives (any visible texel -> 255) and 128 for
++				// semi-transparent ones (texel alpha 128 or 255 kept)
++				C3D_TexEnvSrc(env, C3D_Alpha, GPU_TEXTURE0, GPU_PRIMARY_COLOR, 0);
++				C3D_TexEnvFunc(env, C3D_Alpha, GPU_MODULATE);
++				C3D_TexEnvScale(env, C3D_Alpha, GPU_TEVSCALE_2);
++			} else {
++				C3D_TexEnvSrc(env, C3D_Alpha, GPU_TEXTURE0, 0, 0);
++				C3D_TexEnvFunc(env, C3D_Alpha, GPU_REPLACE);
++			}
 +			if (d->blend == BL_ADD) {
 +				// blend factor (1 - a) * 2: semi-transparent texels 1, opaque 0
 +				C3D_TexEnvOpAlpha(env, GPU_TEVOP_A_ONE_MINUS_SRC_ALPHA, 0, 0);
@@ -1261,7 +1271,7 @@ index 0000000..c28fdf3
 +	return n - 2;
 +}
 +
-+static void emit_tris(const pvtx *v, int ntri, int blend, int texmode, tcache *tex)
++static void noinline emit_tris(const pvtx *v, int ntri, int blend, int texmode, tcache *tex)
 +{
 +	if (!ready || (pica_debug & 4096))   // debug 4096: primitives decoded, not drawn
 +		return;
@@ -1297,6 +1307,22 @@ index 0000000..c28fdf3
 +		tex = plain;
 +		texmode = TX_MOD;
 +	}
++	// raw textures: modulated by 0x80 (x2 = unchanged), so they batch with the rest
++	u32 col_and = ~0u, col_or = 0;
++	if (texmode == TX_RAW) {
++		texmode = TX_MOD;
++		col_and = 0xff000000;
++		col_or = 0x00808080;
++	}
++	// solid primitives join the half-transparent state (see apply_state)
++	if (blend == BL_OPAQUE) {
++		blend = BL_HALF;
++		col_and &= 0x00ffffff;
++		col_or |= 0xff000000;
++	} else if (blend == BL_HALF) {
++		col_and &= 0x00ffffff;
++		col_or |= 0x80000000;
++	}
 +	// finish the vertices here (in cache) and write them out once: reading
 +	// back from the vertex buffer missed the cache every time (the Old
 +	// 3DS's cache only fills on reads; its memory reads are slow)
@@ -1304,8 +1330,11 @@ index 0000000..c28fdf3
 +	pvtx fin[2 * 3 * 7];
 +	memcpy(fin, v, nv * sizeof(pvtx));
 +	to_gpu(fin, nv);
++	if (col_and != ~0u || col_or)
++		for (int i = 0; i < nv; i++)
++			fin[i].rgba = (fin[i].rgba & col_and) | col_or;
 +	if (untex) {
-+		s16 pu = plain->ax + (blend == BL_OPAQUE ? 8 : 24), pv = plain->ay + 8;
++		s16 pu = plain->ax + 24, pv = plain->ay + 8;   // the half-alpha texel: vertex alpha decides
 +		for (int i = 0; i < nv; i++) {
 +			fin[i].u = pu;
 +			fin[i].v = pv;
@@ -1323,6 +1352,8 @@ index 0000000..c28fdf3
 +	st_prims++;
 +}
 +
++static void noinline __attribute__((cold)) draw_poly_slow(pvtx *v, int n, bool quad, bool textured, u32 page, u32 clut, u32 cmd);
++
 +static void draw_poly(const u32 *w, u32 cmd)
 +{
 +	bool quad = cmd & 8, gouraud = cmd & 0x10, textured = cmd & 4;
@@ -1331,27 +1362,78 @@ index 0000000..c28fdf3
 +	u32 col = w[0] & 0xffffff;
 +	u32 clut = 0, page = ps.texpage;
 +	int i = 1;
++	// decode, tracking the bounding box and the texture coordinate range
++	int bx0 = 0x7fff, bx1 = -0x8000, by0 = 0x7fff, by1 = -0x8000;
++	int u0 = 255, u1 = 0, v0 = 255, v1 = 0;
 +	for (int k = 0; k < n; k++) {
 +		if (gouraud && k)
 +			col = w[i++] & 0xffffff;
 +		u32 xy = w[i++];
-+		v[k].x = sext11(xy) + ps.ox;
-+		v[k].y = sext11(xy >> 16) + ps.oy;
-+		v[k].rgba = col | 0xff000000;
++		int x = sext11(xy) + ps.ox, y = sext11(xy >> 16) + ps.oy;
++		v[k].x = x;
++		v[k].y = y;
++		v[k].rgba = col;
++		bx0 = x < bx0 ? x : bx0; bx1 = x > bx1 ? x : bx1;
++		by0 = y < by0 ? y : by0; by1 = y > by1 ? y : by1;
 +		if (textured) {
 +			u32 uv = w[i++];
-+			v[k].u = uv & 0xff;
-+			v[k].v = (uv >> 8) & 0xff;
++			int tu = uv & 0xff, tv = (uv >> 8) & 0xff;
++			v[k].u = tu;
++			v[k].v = tv;
++			u0 = tu < u0 ? tu : u0; u1 = tu > u1 ? tu : u1;
++			v0 = tv < v0 ? tv : v0; v1 = tv > v1 ? tv : v1;
 +			if (k == 0) clut = uv >> 16;
 +			if (k == 1) page = uv >> 16;
-+		} else {
-+			v[k].u = v[k].v = 0;
 +		}
 +	}
-+	if (textured) {
-+		// textured polygons also set the global texpage (bits 0-8, and 11)
++	if (textured)   // textured polygons also set the global texpage (bits 0-8, and 11)
 +		ps.texpage = (ps.texpage & ~0x9ff) | (page & 0x9ff);
++	int blend = blend_of(cmd);
++	// fast path, nearly every polygon: inside the drawing area, smaller than
++	// the PS1's size limit (so no triangle of it is dropped), solid or
++	// half-transparent. Finished vertices go straight to the buffer.
++	if (bx0 < ps.dx1 || bx1 > ps.dx2 || by0 < ps.dy1 || by1 > ps.dy2 || bx1 - bx0 > 1023 || by1 - by0 > 511 ||
++		blend > BL_HALF || !ready || (pica_debug & 4096)) {
++		for (int k = 0; k < n; k++)
++			v[k].rgba |= 0xff000000;
++		draw_poly_slow(v, n, quad, textured, page, clut, cmd);
++		return;
 +	}
++	tcache *tex = textured ? texture_for(page, clut, u0, u1, v0, v1) : plain;
++	// see emit_tris: alpha 255 solid / 128 half; raw textures colour 0x80
++	u32 a = blend == BL_OPAQUE ? 0xff000000 : 0x80000000;
++	u32 rawcol = (textured && (cmd & 1)) ? 0x808080 : 0;
++	int du = tex->ax - tex->rx, dv = tex->ay - tex->ry;
++	use_state(0, BL_HALF, TX_MOD, 0);
++	pvtx *o = alloc_verts(quad ? 6 : 3);
++	if (!o)
++		return;
++	pvtx f[4];
++	for (int k = 0; k < n; k++) {
++		int x = v[k].x * 4, y = v[k].y * 4;
++		f[k].x = x > VRAM_W * 4 - 1 ? VRAM_W * 4 - 1 : x;
++		f[k].y = y > VRAM_H * 4 - 1 ? VRAM_H * 4 - 1 : y;
++		if (textured) {
++			f[k].u = v[k].u + du;
++			f[k].v = v[k].v + dv;
++		} else {
++			f[k].u = plain->ax + 24;
++			f[k].v = plain->ay + 8;
++		}
++		f[k].rgba = (rawcol ? rawcol : v[k].rgba) | a;
++	}
++	o[0] = f[0]; o[1] = f[1]; o[2] = f[2];
++	if (quad) {
++		o[3] = f[1]; o[4] = f[3]; o[5] = f[2];
++	}
++	tex->used_seq = seq + 1;
++	st_prims++;
++}
++
++// polygons that need clipping, lose a triangle to the size limit, or use
++// the two-pass blend modes
++static void draw_poly_slow(pvtx *v, int n, bool quad, bool textured, u32 page, u32 clut, u32 cmd)
++{
 +	// the PS1 skips triangles wider than 1023 or taller than 511
 +	pvtx tri[6];
 +	int ntri = 0;
@@ -1426,7 +1508,7 @@ index 0000000..c28fdf3
 +}
 +
 +// a line becomes a quad one pixel thick across its main direction
-+static void draw_line(int x0, int y0, u32 c0, int x1, int y1, u32 c1, int blend)
++static void noinline draw_line(int x0, int y0, u32 c0, int x1, int y1, u32 c1, int blend)
 +{
 +	int dx = x1 - x0, dy = y1 - y0;
 +	if ((dx < 0 ? -dx : dx) > 1023 || (dy < 0 ? -dy : dy) > 511)
@@ -1445,7 +1527,7 @@ index 0000000..c28fdf3
 +}
 +
 +// GP0 02: fill a VRAM rectangle (ignores the drawing area and mask)
-+static void fill_rect(const u32 *w)
++static void noinline fill_rect(const u32 *w)
 +{
 +	int x = w[1] & 0x3f0, y = (w[1] >> 16) & 0x1ff;
 +	int fw = ((w[2] & 0x3ff) + 15) & ~15, fh = (w[2] >> 16) & 0x1ff;
