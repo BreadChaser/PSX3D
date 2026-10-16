@@ -131,9 +131,8 @@ bool video_init(void)
 		top_r = C2D_CreateScreenTarget(GFX_TOP, GFX_RIGHT);
 		top_aa = false;
 	} else {
-		top1 = plain_target(GFX_LEFT);
-		top1_r = plain_target(GFX_RIGHT);
-		log_printf("plain gameplay targets: %s\n", top1 && top1_r ? "ok" : "no VRAM left");
+		// plain gameplay targets: disabled until the hang is understood
+		(void)plain_target;
 	}
 	bottom = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
 
@@ -430,7 +429,8 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	bool real = show_game && stereo && g_cfg.stereo == 2 && have_frame && right_ok;
 
 	// gameplay draws to the plain targets, menus to the supersampled ones
-	bool plain = show_game && !in_menu_call && top1 && top1_r;
+	// (disabled: the 16-bit target hung the GPU on the first game frame)
+	bool plain = false && show_game && !in_menu_call && top1 && top1_r;
 	C3D_RenderTarget *tl = plain ? top1 : top, *tr = plain ? top1_r : top_r;
 	C2D_TargetClear(tl, C2D_Color32(0, 0, 0, 255));
 	top_begin(tl);
