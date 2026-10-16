@@ -1,8 +1,17 @@
 # PSX3D
 
-PSX3D is a standalone PlayStation emulator for the New Nintendo 3DS. It runs the
+PSX3D is a standalone PlayStation emulator for the Nintendo 3DS. It runs the
 [PCSX-ReARMed](https://github.com/libretro/pcsx_rearmed) emulation core directly,
 without RetroArch, behind a frontend written for the 3DS.
+
+<p align="center">
+  <img src="docs/screenshots/library.png" alt="Game library" width="300">
+  <img src="docs/screenshots/menu.png" alt="In-game menu" width="300">
+</p>
+<p align="center">
+  <img src="docs/screenshots/crash.png" alt="Crash Bandicoot" width="400">
+  <img src="docs/screenshots/silent-hill.png" alt="Silent Hill" width="400">
+</p>
 
 ## Features
 
@@ -14,16 +23,33 @@ without RetroArch, behind a frontend written for the 3DS.
 - Disc swapping for multi-disc games
 - Bottom screen backlight turned off during play; touch the bottom screen to open the menu
 - Safe handling of HOME, sleep and power-off at any point
-- On-screen buttons for Old 3DS models (untested)
+- Old 3DS support: faster default settings and on-screen L2/R2 buttons
 - No DSP1 needed: the DSP firmware is copied from the system on first start
 
 ## Requirements
 
-- New 3DS, New 3DS XL or New 2DS XL running Luma3DS. Old 3DS, 3DS XL and 2DS
-  support is included but untested, and demanding titles will not run at full speed.
+- Any 3DS or 2DS model running Luma3DS. On a New 3DS, New 3DS XL or New 2DS XL
+  most titles run at full speed. On an Old 3DS, 3DS XL or 2DS, 2D games run at
+  full speed and 3D games run slower (Crash Bandicoot at around 35-40 FPS).
 - Game images in `.cue/.bin`, `.chd`, `.pbp`, `.iso` or `.m3u` format. No games are included.
 - Optional: a PlayStation BIOS image (for example `scph1001.bin`) in
   `sdmc:/3ds/PSX3D/bios/`. Without one, the core's HLE BIOS is used.
+
+## Old 3DS
+
+The Old 3DS, 3DS XL and 2DS have a 268 MHz CPU (the New 3DS runs at 804 MHz
+with an extra cache), so expect the following:
+
+- Demanding 3D games do not reach full speed, and some may not be playable.
+- Defaults are tuned for speed and differ from the New 3DS:
+  - Automatic frameskip is on, so motion is less smooth when the game falls behind.
+  - 3D scenes are drawn at half vertical resolution.
+  - Sound uses simple interpolation and no reverb.
+  - GTE speed hacks are on, which can cause rare graphical glitches.
+
+  All of these can be changed in Settings → Core options.
+- Rewind is not available.
+- There are no ZL/ZR buttons; L2 and R2 are on-screen buttons on the touch screen.
 
 ## Installation
 
@@ -68,6 +94,7 @@ in the same folder using the matching file name.
 - Box art downloads are slow because of the 3DS network stack.
 - Heavy Wi-Fi activity (for example NTR screen streaming) can cause audio clicks.
 - Some titles require a real BIOS to boot.
+- On an Old 3DS, the Continue screen shows an empty frame instead of the screenshot.
 
 When reporting a bug, please include `log.txt` from the session where it happened.
 
