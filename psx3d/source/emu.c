@@ -785,8 +785,6 @@ static void game_draw_bottom(void *ud)
 
 	if (touch_buttons_active())
 		touch_buttons_draw();
-	if (g_cfg.stereo == 2 && osGet3DSliderState() >= 0.05f)
-		stereo_draw_preview(40, 30, 6);
 	if (g_cfg.show_fps)
 		ui_text(4, 222, 0.42f, dim, "%.1f fps  %.1fms", fps_measured, emu_ms);
 	if (osd_frames > 0) {
@@ -978,7 +976,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			// real 3D only costs anything while the slider is up; a little
 			// hysteresis so a slider resting near 0 doesn't toggle it
 			static int below;
-			float slider = osGet3DSliderState();
+			float slider = slider_get();
 			below = slider < 0.02f ? below + 1 : 0;
 			if (g_cfg.stereo == 2 && slider >= 0.05f)
 				config_set_stereo_active(true);
@@ -1027,13 +1025,6 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			char abuf[160];
 			audio_stats(abuf, sizeof(abuf));
 			log_printf("  %s\n", abuf);
-			if (g_cfg.stereo == 2) {
-				extern u64 stereo_prep_ticks, stereo_draw_ticks;
-				log_printf("  3d: %s | prep %.2fms draw(L) %.2fms\n", stereo_stats(),
-					stereo_prep_ticks / (float)present_count / CPU_TICKS_PER_MSEC,
-					stereo_draw_ticks / (float)present_count / CPU_TICKS_PER_MSEC);
-				stereo_prep_ticks = stereo_draw_ticks = 0;
-			}
 			t_run = t_present = t_run_max = 0;
 			present_count = 0;
 			fps_frames = 0;

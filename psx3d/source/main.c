@@ -1,5 +1,6 @@
 // PSX3D entry point.
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include "psx3d.h"
@@ -97,6 +98,9 @@ static void show_error(const char *msg)
 // Diagnostic switches, passed as arguments (3dslink ... -- nonet nosound):
 // each turns one subsystem off so a problem can be bisected without
 // rebuilding.
+float sw_slider = -1;   // test: pretend the 3D slider is here
+bool sw_showright;      // test: show the right eye on the left (NTR only sees the left)
+bool sw_sbs;            // test: both eyes side by side
 bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 
 static void parse_switches(int argc, char **argv)
@@ -104,7 +108,10 @@ static void parse_switches(int argc, char **argv)
 	for (int i = 1; i < argc; i++) {
 		const char *a = argv[i];
 		if (!strcmp(a, "nonet")) sw_nonet = true;
-		if (!strcmp(a, "csnd")) sw_csnd = true;   // test the no-firmware sound path
+		else if (!strcmp(a, "csnd")) sw_csnd = true;   // test the no-firmware sound path
+		else if (!strncmp(a, "slider=", 7)) sw_slider = strtof(a + 7, NULL);
+		else if (!strcmp(a, "showright")) sw_showright = true;
+		else if (!strcmp(a, "sbs")) sw_sbs = true;
 		else if (!strcmp(a, "nosound")) sw_nosound = true;
 		else if (!strcmp(a, "noirrst")) sw_noirrst = true;
 		else if (!strcmp(a, "noaa")) sw_noaa = true;
@@ -113,6 +120,11 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "minimal"))
 			sw_nonet = sw_nosound = sw_noirrst = sw_noaa = sw_nolcd = sw_nocovers = true;
 	}
+}
+
+float slider_get(void)
+{
+	return sw_slider >= 0 ? sw_slider : osGet3DSliderState();
 }
 
 int main(int argc, char **argv)

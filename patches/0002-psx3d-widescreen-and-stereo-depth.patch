@@ -52,7 +52,7 @@ index 9dd3502..a281df0 100644
     var.key = "pcsx_rearmed_3ds_appcputime";
     if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
 diff --git a/libpcsxcore/gte.c b/libpcsxcore/gte.c
-index d1f18df..4c8ad36 100644
+index d1f18df..3cc315e 100644
 --- a/libpcsxcore/gte.c
 +++ b/libpcsxcore/gte.c
 @@ -24,6 +24,7 @@
@@ -63,7 +63,7 @@ index d1f18df..4c8ad36 100644
  #include "gte_arm.h"
  #include "psxmem.h"
  #include "../include/compiler_features.h"
-@@ -561,6 +562,18 @@ static u32 gteMAC123f(psxCP2Regs *regs, s32 vx, s32 vy, s32 vz,
+@@ -561,6 +562,33 @@ static u32 gteMAC123f(psxCP2Regs *regs, s32 vx, s32 vy, s32 vz,
  
  #endif
  
@@ -74,6 +74,21 @@ index d1f18df..4c8ad36 100644
 +uint16_t psx3d_zframe;
 +#endif
 +
++#ifndef FLAGLESS
++// PSX3D: record what the asm fast paths just projected (they write the
++// screen positions and depths but know nothing about stereo)
++void psx3d_record_rtps(psxCP2Regs *regs)
++{
++	psx3d_zput(regs->CP2D.p[14].sw.l, regs->CP2D.p[14].sw.h, regs->CP2D.p[19].w.l);
++}
++
++void psx3d_record_rtpt(psxCP2Regs *regs)
++{
++	for (int v = 0; v < 3; v++)
++		psx3d_zput(regs->CP2D.p[12 + v].sw.l, regs->CP2D.p[12 + v].sw.h, regs->CP2D.p[17 + v].w.l);
++}
++#endif
++
 +static inline force_inline s64 ws_x(s64 x)
 +{
 +	return gte_hack_widescreen_q16 ? (x * gte_hack_widescreen_q16) >> 16 : x;
@@ -82,7 +97,7 @@ index d1f18df..4c8ad36 100644
  static inline force_inline void gteRTPS(psxCP2Regs *regs, int shift, int lm)
  {
  	s32 vx = gteVX0, vy = gteVY0, vz = gteVZ0;
-@@ -588,8 +601,10 @@ static inline force_inline void gteRTPS(psxCP2Regs *regs, int shift, int lm)
+@@ -588,8 +616,10 @@ static inline force_inline void gteRTPS(psxCP2Regs *regs, int shift, int lm)
  	gteSXY0 = gteSXY1;
  	gteSXY1 = gteSXY2;
  
@@ -94,7 +109,7 @@ index d1f18df..4c8ad36 100644
  
  	gteMAC0 = mac0 = mac0flags(&flags, gteDQB + (s64)gteDQA * quotient);
  	gteIR0 = limH(&flags, mac0 >> 12);
-@@ -624,8 +639,10 @@ static inline force_inline void gteRTPT(psxCP2Regs *regs, int shift, int lm)
+@@ -624,8 +654,10 @@ static inline force_inline void gteRTPT(psxCP2Regs *regs, int shift, int lm)
  		sz3 = limD(&flags, sz3);
  		quotient = divide(&flags, h, sz3);
  		fSZ(v) = sz3;
@@ -107,22 +122,24 @@ index d1f18df..4c8ad36 100644
  
  	gteMAC1 = mac1;
 diff --git a/libpcsxcore/gte.h b/libpcsxcore/gte.h
-index a7baf6f..8e68227 100644
+index a7baf6f..686dd47 100644
 --- a/libpcsxcore/gte.h
 +++ b/libpcsxcore/gte.h
-@@ -66,6 +66,10 @@ void MTC2(struct psxCP2Regs *regs, u32 value, int reg);
+@@ -66,6 +66,12 @@ void MTC2(struct psxCP2Regs *regs, u32 value, int reg);
  void CTC2(struct psxCP2Regs *regs, u32 value, int reg);
  
  typedef void (gte_handler)(psxCP2Regs *regs, u32 code);
 +// PSX3D widescreen hack: horizontal scale applied to RTPS/RTPT projection,
 +// 16.16 fixed point; 0 = off. Fits a wider view into the same screen width.
 +extern int gte_hack_widescreen_q16;
++void psx3d_record_rtps(struct psxCP2Regs *regs);
++void psx3d_record_rtpt(struct psxCP2Regs *regs);
 +
  gte_handler *gteGetHandler(u32 code);
  gte_handler *gteGetHandler_nf(u32 code);
  
 diff --git a/libpcsxcore/new_dynarec/assem_arm.c b/libpcsxcore/new_dynarec/assem_arm.c
-index 6719602..cd6a4a3 100644
+index 6719602..daf899f 100644
 --- a/libpcsxcore/new_dynarec/assem_arm.c
 +++ b/libpcsxcore/new_dynarec/assem_arm.c
 @@ -22,6 +22,7 @@
@@ -139,7 +156,7 @@ index 6719602..cd6a4a3 100644
        case GTEOP_RTPS:
 -        if (shift && !lm) {
 +        // the asm fast paths don't know the widescreen hack
-+        if (shift && !lm && !gte_hack_widescreen_q16 && !psx3d_stereo_enabled) {
++        if (shift && !lm && !gte_hack_widescreen_q16) {
  #if defined(__ARM_NEON__)
            handler = need_flags ? gteRTPS_sf1lm0_neon : gteRTPS_sf1lm0_nf_neon;
  #elif defined(HAVE_ARMV5)
@@ -148,13 +165,30 @@ index 6719602..cd6a4a3 100644
          goto do_handler;
        case GTEOP_RTPT:
 -        if (shift && !lm) {
-+        if (shift && !lm && !gte_hack_widescreen_q16 && !psx3d_stereo_enabled) {
++        if (shift && !lm && !gte_hack_widescreen_q16) {
  #if defined(__ARM_NEON__)
            handler = need_flags ? gteRTPT_sf1lm0_neon : gteRTPT_sf1lm0_nf_neon;
  #elif defined(HAVE_ARMV5)
+@@ -2131,6 +2133,16 @@ static void c2op_assemble(struct compile_state *st, int i, const struct regstat
+         emit_movimm(st->source[i],1); // opcode
+         //emit_writeword(1,&psxRegs.code);
+         emit_far_call(handler);
++        // PSX3D: the asm projections don't record depths for stereo; do it
++        // after them (r0 = &psxRegs.CP2 again for the call)
++#if defined(HAVE_ARMV5) && !defined(__ARM_NEON__)
++        if (psx3d_stereo_enabled && (handler == (void *)gteRTPS_sf1lm0_arm ||
++            handler == (void *)gteRTPS_sf1lm0_nf_arm || handler == (void *)gteRTPT_sf1lm0_arm ||
++            handler == (void *)gteRTPT_sf1lm0_nf_arm)) {
++          emit_addimm(FP, (char *)&psxRegs.CP2D.r[0] - (char *)&dynarec_local, 0);
++          emit_far_call(c2op == GTEOP_RTPS ? (void *)psx3d_record_rtps : (void *)psx3d_record_rtpt);
++        }
++#endif
+         break;
+     }
+     c2op_epilogue(c2op, reglist);
 diff --git a/libpcsxcore/psx3d_depth.h b/libpcsxcore/psx3d_depth.h
 new file mode 100644
-index 0000000..8c1b533
+index 0000000..9c55cbb
 --- /dev/null
 +++ b/libpcsxcore/psx3d_depth.h
 @@ -0,0 +1,98 @@
@@ -176,7 +210,7 @@ index 0000000..8c1b533
 +extern "C" {
 +#endif
 +
-+#define PSX3D_ZT_BITS  14
++#define PSX3D_ZT_BITS  16     // 64K entries: fewer collisions, fewer corners without a depth
 +#define PSX3D_DM_W     80     // depth map cells, each 8x8 PS1 pixels,
 +#define PSX3D_DM_H     60     // covering up to 640x480
 +#define PSX3D_DM_CELL  8
@@ -278,10 +312,15 @@ index adede2b..199882b 100644
  
  #ifdef  ENABLE_GPU_NULL_SUPPORT
 diff --git a/plugins/gpu_unai/gpulib_if.cpp b/plugins/gpu_unai/gpulib_if.cpp
-index 4b9b57e..a8e11c6 100644
+index 4b9b57e..2a1b2be 100644
 --- a/plugins/gpu_unai/gpulib_if.cpp
 +++ b/plugins/gpu_unai/gpulib_if.cpp
-@@ -26,6 +26,8 @@
+@@ -22,10 +22,13 @@
+ 
+ #include <stddef.h>
+ #include <stdio.h>
++#include <math.h>
+ #include <stdlib.h>
  #include <string.h>
  #include "arm_features.h"
  #include "../gpulib/gpu.h"
@@ -290,7 +329,7 @@ index 4b9b57e..a8e11c6 100644
  #include "old/if.h"
  
  //#include "port.h"
-@@ -111,6 +113,7 @@ void renderer_finish(void)
+@@ -111,6 +114,7 @@ void renderer_finish(void)
  
  void renderer_notify_screen_change(const struct psx_gpu_screen *screen)
  {
@@ -298,7 +337,7 @@ index 4b9b57e..a8e11c6 100644
    gpu_unai.inn.ilace_mask = gpu_unai.config.ilace_force;
  
    if (gpu.state.downscale_enable)
-@@ -179,8 +182,9 @@ static void gpuGP0Cmd_0xEx(gpu_unai_t &gpu_unai, u32 cmd_word)
+@@ -179,8 +183,9 @@ static void gpuGP0Cmd_0xEx(gpu_unai_t &gpu_unai, u32 cmd_word)
  
      case 5: {
        // GP0(E5h) - Set Drawing Offset (X,Y)
@@ -310,7 +349,7 @@ index 4b9b57e..a8e11c6 100644
      } break;
  
      case 6: {
-@@ -227,6 +231,346 @@ static inline void textured_sprite(int &cpu_cycles_sum, int &cpu_cycles)
+@@ -227,6 +232,473 @@ static inline void textured_sprite(int &cpu_cycles_sum, int &cpu_cycles)
    gput_sum(cpu_cycles_sum, cpu_cycles, gput_sprite(w, h));
  }
  
@@ -322,9 +361,68 @@ index 4b9b57e..a8e11c6 100644
 +// overwrite earlier ones. Sprites and anything without depth data count as
 +// the screen plane (0), which keeps HUDs and text on the screen surface.
 +
++// ---- dual rendering: each eye drawn into its own VRAM, every vertex moved
++// sideways by its depth. The main thread works out the shifts when a
++// primitive is submitted (the GTE depth table matches the frame then) and
++// queues them; the GPU thread pops one pack per polygon or sprite.
++extern "C" { uint16_t *psx3d_vram2; }
++static u16 *psx3d_vram2_mem;
++static bool psx3d_seen_3d;   // any 3D geometry drawn yet in this frame
++static float psx3d_strength;          // max far disparity, PS1 pixels (0 = flat)
++static float psx3d_zc = 0.0f;         // convergence depth: zero disparity here
++static double psx3d_logz_sum;
++static u32 psx3d_logz_n;
++
++// log2 from the float's bits (+-0.09): plenty for an average depth
++static inline float psx3d_fastlog2(float x)
++{
++  union { float f; u32 i; } u = { x };
++  return (float)(int)(u.i - 0x3f800000) * (1.0f / (1 << 23));
++}
++
++static inline int psx3d_disp(float z)
++{
++  float S = psx3d_strength;
++  if (S <= 0.0f || z <= 0.0f || psx3d_zc <= 0.0f)
++    return 0;
++  float d = S * (1.0f - psx3d_zc / z);
++  if (d > S) d = S;
++  if (d < -0.4f * S) d = -0.4f * S;   // keep pop-out gentle
++  return (int)(d < 0 ? d - 0.5f : d + 0.5f);
++}
++
++// per-frame stats for tuning (frontend logs them)
++static int psx3d_st_dmin, psx3d_st_dmax, psx3d_st_n3d, psx3d_st_n2d, psx3d_st_zmin, psx3d_st_zmax;
++static int psx3d_pub_st[6];
++// the last complete second
++extern "C" void psx3d_stats(float *zc, int *n3d, int *n2d, int *dmin, int *dmax, int *zmin, int *zmax)
++{
++  *zc = psx3d_zc; *n3d = psx3d_pub_st[0]; *n2d = psx3d_pub_st[1];
++  *dmin = psx3d_pub_st[2]; *dmax = psx3d_pub_st[3]; *zmin = psx3d_pub_st[4];
++  *zmax = psx3d_pub_st[5];
++}
++
++// 2D drawing: only big pieces drawn before any 3D are backdrops (pushed
++// far). Everything else, text and HUD above all, stays on the screen plane:
++// letters are separate small sprites, and splitting a word across two
++// depths makes it unreadable.
++static inline int psx3d_flat_disp(int w, int h)
++{
++  if (psx3d_seen_3d || w < 64 || h < 64)
++    return 0;
++  return psx3d_disp(65535.0f) * 7 / 10;
++}
++
++static inline u32 psx3d_pack(const int *d, int n)
++{
++  u32 p = 0;
++  for (int i = 0; i < n; i++)
++    p |= (u32)(u8)(s8)d[i] << (8 * i);
++  return p;
++}
++
 +static u16 psx3d_cur[PSX3D_DM_H][PSX3D_DM_W];
 +static psx3d_depthmap psx3d_pub;
-+static bool psx3d_seen_3d;   // any 3D geometry drawn yet in this frame
 +static u32 psx3d_prims;      // primitives recorded since the last publish
 +static u32 psx3d_rank;       // 3D polygons drawn so far this frame
 +
@@ -341,7 +439,7 @@ index 4b9b57e..a8e11c6 100644
 +
 +#define OV_RING 65536
 +#define OV_FLAG_FRAME 2          // frame boundary marker
-+static volatile u8 psx3d_ov_ring[OV_RING];
++static volatile u32 psx3d_ov_ring[OV_RING];
 +static volatile u32 psx3d_ov_head, psx3d_ov_tail;
 +static u16 *psx3d_ov_buf[2];     // [front] = last complete frame's HUD
 +static volatile int psx3d_ov_front;
@@ -349,7 +447,7 @@ index 4b9b57e..a8e11c6 100644
 +static u32 psx3d_ov_rows[2][16]; // VRAM rows each layer has drawn to (512 bits)
 +static int psx3d_ov_x, psx3d_ov_y, psx3d_ov_w, psx3d_ov_h;
 +
-+static void psx3d_ov_push(u8 f)
++static void psx3d_ov_push(u32 f)
 +{
 +  psx3d_ov_ring[psx3d_ov_head % OV_RING] = f;
 +  __sync_synchronize();
@@ -426,42 +524,53 @@ index 4b9b57e..a8e11c6 100644
 +    return;
 +  gpu_async_sync(&gpu);
 +  psx3d_stereo_enabled = 0;
++  psx3d_vram2 = NULL;
 +  __sync_synchronize();
 +  psx3d_ov_head = psx3d_ov_tail = 0;
 +  psx3d_prims = 0;
-+  psx3d_rank = 0;
 +  psx3d_seen_3d = false;
-+  memset(psx3d_cur, 0, sizeof(psx3d_cur));
-+  if (on && psx3d_ov_buf[0]) {
-+    psx3d_ov_clear(psx3d_ov_buf[0]);
-+    psx3d_ov_clear(psx3d_ov_buf[1]);
-+    memset(psx3d_ov_rows, 0, sizeof(psx3d_ov_rows));
++  if (on) {
++    // same layout as gpulib's VRAM (2MB, drawing may run past the end)
++    if (!psx3d_vram2_mem)
++      psx3d_vram2_mem = (u16 *)malloc(1024 * 512 * 2 * 2 + 8192);
++    if (!psx3d_vram2_mem)
++      return;
++    u16 *v2 = (u16 *)(((uintptr_t)psx3d_vram2_mem + 4095) & ~(uintptr_t)4095);
++    memcpy(v2, gpu.vram, 1024 * 512 * 2);
++    psx3d_vram2 = v2;
++  } else {
++    free(psx3d_vram2_mem);
++    psx3d_vram2_mem = NULL;
 +  }
 +  __sync_synchronize();
 +  psx3d_stereo_enabled = on;
 +}
 +
-+// GPU thread: flag for the next primitive (true = draw it into the HUD layer)
-+static bool psx3d_ov_pop(void)
++// frontend: 3D strength (max far disparity in PS1 pixels, from the slider)
++extern "C" void psx3d_set_strength(float px)
 +{
-+  while (psx3d_ov_tail != psx3d_ov_head) {
-+    u8 f = psx3d_ov_ring[psx3d_ov_tail % OV_RING];
-+    psx3d_ov_tail++;
-+    if (f != OV_FLAG_FRAME)
-+      return f != 0;
-+    // frame done: it becomes the front layer, start a fresh back layer
-+    psx3d_ov_x = gpu.screen.src_x; psx3d_ov_y = gpu.screen.src_y;
-+    psx3d_ov_w = gpu.screen.hres;  psx3d_ov_h = gpu.screen.vres;
-+    psx3d_ov_seq++;
-+    __sync_synchronize();
-+    psx3d_ov_front ^= 1;
-+    int back = psx3d_ov_front ^ 1;
-+    psx3d_ov_clear_rows(psx3d_ov_buf[back], psx3d_ov_rows[back]);
-+    memset(psx3d_ov_rows[back], 0, sizeof(psx3d_ov_rows[back]));
-+    __sync_synchronize();
-+    psx3d_ov_seq++;
-+  }
-+  return false;
++  psx3d_strength = px;
++}
++
++// frontend: the right eye's picture: VRAM pointer and the display area
++extern "C" const uint16_t *psx3d_right_get(int *x, int *y, int *w, int *h, int *rgb24)
++{
++  if (!psx3d_vram2)
++    return NULL;
++  *x = gpu.screen.src_x; *y = gpu.screen.src_y;
++  *w = gpu.screen.hres;  *h = gpu.screen.vres;
++  *rgb24 = (gpu.status & PSX_GPU_STATUS_RGB24) != 0;
++  return psx3d_vram2;
++}
++
++// GPU thread: shifts for the next polygon or sprite
++static u32 psx3d_shift_pop(void)
++{
++  if (psx3d_ov_tail == psx3d_ov_head)
++    return 0;
++  u32 f = psx3d_ov_ring[psx3d_ov_tail % OV_RING];
++  psx3d_ov_tail++;
++  return f;
 +}
 +
 +extern "C" const uint16_t *psx3d_overlay_get(int *x, int *y, int *w, int *h, const uint32_t **rows)
@@ -474,12 +583,36 @@ index 4b9b57e..a8e11c6 100644
 +}
 +
 +// called by the frontend once per emulated frame
++// called by the frontend once per emulated frame: move the convergence
++// toward this frame's typical depth (smoothly, so the picture doesn't pump)
 +extern "C" void psx3d_depth_frame(void)
 +{
 +  if (!psx3d_stereo_enabled)
 +    return;
-+  psx3d_depth_publish(gpu.screen.hres, gpu.screen.vres);
-+  psx3d_ov_push(OV_FLAG_FRAME);
++  if (psx3d_logz_n > 32) {
++    // the focus only follows real scene changes: a creeping focus makes
++    // every whole-pixel shift flip back and forth (shimmering)
++    float target = exp2f((float)(psx3d_logz_sum / psx3d_logz_n)) * 0.75f;
++    static float aim;
++    if (psx3d_zc <= 0.0f)
++      psx3d_zc = aim = target;
++    else if (target > aim * 1.15f || target < aim * 0.87f)
++      aim = target;
++    psx3d_zc += (aim - psx3d_zc) * 0.01f;
++  }
++  psx3d_logz_sum = 0;
++  psx3d_logz_n = 0;
++  static int frames;
++  if (++frames >= 60) {   // stats cover a second, then start over
++    frames = 0;
++    psx3d_pub_st[0] = psx3d_st_n3d; psx3d_pub_st[1] = psx3d_st_n2d;
++    psx3d_pub_st[2] = psx3d_st_dmin; psx3d_pub_st[3] = psx3d_st_dmax;
++    psx3d_pub_st[4] = psx3d_st_zmin; psx3d_pub_st[5] = psx3d_st_zmax;
++    psx3d_st_dmin = 127; psx3d_st_dmax = -127; psx3d_st_n3d = psx3d_st_n2d = 0;
++    psx3d_st_zmin = 1 << 30; psx3d_st_zmax = 0;
++  }
++  psx3d_seen_3d = false;
++  psx3d_prims = 0;
 +  psx3d_zframe++;
 +}
 +
@@ -575,21 +708,26 @@ index 4b9b57e..a8e11c6 100644
 +  }
 +}
 +
-+extern "C" int psx3d_depth_poly(const u32 *w, u32 cmd)
++// per-corner disparities of a polygon, packed one signed byte per corner
++static u32 psx3d_poly_shifts(const u32 *w, u32 cmd)
 +{
 +  int n = (cmd & 8) ? 4 : 3, tex = (cmd & 4) != 0, gouraud = (cmd & 0x10) != 0;
-+  int x[4], y[4], found = 0;
-+  float z[4], zsum = 0.0f;
-+  int idx = 1;
++  float z[4];
++  int found = 0, idx = 1, d[4];
++  int minx = 1 << 20, maxx = -(1 << 20), miny = 1 << 20, maxy = -(1 << 20);
++  float zsum = 0.0f;
 +  for (int v = 0; v < n; v++) {
 +    if (v > 0 && gouraud)
 +      idx++;
 +    u32 word = le32_to_u32(((const le32_t *)w)[idx++]);
 +    if (tex)
 +      idx++;
-+    x[v] = psx3d_sext11(word);
-+    y[v] = psx3d_sext11(word >> 16);
-+    u32 key = psx3d_zkey(x[v], y[v]);
++    int x = psx3d_sext11(word), y = psx3d_sext11(word >> 16);
++    if (x < minx) minx = x;
++    if (x > maxx) maxx = x;
++    if (y < miny) miny = y;
++    if (y > maxy) maxy = y;
++    u32 key = psx3d_zkey(x, y);
 +    const psx3d_zent *e = &psx3d_ztable[psx3d_zhash(key)];
 +    // this frame's or the previous frame's projections only (games often
 +    // transform during one frame and submit early in the next)
@@ -602,41 +740,44 @@ index 4b9b57e..a8e11c6 100644
 +    }
 +  }
 +  if (!found) {
-+    // 2D polygon: backdrop if drawn before any 3D, else HUD (own layer)
-+    if (!psx3d_seen_3d) {
-+      float far[4] = { 65534.0f, 65534.0f, 65534.0f, 65534.0f };
-+      psx3d_tri(x, y, far);
-+      if (n == 4)
-+        psx3d_tri(x + 1, y + 1, far);
-+    }
-+    return 0;
++    psx3d_st_n2d++;
++    int dd = psx3d_flat_disp(maxx - minx, maxy - miny);
++    for (int v = 0; v < n; v++) d[v] = dd;
++    return psx3d_pack(d, n);
 +  }
-+  // depth = draw order (see psx3d_depth.h), flat over the polygon
-+  psx3d_rank++;
-+  for (int v = 0; v < n; v++)
-+    z[v] = (float)(psx3d_rank < 65532 ? psx3d_rank + 2 : 65534);
 +  psx3d_seen_3d = true;
-+  psx3d_tri(x, y, z);
-+  if (n == 4)
-+    psx3d_tri(x + 1, y + 1, z + 1);
-+  return 1;
++  psx3d_st_n3d++;
++  float zavg = zsum / found;
++  for (int v = 0; v < n; v++) {
++    if (z[v] < 0.0f)
++      z[v] = zavg;
++    d[v] = psx3d_disp(z[v]);
++    if (d[v] < psx3d_st_dmin) psx3d_st_dmin = d[v];
++    if (d[v] > psx3d_st_dmax) psx3d_st_dmax = d[v];
++    if ((int)z[v] < psx3d_st_zmin) psx3d_st_zmin = (int)z[v];
++    if ((int)z[v] > psx3d_st_zmax) psx3d_st_zmax = (int)z[v];
++    psx3d_logz_sum += psx3d_fastlog2(z[v]);
++    psx3d_logz_n++;
++  }
++  return psx3d_pack(d, n);
 +}
 +
++extern "C" void psx3d_depth_cmd_(const u32 *list_, u32 cmd);
 +extern "C" void psx3d_depth_cmd(const u32 *list_, u32 cmd)
 +{
-+  const le32_t *list = (const le32_t *)list_;
 +  if (cmd < 0x20 || cmd >= 0x80 || (cmd >= 0x40 && cmd < 0x60))
-+    return;   // only polygons and sprites (lines can be re-submitted when split)
-+  if (!psx3d_ov_buf[1] && !psx3d_ov_alloc())
-+    return;
++    return;   // polygons and sprites only (lines can be re-submitted when split)
++  psx3d_depth_cmd_(list_, cmd);
++}
++
++extern "C" void psx3d_depth_cmd_(const u32 *list_, u32 cmd)
++{
 +  psx3d_prims++;
-+  bool was_3d = psx3d_seen_3d;
-+  int is_3d = 0;
 +  if (cmd < 0x40) {
-+    is_3d = psx3d_depth_poly((const u32 *)list, cmd);
++    psx3d_ov_push(psx3d_poly_shifts(list_, cmd));
 +  } else {
-+    u32 xy = le32_to_u32(list[1]);
-+    int x = psx3d_sext11(xy), y = psx3d_sext11(xy >> 16), w, h;
++    const le32_t *list = (const le32_t *)list_;
++    int w, h;
 +    switch (cmd & 0x18) {
 +    case 0x00: {   // variable size
 +      u32 wh = le32_to_u32(list[(cmd & 4) ? 3 : 2]);
@@ -646,18 +787,43 @@ index 4b9b57e..a8e11c6 100644
 +    case 0x10: w = h = 8; break;
 +    default:   w = h = 16; break;
 +    }
-+    psx3d_depth_rect(x, y, w, h);
++    psx3d_st_n2d++;
++    psx3d_ov_push((u32)(u8)(s8)psx3d_flat_disp(w, h));
 +  }
-+  // HUD: opaque 2D drawn after the frame's 3D scene. Semi-transparent
-+  // effects (sparks, glows) stay in the scene: they blend with what's
-+  // under them, which the separate layer doesn't have.
-+  psx3d_ov_push(!is_3d && was_3d && !(cmd & 2));
++}
++
++// move each corner of the packet in the GPU's buffer for one eye
++static void psx3d_apply_shift(u32 cmd, u32 pack, int eye)
++{
++  if (!pack)
++    return;
++  if (cmd < 0x40) {
++    int n = (cmd & 8) ? 4 : 3, tex = (cmd & 4) != 0, gouraud = (cmd & 0x10) != 0, idx = 1;
++    for (int v = 0; v < n; v++) {
++      if (v > 0 && gouraud)
++        idx++;
++      int d = (s8)(pack >> (8 * v));
++      int sh = eye ? d - d / 2 : -(d / 2);
++      u32 word = le32_to_u32(gpu_unai.PacketBuffer.U4[idx]);
++      int x = psx3d_sext11(word) + sh;
++      gpu_unai.PacketBuffer.U4[idx] = u32_to_le32((word & 0xffff0000u) | (x & 0xffff));
++      idx++;
++      if (tex)
++        idx++;
++    }
++  } else {
++    int d = (s8)pack;
++    int sh = eye ? d - d / 2 : -(d / 2);
++    u32 word = le32_to_u32(gpu_unai.PacketBuffer.U4[1]);
++    int x = psx3d_sext11(word) + sh;
++    gpu_unai.PacketBuffer.U4[1] = u32_to_le32((word & 0xffff0000u) | (x & 0xffff));
++  }
 +}
 +
  extern const unsigned char cmd_lengths[256];
  
  int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
-@@ -237,6 +581,7 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
+@@ -237,6 +709,7 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
    le32_t *list = (le32_t *)list_;
    le32_t *list_start = list;
    le32_t *list_end = list + list_len;
@@ -665,31 +831,49 @@ index 4b9b57e..a8e11c6 100644
  
    if (IS_OLD_RENDERER()) {
      return oldunai_do_cmd_list(list_, list_len, ex_regs,
-@@ -252,6 +597,18 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
+@@ -252,10 +725,31 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
        break;
      }
  
 +    // with the async GPU, gpu_async.c records depth on the main thread
 +    if (psx3d_stereo_enabled && !gpu_async_enabled(&gpu))
 +      psx3d_depth_cmd((const u32 *)list, cmd);
-+    // HUD primitives draw into the back HUD layer instead of VRAM
++    // stereo: draw commands run once per eye, the second into the right
++    // eye's VRAM, polygons and sprites moved by their depth
++    bool psx3d_prim = cmd >= 0x20 && cmd < 0x80 && (cmd < 0x40 || cmd >= 0x60);
++    u32 psx3d_sh = (psx3d_stereo_enabled && psx3d_prim) ? psx3d_shift_pop() : 0;
++    int eyes = (psx3d_vram2 && cmd >= 0x02 && cmd < 0x80) ? 2 : 1;
++    u32 len0 = len;
++    int sum_eye0 = 0, last_eye0 = 0;
 +    vram_saved = NULL;
-+    if (psx3d_stereo_enabled && psx3d_ov_buf[1] && cmd >= 0x20 && cmd < 0x80 &&
-+        (cmd < 0x40 || cmd >= 0x60) && psx3d_ov_pop()) {
++    for (int eye = 0; eye < eyes; eye++) {
++    if (eye) {
++      len = len0;
++      sum_eye0 = cpu_cycles_sum; last_eye0 = cpu_cycles;
 +      vram_saved = gpu_unai.vram;
-+      gpu_unai.vram = (le16_t *)psx3d_ov_buf[psx3d_ov_front ^ 1];
-+      psx3d_ov_mark(psx3d_ov_front ^ 1, list, cmd);
++      gpu_unai.vram = (le16_t *)psx3d_vram2;
 +    }
 +
      #define PRIM cmd
      gpu_unai.PacketBuffer.U4[0] = list[0];
      for (i = 1; i <= len; i++)
-@@ -663,9 +1020,13 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
+       gpu_unai.PacketBuffer.U4[i] = list[i];
++    if (psx3d_sh && eyes == 2)
++      psx3d_apply_shift(cmd, psx3d_sh, eye);
+ 
+     PtrUnion packet = { .ptr = (void*)&gpu_unai.PacketBuffer };
+ 
+@@ -663,9 +1157,18 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
          gpuGP0Cmd_0xEx(gpu_unai, cmd_word);
        } break;
      }
++    if (eye) {   // the second eye's timing doesn't count: the real GPU draws once
++      cpu_cycles_sum = sum_eye0; cpu_cycles = last_eye0;
++    }
++    } // eye
 +    if (vram_saved)
 +      gpu_unai.vram = vram_saved;
++    vram_saved = NULL;
    }
  
  breakloop:
@@ -698,6 +882,43 @@ index 4b9b57e..a8e11c6 100644
    ex_regs[1] &= ~0x1ff;
    ex_regs[1] |= gpu_unai.GPU_GP1 & 0x1ff;
  
+diff --git a/plugins/gpulib/gpu.c b/plugins/gpulib/gpu.c
+index f04e3a5..1a2122f 100644
+--- a/plugins/gpulib/gpu.c
++++ b/plugins/gpulib/gpu.c
+@@ -686,6 +686,8 @@ int do_vram_copy(uint16_t *vram, const uint32_t *ex_regs, const uint32_t *params
+   }
+ 
+   renderer_update_caches(dx, dy, w, h, 0);
++  if (unlikely(psx3d_vram2 != NULL) && vram != psx3d_vram2)
++    do_vram_copy(psx3d_vram2, ex_regs, params);
+   return 4;
+ }
+ 
+diff --git a/plugins/gpulib/gpu.h b/plugins/gpulib/gpu.h
+index e929fe6..6368b60 100644
+--- a/plugins/gpulib/gpu.h
++++ b/plugins/gpulib/gpu.h
+@@ -170,6 +170,10 @@ int  prim_try_simplify_quad_gt(void *simplified, const void *prim);
+ 
+ void cpy_mask(uint16_t *dst, const uint16_t *src, int l, uint32_t r6);
+ 
++// PSX3D stereo: the right eye's copy of VRAM (NULL when off). Writes that
++// aren't drawing (uploads, copies) go to both.
++extern uint16_t *psx3d_vram2;
++
+ static inline void do_vram_line(uint16_t *vram_, int x, int y,
+     uint16_t *mem, int l, int is_read, uint32_t r6)
+ {
+@@ -180,6 +184,8 @@ static inline void do_vram_line(uint16_t *vram_, int x, int y,
+     cpy_mask(vram, mem, l, r6);
+   else
+     memcpy(vram, mem, l * 2);
++  if (unlikely(psx3d_vram2 != NULL) && !is_read && vram_ != psx3d_vram2)
++    do_vram_line(psx3d_vram2, x, y, mem, l, 0, r6);
+ }
+ 
+ /* listing these here for correct linkage if rasterizer uses c++ */
 diff --git a/plugins/gpulib/gpu_async.c b/plugins/gpulib/gpu_async.c
 index a67509b..4f6d259 100644
 --- a/plugins/gpulib/gpu_async.c
