@@ -1032,6 +1032,13 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			audio_muted = false;
 			retro_run();
 			rewind_capture();
+#ifdef PSX3D_PICA
+			if (sw_vramdump && --sw_vramdump == 0) {
+				void pica_dump_vram(const char *path);
+				pica_dump_vram(PSX3D_DIR "/vram.bin");
+				log_printf("test: VRAM dumped\n");
+			}
+#endif
 			if (ff)
 				next_deadline = svcGetSystemTick();
 		}
