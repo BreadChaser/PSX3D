@@ -106,6 +106,7 @@ bool sw_prof;           // log where frame time goes, once a second
 bool sw_stats;          // log fps and renderer counters once a second (no timers)
 bool sw_o3ds;           // test: behave like an Old 3DS (settings not saved)
 bool sw_fs1;            // test: force frameskip, every other frame
+bool sw_noskip;         // test: no frameskip (benchmarks)
 int sw_gldbg;           // test: hardware renderer debug bits (1 no alpha test, 2 no textures)
 int sw_state = -1;       // test: load this save state slot when the game starts (state0, state=N)
 bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
@@ -123,6 +124,7 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "stats")) sw_stats = true;
 		else if (!strcmp(a, "o3ds")) sw_o3ds = true;
 		else if (!strcmp(a, "fs1")) sw_fs1 = true;
+		else if (!strcmp(a, "noskip")) sw_noskip = true;
 		else if (!strcmp(a, "state0")) sw_state = 0;
 		else if (!strncmp(a, "state=", 6)) sw_state = atoi(a + 6);
 		else if (!strncmp(a, "gldbg=", 6)) sw_gldbg = atoi(a + 6);
@@ -209,6 +211,31 @@ int main(int argc, char **argv)
 		__ctr_svchax = 0;
 	}
 	log_printf("svc access: %d\n", __ctr_svchax);
+	if (sw_stats) {
+		// test: how fast the CPU reads and writes normal vs GPU-visible (linear) memory
+		const int n = 256 * 1024;
+		u32 *bufs[2] = { malloc(n), linearAlloc(n) };
+		for (int k = 0; k < 2; k++) {
+			volatile u32 *b = bufs[k];
+			if (!b)
+				continue;
+			u64 t0 = svcGetSystemTick();
+			for (int r = 0; r < 4; r++)
+				for (int i = 0; i < n / 4; i++)
+					b[i] = i;
+			u64 t1 = svcGetSystemTick();
+			u32 sum = 0;
+			for (int r = 0; r < 4; r++)
+				for (int i = 0; i < n / 4; i++)
+					sum += b[i];
+			u64 t2 = svcGetSystemTick();
+			log_printf("memtest %s: write %.2f MB/s, read %.2f MB/s (%u)\n", k ? "linear" : "heap",
+				4.0 * n / ((t1 - t0) / (double)SYSCLOCK_ARM11) / 1e6, 4.0 * n / ((t2 - t1) / (double)SYSCLOCK_ARM11) / 1e6, (unsigned)sum);
+		}
+		free(bufs[0]);
+		if (bufs[1])
+			linearFree(bufs[1]);
+	}
 	log_printf("switches: csnd=%d nonet=%d nosound=%d noirrst=%d noaa=%d nolcd=%d nocovers=%d\n",
 		sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers);
 
