@@ -18,10 +18,20 @@ index d637914..1f21065 100644
  CFLAGS += -DGPU_UNAI
  CFLAGS += -DUSE_GPULIB=1
 diff --git a/Makefile.libretro b/Makefile.libretro
-index cd53109..bfa73ee 100644
+index cd53109..ffc58ec 100644
 --- a/Makefile.libretro
 +++ b/Makefile.libretro
-@@ -374,7 +374,12 @@ else ifeq ($(platform), ctr)
+@@ -362,6 +362,9 @@ else ifeq ($(platform), ctr)
+ 	CFLAGS += -mword-relocations
+ 	CFLAGS += -fomit-frame-pointer
+ 	# CFLAGS += -funroll-loops # ~500K of bloat
++	# -O2 rather than -Ofast: half the instruction cache misses (16K L1, no L2 on
++	# the Old 3DS), measured with the ARM11 counters: Crash 35.3 -> 36.9 fps on Old 3DS
++	CFLAGS_OPT ?= -O2
+ 	CFLAGS += -Ifrontend/3ds -I$(CTRULIB)/include
+ 	CFLAGS += -Werror=implicit-function-declaration
+ 	CFLAGS += -Wno-format
+@@ -374,7 +377,12 @@ else ifeq ($(platform), ctr)
  	OBJS += deps/arm-mem/memset-v6l.o
  	OBJS += frontend/3ds/utils.o
  
@@ -224,7 +234,7 @@ index 6719602..daf899f 100644
      }
      c2op_epilogue(c2op, reglist);
 diff --git a/libpcsxcore/new_dynarec/new_dynarec.c b/libpcsxcore/new_dynarec/new_dynarec.c
-index fb99df6..b13e8bf 100644
+index fb99df6..1f2f418 100644
 --- a/libpcsxcore/new_dynarec/new_dynarec.c
 +++ b/libpcsxcore/new_dynarec/new_dynarec.c
 @@ -37,6 +37,10 @@ static Jit g_jit;
@@ -238,7 +248,28 @@ index fb99df6..b13e8bf 100644
  #include "../psxhle.h"
  #include "../psxinterpreter.h"
  #include "../psxcounters.h"
-@@ -1799,8 +1803,19 @@ static void invalidate_block(struct block_info *block)
+@@ -698,6 +702,8 @@ static void mprotect_w_x(void *start, void *end, int is_x)
+ #endif
+ }
+ 
++static unsigned stat_clear_full, stat_clear_range;
++
+ void new_dyna_clear_cache(void *start, void *end)
+ {
+ #if defined(__arm__) || defined(__aarch64__)
+@@ -711,9 +717,9 @@ void new_dyna_clear_cache(void *start, void *end)
+   #elif defined(_3DS)
+   // tuned for old3ds' 16k:16k cache (in it's mostly clean state...)
+   if ((char *)end - (char *)start <= 2*1024)
+-    ctr_clear_cache_range(start, end);
++    ctr_clear_cache_range(start, end), stat_clear_range++;
+   else
+-    ctr_clear_cache();
++    ctr_clear_cache(), stat_clear_full++;
+   #elif defined(HAVE_LIBNX)
+   if (g_jit.type == JitType_CodeMemory) {
+     armDCacheClean(start, len);
+@@ -1799,8 +1805,19 @@ static void invalidate_block(struct block_info *block)
      hash_table_remove(block->jump_in[i].vaddr);
  }
  
@@ -258,7 +289,16 @@ index fb99df6..b13e8bf 100644
  {
    struct block_info *last_block = NULL;
    u_int start_page = get_page_prev(start);
-@@ -6956,7 +6971,7 @@ void new_dynarec_print_stats(void)
+@@ -6948,6 +6965,8 @@ void new_dynarec_load_blocks(const void *save, int size)
+ 
+ void new_dynarec_print_stats(void)
+ {
++  SysPrintf("ndrc: cache clears full %u range %u\n", stat_clear_full, stat_clear_range);
++  stat_clear_full = stat_clear_range = 0;
+ #ifdef STAT_PRINT
+   size_t i, lmem = 0;
+   for (i = 0; i < ARRAY_SIZE(jumps); i++) {
+@@ -6956,7 +6975,7 @@ void new_dynarec_print_stats(void)
        lmem += sizeof(*ji) + ji->alloc * sizeof(ji->e[0]) + sizeof(size_t) * 2;
    }
  
@@ -267,7 +307,7 @@ index fb99df6..b13e8bf 100644
      stat_bc_direct, stat_bc_restore,
      stat_ht_lookups, stat_jump_in_lookups, stat_restore_tries,
      stat_restore_compares, stat_inv_addr_calls, stat_inv_hits,
-@@ -9604,7 +9619,16 @@ static void block_info_finish(const struct compile_state *st,
+@@ -9604,7 +9623,16 @@ static void block_info_finish(const struct compile_state *st,
    perf_dump_write(st, beginning, end);
  }
  
