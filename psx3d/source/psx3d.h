@@ -83,6 +83,10 @@ extern bool ui_wants_3d;
 static inline float ui_depth(float d) { return ui_eye * d * ui_parallax; }
 u64 video_take_wait_ticks(void);
 u64 video_take_xfer_ticks(void);
+// core (patches/0002): real 3D renders each eye into its own VRAM
+void psx3d_set_strength(float px);
+void psx3d_stats(float *zc, int *n3d, int *n2d, int *dmin, int *dmax, int *zmin, int *zmax);
+const uint16_t *psx3d_right_get(int *x, int *y, int *w, int *h, int *rgb24);
 bool video_snapshot(u16 *out, int w, int h);
 
 // csnd_out.c - sound without DSP firmware
@@ -251,6 +255,9 @@ void emu_deinit(void);
 bool emu_run_game(const char *path, const char *save_name, const char *title);
 
 extern int __ctr_svchax;
+extern float sw_slider;
+extern bool sw_showright, sw_sbs;
+float slider_get(void);
 extern bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 extern bool g_new3ds;
 
