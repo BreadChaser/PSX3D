@@ -90,6 +90,12 @@ u64 video_take_xfer_ticks(void);
 // core (patches/0002): real 3D renders each eye into its own VRAM
 void psx3d_set_strength(float px);
 void psx3d_set_half3d(int on);
+// core profiling (libpcsxcore/psx3d_prof.h)
+extern unsigned long long psx3d_prof_t[6];
+extern unsigned int psx3d_prof_c[6];
+extern int psx3d_prof_on;
+void new_dynarec_print_stats(void);
+extern bool sw_prof;
 void psx3d_stats(float *zc, int *n3d, int *n2d, int *dmin, int *dmax, int *zmin, int *zmax);
 const uint16_t *psx3d_right_get(int *x, int *y, int *w, int *h, int *rgb24);
 bool video_snapshot(u16 *out, int w, int h);
@@ -267,5 +273,6 @@ extern bool sw_showright, sw_sbs;
 float slider_get(void);
 extern bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 extern bool g_new3ds;
+extern int g_syscore_pct;
 
 #endif

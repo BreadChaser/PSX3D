@@ -1,3 +1,4 @@
+#include <stdio.h>
 // Core options: the core registers its options with SET_VARIABLES
 // ("Description; default|value2|value3"). Values set by the user are stored
 // in config.c as overrides; everything else falls back to the core default.
@@ -58,8 +59,16 @@ static const char *locked_value(const char *key)
 	// CPU time, so the core's helper threads would starve. Run everything
 	// on the main core there.
 	if (!g_new3ds) {
+		// The syscore only gives us 30% in time slices: drawing there made
+		// the game wait (25 fps vs 36). Sound is buffered and copes.
 		if (strcmp(key, "pcsx_rearmed_gpu_thread_rendering") == 0)
 			return "disabled";
+		// (sound there measured no gain either: 38 vs 39 fps in Crash)
+		if (strcmp(key, "pcsx_rearmed_3ds_appcputime") == 0) {
+			static char b[8];
+			snprintf(b, sizeof(b), "%d", g_syscore_pct ? g_syscore_pct : 35);
+			return b;
+		}
 		if (strcmp(key, "pcsx_rearmed_cd_readahead") == 0)
 			return "0";
 		// gaussian interpolation costs real time on a 268MHz core

@@ -39,7 +39,7 @@ AccessControlInfo:
   MemoryType              : Application
   SystemMode              : 64MB
   IdealProcessor          : 0
-  AffinityMask            : 1
+  AffinityMask            : 3   # cores 0 and 1 (Old 3DS: drawing on the syscore)
   Priority                : 16
   # lets APT_SetAppCpuTimeLimit grant time on the syscore (core 1)
   MaxCpu                  : 0x9E

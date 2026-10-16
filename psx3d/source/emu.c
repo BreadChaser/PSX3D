@@ -926,6 +926,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	cheats_load(game_name);
 	sync_widescreen();
 	psx3d_set_half3d(g_cfg.half3d);
+	psx3d_prof_on = sw_prof;
 	controls_load();
 	{
 		char prefix[PATH_LEN];
@@ -1049,6 +1050,17 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			char abuf[160];
 			audio_stats(abuf, sizeof(abuf));
 			log_printf("  %s\n", abuf);
+			if (sw_prof) {
+				static const char *const names[6] = { "compile", "inval", "spu", "gpu", "irq", "cdr" };
+				char pb[200]; int n = 0;
+				for (int k = 0; k < 5; k++) {
+					n += snprintf(pb + n, sizeof(pb) - n, " %s %.2fms/%u", names[k],
+						psx3d_prof_t[k] / (double)fps_frames / CPU_TICKS_PER_MSEC, psx3d_prof_c[k] / (fps_frames ? fps_frames : 1));
+					psx3d_prof_t[k] = 0; psx3d_prof_c[k] = 0;
+				}
+				log_printf("  prof (per frame):%s\n", pb);
+				new_dynarec_print_stats();
+			}
 			t_run = t_present = t_run_max = 0;
 			present_count = 0;
 			fps_frames = 0;
