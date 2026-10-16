@@ -2697,7 +2697,7 @@ index 4b9b57e..a7f0c13 100644
    ex_regs[1] |= gpu_unai.GPU_GP1 & 0x1ff;
  
 diff --git a/plugins/gpulib/gpu.c b/plugins/gpulib/gpu.c
-index f04e3a5..044123f 100644
+index f04e3a5..b58e7a4 100644
 --- a/plugins/gpulib/gpu.c
 +++ b/plugins/gpulib/gpu.c
 @@ -1,3 +1,4 @@
@@ -2762,15 +2762,19 @@ index f04e3a5..044123f 100644
  {
    int cmd, pos;
    uint32_t old_e3 = gpu->ex_regs[3];
-@@ -874,6 +902,7 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+@@ -873,8 +901,10 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+         break;
        *cycles_sum += *cycles_last;
        *cycles_last = 0;
-       if (do_vram_copy_pre(gpu, data + pos, cycles_last))
+-      if (do_vram_copy_pre(gpu, data + pos, cycles_last))
++      if (do_vram_copy_pre(gpu, data + pos, cycles_last)) {
 +        pica_settle_vram();
          do_vram_copy(gpu->vram, gpu->ex_regs, data + pos);
++      }
        pos += 4;
        continue;
-@@ -886,17 +915,24 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+     case 0x00:
+@@ -886,17 +916,24 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
        continue;
      }
  
@@ -2796,7 +2800,7 @@ index f04e3a5..044123f 100644
      }
  
      if (cmd == -1)
-@@ -1092,12 +1128,14 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+@@ -1092,12 +1129,14 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
        }
  
        sync_renderer(&gpu);
