@@ -144,3 +144,59 @@ void flist_draw(const flist_t *f, int n, int sel, float x, float y0, float w, fl
 		}
 	}
 }
+
+// ---------------------------------------------------------------- help panel
+// Lower part of the top screen: what the selected option does and its speed
+// impact. y0 is the top of the panel.
+void ui_help_panel(float y0, const char *title, const char *impact, const char *text)
+{
+	if ((!text || !text[0]) && !impact)
+		return;
+	float dx = ui_depth(-0.4f);
+	C2D_DrawRectSolid(12 + dx, y0, 0.66f, 376, 236 - y0, C2D_Color32(6, 9, 24, 225));
+	C2D_DrawRectSolid(12 + dx, y0, 0.67f, 3, 236 - y0, C2D_Color32(40, 110, 230, 255));
+	float y = y0 + 6;
+	if (title) {
+		ui_text_ex(NULL, 24 + dx, y, 0.5f, C2D_Color32(235, 238, 255, 255), 0, title);
+		y += 18;
+	}
+	if (impact) {
+		char b[96];
+		snprintf(b, sizeof(b), "Speed: %s", impact);
+		ui_text_ex(NULL, 24 + dx, y, 0.42f, C2D_Color32(250, 205, 20, 255), 0, b);
+		y += 15;
+	}
+	if (text && text[0]) {
+		C2D_Text t;
+		if (C2D_TextParse(&t, textbuf, text)) {
+			C2D_TextOptimize(&t);
+			C2D_DrawText(&t, C2D_WithColor | C2D_WordWrap, 24 + dx, y, 0.82f, 0.4f, 0.4f,
+				C2D_Color32(170, 180, 215, 255), 352.0f);
+		}
+	}
+}
+
+// help for PSX3D's own settings, by name
+static const char *const own_help[][3] = {
+	{ "Screen", "Widescreen can be slower", "4:3 is the original picture. Stretch fills the screen. Widescreen makes 3D games draw a wider view (uses the game's own widescreen code when there is one). Remembered per game." },
+	{ "Screen (default)", "Widescreen can be slower", "The screen mode for games you haven't set one for. 4:3 is the original picture, stretch fills the screen, widescreen draws a wider view in 3D games." },
+	{ "3D", "No speed effect", "screen depth puts the game picture slightly behind the screen when the 3D slider is up." },
+	{ "3D resolution", "Half is faster in 3D games", "Draws 3D scenes with every other line copied, while text, menus and 2D stay sharp. Worth it on Old 3DS; New 3DS doesn't need it." },
+	{ "Smoothing", "No speed effect", "Smooths the picture when it's scaled up to the 3DS screen. Off gives sharp pixels." },
+	{ "Show FPS", "No speed effect", "Shows the frame rate on the bottom screen while playing." },
+	{ "Controls", "No speed effect", "Choose which PS1 button each 3DS button presses, for this game." },
+	{ "Rewind", "Costs a little, New 3DS only", "Hold SELECT + L to go back in time. Saves a snapshot 6 times a second; turn it on for games where you want it." },
+	{ "Continue where I left off", "No speed effect", "Saves when you leave a game and offers to continue from there next time." },
+	{ "Core options", NULL, "Settings of the emulator itself: accuracy, speed hacks, BIOS and more. Each one explains itself." },
+	{ "Menu sounds", "No speed effect", NULL },
+	{ "Library music", "No speed effect", NULL },
+};
+
+void ui_help_for(float y0, const char *name)
+{
+	for (size_t i = 0; i < sizeof(own_help) / sizeof(own_help[0]); i++)
+		if (!strcmp(own_help[i][0], name)) {
+			ui_help_panel(y0, name, own_help[i][1], own_help[i][2]);
+			return;
+		}
+}

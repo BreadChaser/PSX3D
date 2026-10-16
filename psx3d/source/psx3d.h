@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include "libretro.h"
 
-#define PSX3D_VERSION  "0.1.1"
+#define PSX3D_VERSION  "0.2.0"
 #define PSX3D_DIR      "sdmc:/3ds/PSX3D"
 #define PSX3D_BIOS_DIR PSX3D_DIR "/bios"
 #define PSX3D_SAVE_DIR PSX3D_DIR "/saves"
@@ -38,6 +38,7 @@ typedef struct {
 	int  music;        // library music
 	int  bottom_off;   // backlight off on the bottom screen while playing
 	int  autosave;     // save on exit, offer to continue next time
+	int  half3d;       // draw 3D polygons at half vertical resolution (Old 3DS default)
 } psx3d_config;
 
 extern psx3d_config g_cfg;
@@ -60,6 +61,9 @@ const char *options_get(const char *key);
 bool options_take_updated(void);
 void options_mark_updated(void);
 int  options_count(void);
+void options_register_v1(const struct retro_core_option_definition *defs);
+const char *options_info(int i);
+const char *options_impact(int i);
 void options_fast_forward(bool on);
 const char *options_key(int i);
 const char *options_desc(int i);
@@ -85,6 +89,7 @@ u64 video_take_wait_ticks(void);
 u64 video_take_xfer_ticks(void);
 // core (patches/0002): real 3D renders each eye into its own VRAM
 void psx3d_set_strength(float px);
+void psx3d_set_half3d(int on);
 void psx3d_stats(float *zc, int *n3d, int *n2d, int *dmin, int *dmax, int *zmin, int *zmax);
 const uint16_t *psx3d_right_get(int *x, int *y, int *w, int *h, int *rgb24);
 bool video_snapshot(u16 *out, int w, int h);
@@ -196,6 +201,8 @@ void flist_draw(const flist_t *f, int n, int sel, float x, float y0, float w, fl
 	const char *(*label)(int, void *), const char *(*value)(int, void *), void *ud, u32 accent);
 int flist_row_at(const flist_t *f, float y0, float row_h, float py);
 void flist_snap(flist_t *f, int sel, int n, int rows);
+void ui_help_panel(float y0, const char *title, const char *impact, const char *text);
+void ui_help_for(float y0, const char *name);
 
 // library.c - one entry per game, clean titles, discs grouped
 typedef struct {

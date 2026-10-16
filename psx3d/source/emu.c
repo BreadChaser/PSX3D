@@ -73,6 +73,15 @@ static bool environment(unsigned cmd, void *data)
 	case RETRO_ENVIRONMENT_SET_VARIABLES:
 		options_register(data);
 		return true;
+	case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION:
+		*(unsigned *)data = 1;   // v1: options come with descriptions
+		return true;
+	case RETRO_ENVIRONMENT_SET_CORE_OPTIONS:
+		options_register_v1(data);
+		return true;
+	case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_INTL:   // the core uses this even for English
+		options_register_v1(((const struct retro_core_options_intl *)data)->us);
+		return true;
 	case RETRO_ENVIRONMENT_GET_VARIABLE: {
 		struct retro_variable *v = data;
 		v->value = options_get(v->key);
@@ -132,6 +141,13 @@ static bool environment(unsigned cmd, void *data)
 		return true;
 	}
 	default:
+		{
+			static u32 seen[8];   // log each unknown request once
+			if (cmd < 256 && !(seen[cmd >> 5] & (1u << (cmd & 31)))) {
+				seen[cmd >> 5] |= 1u << (cmd & 31);
+				log_printf("env: unhandled %u\n", cmd);
+			}
+		}
 		return false;
 	}
 }
@@ -330,7 +346,7 @@ static void state_load(void)
 // ---------------------------------------------------------------- menu
 
 enum { M_RESUME, M_SAVE, M_LOAD, M_DISC, M_CHEATS, M_SETTINGS, M_RESET, M_EXIT,
-       M_SCREEN, M_3D, M_SMOOTH, M_FPS, M_CONTROLS, M_REWIND, M_AUTOSAVE, M_CORE, M_RECORD, M_TONE, M_COUNT };
+       M_SCREEN, M_3D, M_RES3D, M_SMOOTH, M_FPS, M_CONTROLS, M_REWIND, M_AUTOSAVE, M_CORE, M_RECORD, M_TONE, M_COUNT };
 #define M_FIRST_SETTING M_SCREEN
 
 // items on the main page or the settings page; the debug ones only with
@@ -369,9 +385,9 @@ typedef struct {
 
 static const u32 menu_accent_cols[4] = { 0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28 }; // ABGR: red, yellow, green, blue
 
+static const char *const menu_names[M_COUNT];
 static void menu_draw_top(void *ud)
 {
-	(void)ud;
 	C2D_Font f = libui_font();
 	C2D_DrawRectSolid(0, 0, 0.6f, 400, 240, C2D_Color32(2, 4, 16, 170));
 	float dx = ui_depth(-0.8f);
@@ -381,12 +397,17 @@ static void menu_draw_top(void *ud)
 	// a thin PS-coloured rule under the word
 	for (int i = 0; i < 4; i++)
 		C2D_DrawRectSolid(140 + i * 30 + dx, 128, 0.65f, 28, 2, menu_accent_cols[i]);
+	menu_t *m = ud;
+	if (m && m->core_page)
+		ui_help_panel(152, NULL, options_impact(m->core_sel), options_info(m->core_sel));
+	else if (m && m->settings && !m->ctl_page && !m->cheat_page && m->sel < m->nitems)
+		ui_help_for(152, menu_names[m->items[m->sel]]);
 }
 
 static const char *const menu_names[M_COUNT] = {
 	[M_RESUME] = "Resume", [M_SAVE] = "Save state", [M_LOAD] = "Load state", [M_DISC] = "Swap disc", [M_CHEATS] = "Cheats",
 	[M_SETTINGS] = "Settings", [M_RESET] = "Reset game", [M_EXIT] = "Exit to library",
-	[M_SCREEN] = "Screen", [M_3D] = "3D", [M_SMOOTH] = "Smoothing",
+	[M_SCREEN] = "Screen", [M_3D] = "3D", [M_RES3D] = "3D resolution", [M_SMOOTH] = "Smoothing",
 	[M_FPS] = "Show FPS", [M_CONTROLS] = "Controls", [M_REWIND] = "Rewind",
 	[M_AUTOSAVE] = "Continue where I left off", [M_CORE] = "Core options", [M_RECORD] = "Debug: record audio",
 	[M_TONE] = "Debug: test tone",
@@ -531,6 +552,7 @@ static void menu_draw_bottom(void *ud)
 	snprintf(m->val[M_3D], 48, "%s", s3d_names[g_cfg.stereo]);
 	snprintf(m->val[M_SMOOTH], 48, "%s", g_cfg.smooth ? "on" : "off");
 	snprintf(m->val[M_FPS], 48, "%s", g_cfg.show_fps ? "on" : "off");
+	snprintf(m->val[M_RES3D], 48, "%s", g_cfg.half3d ? "half (faster)" : "full");
 	snprintf(m->val[M_REWIND], 48, "%s", gamecfg_int("rewind", 0) ? (rewind_active() ? "on" : "on (unavailable)") : "off");
 	snprintf(m->val[M_AUTOSAVE], 48, "%s", g_cfg.autosave ? "on" : "off");
 	int changed = 0;
@@ -720,6 +742,7 @@ static bool menu_run(void)
 					config_sync_stereo();
 				} break;
 				case M_SMOOTH: g_cfg.smooth ^= 1; break;
+				case M_RES3D: g_cfg.half3d ^= 1; psx3d_set_half3d(g_cfg.half3d); break;
 				case M_FPS: g_cfg.show_fps ^= 1; break;
 				case M_CORE:
 					if (k & KEY_A) {
@@ -902,6 +925,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	srm_load();
 	cheats_load(game_name);
 	sync_widescreen();
+	psx3d_set_half3d(g_cfg.half3d);
 	controls_load();
 	{
 		char prefix[PATH_LEN];

@@ -11,6 +11,8 @@
 typedef struct {
 	char *key;
 	char *desc;
+	char *info;      // the core's explanation (v1 options)
+	char *def;       // default value (v1 options; v0 uses values[0])
 	char *values[MAX_VALUES];
 	int   nvalues;
 } option_t;
@@ -60,6 +62,11 @@ static const char *locked_value(const char *key)
 			return "disabled";
 		if (strcmp(key, "pcsx_rearmed_cd_readahead") == 0)
 			return "0";
+		// gaussian interpolation costs real time on a 268MHz core
+		if (strcmp(key, "pcsx_rearmed_spu_interpolation") == 0)
+			return "simple";
+		if (strcmp(key, "pcsx_rearmed_spu_reverb") == 0)
+			return NULL;   // a choice on Old 3DS (default off, below)
 	}
 	for (size_t i = 0; i < sizeof(locked) / sizeof(locked[0]); i++)
 		if (strcmp(locked[i][0], key) == 0)
@@ -88,10 +95,14 @@ static void options_clear(void)
 		free(opts[i].desc);
 		for (int j = 0; j < opts[i].nvalues; j++)
 			free(opts[i].values[j]);
+		free(opts[i].info);
+		free(opts[i].def);
 	}
 	memset(opts, 0, sizeof(opts));
 	nopts = 0;
 }
+
+static void finish_register(void);
 
 void options_register(const struct retro_variable *vars)
 {
@@ -115,11 +126,34 @@ void options_register(const struct retro_variable *vars)
 		}
 		nopts++;
 	}
+	finish_register();
+}
+
+static void finish_register(void)
+{
 	nvisible = 0;
 	for (int i = 0; i < nopts; i++)
 		if (!is_hidden(opts[i].key))
 			visible[nvisible++] = i;
 	log_printf("registered %d core options (%d shown)\n", nopts, nvisible);
+}
+
+// RETRO_ENVIRONMENT_SET_CORE_OPTIONS (v1): same options with descriptions
+void options_register_v1(const struct retro_core_option_definition *defs)
+{
+	options_clear();
+	for (; defs && defs->key && nopts < MAX_OPTIONS; defs++) {
+		option_t *o = &opts[nopts];
+		o->key = strdup(defs->key);
+		o->desc = strdup(defs->desc ? defs->desc : defs->key);
+		o->info = defs->info ? strdup(defs->info) : NULL;
+		o->def = defs->default_value ? strdup(defs->default_value) : NULL;
+		for (int j = 0; j < RETRO_NUM_CORE_OPTION_VALUES_MAX && defs->values[j].value && o->nvalues < MAX_VALUES; j++)
+			o->values[o->nvalues++] = strdup(defs->values[j].value);
+		if (o->nvalues)
+			nopts++;
+	}
+	finish_register();
 }
 
 static option_t *find(const char *key)
@@ -154,16 +188,31 @@ const char *options_get(const char *key)
 
 	if (!ov)
 		ov = config_core_override(key);
-	// Old 3DS can't hold 60fps in most 3D games: skip drawing instead of
-	// slowing down (still changeable in the menu)
-	if (!ov && !g_new3ds && strcmp(key, "pcsx_rearmed_frameskip_type") == 0)
-		ov = "auto";
+	// Old 3DS: one 268MHz core runs the CPU, GPU and sound. Defaults that
+	// trade a little accuracy for speed (all still changeable in the menu).
+	if (!ov && !g_new3ds) {
+		static const char *const o3ds[][2] = {
+			{ "pcsx_rearmed_frameskip_type", "auto" },        // skip drawing, keep game speed
+			{ "pcsx_rearmed_frameskip_interval", "2" },       // at most 2 skipped in a row
+			{ "pcsx_rearmed_gpu_unai_fast_lighting", "enabled" },
+			{ "pcsx_rearmed_dithering", "disabled" },
+			{ "pcsx_rearmed_spu_reverb", "disabled" },
+			// GTE speed hacks: rare glitches, measurable gain on a 268MHz core
+			{ "pcsx_rearmed_gteregsunneeded", "enabled" },
+			{ "pcsx_rearmed_nogteflags", "enabled" },
+		};
+		for (size_t i = 0; i < sizeof(o3ds) / sizeof(o3ds[0]); i++)
+			if (strcmp(key, o3ds[i][0]) == 0)
+				ov = o3ds[i][1];
+	}
 	if (o && ov) {
 		// only hand the core values it actually knows about
 		for (int j = 0; j < o->nvalues; j++)
 			if (strcmp(o->values[j], ov) == 0)
 				return o->values[j];
 	}
+	if (o && o->def)
+		return o->def;
 	if (o && o->nvalues)
 		return o->values[0];
 	return ov;
@@ -196,4 +245,51 @@ const char *options_cycle(int i, int dir)
 	config_set_core_override(o->key, o->values[idx]);
 	updated = true;
 	return o->values[idx];
+}
+
+// ---------------------------------------------------------------- help
+// What each option does and what it costs, shown on the top screen while
+// it's selected. PSX3D's own notes win over the core's text; the impact
+// line is ours (measured on 3DS where it says so).
+static const char *const notes[][3] = {
+	// key, impact, note (NULL = use the core's text)
+	{ "pcsx_rearmed_psxclock", "Lower = faster, but games run their logic slower", "How fast the emulated PS1 CPU runs. Lowering it saves a lot of 3DS CPU time (Crash on Old 3DS: 36 -> 44 FPS at 30%) but games that need the full CPU will slow down or stutter. auto picks per game." },
+	{ "pcsx_rearmed_frameskip_type", "Faster when the 3DS can't keep up", "Skips drawing some frames when the 3DS falls behind, so the game itself keeps full speed. auto skips only when needed." },
+	{ "pcsx_rearmed_frameskip_threshold", "Higher = skips sooner", NULL },
+	{ "pcsx_rearmed_frameskip_interval", "Higher = smoother speed, choppier picture", "The most frames that can be skipped in a row." },
+	{ "pcsx_rearmed_dithering", "Slightly slower when on", "The PS1's colour dithering pattern. Off gives a cleaner picture and saves a little time." },
+	{ "pcsx_rearmed_gpu_unai_fast_lighting", "Faster (small)", "A quicker way to shade textured polygons. Colours can be slightly off in some games." },
+	{ "pcsx_rearmed_gpu_unai_lighting", "Off is faster, but most 3D games look wrong", NULL },
+	{ "pcsx_rearmed_gpu_unai_blending", "Off is faster, but transparency breaks", NULL },
+	{ "pcsx_rearmed_spu_reverb", "Off saves CPU time", "The PS1 sound chip's echo effect. Off sounds drier but frees CPU time, mostly useful on Old 3DS." },
+	{ "pcsx_rearmed_nosmccheck", "Faster, but can crash games and break saves", NULL },
+	{ "pcsx_rearmed_gteregsunneeded", "Faster (small), may cause glitches", "Skips saving some 3D math results games rarely read back. Usually safe; rare graphics glitches." },
+	{ "pcsx_rearmed_nogteflags", "Faster (small), can cause graphics errors", "Skips the 3D math unit's overflow flags. A few games use them for clipping and draw wrong without them." },
+	{ "pcsx_rearmed_cd_turbo", "Faster loading, can crash games", NULL },
+	{ "pcsx_rearmed_cd_readahead", "Fewer loading stutters on New 3DS", "Reads ahead on the disc image on a spare core, so the game doesn't wait for the SD card." },
+	{ "pcsx_rearmed_icache_emulation", "Slightly slower when on", NULL },
+	{ "pcsx_rearmed_region", "No speed effect", NULL },
+	{ "pcsx_rearmed_bios", "No speed effect", "Which BIOS to use. A real BIOS in sdmc:/3ds/PSX3D/bios fixes some games that don't boot with the built-in one." },
+};
+
+const char *options_info(int i)
+{
+	const option_t *o = (i >= 0 && i < nvisible) ? &opts[visible[i]] : NULL;
+	if (!o)
+		return "";
+	for (size_t n = 0; n < sizeof(notes) / sizeof(notes[0]); n++)
+		if (!strcmp(notes[n][0], o->key) && notes[n][2])
+			return notes[n][2];
+	return o->info ? o->info : "";
+}
+
+const char *options_impact(int i)
+{
+	const option_t *o = (i >= 0 && i < nvisible) ? &opts[visible[i]] : NULL;
+	if (!o)
+		return NULL;
+	for (size_t n = 0; n < sizeof(notes) / sizeof(notes[0]); n++)
+		if (!strcmp(notes[n][0], o->key))
+			return notes[n][1];
+	return NULL;
 }
