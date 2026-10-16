@@ -469,10 +469,10 @@ index 76f76af..0dbd6a9 100644
   int cycle_diff;
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 0000000..c3d0efd
+index 0000000..c28fdf3
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,1349 @@
+@@ -0,0 +1,1382 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -598,7 +598,8 @@ index 0000000..c3d0efd
 +
 +static int pend_x0 = VRAM_W, pend_y0 = VRAM_H, pend_x1, pend_y1;   // uploads waiting for a GPU frame
 +int pica_debug;   // set by the frontend (test switch gldbg)
-+static u64 t_state, t_draw, t_tex;   // diagnostics: ticks in state setup, draw calls, textures
++static u64 t_state, t_draw, t_tex, t_list, t_svc;
++static unsigned n_list, n_flush;   // diagnostics: ticks in state setup, draw calls, textures
 +static unsigned st_why[5], st_evict_lg[NSIZES];   // batch ends: atlas, blend/mode, area, rebind, other
 +static unsigned st_batches, st_prims, st_decodes, st_uploads, st_syncs, st_evict, st_inval, st_keys;
 +
@@ -1149,13 +1150,21 @@ index 0000000..c3d0efd
 +		vpos = vstart;
 +		return;
 +	}
++	n_flush++;
++#ifdef PICA_TIMERS
 +	u64 t0 = svcGetSystemTick();
++#endif
 +	if (state_dirty || base_dirty)
 +		apply_state();
++#ifdef PICA_TIMERS
 +	u64 t1 = svcGetSystemTick();
-+	C3D_DrawArrays(GPU_TRIANGLES, vstart, vpos - vstart);
++#endif
++	if (!(pica_debug & 1024))   // debug: no GPU drawing (CPU cost alone)
++		C3D_DrawArrays(GPU_TRIANGLES, vstart, vpos - vstart);
++#ifdef PICA_TIMERS
 +	t_state += t1 - t0;
 +	t_draw += svcGetSystemTick() - t1;
++#endif
 +	if (C3D_GetCmdBufUsage() > 0.8f)
 +		C3D_FrameSplit(0);
 +	seq++;
@@ -1254,7 +1263,7 @@ index 0000000..c3d0efd
 +
 +static void emit_tris(const pvtx *v, int ntri, int blend, int texmode, tcache *tex)
 +{
-+	if (!ready)
++	if (!ready || (pica_debug & 4096))   // debug 4096: primitives decoded, not drawn
 +		return;
 +	// anything reaching outside the drawing area is cut to it here
 +	pvtx clipped[2 * 3 * 7];
@@ -1288,21 +1297,27 @@ index 0000000..c3d0efd
 +		tex = plain;
 +		texmode = TX_MOD;
 +	}
++	// finish the vertices here (in cache) and write them out once: reading
++	// back from the vertex buffer missed the cache every time (the Old
++	// 3DS's cache only fills on reads; its memory reads are slow)
++	int nv = ntri * 3;
++	pvtx fin[2 * 3 * 7];
++	memcpy(fin, v, nv * sizeof(pvtx));
++	to_gpu(fin, nv);
++	if (untex) {
++		s16 pu = plain->ax + (blend == BL_OPAQUE ? 8 : 24), pv = plain->ay + 8;
++		for (int i = 0; i < nv; i++) {
++			fin[i].u = pu;
++			fin[i].v = pv;
++		}
++	}
 +	int passes = (blend == BL_SUB || blend == BL_QUARTER) ? 2 : 1;
 +	for (int p = 0; p < passes; p++) {
 +		use_state(0, blend, texmode, p);
-+		pvtx *o = alloc_verts(ntri * 3);
++		pvtx *o = alloc_verts(nv);
 +		if (!o)
 +			return;
-+		memcpy(o, v, ntri * 3 * sizeof(pvtx));
-+		to_gpu(o, ntri * 3);
-+		if (untex) {
-+			s16 pu = plain->ax + (blend == BL_OPAQUE ? 8 : 24), pv = plain->ay + 8;
-+			for (int i = 0; i < ntri * 3; i++) {
-+				o[i].u = pu;
-+				o[i].v = pv;
-+			}
-+		}
++		memcpy(o, fin, nv * sizeof(pvtx));
 +	}
 +	tex->used_seq = seq + 1;   // the batch it is in: seq + 1 once sent
 +	st_prims++;
@@ -1570,6 +1585,9 @@ index 0000000..c3d0efd
 +int renderer_do_cmd_list(uint32_t *list_, int list_len, uint32_t *ex_regs,
 +	int *cycles_sum_out, int *cycles_last, int *last_cmd)
 +{
++#ifdef PICA_TIMERS
++	u64 tl0 = svcGetSystemTick();
++#endif
 +	int cpu_cycles_sum = 0, cpu_cycles = *cycles_last;
 +	u32 *list = (u32 *)list_, *list_start = list, *list_end = list + list_len;
 +	u32 cmd = 0, len;
@@ -1581,8 +1599,9 @@ index 0000000..c3d0efd
 +			cmd = -1;
 +			break;
 +		}
-+		// without its buffers (no game started, or no memory) nothing is drawn
-+		if (!ready && cmd >= 0x02 && cmd < 0x80 && (cmd & 0xf8) != 0x48 && (cmd & 0xf8) != 0x58)
++		// without its buffers (no game started, or no memory) nothing is drawn;
++		// debug 2048: drawing commands are skipped (the rest of the emulator alone)
++		if ((!ready || (pica_debug & 2048)) && cmd >= 0x02 && cmd < 0x80 && (cmd & 0xf8) != 0x48 && (cmd & 0xf8) != 0x58)
 +			continue;
 +		switch (cmd) {
 +		case 0x02:
@@ -1658,6 +1677,10 @@ index 0000000..c3d0efd
 +	*cycles_sum_out += cpu_cycles_sum;
 +	*cycles_last = cpu_cycles;
 +	*last_cmd = cmd;
++#ifdef PICA_TIMERS
++	t_list += svcGetSystemTick() - tl0;
++#endif
++	n_list++;
 +	return list - list_start;
 +}
 +
@@ -1793,7 +1816,17 @@ index 0000000..c3d0efd
 +
 +void pica_stats(char *buf, int n)
 +{
-+	int k = snprintf(buf, n, "pica: state %.2fms draw %.2fms tex %.2fms; ends: atlas %u blend %u area %u rebind %u; evictions by size %u %u %u %u; ",
++	if (!t_svc) {   // what one timer read costs
++		u64 a = svcGetSystemTick();
++		for (int i = 0; i < 1000; i++)
++			svcGetSystemTick();
++		t_svc = (svcGetSystemTick() - a) / 1000;
++	}
++	int k0 = snprintf(buf, n, "pica: cmdlist %.2fms in %u calls, %u flushes, timer read %.2fus; ",
++		t_list / 268111.856, n_list, n_flush, t_svc / 268.111856);
++	t_list = 0; n_list = n_flush = 0;
++	buf += k0; n -= k0;
++	int k = snprintf(buf, n, "state %.2fms draw %.2fms tex %.2fms; ends: atlas %u blend %u area %u rebind %u; evictions by size %u %u %u %u; ",
 +		t_state / 268111.856, t_draw / 268111.856, t_tex / 268111.856, st_why[0], st_why[1], st_why[2], st_why[3],
 +		st_evict_lg[0], st_evict_lg[1], st_evict_lg[2], st_evict_lg[3]);
 +	memset(st_why, 0, sizeof(st_why));

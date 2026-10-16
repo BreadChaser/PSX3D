@@ -190,6 +190,8 @@ const char *options_get(const char *key)
 	const char *ov = locked_value(key);
 	option_t *o = find(key);
 
+	if (sw_noskip && !strcmp(key, "pcsx_rearmed_frameskip_type"))
+		return "disabled";
 	if (sw_fs1 && !strcmp(key, "pcsx_rearmed_frameskip_type"))
 		return "fixed_interval";
 	if (sw_fs1 && !strcmp(key, "pcsx_rearmed_frameskip_interval"))

@@ -58,6 +58,10 @@ u64 video_take_wait_ticks(void)
 }
 
 static bool top_aa = true;
+// plain top targets for gameplay: the game picture gains nothing from
+// supersampling, and on an Old 3DS it cost ~1.7ms of GPU time a frame
+static C3D_RenderTarget *top1, *top1_r;
+static bool in_menu_call;   // video_present_vsync: menus and the library
 
 static C3D_RenderTarget *aa_target(gfx3dSide_t side)
 {
@@ -71,11 +75,24 @@ static C3D_RenderTarget *aa_target(gfx3dSide_t side)
 	return t;
 }
 
+// 16-bit, no depth buffer: 190KB of VRAM each
+static C3D_RenderTarget *plain_target(gfx3dSide_t side)
+{
+	C3D_RenderTarget *t = C3D_RenderTargetCreate(240, 400, GPU_RB_RGB565, (C3D_DEPTHTYPE){ .__i = -1 });
+	if (!t)
+		return NULL;
+	C3D_RenderTargetSetOutput(t, GFX_TOP, side,
+		GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) | GX_TRANSFER_RAW_COPY(0) |
+		GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGB565) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) |
+		GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
+	return t;
+}
+
 // begin drawing on a top target in the usual 400x240 coordinates
 static void top_begin(C3D_RenderTarget *t)
 {
 	C2D_SceneBegin(t);
-	if (top_aa)
+	if (top_aa && t != top1 && t != top1_r)
 		C2D_SceneSize(240, 400, true);
 }
 
@@ -113,6 +130,10 @@ bool video_init(void)
 		top = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
 		top_r = C2D_CreateScreenTarget(GFX_TOP, GFX_RIGHT);
 		top_aa = false;
+	} else {
+		top1 = plain_target(GFX_LEFT);
+		top1_r = plain_target(GFX_RIGHT);
+		log_printf("plain gameplay targets: %s\n", top1 && top1_r ? "ok" : "no VRAM left");
 	}
 	bottom = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
 
@@ -408,8 +429,11 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	}
 	bool real = show_game && stereo && g_cfg.stereo == 2 && have_frame && right_ok;
 
-	C2D_TargetClear(top, C2D_Color32(0, 0, 0, 255));
-	top_begin(top);
+	// gameplay draws to the plain targets, menus to the supersampled ones
+	bool plain = show_game && !in_menu_call && top1 && top1_r;
+	C3D_RenderTarget *tl = plain ? top1 : top, *tr = plain ? top1_r : top_r;
+	C2D_TargetClear(tl, C2D_Color32(0, 0, 0, 255));
+	top_begin(tl);
 	if (real && sw_sbs) {
 		// test: both eyes side by side (left | right), each squeezed to half width
 		C2D_Image l = { &tex, &subtex }, r = { &tex_r, &subtex };
@@ -426,8 +450,8 @@ void video_present(bool show_game, void (*draw_top)(void *),
 		draw_top(ud);
 
 	if (stereo) {
-		C2D_TargetClear(top_r, C2D_Color32(0, 0, 0, 255));
-		top_begin(top_r);
+		C2D_TargetClear(tr, C2D_Color32(0, 0, 0, 255));
+		top_begin(tr);
 		if (real)
 			draw_game_tex(&tex_r, 0.0f);
 		else if (show_game)
@@ -458,6 +482,8 @@ void video_present(bool show_game, void (*draw_top)(void *),
 void video_present_vsync(bool show_game, void (*draw_top)(void *),
 	void (*draw_bottom)(void *), void *ud)
 {
+	in_menu_call = true;
 	video_present(show_game, draw_top, draw_bottom, ud);
+	in_menu_call = false;
 	gspWaitForVBlank();
 }
