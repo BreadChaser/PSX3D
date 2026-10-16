@@ -59,6 +59,7 @@ void __system_allocateHeaps(void)
 // homebrew full SVC access). Without it the core uses the slow interpreter.
 int __ctr_svchax;
 bool g_new3ds;
+int g_syscore_pct;   // syscore (core 1) time granted to us, percent
 
 static bool detect_svc_access(void)
 {
@@ -101,6 +102,7 @@ static void show_error(const char *msg)
 float sw_slider = -1;   // test: pretend the 3D slider is here
 bool sw_showright;      // test: show the right eye on the left (NTR only sees the left)
 bool sw_sbs;            // test: both eyes side by side
+bool sw_prof;           // log where frame time goes, once a second
 bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 
 static void parse_switches(int argc, char **argv)
@@ -112,6 +114,7 @@ static void parse_switches(int argc, char **argv)
 		else if (!strncmp(a, "slider=", 7)) sw_slider = strtof(a + 7, NULL);
 		else if (!strcmp(a, "showright")) sw_showright = true;
 		else if (!strcmp(a, "sbs")) sw_sbs = true;
+		else if (!strcmp(a, "prof")) sw_prof = true;
 		else if (!strcmp(a, "nosound")) sw_nosound = true;
 		else if (!strcmp(a, "noirrst")) sw_noirrst = true;
 		else if (!strcmp(a, "noaa")) sw_noaa = true;
@@ -148,6 +151,25 @@ int main(int argc, char **argv)
 	log_printf("PSX3D " PSX3D_VERSION "\n");
 	{
 		APT_CheckNew3DS(&g_new3ds);
+		// borrow the syscore: 80% on Old 3DS (drawing runs there), 35% on New
+		{
+			static const u32 want_o3ds[] = { 80, 70, 60, 50, 40, 35, 30, 25 };
+			u32 pct = 0;
+			if (g_new3ds) {
+				Result rc = APT_SetAppCpuTimeLimit(35);
+				log_printf("syscore: set 35 -> %08lx\n", rc);
+			} else {
+				for (size_t k = 0; k < sizeof(want_o3ds) / sizeof(want_o3ds[0]); k++) {
+					Result rc = APT_SetAppCpuTimeLimit(want_o3ds[k]);
+					log_printf("syscore: set %lu -> %08lx\n", want_o3ds[k], rc);
+					if (R_SUCCEEDED(rc))
+						break;
+				}
+			}
+			APT_GetAppCpuTimeLimit(&pct);
+			g_syscore_pct = (int)pct;
+			log_printf("syscore time: %lu%%\n", pct);
+		}
 		log_printf("%s 3DS, heap %luMB, linear %luMB (%luMB free)\n", g_new3ds ? "New" : "Old",
 			__ctru_heap_size / MB, __ctru_linear_heap_size / MB, linearSpaceFree() / MB);
 	}

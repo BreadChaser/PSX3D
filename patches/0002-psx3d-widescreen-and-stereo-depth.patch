@@ -186,6 +186,67 @@ index 6719602..daf899f 100644
          break;
      }
      c2op_epilogue(c2op, reglist);
+diff --git a/libpcsxcore/new_dynarec/new_dynarec.c b/libpcsxcore/new_dynarec/new_dynarec.c
+index fb99df6..b13e8bf 100644
+--- a/libpcsxcore/new_dynarec/new_dynarec.c
++++ b/libpcsxcore/new_dynarec/new_dynarec.c
+@@ -37,6 +37,10 @@ static Jit g_jit;
+ #endif
+ 
+ #include "new_dynarec_config.h"
++#include "../psx3d_prof.h"
++unsigned long long psx3d_prof_t[PROF_N];
++unsigned int psx3d_prof_c[PROF_N];
++int psx3d_prof_on;
+ #include "../psxhle.h"
+ #include "../psxinterpreter.h"
+ #include "../psxcounters.h"
+@@ -1799,8 +1803,19 @@ static void invalidate_block(struct block_info *block)
+     hash_table_remove(block->jump_in[i].vaddr);
+ }
+ 
++static int invalidate_range_(u_int start, u_int end,
++  u32 *inv_start_ret, u32 *inv_end_ret);
+ static int invalidate_range(u_int start, u_int end,
+   u32 *inv_start_ret, u32 *inv_end_ret)
++{
++  PROF_BEGIN(PROF_INVAL);
++  int r = invalidate_range_(start, end, inv_start_ret, inv_end_ret);
++  PROF_END(PROF_INVAL);
++  return r;
++}
++
++static int invalidate_range_(u_int start, u_int end,
++  u32 *inv_start_ret, u32 *inv_end_ret)
+ {
+   struct block_info *last_block = NULL;
+   u_int start_page = get_page_prev(start);
+@@ -6956,7 +6971,7 @@ void new_dynarec_print_stats(void)
+       lmem += sizeof(*ji) + ji->alloc * sizeof(ji->e[0]) + sizeof(size_t) * 2;
+   }
+ 
+-  printf("cc %3d,%3d lu%6d,%3d,%3d c%3d inv%3d,%3d tc_offs %06zx b %u l %u/%zd\n",
++  SysPrintf("ndrc: cc %3d,%3d lu%6d,%3d,%3d c%3d inv%3d,%3d tc_offs %06zx b %u l %u/%zd\n",
+     stat_bc_direct, stat_bc_restore,
+     stat_ht_lookups, stat_jump_in_lookups, stat_restore_tries,
+     stat_restore_compares, stat_inv_addr_calls, stat_inv_hits,
+@@ -9604,7 +9619,16 @@ static void block_info_finish(const struct compile_state *st,
+   perf_dump_write(st, beginning, end);
+ }
+ 
++static int noinline new_recompile_block_(u_int addr);
+ static int noinline new_recompile_block(u_int addr)
++{
++  PROF_BEGIN(PROF_COMPILE);
++  int r = new_recompile_block_(addr);
++  PROF_END(PROF_COMPILE);
++  return r;
++}
++
++static int noinline new_recompile_block_(u_int addr)
+ {
+   struct compile_state st;
+   u_int pagelimit = 0;
 diff --git a/libpcsxcore/psx3d_depth.h b/libpcsxcore/psx3d_depth.h
 new file mode 100644
 index 0000000..9c55cbb
@@ -290,6 +351,85 @@ index 0000000..9c55cbb
 +#endif
 +
 +#endif
+diff --git a/libpcsxcore/psx3d_prof.h b/libpcsxcore/psx3d_prof.h
+new file mode 100644
+index 0000000..9ed0505
+--- /dev/null
++++ b/libpcsxcore/psx3d_prof.h
+@@ -0,0 +1,23 @@
++/* PSX3D: cheap section timers for finding where frame time goes.
++ * Off unless psx3d_prof_on is set by the frontend. */
++#ifndef PSX3D_PROF_H
++#define PSX3D_PROF_H
++#ifdef __cplusplus
++extern "C" {
++#endif
++enum { PROF_COMPILE, PROF_INVAL, PROF_SPU, PROF_GPU, PROF_IRQ, PROF_CDR, PROF_N };
++extern unsigned long long psx3d_prof_t[PROF_N];
++extern unsigned int psx3d_prof_c[PROF_N];
++extern int psx3d_prof_on;
++#ifdef _3DS
++unsigned long long svcGetSystemTick(void);
++#define PROF_TICK() svcGetSystemTick()
++#else
++#define PROF_TICK() 0ull
++#endif
++#define PROF_BEGIN(id) unsigned long long prof_t0_##id = psx3d_prof_on ? PROF_TICK() : 0
++#define PROF_END(id) do { if (psx3d_prof_on) { psx3d_prof_t[id] += PROF_TICK() - prof_t0_##id; psx3d_prof_c[id]++; } } while (0)
++#ifdef __cplusplus
++}
++#endif
++#endif
+diff --git a/libpcsxcore/psxevents.c b/libpcsxcore/psxevents.c
+index 4f2d5cd..f045f27 100644
+--- a/libpcsxcore/psxevents.c
++++ b/libpcsxcore/psxevents.c
+@@ -1,3 +1,4 @@
++#include "psx3d_prof.h"
+ #include <stddef.h>
+ #include <stdio.h>
+ #include "r3000a.h"
+@@ -84,7 +85,15 @@ void irq_test(psxCP0Regs *cp0)
+ 		psxException(0, 0, cp0);
+ }
+ 
++static void gen_interupt_(psxCP0Regs *cp0);
+ void gen_interupt(psxCP0Regs *cp0)
++{
++	PROF_BEGIN(PROF_IRQ);
++	gen_interupt_(cp0);
++	PROF_END(PROF_IRQ);
++}
++
++static void gen_interupt_(psxCP0Regs *cp0)
+ {
+ 	psxRegisters *regs = cp0TOpsxRegs(cp0);
+ 
+diff --git a/plugins/dfsound/spu.c b/plugins/dfsound/spu.c
+index 76f76af..0dbd6a9 100644
+--- a/plugins/dfsound/spu.c
++++ b/plugins/dfsound/spu.c
+@@ -1,3 +1,4 @@
++#include "../../libpcsxcore/psx3d_prof.h"
+ /***************************************************************************
+                             spu.c  -  description
+                              -------------------
+@@ -997,7 +998,15 @@ static const void * const worker = NULL;
+ // here is the main job handler...
+ ////////////////////////////////////////////////////////////////////////
+ 
++static void do_samples_(unsigned int cycles_to, int force_no_thread);
+ void do_samples(unsigned int cycles_to, int force_no_thread)
++{
++ PROF_BEGIN(PROF_SPU);
++ do_samples_(cycles_to, force_no_thread);
++ PROF_END(PROF_SPU);
++}
++
++static void do_samples_(unsigned int cycles_to, int force_no_thread)
+ {
+  unsigned int silentch;
+  int cycle_diff;
 diff --git a/plugins/gpu_unai/gpu_command.h b/plugins/gpu_unai/gpu_command.h
 index adede2b..199882b 100644
 --- a/plugins/gpu_unai/gpu_command.h
@@ -1027,10 +1167,15 @@ index 4b9b57e..a7f0c13 100644
    ex_regs[1] |= gpu_unai.GPU_GP1 & 0x1ff;
  
 diff --git a/plugins/gpulib/gpu.c b/plugins/gpulib/gpu.c
-index f04e3a5..1a2122f 100644
+index f04e3a5..811e7de 100644
 --- a/plugins/gpulib/gpu.c
 +++ b/plugins/gpulib/gpu.c
-@@ -686,6 +686,8 @@ int do_vram_copy(uint16_t *vram, const uint32_t *ex_regs, const uint32_t *params
+@@ -1,3 +1,4 @@
++#include "../../libpcsxcore/psx3d_prof.h"
+ /*
+  * (C) Gražvydas "notaz" Ignotas, 2011-2012
+  *
+@@ -686,6 +687,8 @@ int do_vram_copy(uint16_t *vram, const uint32_t *ex_regs, const uint32_t *params
    }
  
    renderer_update_caches(dx, dy, w, h, 0);
@@ -1039,6 +1184,27 @@ index f04e3a5..1a2122f 100644
    return 4;
  }
  
+@@ -824,8 +827,20 @@ breakloop:
+   return pos;
+ }
+ 
++static noinline int do_cmd_buffer_(struct psx_gpu *gpu, uint32_t *data, int count,
++    int *cycles_sum, int *cycles_last)
++;
+ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count,
+     int *cycles_sum, int *cycles_last)
++{
++  PROF_BEGIN(PROF_GPU);
++  int r = do_cmd_buffer_(gpu, data, count, cycles_sum, cycles_last);
++  PROF_END(PROF_GPU);
++  return r;
++}
++
++static noinline int do_cmd_buffer_(struct psx_gpu *gpu, uint32_t *data, int count,
++    int *cycles_sum, int *cycles_last)
+ {
+   int cmd, pos;
+   uint32_t old_e3 = gpu->ex_regs[3];
 diff --git a/plugins/gpulib/gpu.h b/plugins/gpulib/gpu.h
 index e929fe6..6368b60 100644
 --- a/plugins/gpulib/gpu.h
