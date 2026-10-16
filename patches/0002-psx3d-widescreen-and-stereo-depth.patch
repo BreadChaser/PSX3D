@@ -509,10 +509,10 @@ index 76f76af..0dbd6a9 100644
   int cycle_diff;
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 0000000..a68dcbb
+index 0000000..7a3ffdc
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,1914 @@
+@@ -0,0 +1,1922 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -1076,20 +1076,28 @@ index 0000000..a68dcbb
 +	const u16 *vram = gpu.vram;
 +	int px = (c->page & 15) * 64, py = ((c->page >> 4) & 1) * 256;
 +	{
-+		// GPU drawing in the texels needed (render-to-texture) and the CLUT
++		// the VRAM the texels needed come from (the window can fetch from
++		// anywhere in the page), and the CLUT: GPU drawing there
++		// (render-to-texture) and pending fills have to reach software VRAM
 +		int sh = 2 - c->depth;   // texels per VRAM word: 4, 2, 1
 +		int lo = c->rx + t0 * 32, hi = c->rx + t1 * 32 + 31;
-+		if (c->win)   // the window can fetch from anywhere in the page
-+			pica_readback_rect(px, py, 256 >> sh, 256);
-+		else
-+			pica_readback_rect(px + (lo >> sh), py + c->ry + s0 * 32, ((hi >> sh) - (lo >> sh)) + 1, (s1 - s0 + 1) * 32);
++		int vx = px, vy = py, vw = 256 >> sh, vh = 256;
++		if (!c->win) {
++			vx = px + (lo >> sh);
++			vy = py + c->ry + s0 * 32;
++			vw = (hi >> sh) - (lo >> sh) + 1;
++			vh = (s1 - s0 + 1) * 32;
++		}
++		int cx = (c->clut & 0x3f) * 16, cy = (c->clut >> 6) & 511, cw = c->depth == 0 ? 16 : 256;
++		pica_readback_rect(vx, vy, vw, vh);
 +		if (c->depth < 2)
-+			pica_readback_rect((c->clut & 0x3f) * 16, (c->clut >> 6) & 511, c->depth == 0 ? 16 : 256, 1);
-+	}
-+	if (nfills) {
-+		settle_fills(px, py, (64 << c->depth) > 256 ? 256 : 64 << c->depth, 256);
-+		if (c->depth < 2)
-+			settle_fills((c->clut & 0x3f) * 16, (c->clut >> 6) & 511, c->depth == 0 ? 16 : 256, 1);
++			pica_readback_rect(cx, cy, cw, 1);
++		// (settling the whole page wrote CTR's screen clears out every frame)
++		if (nfills) {
++			settle_fills(vx, vy, vw, vh);
++			if (c->depth < 2)
++				settle_fills(cx, cy, cw, 1);
++		}
 +	}
 +	u32 pal[256];
 +	if (c->depth < 2) {
