@@ -431,9 +431,9 @@ static void clamp_list(void)
 // Global settings, reachable from the library with X (the defaults for every
 // game; a game's own screen mode, controls and rewind live in its menu).
 
-enum { S_SCREEN, S_3D, S_SMOOTH, S_FPS, S_AUTOSAVE, S_SOUNDS, S_MUSIC, S_CORE, S_COUNT };
+enum { S_SCREEN, S_3D, S_RES3D, S_SMOOTH, S_FPS, S_AUTOSAVE, S_SOUNDS, S_MUSIC, S_CORE, S_COUNT };
 static const char *const s_names[S_COUNT] = {
-	"Screen (default)", "3D", "Smoothing", "Show FPS", "Continue where I left off",
+	"Screen (default)", "3D", "3D resolution", "Smoothing", "Show FPS", "Continue where I left off",
 	"Menu sounds", "Library music", "Core options",
 };
 static const u32 s_cols[4] = { 0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28 };
@@ -450,6 +450,7 @@ static const char *s_value(int i, void *ud)
 	switch (i) {
 	case S_SCREEN: return screens[config_screen_mode()];
 	case S_3D: return s3d[g_cfg.stereo];
+	case S_RES3D: return g_cfg.half3d ? "half (faster)" : "full";
 	case S_SMOOTH: return g_cfg.smooth ? "on" : "off";
 	case S_FPS: return g_cfg.show_fps ? "on" : "off";
 	case S_AUTOSAVE: return g_cfg.autosave ? "on" : "off";
@@ -491,6 +492,16 @@ static void settings_bottom(void *ud)
 	ui_text_ex(NULL, 160, 222, 0.42f, hint, C2D_AlignCenter, "Left/Right change    B back");
 }
 
+static void settings_top(void *ud)
+{
+	settings_t *st = ud;
+	draw_top(NULL);
+	if (st->core)
+		ui_help_panel(150, NULL, options_impact(st->core_sel), options_info(st->core_sel));
+	else
+		ui_help_for(150, s_names[st->sel]);
+}
+
 static void settings_run(void)
 {
 	static settings_t st;
@@ -524,6 +535,7 @@ static void settings_run(void)
 					g_cfg.stereo = (g_cfg.stereo + dir + modes) % modes;
 					config_sync_stereo();
 				} break;
+				case S_RES3D: g_cfg.half3d ^= 1; break;
 				case S_SMOOTH: g_cfg.smooth ^= 1; break;
 				case S_FPS: g_cfg.show_fps ^= 1; break;
 				case S_AUTOSAVE: g_cfg.autosave ^= 1; break;
@@ -544,7 +556,7 @@ static void settings_run(void)
 		clock_s += 1.0f / 60.0f;
 		C2D_TextBufClear(tbuf);
 		ui_begin();
-		video_present_vsync(false, draw_top, settings_bottom, &st);
+		video_present_vsync(false, settings_top, settings_bottom, &st);
 	}
 	config_save();
 }

@@ -311,8 +311,140 @@ index adede2b..199882b 100644
  }
  
  #ifdef  ENABLE_GPU_NULL_SUPPORT
+diff --git a/plugins/gpu_unai/gpu_raster_polygon.h b/plugins/gpu_unai/gpu_raster_polygon.h
+index 988e721..0876527 100644
+--- a/plugins/gpu_unai/gpu_raster_polygon.h
++++ b/plugins/gpu_unai/gpu_raster_polygon.h
+@@ -360,18 +360,24 @@ void gpuDrawPolyF(const PtrUnion packet, const PP gpuPolySpanDriver, u32 is_quad
+ 			int li=gpu_unai.inn.ilace_mask;
+ 			int pi=(ProgressiveInterlaceEnabled()?(gpu_unai.inn.ilace_mask+1):0);
+ 			int pif=(ProgressiveInterlaceEnabled()?(gpu_unai.prog_ilace_flag?(gpu_unai.inn.ilace_mask+1):0):1);
++			// PSX3D half-res 3D: draw even lines and copy each one down
++			int hstart = loop1, half = gpu_unai.half3d && !li;
+ 
+ 			for (; loop1; --loop1, ya++, PixelBase += FRAME_WIDTH,
+ 					x3 += dx3, x4 += dx4 )
+ 			{
+ 				if (ya&li) continue;
+ 				if ((ya&pi)==pif) continue;
++				if (half && (ya & 1) && loop1 != hstart) continue;
+ 
+ 				xa = FixedCeilToInt(x3);  xb = FixedCeilToInt(x4);
+ 				if ((xmin - xa) > 0) xa = xmin;
+ 				if (xb > xmax) xb = xmax;
+-				if ((xb - xa) > 0)
++				if ((xb - xa) > 0) {
+ 					gpuPolySpanDriver(gpu_unai, PixelBase + xa, (xb - xa), ya);
++					if (half && loop1 > 1 && !(ya & 1))
++						memcpy(PixelBase + FRAME_WIDTH + xa, PixelBase + xa, (xb - xa) * 2);
++				}
+ 			}
+ 		}
+ 	} while (++cur_pass < total_passes);
+@@ -668,6 +674,8 @@ void gpuDrawPolyFT(const PtrUnion packet, const PP gpuPolySpanDriver, u32 is_qua
+ 			int li=gpu_unai.inn.ilace_mask;
+ 			int pi=(ProgressiveInterlaceEnabled()?(gpu_unai.inn.ilace_mask+1):0);
+ 			int pif=(ProgressiveInterlaceEnabled()?(gpu_unai.prog_ilace_flag?(gpu_unai.inn.ilace_mask+1):0):1);
++			// PSX3D half-res 3D: draw even lines and copy each one down
++			int hstart = loop1, half = gpu_unai.half3d && !li;
+ 
+ 			for (; loop1; --loop1, ++ya, PixelBase += FRAME_WIDTH,
+ 					x3 += dx3, x4 += dx4,
+@@ -675,6 +683,7 @@ void gpuDrawPolyFT(const PtrUnion packet, const PP gpuPolySpanDriver, u32 is_qua
+ 			{
+ 				if (ya&li) continue;
+ 				if ((ya&pi)==pif) continue;
++				if (half && (ya & 1) && loop1 != hstart) continue;
+ 
+ 				u32 u4, v4;
+ 
+@@ -701,8 +710,11 @@ void gpuDrawPolyFT(const PtrUnion packet, const PP gpuPolySpanDriver, u32 is_qua
+ 				gpu_unai.inn.v = v4;
+ 
+ 				if (xb > xmax) xb = xmax;
+-				if ((xb - xa) > 0)
++				if ((xb - xa) > 0) {
+ 					gpuPolySpanDriver(gpu_unai, PixelBase + xa, (xb - xa), ya);
++					if (half && loop1 > 1 && !(ya & 1))
++						memcpy(PixelBase + FRAME_WIDTH + xa, PixelBase + xa, (xb - xa) * 2);
++				}
+ 			}
+ 		}
+ 	} while (++cur_pass < total_passes);
+@@ -1014,6 +1026,8 @@ void gpuDrawPolyG(const PtrUnion packet, const PP gpuPolySpanDriver, u32 is_quad
+ 			int li=gpu_unai.inn.ilace_mask;
+ 			int pi=(ProgressiveInterlaceEnabled()?(gpu_unai.inn.ilace_mask+1):0);
+ 			int pif=(ProgressiveInterlaceEnabled()?(gpu_unai.prog_ilace_flag?(gpu_unai.inn.ilace_mask+1):0):1);
++			// PSX3D half-res 3D: draw even lines and copy each one down
++			int hstart = loop1, half = gpu_unai.half3d && !li;
+ 
+ 			for (; loop1; --loop1, ++ya, PixelBase += FRAME_WIDTH,
+ 					x3 += dx3, x4 += dx4,
+@@ -1021,6 +1035,7 @@ void gpuDrawPolyG(const PtrUnion packet, const PP gpuPolySpanDriver, u32 is_quad
+ 			{
+ 				if (ya&li) continue;
+ 				if ((ya&pi)==pif) continue;
++				if (half && (ya & 1) && loop1 != hstart) continue;
+ 
+ 				u32 r4, g4, b4;
+ 
+@@ -1050,8 +1065,11 @@ void gpuDrawPolyG(const PtrUnion packet, const PP gpuPolySpanDriver, u32 is_quad
+ 				gpu_unai.inn.gCol = gpuPackGouraudCol(r4, g4, b4);
+ 
+ 				if (xb > xmax) xb = xmax;
+-				if ((xb - xa) > 0)
++				if ((xb - xa) > 0) {
+ 					gpuPolySpanDriver(gpu_unai, PixelBase + xa, (xb - xa), ya);
++					if (half && loop1 > 1 && !(ya & 1))
++						memcpy(PixelBase + FRAME_WIDTH + xa, PixelBase + xa, (xb - xa) * 2);
++				}
+ 			}
+ 		}
+ 	} while (++cur_pass < total_passes);
+@@ -1410,6 +1428,8 @@ void gpuDrawPolyGT(const PtrUnion packet, const PP gpuPolySpanDriver, u32 is_qua
+ 			int li=gpu_unai.inn.ilace_mask;
+ 			int pi=(ProgressiveInterlaceEnabled()?(gpu_unai.inn.ilace_mask+1):0);
+ 			int pif=(ProgressiveInterlaceEnabled()?(gpu_unai.prog_ilace_flag?(gpu_unai.inn.ilace_mask+1):0):1);
++			// PSX3D half-res 3D: draw even lines and copy each one down
++			int hstart = loop1, half = gpu_unai.half3d && !li;
+ 
+ 			for (; loop1; --loop1, ++ya, PixelBase += FRAME_WIDTH,
+ 					x3 += dx3, x4 += dx4,
+@@ -1418,6 +1438,7 @@ void gpuDrawPolyGT(const PtrUnion packet, const PP gpuPolySpanDriver, u32 is_qua
+ 			{
+ 				if (ya&li) continue;
+ 				if ((ya&pi)==pif) continue;
++				if (half && (ya & 1) && loop1 != hstart) continue;
+ 
+ 				u32 u4, v4;
+ 				u32 r4, g4, b4;
+@@ -1457,8 +1478,11 @@ void gpuDrawPolyGT(const PtrUnion packet, const PP gpuPolySpanDriver, u32 is_qua
+ 				gpu_unai.inn.gCol = gpuPackGouraudCol(r4, g4, b4);
+ 
+ 				if (xb > xmax) xb = xmax;
+-				if ((xb - xa) > 0)
++				if ((xb - xa) > 0) {
+ 					gpuPolySpanDriver(gpu_unai, PixelBase + xa, (xb - xa), ya);
++					if (half && loop1 > 1 && !(ya & 1))
++						memcpy(PixelBase + FRAME_WIDTH + xa, PixelBase + xa, (xb - xa) * 2);
++				}
+ 			}
+ 		}
+ 	} while (++cur_pass < total_passes);
+diff --git a/plugins/gpu_unai/gpu_unai.h b/plugins/gpu_unai/gpu_unai.h
+index 2b5daee..acafaaf 100644
+--- a/plugins/gpu_unai/gpu_unai.h
++++ b/plugins/gpu_unai/gpu_unai.h
+@@ -366,6 +366,7 @@ struct gpu_unai_t {
+ 	s16 DitherLut16[4][4];  // shifted up by 4 and s16 to simplify lookup asm
+ 
+ 	bool prog_ilace_flag;   // Tracks successive frames for 'prog_ilace' option
++	bool half3d;            // PSX3D: draw this polygon at half vertical resolution
+ 
+ 	u8 BLEND_MODE;
+ 	u8 TEXT_MODE;
 diff --git a/plugins/gpu_unai/gpulib_if.cpp b/plugins/gpu_unai/gpulib_if.cpp
-index 4b9b57e..2a1b2be 100644
+index 4b9b57e..a7f0c13 100644
 --- a/plugins/gpu_unai/gpulib_if.cpp
 +++ b/plugins/gpu_unai/gpulib_if.cpp
 @@ -22,10 +22,13 @@
@@ -349,7 +481,7 @@ index 4b9b57e..2a1b2be 100644
      } break;
  
      case 6: {
-@@ -227,6 +232,473 @@ static inline void textured_sprite(int &cpu_cycles_sum, int &cpu_cycles)
+@@ -227,6 +232,480 @@ static inline void textured_sprite(int &cpu_cycles_sum, int &cpu_cycles)
    gput_sum(cpu_cycles_sum, cpu_cycles, gput_sprite(w, h));
  }
  
@@ -547,6 +679,13 @@ index 4b9b57e..2a1b2be 100644
 +}
 +
 +// frontend: 3D strength (max far disparity in PS1 pixels, from the slider)
++// frontend: draw 3D polygons at half vertical resolution (Old 3DS speed)
++static bool psx3d_half3d;
++extern "C" void psx3d_set_half3d(int on)
++{
++  psx3d_half3d = on != 0;
++}
++
 +extern "C" void psx3d_set_strength(float px)
 +{
 +  psx3d_strength = px;
@@ -823,7 +962,7 @@ index 4b9b57e..2a1b2be 100644
  extern const unsigned char cmd_lengths[256];
  
  int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
-@@ -237,6 +709,7 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
+@@ -237,6 +716,7 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
    le32_t *list = (le32_t *)list_;
    le32_t *list_start = list;
    le32_t *list_end = list + list_len;
@@ -831,7 +970,7 @@ index 4b9b57e..2a1b2be 100644
  
    if (IS_OLD_RENDERER()) {
      return oldunai_do_cmd_list(list_, list_len, ex_regs,
-@@ -252,10 +725,31 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
+@@ -252,12 +732,36 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
        break;
      }
  
@@ -862,8 +1001,13 @@ index 4b9b57e..2a1b2be 100644
 +      psx3d_apply_shift(cmd, psx3d_sh, eye);
  
      PtrUnion packet = { .ptr = (void*)&gpu_unai.PacketBuffer };
++    // half-res applies to shaded/textured polygons; quads that are really
++    // sprites (2D) were simplified away above or below and stay full res
++    gpu_unai.half3d = psx3d_half3d && cmd >= 0x20 && cmd < 0x40;
  
-@@ -663,9 +1157,18 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
+     switch (cmd)
+     {
+@@ -663,9 +1167,18 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
          gpuGP0Cmd_0xEx(gpu_unai, cmd_word);
        } break;
      }
