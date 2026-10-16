@@ -469,10 +469,10 @@ index 76f76af..0dbd6a9 100644
   int cycle_diff;
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 0000000..7602366
+index 0000000..04ecf30
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,1618 @@
+@@ -0,0 +1,1697 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -517,17 +517,17 @@ index 0000000..7602366
 +// Old 3DS).
 +#define NSIZES 4
 +typedef struct { int x, y, w, h; } region;
-+// 1024x1024 (4 MB), a 512x512 quarter per size: 256, 64, 16 and 4 squares.
-+// (An Old 3DS has 13 MB of GPU memory in all; the library music is let go
-+// during games to make room.)
-+static const region regions[NSIZES] = { { 512, 512, 512, 512 }, { 0, 512, 512, 512 }, { 512, 0, 512, 512 }, { 0, 0, 512, 512 } };
++// 1024x1024 (4 MB): 128 squares of 32, 32 of 64, 16 of 128 and 8 of 256
++// (whole pages: Silent Hill thrashed with 4). An Old 3DS has 13 MB of GPU
++// memory in all; the library music is let go during games to make room.
++static const region regions[NSIZES] = { { 512, 512, 512, 256 }, { 512, 768, 512, 256 }, { 0, 512, 512, 512 }, { 0, 0, 1024, 512 } };
 +static struct {
 +	C3D_Tex tex;
 +	int w, h;
 +	bool rebind;       // squares were decoded into it: rebind so the GPU texture cache drops old data
 +} atlas[1];
 +static int pool_n[NSIZES];
-+#define NENTRIES (256 + 64 + 16 + 4)
++#define NENTRIES (256 + 64 + 16 + 8)
 +
 +typedef struct tcache {
 +	bool valid;
@@ -537,6 +537,7 @@ index 0000000..7602366
 +	s16 ax, ay;        // ...and in its atlas
 +	u16 page;          // texpage bits 0-4 (x/64, y/256)
 +	u16 clut;          // CLUT position word (x/16, y)
++	u32 win;           // texture window (GP0 E2) it was decoded with, 0 = none
 +	u32 stamp;         // VRAM write generation it was decoded at
 +	u32 checked;       // gen_clock when last found still valid
 +	u64 tiles;         // decoded 32x32 tiles inside the square (8x8 at most)
@@ -553,6 +554,11 @@ index 0000000..7602366
 +static C3D_Tex vram_tex;              // the PS1 VRAM render target
 +static C3D_RenderTarget *target;
 +static C3D_Tex stage_tex;             // CPU uploads on their way into the target
++// With frameskip, the VRAM area shown at the last frame that was drawn: a
++// skipped frame flips the display to a buffer that was never drawn, while
++// the last drawn picture is still intact (skipped frames draw nothing)
++static bool disp_used;
++static int disp_x, disp_y, disp_w, disp_h;
 +static bool stage_used;               // stage_tex is read by unexecuted draws
 +static pvtx *vbuf;
 +static int vpos, vstart;
@@ -598,7 +604,12 @@ index 0000000..7602366
 +static C3D_Tex tex_alias[2];   // a rebind under a new address clears the GPU texture cache
 +static int alias_i;
 +
-+static int pend_x0 = VRAM_W, pend_y0 = VRAM_H, pend_x1, pend_y1;   // uploads waiting for a GPU frame
++// CPU uploads made while no GPU frame was open (e.g. a state load), pushed
++// when the next one opens; a bounding box could cover drawn pixels with
++// stale data, so the rectangles are kept (merged only when there are many)
++typedef struct { s16 x, y, w, h; } prect;
++static prect pend[16];
++static int npend;
 +int pica_debug;   // set by the frontend (test switch gldbg)
 +// Set by the frontend: opens a GPU frame (waiting for the previous one to
 +// finish). Called when the first drawing command of a frame arrives, so the
@@ -810,8 +821,9 @@ index 0000000..7602366
 +				int py = by * 16 + r;
 +				u16 *dst = gpu.vram + py * VRAM_W + bx * 64;
 +				for (int c = 0; c < 64; c++) {
-+					// the render target runs bottom-up like the textures
-+					u16 p = src[tiled(bx * 64 + c, VRAM_H - 1 - py, VRAM_W)];
++					// render target memory holds VRAM rows top-down (the
++					// display samples VRAM row y at t = 1 - y / 512)
++					u16 p = src[tiled(bx * 64 + c, py, VRAM_W)];
 +					// RGBA5551 -> PS1 15-bit; the target's alpha is not the
 +					// PS1 mask bit, so drawn pixels come back unmasked
 +					dst[c] = (p >> 11) | (((p >> 6) & 31) << 5) | (((p >> 1) & 31) << 10);
@@ -850,10 +862,13 @@ index 0000000..7602366
 +	vpos = vstart = sent_vpos = 0;
 +	synced_seq = seq;
 +	stage_used = false;
-+	if (pend_x1 > pend_x0 && pend_y1 > pend_y0) {
-+		int x = pend_x0, y = pend_y0, w = pend_x1 - pend_x0, h = pend_y1 - pend_y0;
-+		pend_x0 = VRAM_W; pend_y0 = VRAM_H; pend_x1 = pend_y1 = 0;
-+		push_to_target(x, y, w, h);
++	if (npend) {
++		prect p[16];
++		int n = npend;
++		memcpy(p, pend, n * sizeof(prect));
++		npend = 0;
++		for (int i = 0; i < n; i++)
++			push_to_target(p[i].x, p[i].y, p[i].w, p[i].h);
 +	}
 +}
 +
@@ -905,14 +920,14 @@ index 0000000..7602366
 +	return true;
 +}
 +
-+static inline int key_hash(int depth, int page, int clut)
++static inline int key_hash(int depth, int page, int clut, u32 win)
 +{
-+	return ((depth * 0x9e3779b1u) ^ (page * 0x85ebca6bu) ^ (clut * 0xc2b2ae35u)) >> 24;
++	return ((depth * 0x9e3779b1u) ^ (page * 0x85ebca6bu) ^ (clut * 0xc2b2ae35u) ^ (win * 0x27d4eb2fu)) >> 24;
 +}
 +
 +static void unhash(tcache *c)
 +{
-+	tcache **pp = &buckets[key_hash(c->depth, c->page, c->clut)];
++	tcache **pp = &buckets[key_hash(c->depth, c->page, c->clut, c->win)];
 +	while (*pp && *pp != c)
 +		pp = &(*pp)->next;
 +	if (*pp)
@@ -939,7 +954,10 @@ index 0000000..7602366
 +		// GPU drawing in the texels needed (render-to-texture) and the CLUT
 +		int sh = 2 - c->depth;   // texels per VRAM word: 4, 2, 1
 +		int lo = c->rx + t0 * 32, hi = c->rx + t1 * 32 + 31;
-+		pica_readback_rect(px + (lo >> sh), py + c->ry + s0 * 32, ((hi >> sh) - (lo >> sh)) + 1, (s1 - s0 + 1) * 32);
++		if (c->win)   // the window can fetch from anywhere in the page
++			pica_readback_rect(px, py, 256 >> sh, 256);
++		else
++			pica_readback_rect(px + (lo >> sh), py + c->ry + s0 * 32, ((hi >> sh) - (lo >> sh)) + 1, (s1 - s0 + 1) * 32);
 +		if (c->depth < 2)
 +			pica_readback_rect((c->clut & 0x3f) * 16, (c->clut >> 6) & 511, c->depth == 0 ? 16 : 256, 1);
 +	}
@@ -962,6 +980,33 @@ index 0000000..7602366
 +		int lu = (t & 7) * 32, lv = (t >> 3) * 32;           // inside the square
 +		int tu = c->rx + lu;                                  // in the page
 +		int au = c->ax + lu;                                  // in the atlas
++		if (c->win) {
++			// texture window: page texel (u, v) shows texel
++			// ((u & ~mask) | (offset & mask), same for v)
++			u32 w = c->win;
++			int mx = (w & 0x1f) * 8, my = ((w >> 5) & 0x1f) * 8;
++			int ox = ((w >> 10) & 0x1f) * 8 & mx, oy = ((w >> 15) & 0x1f) * 8 & my;
++			for (int y = 0; y < 32; y++) {
++				int wv = (((c->ry + lv + y) & ~my) | oy) & 255;
++				const u16 *row = vram + ((py + wv) & 511) * VRAM_W;
++				int ty = ah - 1 - (c->ay + lv + y);
++				for (int x = 0; x < 32; x++) {
++					int wu = (((tu + x) & ~mx) | ox) & 255;
++					u32 texel;
++					if (c->depth == 0)
++						texel = pal[(row[(px + wu / 4) & 1023] >> ((wu & 3) * 4)) & 15];
++					else if (c->depth == 1)
++						texel = pal[(row[(px + wu / 2) & 1023] >> ((wu & 1) * 8)) & 255];
++					else
++						texel = texel_rgba(row[(px + wu) & 1023]);
++					dst[tiled(au + x, ty, aw)] = texel;
++				}
++			}
++			int tr = (ah - 1 - (c->ay + lv + 31)) >> 3;
++			GSPGPU_FlushDataCache(dst + tr * (aw / 8) * 64, 4 * (aw / 8) * 64 * 4);
++			st_decodes++;
++			continue;
++		}
 +		for (int y = 0; y < 32; y++) {
 +			int v = c->ry + lv + y;
 +			const u16 *row = vram + ((py + v) & 511) * VRAM_W;
@@ -996,14 +1041,18 @@ index 0000000..7602366
 +	atlas[0].rebind = true;
 +}
 +
-+// smallest aligned square (32..256) holding u0..u1 x v0..v1
++// smallest square (32..256, starting on a multiple of 32, inside the page)
++// holding u0..u1 x v0..v1
 +static int square_for(int u0, int u1, int v0, int v1, int *rx, int *ry)
 +{
 +	for (int lg = 0; lg < NSIZES; lg++) {
-+		int size = 32 << lg, m = ~(size - 1);
-+		if ((u0 & m) == (u1 & m) && (v0 & m) == (v1 & m)) {
-+			*rx = u0 & m;
-+			*ry = v0 & m;
++		int size = 32 << lg;
++		int x = u0 & ~31, y = v0 & ~31;
++		if (x > 256 - size) x = 256 - size;
++		if (y > 256 - size) y = 256 - size;
++		if (u1 < x + size && v1 < y + size) {
++			*rx = x;
++			*ry = y;
 +			return lg;
 +		}
 +	}
@@ -1054,13 +1103,14 @@ index 0000000..7602366
 +		depth = 2;
 +	u16 pg = page & 0x1f;
 +	u16 cl = depth < 2 ? (clut & 0x7fff) : 0;
++	u32 win = (ps.texwin & 0x3ff) ? (ps.texwin & 0xfffff) : 0;   // only when it masks anything
 +	if (u1 > 255 || v1 > 255 || u0 < 0 || v0 < 0) {
 +		u0 = 0; u1 = 255; v0 = 0; v1 = 255;
 +	}
 +	tcache *c = have_last ? last_tex : NULL;
-+	if (!(c && c->valid && c->depth == depth && c->page == pg && c->clut == cl)) {
-+		for (c = buckets[key_hash(depth, pg, cl)]; c; c = c->next)
-+			if (c->depth == depth && c->page == pg && c->clut == cl)
++	if (!(c && c->valid && c->depth == depth && c->page == pg && c->clut == cl && c->win == win)) {
++		for (c = buckets[key_hash(depth, pg, cl, win)]; c; c = c->next)
++			if (c->depth == depth && c->page == pg && c->clut == cl && c->win == win)
 +				break;
 +	}
 +	if (c && !cache_valid(c)) {
@@ -1090,13 +1140,14 @@ index 0000000..7602366
 +		c->depth = depth;
 +		c->page = pg;
 +		c->clut = cl;
++		c->win = win;
 +		c->lg = lg;
 +		c->rx = rx;
 +		c->ry = ry;
 +		c->tiles = 0;
 +		c->valid = true;
 +		c->stamp = c->checked = gen_clock;
-+		int h = key_hash(depth, pg, cl);
++		int h = key_hash(depth, pg, cl, win);
 +		c->next = buckets[h];
 +		buckets[h] = c;
 +	}
@@ -1520,7 +1571,7 @@ index 0000000..7602366
 +		if (gouraud && k)
 +			col = w[i++] & 0xffffff;
 +		u32 xy = w[i++];
-+		int x = sext11(xy) + ps.ox, y = sext11(xy >> 16) + ps.oy;
++		int x = sext11(sext11(xy) + ps.ox), y = sext11(sext11(xy >> 16) + ps.oy);
 +		v[k].x = x;
 +		v[k].y = y;
 +		v[k].rgba = col;
@@ -1636,7 +1687,7 @@ index 0000000..7602366
 +	}
 +	if (!sw || !sh)
 +		return;
-+	int x = sext11(w[1]) + ps.ox, y = sext11(w[1] >> 16) + ps.oy;
++	int x = sext11(sext11(w[1]) + ps.ox), y = sext11(sext11(w[1] >> 16) + ps.oy);
 +	u32 col = (w[0] & 0xffffff) | 0xff000000;
 +	int u0 = 0, v0 = 0, u1 = 0, v1 = 0;
 +	tcache *tex = NULL;
@@ -1723,14 +1774,25 @@ index 0000000..7602366
 +	if (!ready || w <= 0 || h <= 0)
 +		return;
 +	if (!frame_open) {   // e.g. a state load: do it when the next GPU frame opens
-+		if (x < pend_x0) pend_x0 = x;
-+		if (y < pend_y0) pend_y0 = y;
-+		if (x + w > pend_x1) pend_x1 = x + w;
-+		if (y + h > pend_y1) pend_y1 = y + h;
++		if (npend == 16) {   // too many: everything, once
++			pend[0] = (prect){ 0, 0, VRAM_W, VRAM_H };
++			npend = 1;
++		}
++		if (!(npend == 1 && pend[0].w == VRAM_W && pend[0].h == VRAM_H))
++			pend[npend++] = (prect){ x, y, w, h };
 +		return;
 +	}
-+	if (x + w > VRAM_W) w = VRAM_W - x;   // gpulib splits wrapping transfers
-+	if (y + h > VRAM_H) h = VRAM_H - y;
++	// parts past the right or bottom edge wrap around to the left or top
++	x &= VRAM_W - 1;
++	y &= VRAM_H - 1;
++	if (x + w > VRAM_W || y + h > VRAM_H) {
++		int w1 = x + w > VRAM_W ? VRAM_W - x : w, h1 = y + h > VRAM_H ? VRAM_H - y : h;
++		push_to_target(x, y, w1, h1);
++		if (w1 < w) push_to_target(0, y, w - w1, h1);
++		if (h1 < h) push_to_target(x, 0, w1, h - h1);
++		if (w1 < w && h1 < h) push_to_target(0, 0, w - w1, h - h1);
++		return;
++	}
 +	// the stage is smaller than VRAM (GPU memory is scarce): bigger areas go in pieces
 +	if (w > STAGE_W || h > STAGE_H) {
 +		for (int py = y; py < y + h; py += STAGE_H)
@@ -1851,37 +1913,39 @@ index 0000000..7602366
 +			gput_sum(cpu_cycles_sum, cpu_cycles, c);
 +		} break;
 +		case 0x40 ... 0x47:
-+			draw_line(sext11(list[1]) + ps.ox, sext11(list[1] >> 16) + ps.oy, list[0] & 0xffffff,
-+				sext11(list[2]) + ps.ox, sext11(list[2] >> 16) + ps.oy, list[0] & 0xffffff, blend_of(cmd));
++			draw_line(sext11(sext11(list[1]) + ps.ox), sext11(sext11(list[1] >> 16) + ps.oy), list[0] & 0xffffff,
++				sext11(sext11(list[2]) + ps.ox), sext11(sext11(list[2] >> 16) + ps.oy), list[0] & 0xffffff, blend_of(cmd));
 +			gput_sum(cpu_cycles_sum, cpu_cycles, gput_line(0));
 +			break;
 +		case 0x48 ... 0x4f: {   // flat polyline: xy words until a 0x5xxx5xxx terminator
 +			u32 *p = list + 1;
-+			for (;;) {
++			for (bool first = true;; first = false) {
 +				if (p + 1 >= list_end) { cmd = -1; goto breakloop; }
-+				if ((p[1] & 0xf000f000) == 0x50005000)
++				// the second vertex is always a vertex; the terminator can follow it
++				if (!first && (p[1] & 0xf000f000) == 0x50005000)
 +					break;
-+				draw_line(sext11(p[0]) + ps.ox, sext11(p[0] >> 16) + ps.oy, list[0] & 0xffffff,
-+					sext11(p[1]) + ps.ox, sext11(p[1] >> 16) + ps.oy, list[0] & 0xffffff, blend_of(cmd));
++				draw_line(sext11(sext11(p[0]) + ps.ox), sext11(sext11(p[0] >> 16) + ps.oy), list[0] & 0xffffff,
++					sext11(sext11(p[1]) + ps.ox), sext11(sext11(p[1] >> 16) + ps.oy), list[0] & 0xffffff, blend_of(cmd));
 +				gput_sum(cpu_cycles_sum, cpu_cycles, gput_line(0));
 +				p++;
 +			}
 +			len = (p + 1) - list;   // through the terminator
 +		} break;
 +		case 0x50 ... 0x57:
-+			draw_line(sext11(list[1]) + ps.ox, sext11(list[1] >> 16) + ps.oy, list[0] & 0xffffff,
-+				sext11(list[3]) + ps.ox, sext11(list[3] >> 16) + ps.oy, list[2] & 0xffffff, blend_of(cmd));
++			draw_line(sext11(sext11(list[1]) + ps.ox), sext11(sext11(list[1] >> 16) + ps.oy), list[0] & 0xffffff,
++				sext11(sext11(list[3]) + ps.ox), sext11(sext11(list[3] >> 16) + ps.oy), list[2] & 0xffffff, blend_of(cmd));
 +			gput_sum(cpu_cycles_sum, cpu_cycles, gput_line(0));
 +			break;
 +		case 0x58 ... 0x5f: {   // gouraud polyline: colour, xy pairs until the terminator
 +			u32 *p = list;
-+			for (;;) {
++			for (bool first = true;; first = false) {
 +				if (p + 2 >= list_end) { cmd = -1; goto breakloop; }
-+				if ((p[2] & 0xf000f000) == 0x50005000)
++				// the second colour is always a colour; the terminator can follow it
++				if (!first && (p[2] & 0xf000f000) == 0x50005000)
 +					break;
 +				if (p + 3 >= list_end) { cmd = -1; goto breakloop; }
-+				draw_line(sext11(p[1]) + ps.ox, sext11(p[1] >> 16) + ps.oy, p[0] & 0xffffff,
-+					sext11(p[3]) + ps.ox, sext11(p[3] >> 16) + ps.oy, p[2] & 0xffffff, blend_of(cmd));
++				draw_line(sext11(sext11(p[1]) + ps.ox), sext11(sext11(p[1] >> 16) + ps.oy), p[0] & 0xffffff,
++					sext11(sext11(p[3]) + ps.ox), sext11(sext11(p[3] >> 16) + ps.oy), p[2] & 0xffffff, blend_of(cmd));
 +				gput_sum(cpu_cycles_sum, cpu_cycles, gput_line(0));
 +				p += 2;
 +			}
@@ -1945,6 +2009,7 @@ index 0000000..7602366
 +
 +static void free_game_buffers(void)
 +{
++	disp_used = false;
 +	if (atlas[0].tex.data)
 +		C3D_TexDelete(&atlas[0].tex);
 +	if (stage_tex.data)
@@ -1967,6 +2032,7 @@ index 0000000..7602366
 +	const region *reg = regions;
 +	if (!C3D_TexInit(&stage_tex, STAGE_W, STAGE_H, GPU_RGBA5551))
 +		goto fail;
++	disp_used = false;
 +	C3D_TexSetFilter(&stage_tex, GPU_NEAREST, GPU_NEAREST);
 +	vbuf = linearAlloc(MAX_VERTS * sizeof(pvtx));
 +	if (!vbuf)
@@ -2030,6 +2096,17 @@ index 0000000..7602366
 +	dvlb = NULL;
 +}
 +
++// gpulib, at the flip of a frame that was drawn (vout_update). With
++// frameskip, the shown area is copied so skipped frames keep showing it.
++void pica_flip(void)
++{
++	disp_used = gpu.frameskip.set && !(gpu.status & PSX_GPU_STATUS_RGB24);
++	disp_x = gpu.screen.src_x;
++	disp_y = gpu.screen.src_y;
++	disp_w = gpu.screen.w;
++	disp_h = gpu.screen.h;
++}
++
 +// called by the frontend once per shown frame: the displayed VRAM area
 +bool pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h)
 +{
@@ -2039,6 +2116,8 @@ index 0000000..7602366
 +	int x = gpu.screen.src_x, y = gpu.screen.src_y, sw = gpu.screen.w, sh = gpu.screen.h;
 +	if (pica_debug & 32) {   // debug: the whole of VRAM
 +		x = 0; y = 0; sw = VRAM_W; sh = VRAM_H;
++	} else if (disp_used && gpu.frameskip.set) {   // the last frame that was drawn
++		x = disp_x; y = disp_y; sw = disp_w; sh = disp_h;
 +	}
 +	*tex = &vram_tex;
 +	*l = (float)x / VRAM_W;
@@ -3029,10 +3108,10 @@ index a67509b..4f6d259 100644
      switch (cmd) {
        case 0x02:
 diff --git a/plugins/gpulib/vout_pl.c b/plugins/gpulib/vout_pl.c
-index 07cf6da..732b09b 100644
+index 07cf6da..3ad384d 100644
 --- a/plugins/gpulib/vout_pl.c
 +++ b/plugins/gpulib/vout_pl.c
-@@ -82,6 +82,12 @@ int vout_update(struct psx_gpu *gpu, int src_x, int src_y)
+@@ -82,6 +82,15 @@ int vout_update(struct psx_gpu *gpu, int src_x, int src_y)
  #ifdef RAW_FB_DISPLAY
    w = (gpu->status & PSX_GPU_STATUS_RGB24) ? 2048/3 : 1024;
    h = 512, x = src_x = y = src_y = 0;
@@ -3040,8 +3119,11 @@ index 07cf6da..732b09b 100644
 +#ifdef GPU_PICA
 +  // PSX3D: the picture is already on the 3DS GPU (gpu_pica); only 24-bit
 +  // modes (movies) still go through the CPU
-+  if (!(gpu->status & PSX_GPU_STATUS_RGB24))
++  if (!(gpu->status & PSX_GPU_STATUS_RGB24)) {
++    void pica_flip(void);
++    pica_flip();
 +    return 1;
++  }
  #endif
    if (x < 0) { w += x; src_x2 = -x; x = 0; }
    if (y < 0) { h += y; src_y -=  y; y = 0; }
