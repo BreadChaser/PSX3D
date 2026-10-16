@@ -103,6 +103,11 @@ float sw_slider = -1;   // test: pretend the 3D slider is here
 bool sw_showright;      // test: show the right eye on the left (NTR only sees the left)
 bool sw_sbs;            // test: both eyes side by side
 bool sw_prof;           // log where frame time goes, once a second
+bool sw_stats;          // log fps and renderer counters once a second (no timers)
+bool sw_o3ds;           // test: behave like an Old 3DS (settings not saved)
+bool sw_fs1;            // test: force frameskip, every other frame
+int sw_gldbg;           // test: hardware renderer debug bits (1 no alpha test, 2 no textures)
+int sw_state = -1;       // test: load this save state slot when the game starts (state0, state=N)
 bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 
 static void parse_switches(int argc, char **argv)
@@ -115,6 +120,12 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "showright")) sw_showright = true;
 		else if (!strcmp(a, "sbs")) sw_sbs = true;
 		else if (!strcmp(a, "prof")) sw_prof = true;
+		else if (!strcmp(a, "stats")) sw_stats = true;
+		else if (!strcmp(a, "o3ds")) sw_o3ds = true;
+		else if (!strcmp(a, "fs1")) sw_fs1 = true;
+		else if (!strcmp(a, "state0")) sw_state = 0;
+		else if (!strncmp(a, "state=", 6)) sw_state = atoi(a + 6);
+		else if (!strncmp(a, "gldbg=", 6)) sw_gldbg = atoi(a + 6);
 		else if (!strcmp(a, "nosound")) sw_nosound = true;
 		else if (!strcmp(a, "noirrst")) sw_noirrst = true;
 		else if (!strcmp(a, "noaa")) sw_noaa = true;
@@ -123,6 +134,21 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "minimal"))
 			sw_nonet = sw_nosound = sw_noirrst = sw_noaa = sw_nolcd = sw_nocovers = true;
 	}
+}
+
+// Same switches from sdmc:/3ds/PSX3D/switches.txt (space or newline
+// separated), for consoles started from the HOME Menu instead of 3dslink.
+static void parse_switch_file(void)
+{
+	FILE *f = fopen(PSX3D_DIR "/switches.txt", "r");
+	if (!f)
+		return;
+	char word[64];
+	while (fscanf(f, "%63s", word) == 1) {
+		char *argv[2] = { NULL, word };
+		parse_switches(2, argv);
+	}
+	fclose(f);
 }
 
 float slider_get(void)
@@ -134,6 +160,7 @@ int main(int argc, char **argv)
 {
 	char path[PATH_LEN];
 	parse_switches(argc, argv);
+	parse_switch_file();
 
 	// New 3DS: 804 MHz + L2 cache
 	osSetSpeedupEnable(true);
@@ -151,6 +178,8 @@ int main(int argc, char **argv)
 	log_printf("PSX3D " PSX3D_VERSION "\n");
 	{
 		APT_CheckNew3DS(&g_new3ds);
+		if (sw_o3ds)
+			g_new3ds = false;   // test: Old 3DS code paths at New 3DS clock
 		// borrow the syscore: 80% on Old 3DS (drawing runs there), 35% on New
 		{
 			static const u32 want_o3ds[] = { 80, 70, 60, 50, 40, 35, 30, 25 };

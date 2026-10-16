@@ -110,6 +110,8 @@ void config_load(void)
 
 void config_save(void)
 {
+	if (sw_o3ds)
+		return;   // test mode: leave the real settings alone
 	FILE *f = fopen(PSX3D_CONFIG, "w");
 	if (!f)
 		return;

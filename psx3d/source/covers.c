@@ -596,6 +596,28 @@ void covers_focus(int game)
 	LightEvent_Signal(&wake);
 }
 
+// A game needs the GPU memory: drop the cover textures (about 3 MB). The
+// decoded pixels stay, so back in the library they are uploaded again.
+// Call with no GPU frame using them in flight.
+void covers_release_gpu(void)
+{
+	if (sw_nocovers)
+		return;
+	LightLock_Lock(&lock);
+	for (int i = 0; i < SLOTS; i++) {
+		slot_t *s = &slots[i];
+		if (s->tex_ok)
+			C3D_TexDelete(&s->tex);
+		s->tex_ok = false;
+		if (s->staging)
+			linearFree(s->staging);
+		s->staging = NULL;
+		if (s->state == 3)
+			s->state = s->pixels ? 2 : 0;
+	}
+	LightLock_Unlock(&lock);
+}
+
 // forget everything (after a rescan the game indexes change)
 void covers_reset(void)
 {

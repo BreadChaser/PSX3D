@@ -62,6 +62,9 @@ void log_printf(const char *fmt, ...)
 	fflush(log_fp);
 }
 
+// true when the log also goes to a PC (3dslink): cheap to send often
+bool log_linked(void) { return link_fd >= 0; }
+
 void log_close(void)
 {
 	if (log_fp)

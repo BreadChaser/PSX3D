@@ -1,3 +1,40 @@
+diff --git a/Makefile b/Makefile
+index d637914..1f21065 100644
+--- a/Makefile
++++ b/Makefile
+@@ -291,6 +291,14 @@ frontend/menu.o frontend/plugin_lib.o: CFLAGS += -DBUILTIN_GPU_PEOPS
+ OBJS += plugins/dfxvideo/gpulib_if.o
+ endif
+ 
++ifeq "$(BUILTIN_GPU)" "pica"
++# PSX3D: the PS1 GPU on the 3DS GPU through citro3d
++CFLAGS += -DGPU_PICA
++CFLAGS += -DUSE_GPULIB=1
++OBJS += plugins/gpu_pica/gpu_pica.o
++plugins/gpu_pica/gpu_pica.o: CFLAGS += $(PICA_CFLAGS)   # the simulator passes fake 3DS headers
++endif
++
+ ifeq "$(BUILTIN_GPU)" "unai"
+ CFLAGS += -DGPU_UNAI
+ CFLAGS += -DUSE_GPULIB=1
+diff --git a/Makefile.libretro b/Makefile.libretro
+index cd53109..bfa73ee 100644
+--- a/Makefile.libretro
++++ b/Makefile.libretro
+@@ -374,7 +374,12 @@ else ifeq ($(platform), ctr)
+ 	OBJS += deps/arm-mem/memset-v6l.o
+ 	OBJS += frontend/3ds/utils.o
+ 
+-	BUILTIN_GPU = unai
++	# PSX3D: CTR_GPU=pica builds the 3DS GPU renderer (plugins/gpu_pica)
++	CTR_GPU ?= unai
++	BUILTIN_GPU = $(CTR_GPU)
++	ifneq ($(CTR_GPU),unai)
++	USE_ASYNC_GPU = 0   # GPU calls stay on the main thread
++	endif
+ 	DYNAREC = ari64
+ 	ARCH = arm
+ 	PARTIAL_LINKING = 1
 diff --git a/frontend/libretro.c b/frontend/libretro.c
 index 9dd3502..a281df0 100644
 --- a/frontend/libretro.c
@@ -430,6 +467,1384 @@ index 76f76af..0dbd6a9 100644
  {
   unsigned int silentch;
   int cycle_diff;
+diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
+new file mode 100644
+index 0000000..c3d0efd
+--- /dev/null
++++ b/plugins/gpu_pica/gpu_pica.c
+@@ -0,0 +1,1349 @@
++/*
++ * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
++ * PSX3D, GPL v2 or later.
++ *
++ * gpulib parses the command stream, does VRAM transfers and timing; this
++ * file turns primitives into GPU vertices. PS1 VRAM lives on the GPU as a
++ * 1024x512 RGBA5551 render target (the PS1's own 15-bit + mask format), so
++ * the displayed picture is a rectangle of it and needs no CPU work.
++ *
++ * Textures: a texture page (4/8-bit with a CLUT, or 15-bit) is decoded once
++ * into a 256x256 RGBA8 texture and reused until that part of VRAM changes.
++ * Texel alpha keeps the PS1's per-texel rules: 0 = transparent (colour 0),
++ * 128 = semi-transparent bit set, 255 = opaque. That lets the common
++ * blending modes (B/2+F/2 and B+F) draw in a single pass.
++ *
++ * Software VRAM (gpu.vram) stays the source for texture decoding and the
++ * CPU's uploads; uploads are also copied into the render target.
++ */
++#include <3ds.h>
++#include <citro3d.h>
++#include <stdio.h>
++#include <math.h>
++#include <stdlib.h>
++#include <string.h>
++#include "../gpulib/gpu.h"
++#include "../gpulib/gpu_timing.h"
++#include "gpu_pica.h"
++
++#define VRAM_W 1024
++#define VRAM_H 512
++#define MAX_VERTS (16 * 1024)   // ~2000 primitives; when full the GPU catches up
++#define STAGE_W 512
++#define STAGE_H 256
++typedef struct { s16 x, y, u, v; u32 rgba; } pvtx;   // rgba bytes R,G,B,A
++
++// Texture cache: an entry per (depth, page, CLUT) holding just the part of
++// the page drawn with so far, an aligned square of 32, 64, 128 or 256
++// texels (games use many CLUTs, each on a small part of a page). All the
++// squares live in one atlas texture, in a region per size, so changing
++// textures never ends a batch: draw calls are expensive (~20us each on an
++// Old 3DS).
++#define NSIZES 4
++typedef struct { int x, y, w, h; } region;
++// 1024x1024 (4 MB), a 512x512 quarter per size: 256, 64, 16 and 4 squares.
++// (An Old 3DS has 13 MB of GPU memory in all; the library music is let go
++// during games to make room.)
++static const region regions[NSIZES] = { { 512, 512, 512, 512 }, { 0, 512, 512, 512 }, { 512, 0, 512, 512 }, { 0, 0, 512, 512 } };
++static struct {
++	C3D_Tex tex;
++	int w, h;
++	bool rebind;       // squares were decoded into it: rebind so the GPU texture cache drops old data
++} atlas[1];
++static int pool_n[NSIZES];
++#define NENTRIES (256 + 64 + 16 + 4)
++
++typedef struct tcache {
++	bool valid;
++	u8 depth;          // 0 4-bit, 1 8-bit, 2 15-bit
++	u8 lg;             // size = 32 << lg
++	u8 rx, ry;         // the square's origin in page texels
++	s16 ax, ay;        // ...and in its atlas
++	u16 page;          // texpage bits 0-4 (x/64, y/256)
++	u16 clut;          // CLUT position word (x/16, y)
++	u32 stamp;         // VRAM write generation it was decoded at
++	u32 checked;       // gen_clock when last found still valid
++	u64 tiles;         // decoded 32x32 tiles inside the square (8x8 at most)
++	u32 used_seq;      // last batch that drew with it
++	u32 lru;
++	struct tcache *next;   // hash chain
++} tcache;
++
++// ------------------------------------------------------------------ state
++
++static DVLB_s *dvlb;
++static shaderProgram_s prog;
++static int u_proj, u_texscale;
++static C3D_Tex vram_tex;              // the PS1 VRAM render target
++static C3D_RenderTarget *target;
++static C3D_Tex stage_tex;             // CPU uploads on their way into the target
++static bool stage_used;               // stage_tex is read by unexecuted draws
++static pvtx *vbuf;
++static int vpos, vstart;
++static bool ready, frame_open;
++static bool base_dirty = true, state_dirty = true;
++static u32 seq = 1, synced_seq;
++static tcache cache[NENTRIES];       // pool 0 first, then 1, 2, 3
++static tcache *plain;
++static tcache *last_tex;             // the previous lookup's result
++static bool have_last;                // reserved square: texels for untextured drawing
++static tcache *buckets[256];
++static u32 lru_clock;
++
++// VRAM write generations in 64x16 blocks: texture pages and CLUTs depend
++// on them (CLUTs often sit right next to a framebuffer that is cleared
++// every frame, so the blocks must be small)
++static u32 vram_gen[32][16];
++static u32 gen_clock = 1;
++
++// PS1 drawing state (GP0 E1-E6)
++static struct {
++	u32 texpage;          // E1 bits 0-13
++	u32 texwin;
++	int dx1, dy1, dx2, dy2;   // drawing area, x2/y2 exclusive
++	int ox, oy;               // drawing offset
++	u32 mask;                 // E6
++	u32 area_gen;             // bumped when the drawing area changes
++} ps;
++
++// what the current batch is drawn with
++enum { BL_OPAQUE, BL_HALF, BL_ADD, BL_SUB, BL_QUARTER };
++enum { TX_NONE, TX_MOD, TX_RAW };
++typedef struct {
++	int atlas;     // which atlas texture
++	u8 blend;      // BL_*
++	u8 texmode;    // TX_*
++	u8 pass;       // two-pass modes: 0 opaque texels, 1 semi-transparent texels
++	int sc[4];     // scissor x1, y1, x2, y2 in VRAM coordinates
++} drawstate;
++static drawstate cur, sent;
++static bool sent_valid;
++static C3D_Tex tex_alias[2];   // a rebind under a new address clears the GPU texture cache
++static int alias_i;
++
++static int pend_x0 = VRAM_W, pend_y0 = VRAM_H, pend_x1, pend_y1;   // uploads waiting for a GPU frame
++int pica_debug;   // set by the frontend (test switch gldbg)
++static u64 t_state, t_draw, t_tex;   // diagnostics: ticks in state setup, draw calls, textures
++static unsigned st_why[5], st_evict_lg[NSIZES];   // batch ends: atlas, blend/mode, area, rebind, other
++static unsigned st_batches, st_prims, st_decodes, st_uploads, st_syncs, st_evict, st_inval, st_keys;
++
++static void flush(void);
++static void push_to_target(int x, int y, int w, int h);
++
++// ------------------------------------------------------------------ helpers
++
++#define MIN3(a, b, c) ((a) < (b) ? ((a) < (c) ? (a) : (c)) : ((b) < (c) ? (b) : (c)))
++#define MAX3(a, b, c) ((a) > (b) ? ((a) > (c) ? (a) : (c)) : ((b) > (c) ? (b) : (c)))
++
++static inline int sext11(u32 v) { return ((s32)(v << 21)) >> 21; }
++
++static void mark_vram(int x, int y, int w, int h)
++{
++	if (w <= 0 || h <= 0)
++		return;
++	gen_clock++;
++	int bx0 = (x & 1023) >> 6, bx1 = ((x + w - 1) & 1023) >> 6;
++	int by0 = (y & 511) >> 4, by1 = ((y + h - 1) & 511) >> 4;
++	if (h >= 512) { by0 = 0; by1 = 31; }
++	if (w >= 1024) { bx0 = 0; bx1 = 15; }
++	for (int by = by0;; by = (by + 1) & 31) {
++		for (int bx = bx0;; bx = (bx + 1) & 15) {
++			vram_gen[by][bx] = gen_clock;
++			if (bx == bx1) break;
++		}
++		if (by == by1) break;
++	}
++}
++
++// position of texel (x, y) in the GPU's tiled layout: 8x8 tiles, Morton inside
++static inline u32 tiled(int x, int y, int w)
++{
++	u32 m = (x & 1) | ((y & 1) << 1) | ((x & 2) << 1) | ((y & 2) << 2) | ((x & 4) << 2) | ((y & 4) << 3);
++	return ((y >> 3) * (w >> 3) + (x >> 3)) * 64 + m;
++}
++
++// PS1 15-bit texel -> RGBA8 (0xRRGGBBAA) with the alpha rules above
++static inline u32 texel_rgba(u16 p)
++{
++	if (!p)
++		return 0;
++	u32 r = p & 31, g = (p >> 5) & 31, b = (p >> 10) & 31;
++	r = (r << 3) | (r >> 2); g = (g << 3) | (g >> 2); b = (b << 3) | (b >> 2);
++	return (r << 24) | (g << 16) | (b << 8) | ((p & 0x8000) ? 128 : 255);
++}
++
++// PS1 15-bit pixel -> RGBA5551 for the render target
++static inline u16 pixel_5551(u16 p)
++{
++	return ((p & 31) << 11) | (((p >> 5) & 31) << 6) | (((p >> 10) & 31) << 1) | (p >> 15);
++}
++
++// ------------------------------------------------------------------ deferred fills
++
++typedef struct { s16 x, y, w, h; u16 col; } pfill;
++static pfill fills[32];
++static int nfills;
++
++static void apply_fill(const pfill *f)
++{
++	for (int r = 0; r < f->h; r++) {
++		u16 *row = gpu.vram + ((f->y + r) & 511) * VRAM_W;
++		for (int k = 0; k < f->w; k++)
++			row[(f->x + k) & 1023] = f->col;
++	}
++}
++
++static void defer_fill(int x, int y, int w, int h, u16 col)
++{
++	for (int i = 0; i < nfills; i++)   // the same area again: the old fill no longer matters
++		if (fills[i].x == x && fills[i].y == y && fills[i].w == w && fills[i].h == h) {
++			fills[i].col = col;
++			if (i != nfills - 1) {   // keep the order: it is the newest now
++				pfill f = fills[i];
++				memmove(&fills[i], &fills[i + 1], (nfills - 1 - i) * sizeof(pfill));
++				fills[nfills - 1] = f;
++			}
++			return;
++		}
++	if (nfills == 32) {
++		apply_fill(&fills[0]);
++		memmove(&fills[0], &fills[1], 31 * sizeof(pfill));
++		nfills--;
++	}
++	fills[nfills++] = (pfill){ x, y, w, h, col };
++}
++
++// write the pending fills that touch this VRAM rectangle (in order)
++static void settle_fills(int x, int y, int w, int h)
++{
++	int keep = 0;
++	for (int i = 0; i < nfills; i++) {
++		const pfill *f = &fills[i];
++		bool hit = !(f->x >= x + w || f->x + f->w <= x || f->y >= y + h || f->y + f->h <= y);
++		if (hit)
++			apply_fill(f);
++		else
++			fills[keep++] = *f;
++	}
++	nfills = keep;
++}
++
++// gpulib reads or writes software VRAM itself (transfers, copies, saving
++// a state): the fills there have to be written first
++void pica_settle_rect(int x, int y, int w, int h)
++{
++	if (nfills)
++		settle_fills(x, y, w, h);
++}
++
++void pica_settle_vram(void)
++{
++	for (int i = 0; i < nfills; i++)
++		apply_fill(&fills[i]);
++	nfills = 0;
++}
++
++void pica_drop_fills(void) { nfills = 0; }   // a loaded state replaced VRAM
++
++// ------------------------------------------------------------------ GPU frame / sync
++
++void pica_frame_started(void)
++{
++	frame_open = true;
++	base_dirty = state_dirty = true;
++	sent_valid = false;
++	vpos = vstart = 0;
++	synced_seq = seq;
++	stage_used = false;
++	if (pend_x1 > pend_x0 && pend_y1 > pend_y0) {
++		int x = pend_x0, y = pend_y0, w = pend_x1 - pend_x0, h = pend_y1 - pend_y0;
++		pend_x0 = VRAM_W; pend_y0 = VRAM_H; pend_x1 = pend_y1 = 0;
++		push_to_target(x, y, w, h);
++	}
++}
++
++void pica_frame_ended(void) { frame_open = false; }
++void pica_state_lost(void) { base_dirty = state_dirty = true; sent_valid = false; }
++
++// let the GPU run everything queued and wait, so memory it was going to
++// read (a texture, the upload stage) can be rewritten in place
++static void gpu_sync(void)
++{
++	flush();
++	if (!frame_open)
++		return;
++	C3D_FrameEnd(0);
++	C3D_FrameBegin(0);
++	st_syncs++;
++	pica_frame_started();
++}
++
++// ------------------------------------------------------------------ texture cache
++
++// newest write among nbx x nby blocks starting at block (bx, by)
++static u32 block_stamp(int bx, int by, int nbx, int nby)
++{
++	u32 s = 0;
++	for (int j = 0; j < nby; j++)
++		for (int i = 0; i < nbx; i++) {
++			u32 g = vram_gen[(by + j) & 31][(bx + i) & 15];
++			if (g > s) s = g;
++		}
++	return s;
++}
++
++static bool cache_valid(tcache *c)
++{
++	if (c->checked == gen_clock)   // nothing written since the last check
++		return true;
++	int px = c->page & 15, py = (c->page >> 4) & 1;
++	int nb = c->depth == 0 ? 1 : c->depth == 1 ? 2 : 4;
++	if (block_stamp(px, py * 16, nb, 16) > c->stamp)
++		return false;
++	if (c->depth < 2) {
++		int cx = (c->clut & 0x3f) * 16, cy = (c->clut >> 6) & 511;
++		int cw = c->depth == 0 ? 16 : 256;
++		if (block_stamp(cx >> 6, cy >> 4, ((cx + cw - 1) >> 6) - (cx >> 6) + 1, 1) > c->stamp)
++			return false;
++	}
++	c->checked = gen_clock;
++	return true;
++}
++
++static inline int key_hash(int depth, int page, int clut)
++{
++	return ((depth * 0x9e3779b1u) ^ (page * 0x85ebca6bu) ^ (clut * 0xc2b2ae35u)) >> 24;
++}
++
++static void unhash(tcache *c)
++{
++	tcache **pp = &buckets[key_hash(c->depth, c->page, c->clut)];
++	while (*pp && *pp != c)
++		pp = &(*pp)->next;
++	if (*pp)
++		*pp = c->next;
++	c->next = NULL;
++}
++
++// decode the parts of the page rectangle u0..u1 x v0..v1 not decoded yet
++static void decode_rect(tcache *c, int u0, int u1, int v0, int v1)
++{
++	int t0 = (u0 - c->rx) >> 5, t1 = (u1 - c->rx) >> 5, s0 = (v0 - c->ry) >> 5, s1 = (v1 - c->ry) >> 5;
++	u64 need = 0;
++	for (int r = s0; r <= s1; r++)
++		for (int k = t0; k <= t1; k++)
++			need |= 1ull << (r * 8 + k);
++	need &= ~c->tiles;
++	if (!need)
++		return;
++	u32 *dst = atlas[0].tex.data;
++	int aw = atlas[0].w, ah = atlas[0].h;
++	const u16 *vram = gpu.vram;
++	int px = (c->page & 15) * 64, py = ((c->page >> 4) & 1) * 256;
++	if (nfills) {
++		settle_fills(px, py, (64 << c->depth) > 256 ? 256 : 64 << c->depth, 256);
++		if (c->depth < 2)
++			settle_fills((c->clut & 0x3f) * 16, (c->clut >> 6) & 511, c->depth == 0 ? 16 : 256, 1);
++	}
++	u32 pal[256];
++	if (c->depth < 2) {
++		int cx = (c->clut & 0x3f) * 16, cy = (c->clut >> 6) & 511;
++		int n = c->depth == 0 ? 16 : 256;
++		const u16 *crow = vram + cy * VRAM_W;
++		for (int i = 0; i < n; i++)
++			pal[i] = texel_rgba(crow[(cx + i) & 1023]);
++	}
++	for (int t = 0; t < 64; t++) {
++		if (!(need & (1ull << t)))
++			continue;
++		int lu = (t & 7) * 32, lv = (t >> 3) * 32;           // inside the square
++		int tu = c->rx + lu;                                  // in the page
++		int au = c->ax + lu;                                  // in the atlas
++		for (int y = 0; y < 32; y++) {
++			int v = c->ry + lv + y;
++			const u16 *row = vram + ((py + v) & 511) * VRAM_W;
++			// texture memory runs bottom-up: atlas row r is sampled at t = (r + 0.5) / height
++			int ty = ah - 1 - (c->ay + lv + y);
++			if (c->depth == 0) {
++				for (int x = 0; x < 8; x++) {
++					u16 w = row[(px + tu / 4 + x) & 1023];
++					int u = au + x * 4;
++					dst[tiled(u, ty, aw)] = pal[w & 15];
++					dst[tiled(u + 1, ty, aw)] = pal[(w >> 4) & 15];
++					dst[tiled(u + 2, ty, aw)] = pal[(w >> 8) & 15];
++					dst[tiled(u + 3, ty, aw)] = pal[w >> 12];
++				}
++			} else if (c->depth == 1) {
++				for (int x = 0; x < 16; x++) {
++					u16 w = row[(px + tu / 2 + x) & 1023];
++					dst[tiled(au + x * 2, ty, aw)] = pal[w & 255];
++					dst[tiled(au + x * 2 + 1, ty, aw)] = pal[w >> 8];
++				}
++			} else {
++				for (int x = 0; x < 32; x++)
++					dst[tiled(au + x, ty, aw)] = texel_rgba(row[(px + tu + x) & 1023]);
++			}
++		}
++		// the 32 rows are 4 rows of 8x8 tiles across the whole atlas
++		int tr = (ah - 1 - (c->ay + lv + 31)) >> 3;
++		GSPGPU_FlushDataCache(dst + tr * (aw / 8) * 64, 4 * (aw / 8) * 64 * 4);
++		st_decodes++;
++	}
++	c->tiles |= need;
++	atlas[0].rebind = true;
++}
++
++// smallest aligned square (32..256) holding u0..u1 x v0..v1
++static int square_for(int u0, int u1, int v0, int v1, int *rx, int *ry)
++{
++	for (int lg = 0; lg < NSIZES; lg++) {
++		int size = 32 << lg, m = ~(size - 1);
++		if ((u0 & m) == (u1 & m) && (v0 & m) == (v1 & m)) {
++			*rx = u0 & m;
++			*ry = v0 & m;
++			return lg;
++		}
++	}
++	*rx = *ry = 0;
++	return NSIZES - 1;
++}
++
++// a free or least recently used entry of the pool for this size
++static tcache *pool_take(int lg)
++{
++	int first = 0;
++	for (int i = 0; i < lg; i++)
++		first += pool_n[i];
++	tcache *best = NULL;
++	for (int i = first; i < first + pool_n[lg]; i++) {
++		if (&cache[i] == plain)
++			continue;
++		if (!best) {
++			best = &cache[i];
++			if (!best->valid)
++				break;
++			continue;
++		}
++		if (!cache[i].valid) {
++			best = &cache[i];
++			break;
++		}
++		if (cache[i].lru < best->lru)
++			best = &cache[i];
++	}
++	if (best->valid) {
++		st_evict++;
++		st_evict_lg[lg]++;
++		if (best->used_seq > synced_seq)   // queued draws still read it
++			gpu_sync();
++		unhash(best);
++		best->valid = false;
++	}
++	return best;
++}
++
++// the texture for drawing texels u0..u1 x v0..v1 (inclusive; past 255 they
++// wrap, then the whole page is used) of this page and CLUT
++static tcache *texture_for(u32 page, u32 clut, int u0, int u1, int v0, int v1)
++{
++	int depth = (page >> 7) & 3;
++	if (depth == 3)
++		depth = 2;
++	u16 pg = page & 0x1f;
++	u16 cl = depth < 2 ? (clut & 0x7fff) : 0;
++	if (u1 > 255 || v1 > 255 || u0 < 0 || v0 < 0) {
++		u0 = 0; u1 = 255; v0 = 0; v1 = 255;
++	}
++	tcache *c = have_last ? last_tex : NULL;
++	if (!(c && c->valid && c->depth == depth && c->page == pg && c->clut == cl)) {
++		for (c = buckets[key_hash(depth, pg, cl)]; c; c = c->next)
++			if (c->depth == depth && c->page == pg && c->clut == cl)
++				break;
++	}
++	if (c && !cache_valid(c)) {
++		if (c->used_seq > synced_seq)   // queued draws still read the old texels
++			gpu_sync();
++		c->tiles = 0;
++		c->stamp = c->checked = gen_clock;
++		st_inval++;
++	}
++	if (c) {
++		int size = 32 << c->lg;
++		if (u0 < c->rx || u1 >= c->rx + size || v0 < c->ry || v1 >= c->ry + size) {
++			// outside the square: move to one that holds both
++			int nu0 = u0 < c->rx ? u0 : c->rx, nu1 = u1 > c->rx + size - 1 ? u1 : c->rx + size - 1;
++			int nv0 = v0 < c->ry ? v0 : c->ry, nv1 = v1 > c->ry + size - 1 ? v1 : c->ry + size - 1;
++			u0 = nu0; u1 = nu1; v0 = nv0; v1 = nv1;
++			if (c->used_seq > synced_seq)
++				gpu_sync();
++			unhash(c);
++			c->valid = false;
++			c = NULL;
++		}
++	}
++	if (!c) {
++		int rx, ry, lg = square_for(u0, u1, v0, v1, &rx, &ry);
++		c = pool_take(lg);
++		c->depth = depth;
++		c->page = pg;
++		c->clut = cl;
++		c->lg = lg;
++		c->rx = rx;
++		c->ry = ry;
++		c->tiles = 0;
++		c->valid = true;
++		c->stamp = c->checked = gen_clock;
++		int h = key_hash(depth, pg, cl);
++		c->next = buckets[h];
++		buckets[h] = c;
++	}
++	decode_rect(c, u0, u1, v0, v1);
++	c->lru = ++lru_clock;
++	last_tex = c;
++	have_last = true;
++	return c;
++}
++
++// ------------------------------------------------------------------ draw state -> citro3d
++
++// The GPU caches texels: after the CPU rewrote texture memory it may still
++// draw with the old ones (Azahar doesn't emulate that cache, the hardware
++// showed it). Bit 16 of the texture unit register clears it; only that
++// byte is written, citro3d's own setting stays.
++static inline void clear_tex_cache(void)
++{
++	GPUCMD_AddMaskedWrite(GPUREG_TEXUNIT_CONFIG, 0x4, 1 << 16);
++}
++
++// Clipping to the PS1 drawing area: the viewport covers just that area and
++// the projection maps it to the whole clip space, so the GPU clips the
++// geometry exactly (its scissor misbehaved near the target's edges).
++static void set_area(int x1, int y1, int x2, int y2)
++{
++	if (x2 <= x1 || y2 <= y1) {   // empty area: nothing may draw
++		x2 = x1 + 1; y2 = y1 + 1;
++	}
++	// the viewport counts rows from the bottom of the target
++	C3D_SetViewport(x1, VRAM_H - y2, x2 - x1, y2 - y1);
++	float w = x2 - x1, h = y2 - y1;
++	// positions arrive in quarter pixels (see to_gpu)
++	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_proj + 0, 0.5f / w, 0, 0, -1.0f - 2.0f * x1 / w);
++	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_proj + 1, 0, -0.5f / h, 0, 1.0f + 2.0f * y1 / h);
++}
++
++// Vertex positions go to the GPU in quarter pixels, kept just inside the
++// target: the GPU can't hold a screen x of 1024 (or y of 512), a triangle
++// touching that edge came out wrong (1023.75 still covers the last pixel's centre).
++static inline void to_gpu(pvtx *v, int n)
++{
++	for (int i = 0; i < n; i++) {
++		int x = v[i].x * 4, y = v[i].y * 4;
++		v[i].x = x > VRAM_W * 4 - 1 ? VRAM_W * 4 - 1 : x;
++		v[i].y = y > VRAM_H * 4 - 1 ? VRAM_H * 4 - 1 : y;
++	}
++}
++
++static void set_proj(void)
++{
++	// VRAM pixels -> clip space; y = 0 at the top, the GPU's depth range is 0..-1
++	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_proj + 0, 0.5f / VRAM_W, 0, 0, -1.0f);
++	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_proj + 1, 0, -0.5f / VRAM_H, 0, 1.0f);
++	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_proj + 2, 0, 0, 0, -0.5f);
++	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_proj + 3, 0, 0, 0, 1.0f);
++}
++
++static void apply_base(void)
++{
++	C3D_FrameDrawOn(target);
++	C3D_SetViewport(0, 0, VRAM_W, VRAM_H);
++	C3D_BindProgram(&prog);
++	C3D_AttrInfo *ai = C3D_GetAttrInfo();
++	AttrInfo_Init(ai);
++	AttrInfo_AddLoader(ai, 0, GPU_SHORT, 2);
++	AttrInfo_AddLoader(ai, 1, GPU_SHORT, 2);
++	AttrInfo_AddLoader(ai, 2, GPU_UNSIGNED_BYTE, 4);
++	C3D_BufInfo *bi = C3D_GetBufInfo();
++	BufInfo_Init(bi);
++	BufInfo_Add(bi, vbuf, sizeof(pvtx), 3, 0x210);
++	set_proj();
++	C3D_CullFace(GPU_CULL_NONE);
++	C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_COLOR);
++	for (int i = 1; i < 6; i++)
++		C3D_TexEnvInit(C3D_GetTexEnv(i));
++	base_dirty = false;
++	sent_valid = false;
++}
++
++static void apply_state(void)
++{
++	if (base_dirty)
++		apply_base();
++	const drawstate *d = &cur;
++	if (!sent_valid || memcmp(sent.sc, d->sc, sizeof(d->sc))) {
++		// columns by the GPU's scissor; rows are cut on the CPU (emit_tris):
++		// limiting rows on the GPU, by scissor or viewport, lost pixels at
++		// the sides of the picture
++		set_area(0, 0, VRAM_W, VRAM_H);
++		C3D_SetScissor(GPU_SCISSOR_NORMAL, d->sc[0], 0, d->sc[2], VRAM_H);
++	}
++	if (!sent_valid || sent.blend != d->blend || sent.texmode != d->texmode || sent.pass != d->pass) {
++		bool tx = d->texmode != TX_NONE;
++		C3D_TexEnv *env = C3D_GetTexEnv(0);
++		C3D_TexEnvInit(env);
++		if (!tx) {
++			C3D_TexEnvSrc(env, C3D_Both, GPU_PRIMARY_COLOR, 0, 0);
++			C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
++		} else {
++			if (d->texmode == TX_MOD) {
++				// PS1: texel * colour / 128
++				C3D_TexEnvSrc(env, C3D_RGB, GPU_TEXTURE0, GPU_PRIMARY_COLOR, 0);
++				C3D_TexEnvFunc(env, C3D_RGB, GPU_MODULATE);
++				C3D_TexEnvScale(env, C3D_RGB, GPU_TEVSCALE_2);
++			} else {
++				C3D_TexEnvSrc(env, C3D_RGB, GPU_TEXTURE0, 0, 0);
++				C3D_TexEnvFunc(env, C3D_RGB, GPU_REPLACE);
++			}
++			C3D_TexEnvSrc(env, C3D_Alpha, GPU_TEXTURE0, 0, 0);
++			C3D_TexEnvFunc(env, C3D_Alpha, GPU_REPLACE);
++			if (d->blend == BL_ADD) {
++				// blend factor (1 - a) * 2: semi-transparent texels 1, opaque 0
++				C3D_TexEnvOpAlpha(env, GPU_TEVOP_A_ONE_MINUS_SRC_ALPHA, 0, 0);
++				C3D_TexEnvScale(env, C3D_Alpha, GPU_TEVSCALE_2);
++			}
++		}
++
++		// blending and the alpha test
++		switch (d->blend) {
++		case BL_OPAQUE:
++			C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
++			C3D_AlphaTest(tx, GPU_GREATER, 0);
++			break;
++		case BL_HALF:
++			if (tx) {   // a = 0.5 for semi-transparent texels, 1 for opaque ones
++				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA, GPU_ONE, GPU_ZERO);
++				C3D_AlphaTest(true, GPU_GREATER, 0);
++			} else {
++				C3D_BlendingColor(0x80000000);
++				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_CONSTANT_ALPHA, GPU_ONE_MINUS_CONSTANT_ALPHA, GPU_ONE, GPU_ZERO);
++				C3D_AlphaTest(false, GPU_ALWAYS, 0);
++			}
++			break;
++		case BL_ADD:
++			if (tx)
++				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_SRC_ALPHA, GPU_ONE, GPU_ZERO);
++			else
++				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ONE, GPU_ONE, GPU_ZERO);
++			C3D_AlphaTest(false, GPU_ALWAYS, 0);
++			break;
++		case BL_SUB:
++		case BL_QUARTER:
++			if (tx && d->pass == 0) {   // the opaque texels, unblended
++				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
++				C3D_AlphaTest(true, GPU_EQUAL, 255);
++				break;
++			}
++			if (d->blend == BL_SUB)
++				C3D_AlphaBlend(GPU_BLEND_REVERSE_SUBTRACT, GPU_BLEND_ADD, GPU_ONE, GPU_ONE, GPU_ONE, GPU_ZERO);
++			else {
++				C3D_BlendingColor(0x40000000);
++				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_CONSTANT_ALPHA, GPU_ONE, GPU_ONE, GPU_ZERO);
++			}
++			C3D_AlphaTest(tx, GPU_EQUAL, 128);
++			break;
++		}
++	}
++	if (d->texmode != TX_NONE && (!sent_valid || sent.atlas != d->atlas || sent.texmode == TX_NONE || atlas[d->atlas].rebind)) {
++		if (atlas[d->atlas].rebind)
++			clear_tex_cache();
++		atlas[d->atlas].rebind = false;
++		C3D_FVUnifSet(GPU_VERTEX_SHADER, u_texscale, 1.0f / atlas[d->atlas].w, 1.0f / atlas[d->atlas].h, 0, 0);
++		alias_i ^= 1;
++		tex_alias[alias_i] = atlas[d->atlas].tex;
++		C3D_TexBind(0, &tex_alias[alias_i]);
++	}
++	sent = *d;
++	sent_valid = true;
++	state_dirty = false;
++}
++
++static void flush(void)
++{
++	if (vpos == vstart || !ready)
++		return;
++	if (!frame_open) {   // nowhere to draw (no GPU frame open)
++		vpos = vstart;
++		return;
++	}
++	u64 t0 = svcGetSystemTick();
++	if (state_dirty || base_dirty)
++		apply_state();
++	u64 t1 = svcGetSystemTick();
++	C3D_DrawArrays(GPU_TRIANGLES, vstart, vpos - vstart);
++	t_state += t1 - t0;
++	t_draw += svcGetSystemTick() - t1;
++	if (C3D_GetCmdBufUsage() > 0.8f)
++		C3D_FrameSplit(0);
++	seq++;
++	vstart = vpos;
++	st_batches++;
++}
++
++// start drawing with this state: ends the batch if anything differs
++static u32 cur_area_gen = ~0u;
++
++static inline void use_state(int at, int blend, int texmode, int pass)
++{
++	if (at == cur.atlas && blend == cur.blend && texmode == cur.texmode && pass == cur.pass &&
++		ps.area_gen == cur_area_gen && !atlas[at].rebind)
++		return;
++	st_why[at != cur.atlas ? 0 : (blend != cur.blend || texmode != cur.texmode || pass != cur.pass) ? 1 :
++		ps.area_gen != cur_area_gen ? 2 : 3]++;
++	flush();
++	cur.atlas = at;
++	cur.blend = blend;
++	cur.texmode = texmode;
++	cur.pass = pass;
++	cur.sc[0] = ps.dx1; cur.sc[1] = ps.dy1; cur.sc[2] = ps.dx2; cur.sc[3] = ps.dy2;
++	cur_area_gen = ps.area_gen;
++	state_dirty = true;
++}
++
++static inline pvtx *alloc_verts(int n)
++{
++	if (vpos + n > MAX_VERTS) {
++		gpu_sync();   // the GPU has used everything: start the buffer over
++		if (vpos + n > MAX_VERTS)
++			return NULL;
++	}
++	pvtx *v = vbuf + vpos;
++	vpos += n;
++	return v;
++}
++
++// ------------------------------------------------------------------ primitives
++
++static int blend_of(u32 cmd)
++{
++	if (!(cmd & 2))
++		return BL_OPAQUE;
++	return BL_HALF + ((ps.texpage >> 5) & 3);
++}
++
++// one textured or plain triangle list entry; two-pass modes draw it twice
++// The part of triangle t inside the drawing area x0 <= x < x1, y0 <= y < y1,
++// as a fan of up to 5 triangles into out; returns how many. The GPU only
++// ever sees geometry inside the area: the 3DS GPU mangles triangles that
++// reach far outside its viewport (PS1 skies are huge polygons).
++static int clip_area(const pvtx *t, int x0, int y0, int x1, int y1, pvtx *out)
++{
++	pvtx a[9], b[9];
++	int n = 3, m;
++	memcpy(a, t, 3 * sizeof(pvtx));
++	for (int side = 0; side < 4; side++) {
++		m = 0;
++		for (int i = 0; i < n; i++) {
++			const pvtx *p = &a[i], *q = &a[(i + 1) % n];
++			int pc = side == 0 ? p->x - x0 : side == 1 ? x1 - p->x : side == 2 ? p->y - y0 : y1 - p->y;
++			int qc = side == 0 ? q->x - x0 : side == 1 ? x1 - q->x : side == 2 ? q->y - y0 : y1 - q->y;
++			if (pc >= 0)
++				b[m++] = *p;
++			if ((pc >= 0) != (qc >= 0)) {   // the edge crosses this side
++				float f = (float)pc / (pc - qc);
++				pvtx *o = &b[m++];
++				o->x = p->x + (int)lrintf((q->x - p->x) * f);
++				o->y = p->y + (int)lrintf((q->y - p->y) * f);
++				if (side < 2) o->x = side == 0 ? x0 : x1;
++				else o->y = side == 2 ? y0 : y1;
++				o->u = p->u + (int)lrintf((q->u - p->u) * f);
++				o->v = p->v + (int)lrintf((q->v - p->v) * f);
++				u32 c = 0;
++				for (int k = 0; k < 32; k += 8) {
++					int cp = (p->rgba >> k) & 0xff, cq = (q->rgba >> k) & 0xff;
++					c |= (u32)(cp + (int)lrintf((cq - cp) * f)) << k;
++				}
++				o->rgba = c;
++			}
++		}
++		if (m < 3)
++			return 0;
++		memcpy(a, b, m * sizeof(pvtx));
++		n = m;
++	}
++	for (int i = 1; i + 1 < n; i++) {
++		out[(i - 1) * 3] = a[0];
++		out[(i - 1) * 3 + 1] = a[i];
++		out[(i - 1) * 3 + 2] = a[i + 1];
++	}
++	return n - 2;
++}
++
++static void emit_tris(const pvtx *v, int ntri, int blend, int texmode, tcache *tex)
++{
++	if (!ready)
++		return;
++	// anything reaching outside the drawing area is cut to it here
++	pvtx clipped[2 * 3 * 7];
++	int x0 = ps.dx1, x1 = ps.dx2, y0 = ps.dy1, y1 = ps.dy2;
++	bool cut = false;
++	for (int i = 0; i < ntri * 3; i++)
++		if (v[i].x < x0 || v[i].x > x1 || v[i].y < y0 || v[i].y > y1) { cut = true; break; }
++	if (cut) {
++		int n = 0;
++		for (int t = 0; t < ntri; t++) {
++			const pvtx *tv = &v[t * 3];
++			int lx = MIN3(tv[0].x, tv[1].x, tv[2].x), hx = MAX3(tv[0].x, tv[1].x, tv[2].x);
++			int ly = MIN3(tv[0].y, tv[1].y, tv[2].y), hy = MAX3(tv[0].y, tv[1].y, tv[2].y);
++			if (hx <= x0 || lx >= x1 || hy <= y0 || ly >= y1)
++				continue;   // entirely outside
++			if (lx >= x0 && hx <= x1 && ly >= y0 && hy <= y1) {
++				memcpy(&clipped[n * 3], tv, 3 * sizeof(pvtx));
++				n++;
++			} else
++				n += clip_area(tv, x0, y0, x1, y1, &clipped[n * 3]);
++		}
++		if (!n)
++			return;
++		v = clipped;
++		ntri = n;
++	}
++	// untextured: drawn through the same path with a mid-grey texel
++	// (x2 modulation gives the colour back); its alpha marks semi-transparency
++	bool untex = !tex;
++	if (untex) {
++		tex = plain;
++		texmode = TX_MOD;
++	}
++	int passes = (blend == BL_SUB || blend == BL_QUARTER) ? 2 : 1;
++	for (int p = 0; p < passes; p++) {
++		use_state(0, blend, texmode, p);
++		pvtx *o = alloc_verts(ntri * 3);
++		if (!o)
++			return;
++		memcpy(o, v, ntri * 3 * sizeof(pvtx));
++		to_gpu(o, ntri * 3);
++		if (untex) {
++			s16 pu = plain->ax + (blend == BL_OPAQUE ? 8 : 24), pv = plain->ay + 8;
++			for (int i = 0; i < ntri * 3; i++) {
++				o[i].u = pu;
++				o[i].v = pv;
++			}
++		}
++	}
++	tex->used_seq = seq + 1;   // the batch it is in: seq + 1 once sent
++	st_prims++;
++}
++
++static void draw_poly(const u32 *w, u32 cmd)
++{
++	bool quad = cmd & 8, gouraud = cmd & 0x10, textured = cmd & 4;
++	int n = quad ? 4 : 3;
++	pvtx v[4];
++	u32 col = w[0] & 0xffffff;
++	u32 clut = 0, page = ps.texpage;
++	int i = 1;
++	for (int k = 0; k < n; k++) {
++		if (gouraud && k)
++			col = w[i++] & 0xffffff;
++		u32 xy = w[i++];
++		v[k].x = sext11(xy) + ps.ox;
++		v[k].y = sext11(xy >> 16) + ps.oy;
++		v[k].rgba = col | 0xff000000;
++		if (textured) {
++			u32 uv = w[i++];
++			v[k].u = uv & 0xff;
++			v[k].v = (uv >> 8) & 0xff;
++			if (k == 0) clut = uv >> 16;
++			if (k == 1) page = uv >> 16;
++		} else {
++			v[k].u = v[k].v = 0;
++		}
++	}
++	if (textured) {
++		// textured polygons also set the global texpage (bits 0-8, and 11)
++		ps.texpage = (ps.texpage & ~0x9ff) | (page & 0x9ff);
++	}
++	// the PS1 skips triangles wider than 1023 or taller than 511
++	pvtx tri[6];
++	int ntri = 0;
++	static const int idx[2][3] = { { 0, 1, 2 }, { 1, 3, 2 } };
++	for (int t = 0; t < n - 2; t++) {
++		const pvtx *a = &v[idx[t][0]], *b = &v[idx[t][1]], *c = &v[idx[t][2]];
++		int x0 = MIN3(a->x, b->x, c->x), x1 = MAX3(a->x, b->x, c->x);
++		int y0 = MIN3(a->y, b->y, c->y), y1 = MAX3(a->y, b->y, c->y);
++		if (x1 - x0 > 1023 || y1 - y0 > 511)
++			continue;
++		tri[ntri * 3] = *a; tri[ntri * 3 + 1] = *b; tri[ntri * 3 + 2] = *c;
++		ntri++;
++	}
++	if (!ntri)
++		return;
++	tcache *tex = NULL;
++	if (textured) {
++		int u0 = 255, u1 = 0, v0 = 255, v1 = 0;
++		for (int k = 0; k < n; k++) {
++			u0 = v[k].u < u0 ? v[k].u : u0;
++			u1 = v[k].u > u1 ? v[k].u : u1;
++			v0 = v[k].v < v0 ? v[k].v : v0;
++			v1 = v[k].v > v1 ? v[k].v : v1;
++		}
++		tex = texture_for(page, clut, u0, u1, v0, v1);
++		int du = tex->ax - tex->rx, dv = tex->ay - tex->ry;
++		for (int k = 0; k < ntri * 3; k++) {   // into the square's place in its atlas
++			tri[k].u += du;
++			tri[k].v += dv;
++		}
++	}
++	int texmode = !textured ? TX_NONE : (cmd & 1) ? TX_RAW : TX_MOD;
++	emit_tris(tri, ntri, blend_of(cmd), texmode, tex);
++}
++
++static void draw_rect(const u32 *w, u32 cmd)
++{
++	bool textured = cmd & 4;
++	int sw, sh;
++	switch ((cmd >> 3) & 3) {
++	case 1: sw = sh = 1; break;
++	case 2: sw = sh = 8; break;
++	case 3: sw = sh = 16; break;
++	default: {
++		u32 wh = w[textured ? 3 : 2];
++		sw = wh & 0x3ff; sh = (wh >> 16) & 0x1ff;
++	}
++	}
++	if (!sw || !sh)
++		return;
++	int x = sext11(w[1]) + ps.ox, y = sext11(w[1] >> 16) + ps.oy;
++	u32 col = (w[0] & 0xffffff) | 0xff000000;
++	int u0 = 0, v0 = 0, u1 = 0, v1 = 0;
++	tcache *tex = NULL;
++	if (textured) {
++		u32 uv = w[2];
++		u0 = uv & 0xff; v0 = (uv >> 8) & 0xff;
++		u1 = u0 + sw; v1 = v0 + sh;
++		if (ps.texpage & (1 << 12)) { u0 = u0 + 1; u1 = u0 - sw; }   // x flip
++		if (ps.texpage & (1 << 13)) { v0 = v0 + 1; v1 = v0 - sh; }   // y flip
++		int ua = u0 < u1 ? u0 : u1, ub = u0 < u1 ? u1 : u0;
++		int va = v0 < v1 ? v0 : v1, vb = v0 < v1 ? v1 : v0;
++		tex = texture_for(ps.texpage, uv >> 16, ua, ub - 1, va, vb - 1);
++		u0 += tex->ax - tex->rx; u1 += tex->ax - tex->rx;
++		v0 += tex->ay - tex->ry; v1 += tex->ay - tex->ry;
++	}
++	pvtx q[6] = {
++		{ x, y, u0, v0, col }, { x + sw, y, u1, v0, col }, { x, y + sh, u0, v1, col },
++		{ x + sw, y, u1, v0, col }, { x + sw, y + sh, u1, v1, col }, { x, y + sh, u0, v1, col } };
++	int texmode = !textured ? TX_NONE : (cmd & 1) ? TX_RAW : TX_MOD;
++	emit_tris(q, 2, blend_of(cmd), texmode, tex);
++}
++
++// a line becomes a quad one pixel thick across its main direction
++static void draw_line(int x0, int y0, u32 c0, int x1, int y1, u32 c1, int blend)
++{
++	int dx = x1 - x0, dy = y1 - y0;
++	if ((dx < 0 ? -dx : dx) > 1023 || (dy < 0 ? -dy : dy) > 511)
++		return;
++	pvtx q[6];
++	bool horiz = (dx < 0 ? -dx : dx) >= (dy < 0 ? -dy : dy);
++	int ex0 = x0, ey0 = y0, ex1 = x1, ey1 = y1;
++	// include the end pixel
++	if (horiz) { if (x1 >= x0) ex1++; else ex0++; } else { if (y1 >= y0) ey1++; else ey0++; }
++	int ox = horiz ? 0 : 1, oy = horiz ? 1 : 0;
++	pvtx a = { ex0, ey0, 0, 0, c0 | 0xff000000 }, b = { ex1, ey1, 0, 0, c1 | 0xff000000 };
++	pvtx a2 = a, b2 = b;
++	a2.x += ox; a2.y += oy; b2.x += ox; b2.y += oy;
++	q[0] = a; q[1] = b; q[2] = a2; q[3] = b; q[4] = b2; q[5] = a2;
++	emit_tris(q, 2, blend, TX_NONE, NULL);
++}
++
++// GP0 02: fill a VRAM rectangle (ignores the drawing area and mask)
++static void fill_rect(const u32 *w)
++{
++	int x = w[1] & 0x3f0, y = (w[1] >> 16) & 0x1ff;
++	int fw = ((w[2] & 0x3ff) + 15) & ~15, fh = (w[2] >> 16) & 0x1ff;
++	if (!fw || !fh)
++		return;
++	// software VRAM too (textures are decoded from it), but only when
++	// something reads that area: games clear their framebuffer every frame
++	u32 c = w[0];
++	defer_fill(x, y, fw, fh, ((c >> 3) & 0x1f) | (((c >> 11) & 0x1f) << 5) | (((c >> 19) & 0x1f) << 10));
++	mark_vram(x, y, fw, fh);
++	u32 col = (w[0] & 0xffffff) | 0xff000000;
++	int save[4] = { ps.dx1, ps.dy1, ps.dx2, ps.dy2 };
++	ps.dx1 = 0; ps.dy1 = 0; ps.dx2 = VRAM_W; ps.dy2 = VRAM_H;
++	ps.area_gen++;
++	pvtx q[6] = {
++		{ x, y, 0, 0, col }, { x + fw, y, 0, 0, col }, { x, y + fh, 0, 0, col },
++		{ x + fw, y, 0, 0, col }, { x + fw, y + fh, 0, 0, col }, { x, y + fh, 0, 0, col } };
++	emit_tris(q, 2, BL_OPAQUE, TX_NONE, NULL);
++	ps.dx1 = save[0]; ps.dy1 = save[1]; ps.dx2 = save[2]; ps.dy2 = save[3];
++	ps.area_gen++;
++}
++
++static void set_ex(u32 word)
++{
++	switch ((word >> 24) & 7) {
++	case 1: ps.texpage = word & 0x3fff; break;
++	case 2: ps.texwin = word & 0xfffff; break;
++	case 3: ps.dx1 = word & 0x3ff; ps.dy1 = (word >> 10) & 0x1ff; ps.area_gen++; break;
++	case 4: ps.dx2 = (word & 0x3ff) + 1; ps.dy2 = ((word >> 10) & 0x1ff) + 1; ps.area_gen++; break;
++	case 5: ps.ox = sext11(word); ps.oy = sext11(word >> 11); break;
++	case 6: ps.mask = word & 3; break;
++	}
++}
++
++// ------------------------------------------------------------------ CPU uploads -> render target
++
++// the CPU wrote a VRAM rectangle (upload, copy, state load): put it into
++// the render target too, through a staging texture
++static void push_to_target(int x, int y, int w, int h)
++{
++	if (!ready || w <= 0 || h <= 0)
++		return;
++	if (!frame_open) {   // e.g. a state load: do it when the next GPU frame opens
++		if (x < pend_x0) pend_x0 = x;
++		if (y < pend_y0) pend_y0 = y;
++		if (x + w > pend_x1) pend_x1 = x + w;
++		if (y + h > pend_y1) pend_y1 = y + h;
++		return;
++	}
++	if (x + w > VRAM_W) w = VRAM_W - x;   // gpulib splits wrapping transfers
++	if (y + h > VRAM_H) h = VRAM_H - y;
++	// the stage is smaller than VRAM (GPU memory is scarce): bigger areas go in pieces
++	if (w > STAGE_W || h > STAGE_H) {
++		for (int py = y; py < y + h; py += STAGE_H)
++			for (int px = x; px < x + w; px += STAGE_W)
++				push_to_target(px, py, x + w - px < STAGE_W ? x + w - px : STAGE_W,
++					y + h - py < STAGE_H ? y + h - py : STAGE_H);
++		return;
++	}
++	if (stage_used)
++		gpu_sync();
++	u16 *dst = stage_tex.data;
++	const u16 *vram = gpu.vram;
++	for (int r = 0; r < h; r++) {
++		const u16 *src = vram + (y + r) * VRAM_W;
++		// like the texture pages: stage row r is sampled at t = (r + 0.5) / STAGE_H
++		for (int c = 0; c < w; c++)
++			dst[tiled(c, STAGE_H - 1 - r, STAGE_W)] = pixel_5551(src[x + c]);
++	}
++	GSPGPU_FlushDataCache(dst, STAGE_W * STAGE_H * 2);
++	flush();
++	if (vpos + 6 > MAX_VERTS)
++		gpu_sync();
++	if (base_dirty)
++		apply_base();
++	// copied 1:1, unblended, over everything
++	C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
++	set_area(0, 0, VRAM_W, VRAM_H);
++	C3D_TexEnv *env = C3D_GetTexEnv(0);
++	C3D_TexEnvInit(env);
++	C3D_TexEnvSrc(env, C3D_Both, GPU_TEXTURE0, 0, 0);
++	C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
++	C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
++	C3D_AlphaTest(false, GPU_ALWAYS, 0);
++	alias_i ^= 1;
++	tex_alias[alias_i] = stage_tex;
++	C3D_TexBind(0, &tex_alias[alias_i]);
++	clear_tex_cache();
++	s16 x0 = x, y0 = y, x1 = x + w, y1 = y + h, sw = w, sh = h;
++	// u, v in stage texels; the shader scale is switched to the stage size
++	pvtx q[6] = {
++		{ x0, y0, 0, 0, 0 }, { x1, y0, sw, 0, 0 }, { x0, y1, 0, sh, 0 },
++		{ x1, y0, sw, 0, 0 }, { x1, y1, sw, sh, 0 }, { x0, y1, 0, sh, 0 } };
++	to_gpu(q, 6);
++	memcpy(vbuf + vpos, q, sizeof(q));
++	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_texscale, 1.0f / STAGE_W, 1.0f / STAGE_H, 0, 0);
++	C3D_DrawArrays(GPU_TRIANGLES, vpos, 6);   // the next textured batch sets its own scale
++	vpos += 6;
++	vstart = vpos;
++	seq++;
++	stage_used = true;
++	sent_valid = false;
++	state_dirty = true;
++	st_uploads++;
++}
++
++// ------------------------------------------------------------------ gpulib renderer interface
++
++int renderer_init(void)
++{
++	memset(&ps, 0, sizeof(ps));
++	ps.dx2 = VRAM_W;
++	ps.dy2 = VRAM_H;
++	ps.area_gen = 1;
++	return 0;
++}
++
++void renderer_finish(void) {}
++void renderer_notify_screen_change(const struct psx_gpu_screen *screen) { (void)screen; }
++void renderer_set_interlace(int enable, int is_odd) { (void)enable; (void)is_odd; }
++void renderer_set_config(const struct rearmed_cbs *config) { (void)config; }
++void renderer_flush_queues(void) { flush(); }
++
++void renderer_sync_ecmds(uint32_t *ecmds)
++{
++	for (int i = 1; i <= 6; i++)
++		set_ex(ecmds[i]);
++}
++
++void renderer_update_caches(int x, int y, int w, int h, int state_changed)
++{
++	(void)state_changed;
++	mark_vram(x, y, w, h);
++	push_to_target(x, y, w, h);
++}
++
++int renderer_do_cmd_list(uint32_t *list_, int list_len, uint32_t *ex_regs,
++	int *cycles_sum_out, int *cycles_last, int *last_cmd)
++{
++	int cpu_cycles_sum = 0, cpu_cycles = *cycles_last;
++	u32 *list = (u32 *)list_, *list_start = list, *list_end = list + list_len;
++	u32 cmd = 0, len;
++
++	for (; list < list_end; list += 1 + len) {
++		cmd = list[0] >> 24;
++		len = cmd_lengths[cmd];
++		if (list + 1 + len > list_end) {
++			cmd = -1;
++			break;
++		}
++		// without its buffers (no game started, or no memory) nothing is drawn
++		if (!ready && cmd >= 0x02 && cmd < 0x80 && (cmd & 0xf8) != 0x48 && (cmd & 0xf8) != 0x58)
++			continue;
++		switch (cmd) {
++		case 0x02:
++			fill_rect(list);
++			gput_sum(cpu_cycles_sum, cpu_cycles, gput_fill(list[2] & 0x3ff, (list[2] >> 16) & 0x1ff));
++			break;
++		case 0x20 ... 0x3f: {
++			draw_poly(list, cmd);
++			int c = (cmd & 0x10) ? ((cmd & 4) ? gput_poly_base_gt() : gput_poly_base_g())
++				: ((cmd & 4) ? gput_poly_base_t() : gput_poly_base());
++			gput_sum(cpu_cycles_sum, cpu_cycles, c);
++		} break;
++		case 0x40 ... 0x47:
++			draw_line(sext11(list[1]) + ps.ox, sext11(list[1] >> 16) + ps.oy, list[0] & 0xffffff,
++				sext11(list[2]) + ps.ox, sext11(list[2] >> 16) + ps.oy, list[0] & 0xffffff, blend_of(cmd));
++			gput_sum(cpu_cycles_sum, cpu_cycles, gput_line(0));
++			break;
++		case 0x48 ... 0x4f: {   // flat polyline: xy words until a 0x5xxx5xxx terminator
++			u32 *p = list + 1;
++			for (;;) {
++				if (p + 1 >= list_end) { cmd = -1; goto breakloop; }
++				if ((p[1] & 0xf000f000) == 0x50005000)
++					break;
++				draw_line(sext11(p[0]) + ps.ox, sext11(p[0] >> 16) + ps.oy, list[0] & 0xffffff,
++					sext11(p[1]) + ps.ox, sext11(p[1] >> 16) + ps.oy, list[0] & 0xffffff, blend_of(cmd));
++				gput_sum(cpu_cycles_sum, cpu_cycles, gput_line(0));
++				p++;
++			}
++			len = (p + 1) - list;   // through the terminator
++		} break;
++		case 0x50 ... 0x57:
++			draw_line(sext11(list[1]) + ps.ox, sext11(list[1] >> 16) + ps.oy, list[0] & 0xffffff,
++				sext11(list[3]) + ps.ox, sext11(list[3] >> 16) + ps.oy, list[2] & 0xffffff, blend_of(cmd));
++			gput_sum(cpu_cycles_sum, cpu_cycles, gput_line(0));
++			break;
++		case 0x58 ... 0x5f: {   // gouraud polyline: colour, xy pairs until the terminator
++			u32 *p = list;
++			for (;;) {
++				if (p + 2 >= list_end) { cmd = -1; goto breakloop; }
++				if ((p[2] & 0xf000f000) == 0x50005000)
++					break;
++				if (p + 3 >= list_end) { cmd = -1; goto breakloop; }
++				draw_line(sext11(p[1]) + ps.ox, sext11(p[1] >> 16) + ps.oy, p[0] & 0xffffff,
++					sext11(p[3]) + ps.ox, sext11(p[3] >> 16) + ps.oy, p[2] & 0xffffff, blend_of(cmd));
++				gput_sum(cpu_cycles_sum, cpu_cycles, gput_line(0));
++				p += 2;
++			}
++			len = (p + 2) - list;
++		} break;
++		case 0x60 ... 0x7f: {
++			draw_rect(list, cmd);
++			int sw = 16, sh = 16;
++			switch ((cmd >> 3) & 3) {
++			case 0: { u32 wh = list[(cmd & 4) ? 3 : 2]; sw = wh & 0x3ff; sh = (wh >> 16) & 0x1ff; } break;
++			case 1: sw = sh = 1; break;
++			case 2: sw = sh = 8; break;
++			}
++			gput_sum(cpu_cycles_sum, cpu_cycles, gput_sprite(sw, sh));
++		} break;
++		case 0x1f:
++		case 0x80 ... 0xdf:
++			goto breakloop;   // gpulib handles transfers and the irq
++		case 0xe1 ... 0xe6:
++			ex_regs[cmd & 7] = list[0];
++			set_ex(list[0]);
++			break;
++		default:
++			break;
++		}
++	}
++breakloop:
++	ex_regs[1] = (ex_regs[1] & ~0x1ff) | (ps.texpage & 0x1ff);
++	*cycles_sum_out += cpu_cycles_sum;
++	*cycles_last = cpu_cycles;
++	*last_cmd = cmd;
++	return list - list_start;
++}
++
++// ------------------------------------------------------------------ frontend interface
++
++bool pica_init(const void *shbin, unsigned size)
++{
++	if (dvlb)
++		return true;
++	dvlb = DVLB_ParseFile((u32 *)shbin, size);
++	if (!dvlb)
++		return false;
++	shaderProgramInit(&prog);
++	shaderProgramSetVsh(&prog, &dvlb->DVLE[0]);
++	u_proj = shaderInstanceGetUniformLocation(prog.vertexShader, "proj");
++	u_texscale = shaderInstanceGetUniformLocation(prog.vertexShader, "texscale");
++	// the PS1 VRAM render target lives in VRAM, not in the scarce linear memory
++	if (!C3D_TexInitVRAM(&vram_tex, VRAM_W, VRAM_H, GPU_RGBA5551))
++		return false;
++	target = C3D_RenderTargetCreateFromTex(&vram_tex, GPU_TEXFACE_2D, 0, -1);
++	if (!target)
++		return false;
++	C3D_TexSetFilter(&vram_tex, GPU_NEAREST, GPU_NEAREST);
++	return true;
++}
++
++static void free_game_buffers(void)
++{
++	if (atlas[0].tex.data)
++		C3D_TexDelete(&atlas[0].tex);
++	if (stage_tex.data)
++		C3D_TexDelete(&stage_tex);
++	if (vbuf)
++		linearFree(vbuf);
++	memset(&atlas[0].tex, 0, sizeof(atlas[0].tex));
++	memset(&stage_tex, 0, sizeof(stage_tex));
++	vbuf = NULL;
++}
++
++// the big buffers only exist while a game runs (the library needs the memory)
++bool pica_game_begin(bool small)
++{
++	if (!dvlb)
++		return false;
++	free_game_buffers();
++	ready = false;
++	(void)small;
++	const region *reg = regions;
++	if (!C3D_TexInit(&stage_tex, STAGE_W, STAGE_H, GPU_RGBA5551))
++		goto fail;
++	C3D_TexSetFilter(&stage_tex, GPU_NEAREST, GPU_NEAREST);
++	vbuf = linearAlloc(MAX_VERTS * sizeof(pvtx));
++	if (!vbuf)
++		goto fail;
++	// the atlas, and each entry's fixed place in it
++	atlas[0].w = 1024;
++	atlas[0].h = 1024;
++	if (!C3D_TexInit(&atlas[0].tex, atlas[0].w, atlas[0].h, GPU_RGBA8))
++		goto fail;
++	C3D_TexSetFilter(&atlas[0].tex, GPU_NEAREST, GPU_NEAREST);
++	C3D_TexSetWrap(&atlas[0].tex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
++	int e = 0;
++	for (int lg = 0; lg < NSIZES; lg++) {
++		int size = 32 << lg, per_row = reg[lg].w / size;
++		pool_n[lg] = per_row * (reg[lg].h / size);
++		for (int i = 0; i < pool_n[lg]; i++, e++) {
++			memset(&cache[e], 0, sizeof(cache[e]));
++			cache[e].ax = reg[lg].x + (i % per_row) * size;
++			cache[e].ay = reg[lg].y + (i / per_row) * size;
++		}
++	}
++	// the reserved square: mid grey, opaque on the left, semi-transparent on the right
++	plain = &cache[0];
++	plain->valid = false;   // never found by lookups
++	plain->lg = 0;
++	{
++		u32 *dst = atlas[0].tex.data;
++		int aw = atlas[0].w, ah = atlas[0].h;
++		for (int y = 0; y < 32; y++)
++			for (int x = 0; x < 32; x++)
++				dst[tiled(plain->ax + x, ah - 1 - (plain->ay + y), aw)] = x < 16 ? 0x808080ff : 0x80808080;
++		GSPGPU_FlushDataCache(dst, aw * ah * 4);
++	}
++	C3D_TexSetFilter(&stage_tex, GPU_NEAREST, GPU_NEAREST);
++	C3D_TexSetFilter(&vram_tex, GPU_NEAREST, GPU_NEAREST);
++	memset(buckets, 0, sizeof(buckets));
++	vpos = vstart = 0;
++	ready = true;
++	return true;
++fail:
++	free_game_buffers();
++	return false;
++}
++
++void pica_game_end(void)
++{
++	ready = false;
++	have_last = false;
++	free_game_buffers();
++}
++
++void pica_exit(void)
++{
++	pica_game_end();
++	if (!dvlb)
++		return;
++	C3D_RenderTargetDelete(target);
++	C3D_TexDelete(&vram_tex);
++	shaderProgramFree(&prog);
++	DVLB_Free(dvlb);
++	dvlb = NULL;
++}
++
++// called by the frontend once per shown frame: the displayed VRAM area
++bool pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h)
++{
++	flush();
++	if (!ready || (gpu.status & PSX_GPU_STATUS_RGB24) || gpu.screen.w <= 0 || gpu.screen.h <= 0)
++		return false;
++	int x = gpu.screen.src_x, y = gpu.screen.src_y, sw = gpu.screen.w, sh = gpu.screen.h;
++	if (pica_debug & 32) {   // debug: the whole of VRAM
++		x = 0; y = 0; sw = VRAM_W; sh = VRAM_H;
++	}
++	*tex = &vram_tex;
++	*l = (float)x / VRAM_W;
++	*r = (float)(x + sw) / VRAM_W;
++	*t = 1.0f - (float)y / VRAM_H;
++	*b = 1.0f - (float)(y + sh) / VRAM_H;
++	*w = sw;
++	*h = sh;
++	return true;
++}
++
++void pica_stats(char *buf, int n)
++{
++	int k = snprintf(buf, n, "pica: state %.2fms draw %.2fms tex %.2fms; ends: atlas %u blend %u area %u rebind %u; evictions by size %u %u %u %u; ",
++		t_state / 268111.856, t_draw / 268111.856, t_tex / 268111.856, st_why[0], st_why[1], st_why[2], st_why[3],
++		st_evict_lg[0], st_evict_lg[1], st_evict_lg[2], st_evict_lg[3]);
++	memset(st_why, 0, sizeof(st_why));
++	memset(st_evict_lg, 0, sizeof(st_evict_lg));
++	t_state = t_draw = t_tex = 0;
++	buf += k; n -= k;
++	snprintf(buf, n, "%u batches %u prims %u tile decodes (%u evictions %u invalidations) %u uploads %u syncs, %uK GPU memory free; area %d,%d-%d,%d off %d,%d disp %d,%d %dx%d",
++		st_batches, st_prims, st_decodes, st_evict, st_inval, st_uploads, st_syncs, (unsigned)(linearSpaceFree() / 1024),
++		ps.dx1, ps.dy1, ps.dx2, ps.dy2, ps.ox, ps.oy, gpu.screen.src_x, gpu.screen.src_y, gpu.screen.w, gpu.screen.h);
++	st_batches = st_prims = st_decodes = st_uploads = st_syncs = st_evict = st_inval = 0;
++}
++
++// ------------------------------------------------------------------ PSX3D stereo hooks
++// (part of the software renderer; nothing to do here yet)
++
++uint16_t *psx3d_vram2;
++volatile uint32_t psx3d_ov_seq;
++void psx3d_stereo_set(int on) { (void)on; }
++void psx3d_set_strength(float px) { (void)px; }
++void psx3d_set_half3d(int on) { (void)on; }
++void psx3d_depth_frame(void) {}
++const void *psx3d_depth_get(void) { return NULL; }
++const uint16_t *psx3d_right_get(int *x, int *y, int *w, int *h, int *rgb24) { (void)x; (void)y; (void)w; (void)h; (void)rgb24; return NULL; }
++const uint16_t *psx3d_overlay_get(int *x, int *y, int *w, int *h, const uint32_t **rows) { (void)x; (void)y; (void)w; (void)h; (void)rows; return NULL; }
++void psx3d_stats(float *zc, int *n3d, int *n2d, int *dmin, int *dmax, int *zmin, int *zmax)
++{
++	*zc = 0; *n3d = *n2d = *dmin = *dmax = *zmin = *zmax = 0;
++}
+diff --git a/plugins/gpu_pica/gpu_pica.h b/plugins/gpu_pica/gpu_pica.h
+new file mode 100644
+index 0000000..6b00e56
+--- /dev/null
++++ b/plugins/gpu_pica/gpu_pica.h
+@@ -0,0 +1,17 @@
++/* gpu_pica: PS1 GPU on the 3DS GPU. Frontend interface (PSX3D). */
++#ifndef GPU_PICA_H
++#define GPU_PICA_H
++#include <stdbool.h>
++#include <citro3d.h>
++bool pica_init(const void *shbin, unsigned size);   // the frontend's compiled pica.v.pica
++// buffers for a game (about 6 MB of GPU memory; small: 3.5 MB for an Old 3DS)
++bool pica_game_begin(bool small);
++void pica_game_end(void);
++void pica_exit(void);
++void pica_frame_started(void);   // a GPU frame is open: drawing can go in
++void pica_frame_ended(void);
++void pica_state_lost(void);      // someone else drew with citro3d/citro2d
++// the displayed PS1 picture: texture, edges in texture coordinates (t > b), size
++bool pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h);
++void pica_stats(char *buf, int n);
++#endif
 diff --git a/plugins/gpu_unai/gpu_command.h b/plugins/gpu_unai/gpu_command.h
 index adede2b..199882b 100644
 --- a/plugins/gpu_unai/gpu_command.h
@@ -1167,7 +2582,7 @@ index 4b9b57e..a7f0c13 100644
    ex_regs[1] |= gpu_unai.GPU_GP1 & 0x1ff;
  
 diff --git a/plugins/gpulib/gpu.c b/plugins/gpulib/gpu.c
-index f04e3a5..811e7de 100644
+index f04e3a5..044123f 100644
 --- a/plugins/gpulib/gpu.c
 +++ b/plugins/gpulib/gpu.c
 @@ -1,3 +1,4 @@
@@ -1175,7 +2590,34 @@ index f04e3a5..811e7de 100644
  /*
   * (C) Gražvydas "notaz" Ignotas, 2011-2012
   *
-@@ -686,6 +687,8 @@ int do_vram_copy(uint16_t *vram, const uint32_t *ex_regs, const uint32_t *params
+@@ -32,6 +33,18 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+     int *cycles_sum, int *cycles_last);
+ static noinline void finish_vram_transfer(struct psx_gpu *gpu, int is_read, int is_async);
+ 
++#ifdef GPU_PICA
++// PSX3D gpu_pica keeps VRAM fills pending: settle them before VRAM is read
++// or written here, drop them when a state replaces VRAM
++void pica_settle_rect(int x, int y, int w, int h);
++void pica_settle_vram(void);
++void pica_drop_fills(void);
++#else
++#define pica_settle_rect(x, y, w, h)
++#define pica_settle_vram()
++#define pica_drop_fills()
++#endif
++
+ static void sync_renderer(struct psx_gpu *gpu)
+ {
+   if (gpu_async_enabled(gpu))
+@@ -582,6 +595,7 @@ static noinline void start_vram_transfer(struct psx_gpu *gpu, uint32_t pos_word,
+   gpu->dma.offset = 0;
+   gpu->dma.is_read = is_read;
+   gpu->dma_start = gpu->dma;
++  pica_settle_rect(gpu->dma.x, gpu->dma.y, gpu->dma.w, gpu->dma.h);
+ 
+   // postponed until the actual transfer
+   //sync_renderer(gpu);
+@@ -686,6 +700,8 @@ int do_vram_copy(uint16_t *vram, const uint32_t *ex_regs, const uint32_t *params
    }
  
    renderer_update_caches(dx, dy, w, h, 0);
@@ -1184,7 +2626,7 @@ index f04e3a5..811e7de 100644
    return 4;
  }
  
-@@ -824,8 +827,20 @@ breakloop:
+@@ -824,8 +840,20 @@ breakloop:
    return pos;
  }
  
@@ -1205,6 +2647,55 @@ index f04e3a5..811e7de 100644
  {
    int cmd, pos;
    uint32_t old_e3 = gpu->ex_regs[3];
+@@ -874,6 +902,7 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+       *cycles_sum += *cycles_last;
+       *cycles_last = 0;
+       if (do_vram_copy_pre(gpu, data + pos, cycles_last))
++        pica_settle_vram();
+         do_vram_copy(gpu->vram, gpu->ex_regs, data + pos);
+       pos += 4;
+       continue;
+@@ -886,17 +915,24 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+       continue;
+     }
+ 
+-    if (gpu->frameskip.active && gpu->frameskip.allow)
++    if (gpu->frameskip.active && gpu->frameskip.allow) {
++      int p0 = pos;
+       pos += do_cmd_list_skip(gpu, data + pos, count - pos,
+                cycles_sum, cycles_last, &cmd);
++      if (psx3d_prof_on)
++        psx3d_prof_c[PROF_CDR] += pos - p0;   // PSX3D: words skipped
++    }
+     else if (gpu_async_enabled(gpu)) {
+       pos += gpu_async_do_cmd_list(gpu, data + pos, count - pos,
+                cycles_sum, cycles_last, &cmd, &vram_dirty);
+     }
+     else {
++      int p0 = pos;
+       pos += renderer_do_cmd_list(data + pos, count - pos, gpu->ex_regs,
+                cycles_sum, cycles_last, &cmd);
+       vram_dirty = 1;
++      if (psx3d_prof_on)
++        psx3d_prof_t[PROF_CDR] += pos - p0;   // PSX3D: words drawn
+     }
+ 
+     if (cmd == -1)
+@@ -1092,12 +1128,14 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+       }
+ 
+       sync_renderer(&gpu);
++      pica_settle_vram();
+       memcpy(freeze->ulControl, gpu.regs, sizeof(gpu.regs));
+       memcpy(freeze->ulControl + 0xe0, gpu.ex_regs, sizeof(gpu.ex_regs));
+       freeze->ulStatus = gpu.status;
+       break;
+     case 0: // load
+       sync_renderer(&gpu);
++      pica_drop_fills();
+       //memcpy(gpu.regs, freeze->ulControl, sizeof(gpu.regs));
+       memcpy(gpu.ex_regs, freeze->ulControl + 0xe0, sizeof(gpu.ex_regs));
+       gpu.status = freeze->ulStatus;
 diff --git a/plugins/gpulib/gpu.h b/plugins/gpulib/gpu.h
 index e929fe6..6368b60 100644
 --- a/plugins/gpulib/gpu.h
@@ -1252,3 +2743,20 @@ index a67509b..4f6d259 100644
  
      switch (cmd) {
        case 0x02:
+diff --git a/plugins/gpulib/vout_pl.c b/plugins/gpulib/vout_pl.c
+index 07cf6da..732b09b 100644
+--- a/plugins/gpulib/vout_pl.c
++++ b/plugins/gpulib/vout_pl.c
+@@ -82,6 +82,12 @@ int vout_update(struct psx_gpu *gpu, int src_x, int src_y)
+ #ifdef RAW_FB_DISPLAY
+   w = (gpu->status & PSX_GPU_STATUS_RGB24) ? 2048/3 : 1024;
+   h = 512, x = src_x = y = src_y = 0;
++#endif
++#ifdef GPU_PICA
++  // PSX3D: the picture is already on the 3DS GPU (gpu_pica); only 24-bit
++  // modes (movies) still go through the CPU
++  if (!(gpu->status & PSX_GPU_STATUS_RGB24))
++    return 1;
+ #endif
+   if (x < 0) { w += x; src_x2 = -x; x = 0; }
+   if (y < 0) { h += y; src_y -=  y; y = 0; }

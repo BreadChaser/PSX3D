@@ -4,6 +4,22 @@ PSX3D is a standalone PlayStation emulator for the New Nintendo 3DS. It runs the
 [PCSX-ReARMed](https://github.com/libretro/pcsx_rearmed) emulation core directly,
 without RetroArch, behind a frontend written for the 3DS.
 
+## Experimental GPU renderer (this branch)
+
+The `gpu-renderer` branch draws PS1 graphics with the 3DS GPU instead of
+the CPU (`core/plugins/gpu_pica`, a new renderer written for the PICA200 on
+top of gpulib). PS1 VRAM is a 1024x512 RGBA5551 render target, texture pages
+are decoded into a shared atlas on demand, and polygons are clipped to the
+PS1 drawing area on the CPU before they reach the GPU.
+
+Status: Crash Bandicoot renders correctly on New and Old 3DS. On an Old 3DS
+it needs about 40% less CPU time per frame than the software renderer. Not
+done yet: mask bit, texture windows, dithering, 24-bit movies through the
+GPU, real 3D, and broad game testing. Expect glitches; the release builds on
+`main` still use the software renderer.
+
+Build the software renderer instead with `make clean && make GPU=unai`.
+
 ## Features
 
 - Dynarec CPU core at 804 MHz with the L2 cache enabled; most titles run at full speed on New 3DS hardware
