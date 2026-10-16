@@ -116,6 +116,7 @@ bool video_init(void)
 	{
 		extern int pica_debug;
 		pica_debug = sw_gldbg;
+		pica_open_frame = video_gpu_frame_begin;   // when the core starts drawing
 	}
 #endif
 

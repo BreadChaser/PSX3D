@@ -998,9 +998,6 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			// clock says we are behind (the sound buffer alone rarely shows it)
 			abuf_status_cb(true, occ, occ < 20 || late);
 		}
-#ifdef PSX3D_PICA
-		video_gpu_frame_begin();   // the hardware renderer draws while the core runs
-#endif
 		u64 t0 = svcGetSystemTick();
 		static bool rewind_hint;
 		if (input_rewind() && input_fast_forward())
