@@ -509,10 +509,10 @@ index 76f76af..0dbd6a9 100644
   int cycle_diff;
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 0000000..9f9f6f0
+index 0000000..a68dcbb
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,1779 @@
+@@ -0,0 +1,1914 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -556,18 +556,20 @@ index 0000000..9f9f6f0
 +// textures never ends a batch: draw calls are expensive (~20us each on an
 +// Old 3DS).
 +#define NSIZES 4
-+typedef struct { int x, y, w, h; } region;
-+// 1024x1024 (4 MB): 128 squares of 32, 32 of 64, 16 of 128 and 8 of 256
-+// (whole pages: Silent Hill thrashed with 4). An Old 3DS has 13 MB of GPU
-+// memory in all; the library music is let go during games to make room.
-+static const region regions[NSIZES] = { { 512, 512, 512, 256 }, { 512, 768, 512, 256 }, { 0, 512, 512, 512 }, { 0, 0, 1024, 512 } };
++// 1024x1024 (4 MB), shared by all sizes: 32x32 cells of 32x32 texels, a
++// square of 32 << lg takes an aligned block of (1 << lg)^2 cells. (Fixed
++// regions per size thrashed: racing games ran out of one size while the
++// others sat empty.) An Old 3DS has 13 MB of GPU memory in all; the library
++// music is let go during games to make room.
++#define CELLS 32
++#define CELL_FREE (-1)
++#define CELL_PLAIN (-2)
 +static struct {
 +	C3D_Tex tex;
 +	int w, h;
 +	bool rebind;       // squares were decoded into it: rebind so the GPU texture cache drops old data
 +} atlas[1];
-+static int pool_n[NSIZES];
-+#define NENTRIES (256 + 64 + 16 + 8)
++#define NENTRIES (CELLS * CELLS)
 +
 +typedef struct tcache {
 +	bool valid;
@@ -583,6 +585,7 @@ index 0000000..9f9f6f0
 +	u64 tiles;         // decoded 32x32 tiles inside the square (8x8 at most)
 +	u32 used_seq;      // last batch that drew with it
 +	u32 lru;
++	u16 slot;          // its place in active[lg]
 +	struct tcache *next;   // hash chain
 +} tcache;
 +
@@ -606,7 +609,14 @@ index 0000000..9f9f6f0
 +static bool ready, frame_open;
 +static bool base_dirty = true, state_dirty = true;
 +static u32 seq = 1, synced_seq;
-+static tcache cache[NENTRIES];       // pool 0 first, then 1, 2, 3
++static tcache cache[NENTRIES];
++static s16 cell_owner[CELLS * CELLS];   // entry, CELL_FREE or CELL_PLAIN
++static u8 block_used[16];               // occupied cells of each 256x256 area
++static u16 active[NSIZES][NENTRIES];    // entries in use, by size
++static int nactive[NSIZES];
++static u16 free_list[NENTRIES];
++static int nfree;
++static tcache plain_e;
 +static tcache *plain;
 +#ifdef PICA_SIM_HASH
 +unsigned long long pica_sim_hash = 1469598103934665603ull;
@@ -616,9 +626,44 @@ index 0000000..9f9f6f0
 +	for (size_t i = 0; i < n; i++)
 +		pica_sim_hash = (pica_sim_hash ^ b[i]) * 1099511628211ull;
 +}
-+void pica_sim_final(void)
++void pica_sim_final(void) {}
++// a vertex as the PS1 sees it: position, colour, and for texture coordinates
++// the texture (page, CLUT, depth, window) and texel they point at, plus the
++// decoded texel there; independent of where the atlas keeps squares
++static inline u32 tiled(int x, int y, int w);
++static void sim_vertex(const pvtx *v)
 +{
-+	sim_hash(atlas[0].tex.data, (size_t)atlas[0].w * atlas[0].h * 4);
++	u32 rec[8] = { (u16)v->x | ((u32)(u16)v->y << 16), v->rgba };
++	int u = v->u, w = v->v;
++	const tcache *hit = NULL;
++	static const int du[4] = { 0, -1, 0, -1 }, dv[4] = { 0, 0, -1, -1 };
++	for (int k = 0; k < 4 && !hit; k++) {
++		int uu = u + du[k], vv = w + dv[k];
++		if (uu >= plain->ax && uu < plain->ax + 32 && vv >= plain->ay && vv < plain->ay + 32) {
++			rec[2] = 0xffffffff; rec[3] = (uu - plain->ax) | ((vv - plain->ay) << 16);
++			hit = plain;
++			u = uu; w = vv;
++			break;
++		}
++		for (int i = 0; i < NENTRIES; i++) {
++			const tcache *c = &cache[i];
++			int size = 32 << c->lg;
++			if (c->valid && uu >= c->ax && uu < c->ax + size && vv >= c->ay && vv < c->ay + size) {
++				rec[2] = c->depth | (c->page << 8) | ((u32)c->clut << 16);
++				rec[3] = c->win;
++				rec[4] = (c->rx + uu - c->ax) | ((c->ry + vv - c->ay) << 16);
++				hit = c; u = uu; w = vv;
++				break;
++			}
++		}
++	}
++	if (hit && u >= 0 && u < atlas[0].w && w >= 0 && w < atlas[0].h)
++		rec[5] = ((u32 *)atlas[0].tex.data)[tiled(u, atlas[0].h - 1 - w, atlas[0].w)];
++	if (!hit) rec[6] = (u16)v->u | ((u32)(u16)v->v << 16);
++	sim_hash(rec, sizeof(rec));
++	static FILE *dump;
++	if (!dump && getenv("SIMDUMP")) dump = fopen(getenv("SIMDUMP"), "w");
++	if (dump) fprintf(dump, "%08x %08x %08x %08x %08x %08x %08x  %d %d\n", rec[0], rec[1], rec[2], rec[3], rec[4], rec[5], rec[6], v->u, v->v);
 +}
 +#endif
 +static tcache *last_tex;             // the previous lookup's result
@@ -1004,6 +1049,18 @@ index 0000000..9f9f6f0
 +}
 +
 +// decode the parts of the page rectangle u0..u1 x v0..v1 not decoded yet
++// write CPU-cached data out to memory for the GPU (a plain kernel call; no
++// inter-process call like GSPGPU_FlushDataCache, and no kernel backdoor: a
++// whole-cache clean through svcBackdoor crashed the New 3DS)
++static void flush_range(const void *p, u32 n)
++{
++#ifdef PSX3D_SIM
++	GSPGPU_FlushDataCache(p, n);
++#else
++	svcStoreProcessDataCache(CUR_PROCESS_HANDLE, (u32)p, n);
++#endif
++}
++
 +static void decode_rect(tcache *c, int u0, int u1, int v0, int v1)
 +{
 +	int t0 = (u0 - c->rx) >> 5, t1 = (u1 - c->rx) >> 5, s0 = (v0 - c->ry) >> 5, s1 = (v1 - c->ry) >> 5;
@@ -1042,22 +1099,31 @@ index 0000000..9f9f6f0
 +		for (int i = 0; i < n; i++)
 +			pal[i] = texel_rgba(crow[(cx + i) & 1023]);
 +	}
++	// the atlas is 8x8 tiles of 64 texels in Z order: offsets of the 32
++	// texels of a block row from its first, and of the row within a tile
++	static const u16 xoff[32] = {
++		0, 1, 4, 5, 16, 17, 20, 21, 64, 65, 68, 69, 80, 81, 84, 85,
++		128, 129, 132, 133, 144, 145, 148, 149, 192, 193, 196, 197, 208, 209, 212, 213 };
++	static const u8 yoff[8] = { 0, 2, 8, 10, 32, 34, 40, 42 };
 +	for (int t = 0; t < 64; t++) {
 +		if (!(need & (1ull << t)))
 +			continue;
 +		int lu = (t & 7) * 32, lv = (t >> 3) * 32;           // inside the square
 +		int tu = c->rx + lu;                                  // in the page
 +		int au = c->ax + lu;                                  // in the atlas
-+		if (c->win) {
-+			// texture window: page texel (u, v) shows texel
-+			// ((u & ~mask) | (offset & mask), same for v)
-+			u32 w = c->win;
-+			int mx = (w & 0x1f) * 8, my = ((w >> 5) & 0x1f) * 8;
-+			int ox = ((w >> 10) & 0x1f) * 8 & mx, oy = ((w >> 15) & 0x1f) * 8 & my;
-+			for (int y = 0; y < 32; y++) {
-+				int wv = (((c->ry + lv + y) & ~my) | oy) & 255;
++		for (int y = 0; y < 32; y++) {
++			int v = c->ry + lv + y;
++			// texture memory runs bottom-up: atlas row r is sampled at t = (r + 0.5) / height
++			int ty = ah - 1 - (c->ay + lv + y);
++			u32 *d = dst + ((ty >> 3) * (aw >> 3) + (au >> 3)) * 64 + yoff[ty & 7];
++			if (c->win) {
++				// texture window: page texel (u, v) shows texel
++				// ((u & ~mask) | (offset & mask), same for v)
++				u32 w = c->win;
++				int mx = (w & 0x1f) * 8, my = ((w >> 5) & 0x1f) * 8;
++				int ox = ((w >> 10) & 0x1f) * 8 & mx, oy = ((w >> 15) & 0x1f) * 8 & my;
++				int wv = ((v & ~my) | oy) & 255;
 +				const u16 *row = vram + ((py + wv) & 511) * VRAM_W;
-+				int ty = ah - 1 - (c->ay + lv + y);
 +				for (int x = 0; x < 32; x++) {
 +					int wu = (((tu + x) & ~mx) | ox) & 255;
 +					u32 texel;
@@ -1067,43 +1133,50 @@ index 0000000..9f9f6f0
 +						texel = pal[(row[(px + wu / 2) & 1023] >> ((wu & 1) * 8)) & 255];
 +					else
 +						texel = texel_rgba(row[(px + wu) & 1023]);
-+					dst[tiled(au + x, ty, aw)] = texel;
++					d[xoff[x]] = texel;
 +				}
++				continue;
 +			}
-+			int tr = (ah - 1 - (c->ay + lv + 31)) >> 3;
-+			GSPGPU_FlushDataCache(dst + tr * (aw / 8) * 64, 4 * (aw / 8) * 64 * 4);
-+			st_decodes++;
-+			continue;
-+		}
-+		for (int y = 0; y < 32; y++) {
-+			int v = c->ry + lv + y;
 +			const u16 *row = vram + ((py + v) & 511) * VRAM_W;
-+			// texture memory runs bottom-up: atlas row r is sampled at t = (r + 0.5) / height
-+			int ty = ah - 1 - (c->ay + lv + y);
 +			if (c->depth == 0) {
++				const u16 *s = row + ((px + tu / 4) & 1023);   // 8 words, inside one page row
 +				for (int x = 0; x < 8; x++) {
-+					u16 w = row[(px + tu / 4 + x) & 1023];
-+					int u = au + x * 4;
-+					dst[tiled(u, ty, aw)] = pal[w & 15];
-+					dst[tiled(u + 1, ty, aw)] = pal[(w >> 4) & 15];
-+					dst[tiled(u + 2, ty, aw)] = pal[(w >> 8) & 15];
-+					dst[tiled(u + 3, ty, aw)] = pal[w >> 12];
++					u32 w = s[x];
++					u32 *dd = d + xoff[x * 4];   // 4 texels: offsets +0 +1 +4 +5
++					dd[0] = pal[w & 15];
++					dd[1] = pal[(w >> 4) & 15];
++					dd[4] = pal[(w >> 8) & 15];
++					dd[5] = pal[w >> 12];
 +				}
 +			} else if (c->depth == 1) {
 +				for (int x = 0; x < 16; x++) {
-+					u16 w = row[(px + tu / 2 + x) & 1023];
-+					dst[tiled(au + x * 2, ty, aw)] = pal[w & 255];
-+					dst[tiled(au + x * 2 + 1, ty, aw)] = pal[w >> 8];
++					u32 w = row[(px + tu / 2 + x) & 1023];
++					u32 *dd = d + xoff[x * 2];   // 2 texels: +0 +1
++					dd[0] = pal[w & 255];
++					dd[1] = pal[w >> 8];
 +				}
 +			} else {
 +				for (int x = 0; x < 32; x++)
-+					dst[tiled(au + x, ty, aw)] = texel_rgba(row[(px + tu + x) & 1023]);
++					d[xoff[x]] = texel_rgba(row[(px + tu + x) & 1023]);
 +			}
 +		}
-+		// the 32 rows are 4 rows of 8x8 tiles across the whole atlas
-+		int tr = (ah - 1 - (c->ay + lv + 31)) >> 3;
-+		GSPGPU_FlushDataCache(dst + tr * (aw / 8) * 64, 4 * (aw / 8) * 64 * 4);
 +		st_decodes++;
++	}
++	// the GPU reads the atlas from memory: write the decoded texels out of
++	// the CPU cache. A 32x32 block is 4 runs of 1KB (4 tiles of an 8-row
++	// band); neighbouring blocks of a row continue those runs.
++	for (int r = 0; r < 8; r++) {
++		u32 row = (u32)(need >> (r * 8)) & 0xff;
++		while (row) {
++			int k0 = __builtin_ctz(row), k1 = k0;
++			while (k1 < 7 && (row >> (k1 + 1)) & 1)
++				k1++;
++			row &= ~(((2u << k1) - 1) & ~((1u << k0) - 1));
++			int ty0 = ah - 1 - (c->ay + r * 32 + 31);   // the lowest atlas row of the blocks
++			for (int band = 0; band < 4; band++)
++				flush_range(dst + (((ty0 >> 3) + band) * (aw >> 3) + ((c->ax + k0 * 32) >> 3)) * 64,
++					(k1 - k0 + 1) * 1024);   // 4 tiles x 64 texels x 4 bytes per block
++		}
 +	}
 +	c->tiles |= need;
 +	atlas[0].rebind = true;
@@ -1128,38 +1201,97 @@ index 0000000..9f9f6f0
 +	return NSIZES - 1;
 +}
 +
-+// a free or least recently used entry of the pool for this size
-+static tcache *pool_take(int lg)
++static void cells_set(int cx, int cy, int n, s16 v)
 +{
-+	int first = 0;
-+	for (int i = 0; i < lg; i++)
-+		first += pool_n[i];
-+	tcache *best = NULL;
-+	for (int i = first; i < first + pool_n[lg]; i++) {
-+		if (&cache[i] == plain)
-+			continue;
-+		if (!best) {
-+			best = &cache[i];
-+			if (!best->valid)
-+				break;
-+			continue;
++	for (int y = cy; y < cy + n; y++)
++		for (int x = cx; x < cx + n; x++) {
++			s16 *o = &cell_owner[y * CELLS + x];
++			block_used[(y >> 3) * 4 + (x >> 3)] += (v != CELL_FREE) - (*o != CELL_FREE);
++			*o = v;
 +		}
-+		if (!cache[i].valid) {
-+			best = &cache[i];
-+			break;
++}
++
++// forget an entry and free its cells (the caller syncs if queued draws use it)
++static void drop_entry(tcache *c)
++{
++	unhash(c);
++	c->valid = false;
++	cells_set(c->ax >> 5, c->ay >> 5, 1 << c->lg, CELL_FREE);
++	int last = active[c->lg][--nactive[c->lg]];
++	active[c->lg][c->slot] = last;
++	cache[last].slot = c->slot;
++	free_list[nfree++] = c - cache;
++}
++
++static void evict(tcache *c)
++{
++	st_evict++;
++	st_evict_lg[c->lg]++;
++	if (c->used_seq > synced_seq)   // queued draws still read it
++		gpu_sync();
++	drop_entry(c);
++}
++
++// a new entry with an atlas square of 32 << lg: free space if there is any,
++// else the least recently used square of that size, else the least recently
++// used aligned block of smaller ones
++static tcache *take_square(int lg)
++{
++	int n = 1 << lg, bx = -1, by = -1, best_fill = -1;
++	// free space, in the fullest 256x256 area that has room: whole areas
++	// stay free for whole pages
++	for (int cy = 0; cy < CELLS; cy += n)
++		for (int cx = 0; cx < CELLS; cx += n) {
++			int fill = block_used[(cy >> 3) * 4 + (cx >> 3)];
++			if (fill > 64 - n * n || fill <= best_fill)
++				continue;
++			bool ok = true;
++			for (int y = cy; y < cy + n && ok; y++)
++				for (int x = cx; x < cx + n; x++)
++					if (cell_owner[y * CELLS + x] != CELL_FREE) { ok = false; break; }
++			if (ok) { bx = cx; by = cy; best_fill = fill; }
 +		}
-+		if (cache[i].lru < best->lru)
-+			best = &cache[i];
++	if (bx < 0 && nactive[lg]) {
++		// the same size: least recently used, preferring one no queued draw reads
++		tcache *v = NULL;
++		bool v_queued = true;
++		for (int i = 0; i < nactive[lg]; i++) {
++			tcache *c = &cache[active[lg][i]];
++			bool q = c->used_seq > synced_seq;
++			if (!v || (v_queued && !q) || (q == v_queued && c->lru < v->lru)) { v = c; v_queued = q; }
++		}
++		bx = v->ax >> 5; by = v->ay >> 5;
++		evict(v);
 +	}
-+	if (best->valid) {
-+		st_evict++;
-+		st_evict_lg[lg]++;
-+		if (best->used_seq > synced_seq)   // queued draws still read it
-+			gpu_sync();
-+		unhash(best);
-+		best->valid = false;
++	if (bx < 0) {
++		// only smaller squares: the block whose newest one is oldest
++		u32 best = ~0u;
++		for (int cy = 0; cy < CELLS; cy += n)
++			for (int cx = 0; cx < CELLS; cx += n) {
++				u32 newest = 0;
++				for (int y = cy; y < cy + n && newest != ~0u; y++)
++					for (int x = cx; x < cx + n; x++) {
++						int o = cell_owner[y * CELLS + x];
++						if (o == CELL_PLAIN) { newest = ~0u; break; }
++						if (o >= 0 && cache[o].lru > newest) newest = cache[o].lru;
++					}
++				if (newest < best) { best = newest; bx = cx; by = cy; }
++			}
++		for (int y = by; y < by + n; y++)
++			for (int x = bx; x < bx + n; x++)
++				if (cell_owner[y * CELLS + x] >= 0)
++					evict(&cache[cell_owner[y * CELLS + x]]);
 +	}
-+	return best;
++	int e = free_list[--nfree];
++	tcache *c = &cache[e];
++	memset(c, 0, sizeof(*c));
++	c->ax = bx * 32;
++	c->ay = by * 32;
++	c->lg = lg;
++	c->slot = nactive[lg];
++	active[lg][nactive[lg]++] = e;
++	cells_set(bx, by, n, e);
++	return c;
 +}
 +
 +// the texture for drawing texels u0..u1 x v0..v1 (inclusive; past 255 they
@@ -1197,14 +1329,13 @@ index 0000000..9f9f6f0
 +			u0 = nu0; u1 = nu1; v0 = nv0; v1 = nv1;
 +			if (c->used_seq > synced_seq)
 +				gpu_sync();
-+			unhash(c);
-+			c->valid = false;
++			drop_entry(c);
 +			c = NULL;
 +		}
 +	}
 +	if (!c) {
 +		int rx, ry, lg = square_for(u0, u1, v0, v1, &rx, &ry);
-+		c = pool_take(lg);
++		c = take_square(lg);
 +		c->depth = depth;
 +		c->page = pg;
 +		c->clut = cl;
@@ -1433,7 +1564,8 @@ index 0000000..9f9f6f0
 +	{   // simulator: what was drawn, to compare builds
 +		u32 st[4] = { cur.atlas, cur.blend, cur.texmode, cur.pass };
 +		sim_hash(st, sizeof(st));
-+		sim_hash(vbuf + vstart, (vpos - vstart) * sizeof(pvtx));
++		for (int i = vstart; i < vpos; i++)
++			sim_vertex(&vbuf[i]);
 +	}
 +#endif
 +#ifdef PICA_TIMERS
@@ -1645,6 +1777,8 @@ index 0000000..9f9f6f0
 +
 +static void noinline __attribute__((cold)) draw_poly_slow(pvtx *v, int n, bool quad, bool textured, u32 page, u32 clut, u32 cmd);
 +
++typedef u32 __attribute__((may_alias)) u32a;
++
 +static void draw_poly(const u32 *w, u32 cmd)
 +{
 +	bool quad = cmd & 8, gouraud = cmd & 0x10, textured = cmd & 4;
@@ -1700,23 +1834,24 @@ index 0000000..9f9f6f0
 +	pvtx *o = alloc_verts(quad ? 6 : 3);
 +	if (!o)
 +		return;
-+	pvtx f[4];
++	// finished vertices as three words each, built in cache and stored once
++	// (never read back from the buffer: the Old 3DS cache fills on reads only).
++	// Inside the drawing area x * 4 and y * 4 fit the target: no clamping.
++	u32 q[4][3];
++	if (!textured)
++		du = plain->ax + 24, dv = plain->ay + 8;
 +	for (int k = 0; k < n; k++) {
-+		int x = v[k].x * 4, y = v[k].y * 4;
-+		f[k].x = x > VRAM_W * 4 - 1 ? VRAM_W * 4 - 1 : x;
-+		f[k].y = y > VRAM_H * 4 - 1 ? VRAM_H * 4 - 1 : y;
-+		if (textured) {
-+			f[k].u = v[k].u + du;
-+			f[k].v = v[k].v + dv;
-+		} else {
-+			f[k].u = plain->ax + 24;
-+			f[k].v = plain->ay + 8;
-+		}
-+		f[k].rgba = (rawcol ? rawcol : v[k].rgba) | a;
++		int u = textured ? v[k].u + du : du, vv = textured ? v[k].v + dv : dv;
++		q[k][0] = (u32)(v[k].x * 4) | ((u32)(v[k].y * 4) << 16);
++		q[k][1] = (u32)(u & 0xffff) | ((u32)vv << 16);
++		q[k][2] = (rawcol ? rawcol : v[k].rgba) | a;
 +	}
-+	o[0] = f[0]; o[1] = f[1]; o[2] = f[2];
-+	if (quad) {
-+		o[3] = f[1]; o[4] = f[3]; o[5] = f[2];
++	u32a *ow = (u32a *)o;
++	static const u8 order[6] = { 0, 1, 2, 1, 3, 2 };
++	for (int k = 0; k < (quad ? 6 : 3); k++) {
++		ow[k * 3] = q[order[k]][0];
++		ow[k * 3 + 1] = q[order[k]][1];
++		ow[k * 3 + 2] = q[order[k]][2];
 +	}
 +	tex->used_seq = seq + 1;
 +	st_prims++;
@@ -2007,6 +2142,7 @@ index 0000000..9f9f6f0
 +	if (!frame_open && pica_open_frame && ready)
 +		pica_open_frame();
 +	u32 cmd = 0, len;
++	const bool skip_draw = !ready || (pica_debug & 2048);
 +
 +	for (; list < list_end; list += 1 + len) {
 +		cmd = list[0] >> 24;
@@ -2017,7 +2153,7 @@ index 0000000..9f9f6f0
 +		}
 +		// without its buffers (no game started, or no memory) nothing is drawn;
 +		// debug 2048: drawing commands are skipped (the rest of the emulator alone)
-+		if ((!ready || (pica_debug & 2048)) && cmd >= 0x02 && cmd < 0x80 && (cmd & 0xf8) != 0x48 && (cmd & 0xf8) != 0x58)
++		if (skip_draw && cmd >= 0x02 && cmd < 0x80 && (cmd & 0xf8) != 0x48 && (cmd & 0xf8) != 0x58)
 +			continue;
 +		switch (cmd) {
 +		case 0x02:
@@ -2147,7 +2283,6 @@ index 0000000..9f9f6f0
 +	free_game_buffers();
 +	ready = false;
 +	(void)small;
-+	const region *reg = regions;
 +	if (!C3D_TexInit(&stage_tex, STAGE_W, STAGE_H, GPU_RGBA5551))
 +		goto fail;
 +	disp_used = false;
@@ -2162,20 +2297,20 @@ index 0000000..9f9f6f0
 +		goto fail;
 +	C3D_TexSetFilter(&atlas[0].tex, GPU_NEAREST, GPU_NEAREST);
 +	C3D_TexSetWrap(&atlas[0].tex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
-+	int e = 0;
-+	for (int lg = 0; lg < NSIZES; lg++) {
-+		int size = 32 << lg, per_row = reg[lg].w / size;
-+		pool_n[lg] = per_row * (reg[lg].h / size);
-+		for (int i = 0; i < pool_n[lg]; i++, e++) {
-+			memset(&cache[e], 0, sizeof(cache[e]));
-+			cache[e].ax = reg[lg].x + (i % per_row) * size;
-+			cache[e].ay = reg[lg].y + (i / per_row) * size;
-+		}
-+	}
++	// all cells free but the reserved square's (the last one)
++	for (int i = 0; i < CELLS * CELLS; i++)
++		cell_owner[i] = CELL_FREE;
++	memset(block_used, 0, sizeof(block_used));
++	memset(nactive, 0, sizeof(nactive));
++	for (nfree = 0; nfree < NENTRIES; nfree++)
++		free_list[nfree] = NENTRIES - 1 - nfree;
++	memset(cache, 0, sizeof(cache));
 +	// the reserved square: mid grey, opaque on the left, semi-transparent on the right
-+	plain = &cache[0];
-+	plain->valid = false;   // never found by lookups
-+	plain->lg = 0;
++	plain = &plain_e;
++	memset(plain, 0, sizeof(*plain));   // never valid: never found by lookups
++	plain->ax = (CELLS - 1) * 32;
++	plain->ay = (CELLS - 1) * 32;
++	cells_set(CELLS - 1, CELLS - 1, 1, CELL_PLAIN);
 +	{
 +		u32 *dst = atlas[0].tex.data;
 +		int aw = atlas[0].w, ah = atlas[0].h;

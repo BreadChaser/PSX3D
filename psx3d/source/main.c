@@ -108,6 +108,7 @@ bool sw_stats;          // log fps and renderer counters once a second (no timer
 bool sw_o3ds;           // test: behave like an Old 3DS (settings not saved)
 bool sw_fs1;            // test: force frameskip, every other frame
 bool sw_noskip;         // test: no frameskip (benchmarks)
+char sw_clock[8];       // test: emulated PS1 CPU clock (pcsx_rearmed_psxclock), e.g. 40
 int sw_gldbg;           // test: hardware renderer debug bits (1 no alpha test, 2 no textures)
 char sw_game[64];       // test: start the first library game whose title contains this
 int sw_vramdump;         // test: dump PS1 VRAM this many frames after the game starts
@@ -134,6 +135,7 @@ static void parse_switches(int argc, char **argv)
 		else if (!strncmp(a, "gldbg=", 6)) sw_gldbg = atoi(a + 6);
 		else if (!strncmp(a, "vramdump=", 9)) sw_vramdump = atoi(a + 9);
 		else if (!strncmp(a, "pmu=", 4)) sscanf(a + 4, "%x,%x", (unsigned *)&sw_pmu0, (unsigned *)&sw_pmu1);
+		else if (!strncmp(a, "clock=", 6)) snprintf(sw_clock, sizeof(sw_clock), "%s", a + 6);
 		else if (!strncmp(a, "game=", 5)) snprintf(sw_game, sizeof(sw_game), "%s", a + 5);
 		else if (!strcmp(a, "nosound")) sw_nosound = true;
 		else if (!strcmp(a, "noirrst")) sw_noirrst = true;

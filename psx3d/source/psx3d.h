@@ -100,6 +100,7 @@ void new_dynarec_print_stats(void);
 extern bool sw_prof, sw_stats, sw_o3ds, sw_fs1, sw_noskip;
 extern int sw_state, sw_gldbg, sw_vramdump;
 extern int sw_pmu0, sw_pmu1;
+extern char sw_clock[8];
 // pmu.c - ARM11 performance counters (test tool)
 void pmu_start(int ev0, int ev1);
 void pmu_begin(void);
