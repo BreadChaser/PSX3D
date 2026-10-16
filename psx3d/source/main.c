@@ -111,6 +111,7 @@ bool sw_noskip;         // test: no frameskip (benchmarks)
 int sw_gldbg;           // test: hardware renderer debug bits (1 no alpha test, 2 no textures)
 char sw_game[64];       // test: start the first library game whose title contains this
 int sw_vramdump;         // test: dump PS1 VRAM this many frames after the game starts
+int sw_pmu0 = -1, sw_pmu1 = -1;   // test: ARM11 performance counter events (pmu=AA,BB, hex)
 int sw_state = -1;       // test: load this save state slot when the game starts (state0, state=N)
 bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 
@@ -132,6 +133,7 @@ static void parse_switches(int argc, char **argv)
 		else if (!strncmp(a, "state=", 6)) sw_state = atoi(a + 6);
 		else if (!strncmp(a, "gldbg=", 6)) sw_gldbg = atoi(a + 6);
 		else if (!strncmp(a, "vramdump=", 9)) sw_vramdump = atoi(a + 9);
+		else if (!strncmp(a, "pmu=", 4)) sscanf(a + 4, "%x,%x", (unsigned *)&sw_pmu0, (unsigned *)&sw_pmu1);
 		else if (!strncmp(a, "game=", 5)) snprintf(sw_game, sizeof(sw_game), "%s", a + 5);
 		else if (!strcmp(a, "nosound")) sw_nosound = true;
 		else if (!strcmp(a, "noirrst")) sw_noirrst = true;

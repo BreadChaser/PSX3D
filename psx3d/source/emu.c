@@ -901,6 +901,11 @@ static void set_game_name(const char *path)
 static void game_apt(APT_HookType hook, void *param)
 {
 	(void)param;
+	// performance counters (test tool) off whenever the system takes over
+	if (hook == APTHOOK_ONSUSPEND || hook == APTHOOK_ONSLEEP || hook == APTHOOK_ONEXIT)
+		pmu_stop();
+	else if ((hook == APTHOOK_ONRESTORE || hook == APTHOOK_ONWAKEUP) && sw_pmu0 >= 0)
+		pmu_start(sw_pmu0, sw_pmu1 >= 0 ? sw_pmu1 : 0);
 	if (hook == APTHOOK_ONSUSPEND)
 		bottom_backlight(true);
 	else if (hook == APTHOOK_ONRESTORE)
@@ -972,6 +977,8 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	}
 	osd("%s", __ctr_svchax ? "Dynarec enabled" : "Interpreter mode (no Luma SVC access) - slow");
 
+	if (sw_pmu0 >= 0)
+		pmu_start(sw_pmu0, sw_pmu1 >= 0 ? sw_pmu1 : 0);
 	fps_t0 = osGetTime();
 	u64 t_run = 0, t_present = 0, t_run_max = 0;
 	u64 next_deadline = svcGetSystemTick();
@@ -1030,7 +1037,9 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 				rewind_capture();
 			}
 			audio_muted = false;
+			pmu_begin();
 			retro_run();
+			pmu_end();
 			rewind_capture();
 #ifdef PSX3D_PICA
 			if (sw_vramdump && --sw_vramdump == 0) {
@@ -1101,6 +1110,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			audio_stats(abuf, sizeof(abuf));
 			if (log_linked() || sw_prof || sw_stats)
 				log_printf("  %s\n", abuf);
+			pmu_report();
 #ifdef PSX3D_PICA
 			{
 				void pica_stats(char *buf, int n);
@@ -1133,6 +1143,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	aptUnhook(&apt_cookie);
 	input_fast_forward_off();
 	options_fast_forward(false);
+	pmu_stop();
 	log_printf("game: leaving\n");
 	rewind_stop();
 	if (g_cfg.autosave)
