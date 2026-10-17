@@ -41,7 +41,9 @@ AccessControlInfo:
   IdealProcessor          : 0
   AffinityMask            : 3   # cores 0 and 1 (Old 3DS: drawing on the syscore)
   Priority                : 16
-  # lets APT_SetAppCpuTimeLimit grant time on the syscore (core 1)
+  # lets APT_SetAppCpuTimeLimit grant time on the syscore (core 1): bit 7 picks
+  # the scheduling mode, the low 7 bits are the most it will grant (0x1E = 30%).
+  # More starves the system there (input, Wi-Fi): 50% was no faster, 80% slower.
   MaxCpu                  : 0x9E
   HandleTableSize         : 0x200
   DisableDebug            : false

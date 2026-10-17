@@ -108,6 +108,8 @@ bool sw_stats;          // log fps and renderer counters once a second (no timer
 bool sw_o3ds;           // test: behave like an Old 3DS (settings not saved)
 bool sw_fs1;            // test: force frameskip, every other frame
 bool sw_noskip;         // test: no frameskip (benchmarks)
+bool sw_nosputhread;    // test: Old 3DS: sound mixing on the main core
+bool sw_acap;           // test: log a checksum of 10s of the core's audio, from frame 60
 char sw_clock[8];       // test: emulated PS1 CPU clock (pcsx_rearmed_psxclock), e.g. 40
 int sw_gldbg;           // test: hardware renderer debug bits (1 no alpha test, 2 no textures)
 char sw_game[64];       // test: start the first library game whose title contains this
@@ -130,6 +132,8 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "o3ds")) sw_o3ds = true;
 		else if (!strcmp(a, "fs1")) sw_fs1 = true;
 		else if (!strcmp(a, "noskip")) sw_noskip = true;
+		else if (!strcmp(a, "nosputhread")) sw_nosputhread = true;
+		else if (!strcmp(a, "acap")) sw_acap = true;
 		else if (!strcmp(a, "state0")) sw_state = 0;
 		else if (!strncmp(a, "state=", 6)) sw_state = atoi(a + 6);
 		else if (!strncmp(a, "gldbg=", 6)) sw_gldbg = atoi(a + 6);
@@ -191,7 +195,7 @@ int main(int argc, char **argv)
 		APT_CheckNew3DS(&g_new3ds);
 		if (sw_o3ds)
 			g_new3ds = false;   // test: Old 3DS code paths at New 3DS clock
-		// borrow the syscore: 80% on Old 3DS (drawing runs there), 35% on New
+		// borrow the syscore: as much as app.rsf allows on Old 3DS (30%), 35% on New
 		{
 			static const u32 want_o3ds[] = { 80, 70, 60, 50, 40, 35, 30, 25 };
 			u32 pct = 0;

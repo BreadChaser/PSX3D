@@ -38,6 +38,13 @@ static u32 *cap_core, *cap_played, *cap_out;
 static ndspWaveBuf cap_out_wb;
 static u32 cap_core_n, cap_played_n;
 static bool capturing;
+static u32 hash, hash_left;   // test: checksum of the core's next frames
+
+void audio_hash_start(u32 frames)
+{
+	hash = 2166136261u;
+	hash_left = frames;
+}
 
 // debug: replace the game's audio with a 440Hz tone to test playback alone
 static bool test_tone;
@@ -427,6 +434,12 @@ size_t audio_write(const int16_t *data, size_t frames)
 		last_t = t;
 	}
 
+	if (hash_left) {
+		for (size_t i = 0; i < frames && hash_left; i++, hash_left--)
+			hash = (hash ^ ((const u32 *)data)[i]) * 16777619u;
+		if (!hash_left)
+			log_printf("test: audio hash %08lx\n", hash);
+	}
 	if (capturing) {
 		for (size_t i = 0; i < frames && cap_core_n < CAP_FRAMES; i++)
 			cap_core[cap_core_n++] = ((const u32 *)data)[i];

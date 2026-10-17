@@ -768,7 +768,7 @@ index 4f2d5cd..f045f27 100644
  	psxRegisters *regs = cp0TOpsxRegs(cp0);
  
 diff --git a/plugins/dfsound/spu.c b/plugins/dfsound/spu.c
-index 76f76af..0dbd6a9 100644
+index 76f76af..0e684ac 100644
 --- a/plugins/dfsound/spu.c
 +++ b/plugins/dfsound/spu.c
 @@ -1,3 +1,4 @@
@@ -776,7 +776,91 @@ index 76f76af..0dbd6a9 100644
  /***************************************************************************
                              spu.c  -  description
                               -------------------
-@@ -997,7 +998,15 @@ static const void * const worker = NULL;
+@@ -718,12 +719,14 @@ static struct spu_worker {
+    unsigned int i_done;
+    unsigned int active; // dsp
+    unsigned int boot_cnt;
++   unsigned int i_claimed; // next item to be mixed (by the thread, or stolen)
+   };
+   unsigned int _pad1[128/4];
+  };
+  struct work_item {
+   int ns_to;
+   int ctrl;
++  int stolen;     // mixed by the main thread itself, nothing to wait for
+   int decode_pos;
+   int rvb_addr;
+   unsigned int channels_new;
+@@ -755,6 +758,10 @@ static void thread_work_start(void);
+ static void thread_work_wait_sync(struct work_item *work, int force);
+ static void thread_sync_caches(void);
+ static int  thread_get_i_done(void);
++#if defined(USE_ASYNC_SPU) && !defined(C64X_DSP)
++#define SPU_STEAL 1
++static void do_channel_work(struct work_item *work);
++#endif
+ 
+ static int decode_block_work(void *context, int ch, sample_buf *sb)
+ {
+@@ -887,6 +894,8 @@ static void queue_channel_work(int ns_to, unsigned int silentch)
+    spu.rvb->CurrAddr -= 0x40000 - spu.rvb->StartAddr;
+  }
+ 
++ work->stolen = 0;
++ __sync_synchronize(); // the item is complete before the thread can see it
+  worker->i_ready++;
+  thread_work_start();
+ }
+@@ -945,6 +954,32 @@ static void do_channel_work(struct work_item *work)
+    REVERBDo(work->SSumLR, RVB, ns_to, work->rvb_addr);
+ }
+ 
++#ifdef SPU_STEAL
++// how often we recently mixed here anyway: then queueing work is pure overhead,
++// so mix on this thread for a while (do_samples_ checks it)
++static int steal_score;
++
++// PSX3D: the thread only gets time slices of its core (30% on the Old 3DS),
++// so the oldest item may sit unstarted while we'd block on it. Mix it here
++// instead. Items are still mixed one at a time and in order: the oldest
++// unreaped item is the only one we take, and the thread waits for it.
++static int steal_work(void)
++{
++ unsigned int i = worker->i_reaped;
++ struct work_item *work = &worker->i[i & WORK_I_MASK];
++
++ if (worker->i_claimed != i || !__sync_bool_compare_and_swap(&worker->i_claimed, i, i + 1))
++  return 0;
++ do_channel_work(work);
++ work->stolen = 1;
++ __sync_synchronize();
++ worker->i_done++;
++ if (steal_score < 64)
++  steal_score += 8;
++ return 1;
++}
++#endif
++
+ static void sync_worker_thread(int force_no_thread)
+ {
+  int force = force_no_thread;
+@@ -962,7 +997,15 @@ static void sync_worker_thread(int force_no_thread)
+ 
+  while ((force && used_space > 0) || used_space >= WORK_MAXCNT || done > 0) {
+   work = &worker->i[worker->i_reaped & WORK_I_MASK];
++#ifdef SPU_STEAL
++  if (done > 0 || !steal_work())
++   if (!work->stolen)
++#endif
+   thread_work_wait_sync(work, force);
++#ifdef SPU_STEAL
++  if (!work->stolen && steal_score > 0)
++   steal_score--;
++#endif
+ 
+   MixCD(work->SSumLR, RVB, work->ns_to, work->decode_pos);
+   do_samples_finish(work->SSumLR, work->ns_to,
+@@ -997,7 +1040,15 @@ static const void * const worker = NULL;
  // here is the main job handler...
  ////////////////////////////////////////////////////////////////////////
  
@@ -792,6 +876,49 @@ index 76f76af..0dbd6a9 100644
  {
   unsigned int silentch;
   int cycle_diff;
+@@ -1014,6 +1065,12 @@ void do_samples(unsigned int cycles_to, int force_no_thread)
+  silentch = ~(spu.dwChannelsAudible | spu.dwNewChannel) & 0xffffff;
+ 
+  force_no_thread |= (silentch == 0xffffff);
++#ifdef SPU_STEAL
++ if (steal_score > 32) {
++  force_no_thread = 1;
++  steal_score--;
++ }
++#endif
+  if (worker != NULL)
+   sync_worker_thread(force_no_thread);
+ 
+@@ -1338,12 +1395,28 @@ static STRHEAD_RET_TYPE spu_worker_thread(void *unused)
+  struct work_item *work;
+ 
+  while (1) {
++  unsigned int i;
++  int claimed = 0;
+   sem_wait(&t.sem_avail);
+   if (worker->exit_thread)
+    break;
+ 
+-  work = &worker->i[worker->i_done & WORK_I_MASK];
++  // claim the next item, unless the main thread already mixed it
++  // (then this wakeup is spare: one is posted per item)
++  do {
++   i = worker->i_claimed;
++   if (i == worker->i_ready)
++    break;
++   claimed = __sync_bool_compare_and_swap(&worker->i_claimed, i, i + 1);
++  } while (!claimed);
++  if (!claimed)
++   continue;
++  while (worker->i_done != i) // the main thread is mixing the one before
++   __sync_synchronize();
++
++  work = &worker->i[i & WORK_I_MASK];
+   do_channel_work(work);
++  __sync_synchronize();
+   worker->i_done++;
+ 
+   sem_post(&t.sem_done);
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
 index 0000000..3394a3d

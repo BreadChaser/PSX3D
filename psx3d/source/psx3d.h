@@ -98,7 +98,7 @@ extern unsigned long long psx3d_prof_t[6];
 extern unsigned int psx3d_prof_c[6];
 extern int psx3d_prof_on;
 void new_dynarec_print_stats(void);
-extern bool sw_prof, sw_stats, sw_o3ds, sw_fs1, sw_noskip;
+extern bool sw_prof, sw_stats, sw_o3ds, sw_fs1, sw_noskip, sw_nosputhread, sw_acap;
 extern int sw_state, sw_gldbg, sw_vramdump;
 extern int sw_pmu0, sw_pmu1;
 extern char sw_clock[8];
@@ -175,6 +175,7 @@ void audio_pause(bool paused);
 void audio_stats(char *buf, size_t len);
 unsigned audio_occupancy(void);
 bool audio_capture_start(void);
+void audio_hash_start(u32 frames);
 bool audio_test_tone_toggle(void);
 
 // input.c

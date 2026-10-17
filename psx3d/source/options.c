@@ -63,7 +63,10 @@ static const char *locked_value(const char *key)
 		// the game wait (25 fps vs 36). Sound is buffered and copes.
 		if (strcmp(key, "pcsx_rearmed_gpu_thread_rendering") == 0)
 			return "disabled";
-		// (sound there measured no gain either: 38 vs 39 fps in Crash)
+		// Sound mixing there pays off a little (Crash, GT2 +3%): it runs
+		// ahead in the slices, and we mix it here when it hasn't started.
+		if (strcmp(key, "pcsx_rearmed_spu_thread") == 0)
+			return sw_nosputhread ? "disabled" : "enabled";
 		if (strcmp(key, "pcsx_rearmed_3ds_appcputime") == 0) {
 			static char b[8];
 			snprintf(b, sizeof(b), "%d", g_syscore_pct ? g_syscore_pct : 35);

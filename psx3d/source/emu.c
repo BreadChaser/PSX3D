@@ -981,6 +981,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		pmu_start(sw_pmu0, sw_pmu1 >= 0 ? sw_pmu1 : 0);
 	fps_t0 = osGetTime();
 	u64 t_run = 0, t_present = 0, t_run_max = 0;
+	int acap_frames = 0;
 	u64 next_deadline = svcGetSystemTick();
 	aptHookCookie apt_cookie;
 	aptHook(&apt_cookie, game_apt, NULL);
@@ -1041,6 +1042,8 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			retro_run();
 			pmu_end();
 			rewind_capture();
+			if (sw_acap && ++acap_frames == 60)   // same emulated frame every run
+				audio_hash_start(44100 * 10);
 #ifdef PSX3D_PICA
 			if (sw_vramdump && --sw_vramdump == 0) {
 				void pica_dump_vram(const char *path);
