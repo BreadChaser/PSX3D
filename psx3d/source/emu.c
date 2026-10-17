@@ -1139,6 +1139,20 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 				log_printf("  prof (per frame):%s gpu words drawn %llu skipped %u\n", pb,
 					psx3d_prof_t[5] / (fps_frames ? fps_frames : 1), psx3d_prof_c[5] / (fps_frames ? fps_frames : 1));
 				psx3d_prof_t[5] = 0; psx3d_prof_c[5] = 0;
+				{
+					// the emulator's timed events, by type (PSXINT_*), over 0.05ms
+					extern unsigned long long psx3d_irq_t[32];
+					extern unsigned int psx3d_irq_c[32];
+					n = 0;
+					for (int k = 0; k < 32; k++) {
+						double ms = psx3d_irq_t[k] / (double)(fps_frames ? fps_frames : 1) / CPU_TICKS_PER_MSEC;
+						if (ms >= 0.05)
+							n += snprintf(pb + n, sizeof(pb) - n, " %d:%.2fms/%u", k, ms,
+								psx3d_irq_c[k] / (fps_frames ? fps_frames : 1));
+						psx3d_irq_t[k] = 0; psx3d_irq_c[k] = 0;
+					}
+					log_printf("  events (per frame):%s\n", pb);
+				}
 				new_dynarec_print_stats();
 			}
 			t_run = t_present = t_run_max = 0;

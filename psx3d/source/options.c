@@ -56,8 +56,8 @@ static const char *const hidden_prefix[] = {
 static const char *locked_value(const char *key)
 {
 	// Old 3DS: no core 2, and the syscore gives Homebrew Launcher apps no
-	// CPU time, so the core's helper threads would starve. Run everything
-	// on the main core there.
+	// CPU time, so the core's helper threads would starve there. The CIA
+	// gets 30% of it: enough for sound and CD reads, not for drawing.
 	if (!g_new3ds) {
 		// The syscore only gives us 30% in time slices: drawing there made
 		// the game wait (25 fps vs 36). Sound is buffered and copes.
@@ -65,15 +65,17 @@ static const char *locked_value(const char *key)
 			return "disabled";
 		// Sound mixing there pays off a little (Crash, GT2 +3%): it runs
 		// ahead in the slices, and we mix it here when it hasn't started.
+		// Not from the Homebrew Launcher: no syscore time at all there.
 		if (strcmp(key, "pcsx_rearmed_spu_thread") == 0)
-			return sw_nosputhread ? "disabled" : "enabled";
+			return g_syscore_pct && !sw_nosputhread ? "enabled" : "disabled";
 		if (strcmp(key, "pcsx_rearmed_3ds_appcputime") == 0) {
 			static char b[8];
 			snprintf(b, sizeof(b), "%d", g_syscore_pct ? g_syscore_pct : 35);
 			return b;
 		}
+		// CD reads there: CTR streams music, 1.3 -> 0.35ms a frame here
 		if (strcmp(key, "pcsx_rearmed_cd_readahead") == 0)
-			return "0";
+			return sw_cdra[0] ? sw_cdra : g_syscore_pct ? "256" : "0";
 		// gaussian interpolation costs real time on a 268MHz core
 		if (strcmp(key, "pcsx_rearmed_spu_interpolation") == 0)
 			return "simple";
