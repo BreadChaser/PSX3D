@@ -1109,6 +1109,13 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 					fps_measured, emu_ms, t_run_max / (float)CPU_TICKS_PER_MSEC, present_ms,
 					wait_ms, xfer_ms, dup_frames, late_frames, abuf_status_cb != NULL);
 			dup_frames = late_frames = 0;
+			{
+				float gms; u64 gap;
+				video_take_gpu_stats(&gms, &gap);
+				if (log_linked() || sw_prof || sw_stats)
+					log_printf("  gpu %.2fms/frame, frame end to next begin %.2fms\n", gms / present_count,
+						gap / (float)present_count / CPU_TICKS_PER_MSEC);
+			}
 			char abuf[160];
 			audio_stats(abuf, sizeof(abuf));
 			if (log_linked() || sw_prof || sw_stats)

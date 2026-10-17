@@ -89,6 +89,7 @@ extern bool ui_wants_3d;
 static inline float ui_depth(float d) { return ui_eye * d * ui_parallax; }
 u64 video_take_wait_ticks(void);
 u64 video_take_xfer_ticks(void);
+void video_take_gpu_stats(float *gpu, u64 *gap);
 int video_probe_top(void);
 // core (patches/0002): real 3D renders each eye into its own VRAM
 void psx3d_set_strength(float px);
@@ -101,7 +102,7 @@ void new_dynarec_print_stats(void);
 extern bool sw_prof, sw_stats, sw_o3ds, sw_fs1, sw_noskip, sw_nosputhread, sw_acap;
 extern int sw_state, sw_gldbg, sw_vramdump;
 extern int sw_pmu0, sw_pmu1;
-extern char sw_clock[8], sw_cdra[8];
+extern char sw_clock[8], sw_cdra[8], sw_opt[8][48];
 // pmu.c - ARM11 performance counters (test tool)
 void pmu_start(int ev0, int ev1);
 void pmu_begin(void);
@@ -288,7 +289,7 @@ extern int __ctr_svchax;
 extern float sw_slider;
 extern bool sw_showright, sw_sbs;
 float slider_get(void);
-extern bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
+extern bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_aa, sw_nolcd, sw_nocovers;
 extern bool g_new3ds;
 extern int g_syscore_pct;
 

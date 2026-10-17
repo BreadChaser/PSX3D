@@ -195,6 +195,11 @@ const char *options_get(const char *key)
 	const char *ov = locked_value(key);
 	option_t *o = find(key);
 
+	for (int k = 0; k < 8 && sw_opt[k][0]; k++) {
+		size_t n = strcspn(sw_opt[k], "=");
+		if (!strncmp(key, "pcsx_rearmed_", 13) && strlen(key + 13) == n && !strncmp(key + 13, sw_opt[k], n))
+			return sw_opt[k] + n + (sw_opt[k][n] == '=');
+	}
 	if (sw_noskip && !strcmp(key, "pcsx_rearmed_frameskip_type"))
 		return "disabled";
 	if (sw_clock[0] && !strcmp(key, "pcsx_rearmed_psxclock"))

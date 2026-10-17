@@ -110,6 +110,7 @@ bool sw_fs1;            // test: force frameskip, every other frame
 bool sw_noskip;         // test: no frameskip (benchmarks)
 bool sw_nosputhread;    // test: Old 3DS: sound mixing on the main core
 bool sw_acap;           // test: log a checksum of 10s of the core's audio, from frame 60
+char sw_opt[8][48];     // test: o:<option>=<value> (pcsx_rearmed_ left out), up to 8
 char sw_cdra[8];        // test: Old 3DS: CD read-ahead sectors (on the syscore)
 char sw_clock[8];       // test: emulated PS1 CPU clock (pcsx_rearmed_psxclock), e.g. 40
 int sw_gldbg;           // test: hardware renderer debug bits (1 no alpha test, 2 no textures)
@@ -117,6 +118,7 @@ char sw_game[64];       // test: start the first library game whose title contai
 int sw_vramdump;         // test: dump PS1 VRAM this many frames after the game starts
 int sw_pmu0 = -1, sw_pmu1 = -1;   // test: ARM11 performance counter events (pmu=AA,BB, hex)
 int sw_state = -1;       // test: load this save state slot when the game starts (state0, state=N)
+bool sw_aa;              // test: Old 3DS: gameplay supersampled too
 bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 
 static void parse_switches(int argc, char **argv)
@@ -140,12 +142,17 @@ static void parse_switches(int argc, char **argv)
 		else if (!strncmp(a, "gldbg=", 6)) sw_gldbg = atoi(a + 6);
 		else if (!strncmp(a, "vramdump=", 9)) sw_vramdump = atoi(a + 9);
 		else if (!strncmp(a, "pmu=", 4)) sscanf(a + 4, "%x,%x", (unsigned *)&sw_pmu0, (unsigned *)&sw_pmu1);
+		else if (!strncmp(a, "o:", 2)) {
+			for (int k = 0; k < 8; k++)
+				if (!sw_opt[k][0]) { snprintf(sw_opt[k], sizeof(sw_opt[k]), "%s", a + 2); break; }
+		}
 		else if (!strncmp(a, "cdra=", 5)) snprintf(sw_cdra, sizeof(sw_cdra), "%s", a + 5);
 		else if (!strncmp(a, "clock=", 6)) snprintf(sw_clock, sizeof(sw_clock), "%s", a + 6);
 		else if (!strncmp(a, "game=", 5)) snprintf(sw_game, sizeof(sw_game), "%s", a + 5);
 		else if (!strcmp(a, "nosound")) sw_nosound = true;
 		else if (!strcmp(a, "noirrst")) sw_noirrst = true;
 		else if (!strcmp(a, "noaa")) sw_noaa = true;
+		else if (!strcmp(a, "aa")) sw_aa = true;
 		else if (!strcmp(a, "nolcd")) sw_nolcd = true;
 		else if (!strcmp(a, "nocovers")) sw_nocovers = true;
 		else if (!strcmp(a, "minimal"))

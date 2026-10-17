@@ -48,6 +48,15 @@ static u16 *pending;         // finished frame waiting to be copied to the textu
 static unsigned frame_w = 320, frame_h = 240;
 static bool have_frame;
 static u64 wait_ticks, xfer_ticks;
+// test stats: GPU time per frame, and CPU time from FrameEnd to the next FrameBegin
+static float gpu_ms;
+static u64 gap_ticks, frame_end_tick;
+
+void video_take_gpu_stats(float *gpu, u64 *gap)
+{
+	*gpu = gpu_ms; *gap = gap_ticks;
+	gpu_ms = 0; gap_ticks = 0;
+}
 u64 stereo_prep_ticks, stereo_draw_ticks;
 
 u64 video_take_wait_ticks(void)
@@ -58,9 +67,12 @@ u64 video_take_wait_ticks(void)
 }
 
 static bool top_aa = true;
-// plain top targets for gameplay: the game picture gains nothing from
-// supersampling, and on an Old 3DS it cost ~1.7ms of GPU time a frame
-static C3D_RenderTarget *top1, *top1_r;
+// Old 3DS gameplay: the supersampled targets are used at 1x (their first
+// 400x240, copied out unscaled). The game picture gains nothing from
+// supersampling, and the GPU time it took is time the CPU then spends
+// waiting for the previous frame (Crash +3%). No VRAM is left for
+// separate targets.
+static bool plain_ok, plain_now;
 static bool in_menu_call;   // video_present_vsync: menus and the library
 
 static C3D_RenderTarget *aa_target(gfx3dSide_t side)
@@ -75,24 +87,21 @@ static C3D_RenderTarget *aa_target(gfx3dSide_t side)
 	return t;
 }
 
-// 16-bit, no depth buffer: 190KB of VRAM each
-static C3D_RenderTarget *plain_target(gfx3dSide_t side)
+static void top_set_plain(C3D_RenderTarget *t, gfx3dSide_t side, bool plain)
 {
-	C3D_RenderTarget *t = C3D_RenderTargetCreate(240, 400, GPU_RB_RGB565, (C3D_DEPTHTYPE){ .__i = -1 });
-	if (!t)
-		return NULL;
+	t->frameBuf.width = plain ? 240 : 480;
+	t->frameBuf.height = plain ? 400 : 800;
 	C3D_RenderTargetSetOutput(t, GFX_TOP, side,
 		GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) | GX_TRANSFER_RAW_COPY(0) |
-		GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGB565) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) |
-		GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
-	return t;
+		GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) |
+		GX_TRANSFER_SCALING(plain ? GX_TRANSFER_SCALE_NO : GX_TRANSFER_SCALE_XY));
 }
 
 // begin drawing on a top target in the usual 400x240 coordinates
 static void top_begin(C3D_RenderTarget *t)
 {
 	C2D_SceneBegin(t);
-	if (top_aa && t != top1 && t != top1_r)
+	if (top_aa && !plain_now)
 		C2D_SceneSize(240, 400, true);
 }
 
@@ -131,10 +140,8 @@ bool video_init(void)
 		top = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
 		top_r = C2D_CreateScreenTarget(GFX_TOP, GFX_RIGHT);
 		top_aa = false;
-	} else {
-		// plain gameplay targets: disabled until the hang is understood
-		(void)plain_target;
-	}
+	} else
+		plain_ok = !g_new3ds && !sw_aa;
 	bottom = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
 
 	for (int i = 0; i < 2; i++) {
@@ -391,6 +398,8 @@ void video_gpu_frame_begin(void)
 	u64 t0 = svcGetSystemTick();
 	C3D_FrameBegin(0);
 	wait_ticks += svcGetSystemTick() - t0;
+	gpu_ms += C3D_GetDrawingTime();   // the frame we just waited for
+	gap_ticks += t0 - frame_end_tick;
 	gpu_frame = true;
 #ifdef PSX3D_PICA
 	pica_frame_started();
@@ -461,10 +470,14 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	}
 	bool real = show_game && stereo && g_cfg.stereo == 2 && have_frame && right_ok;
 
-	// gameplay draws to the plain targets, menus to the supersampled ones
-	// (disabled: the 16-bit target hung the GPU on the first game frame)
-	bool plain = false && show_game && !in_menu_call && top1 && top1_r;
-	C3D_RenderTarget *tl = plain ? top1 : top, *tr = plain ? top1_r : top_r;
+	// gameplay at 1x on Old 3DS, menus supersampled
+	bool plain = plain_ok && show_game && !in_menu_call;
+	if (plain != plain_now) {
+		top_set_plain(top, GFX_LEFT, plain);
+		top_set_plain(top_r, GFX_RIGHT, plain);
+		plain_now = plain;
+	}
+	C3D_RenderTarget *tl = top, *tr = top_r;
 	C2D_TargetClear(tl, C2D_Color32(0, 0, 0, 255));
 	top_begin(tl);
 	if (real && sw_sbs) {
@@ -504,6 +517,7 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	}
 
 	C3D_FrameEnd(0);
+	frame_end_tick = svcGetSystemTick();
 	gpu_frame = false;
 #ifdef PSX3D_PICA
 	pica_frame_ended();
