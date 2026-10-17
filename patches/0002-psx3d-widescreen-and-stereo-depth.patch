@@ -234,7 +234,7 @@ index 6719602..daf899f 100644
      }
      c2op_epilogue(c2op, reglist);
 diff --git a/libpcsxcore/new_dynarec/new_dynarec.c b/libpcsxcore/new_dynarec/new_dynarec.c
-index fb99df6..1f2f418 100644
+index fb99df6..950a048 100644
 --- a/libpcsxcore/new_dynarec/new_dynarec.c
 +++ b/libpcsxcore/new_dynarec/new_dynarec.c
 @@ -37,6 +37,10 @@ static Jit g_jit;
@@ -289,7 +289,280 @@ index fb99df6..1f2f418 100644
  {
    struct block_info *last_block = NULL;
    u_int start_page = get_page_prev(start);
-@@ -6948,6 +6965,8 @@ void new_dynarec_load_blocks(const void *save, int size)
+@@ -5850,6 +5867,241 @@ static void rjump_assemble(struct compile_state *st, int i, const struct regstat
+   #endif
+ }
+ 
++int psx3d_idle_skip = 1; // test switch: fast-forward polling loops
++
++// Polling loop: a short backward branch whose loop path only loads from RAM or
++// I_STAT/I_MASK and computes, with no register carried between iterations. With
++// no stores, memory only changes at events, which come only at cycle checks, so
++// every iteration before the next check fires is an exact repeat and can be
++// skipped by just adding its cycles.
++struct idle_loop {
++  int iter;           // cycles per iteration
++  int nchk;           // loads whose RAM address is checked at run time
++  u_char chk_reg[3];
++  short chk_ofs[3];
++};
++
++static int idle_loop_check(struct compile_state *st, int i, struct idle_loop *il)
++{
++  u_int ba = cinfo[i].ba;
++  int t = (ba - st->start) >> 2, j, k;
++  uint64_t wr = 0, wr_all = 0, cst = 1;
++  u_int cval[32];
++
++  if (!psx3d_idle_skip || !internal_branch(st, ba) || t > i || i - t > 24
++      || dops[t].is_ds || dops[i+1].is_jump)
++    return 0;
++  cval[0] = 0;
++  for (j = t; j <= i + 1; j++)
++    wr_all |= (1ull << dops[j].rt1) | (1ull << dops[j].rt2);
++  wr_all &= ~1ull;
++  il->iter = -cinfo[t].ccadj;
++  il->nchk = 0;
++  for (j = t; j <= i + 1; j++) {
++    const struct decoded_insn *d = &dops[j];
++    uint64_t rd = (1ull << d->rs1) | (1ull << d->rs2);
++    // sources written in the loop must be written earlier in this iteration
++    if ((rd & wr_all & ~wr) & ~1ull)
++      return 0;
++    switch (d->itype) {
++    case NOP:
++      break;
++    case ALU: case SHIFT: case SHIFTIMM:
++      cst &= ~(1ull << d->rt1);
++      break;
++    case IMM16:
++      if (d->opcode == 0x0f) // lui
++        cst |= 1ull << d->rt1, cval[d->rt1] = cinfo[j].imm << 16;
++      else if ((d->opcode == 0x09 || d->opcode == 0x0d) && ((cst >> d->rs1) & 1)) {
++        u_int v = cval[d->rs1];
++        v = d->opcode == 0x09 ? v + cinfo[j].imm : (v | (cinfo[j].imm & 0xffff));
++        cst |= 1ull << d->rt1, cval[d->rt1] = v;
++      }
++      else
++        cst &= ~(1ull << d->rt1);
++      break;
++    case LOAD:
++      if ((cst >> d->rs1) & 1) {
++        u_int a = cval[d->rs1] + cinfo[j].imm;
++        if (!is_ram_addr(a) && (a & 0x1ffffff8) != 0x1f801070)
++          return 0;
++      }
++      else if (!((wr_all >> d->rs1) & 1)) {
++        for (k = 0; k < il->nchk; k++)
++          if (il->chk_reg[k] == d->rs1 && il->chk_ofs[k] == cinfo[j].imm)
++            break;
++        if (k == il->nchk) {
++          if (k == ARRAY_SIZE(il->chk_reg))
++            return 0;
++          il->chk_reg[k] = d->rs1, il->chk_ofs[k] = cinfo[j].imm;
++          il->nchk++;
++        }
++      }
++      else
++        return 0;
++      cst &= ~(1ull << d->rt1);
++      break;
++    case CJUMP: case SJUMP:
++      if (j == i + 1 || d->rt1 == 31) // no branch in DS, no bltzal
++        return 0;
++      if (j < i && cinfo[j].ba >= ba && cinfo[j].ba <= st->start + (i + 1) * 4)
++        return 0; // exits only
++      il->iter += cinfo[j].ccadj + CLOCK_ADJUST(2);
++      break;
++    default:
++      return 0;
++    }
++    wr |= (1ull << d->rt1) | (1ull << d->rt2);
++  }
++#ifdef PSX3D_SIM
++  if (il->iter > 0)
++    SysPrintf("idle loop @%08x..%08x %d cycles, %d checks, ooo %d\n", ba, st->start + i*4, il->iter, il->nchk, dops[i].ooo);
++#endif
++  return il->iter > 0;
++}
++
++// emitted on the taken back-edge with cc = cycle count at the loop head
++static void idle_loop_assemble(int i, const struct idle_loop *il, int adj, int cc)
++{
++  // last_count when this code last ran: changed = an event came during this
++  // iteration, after its loads
++  void *lc_seen = (u_char *)dynarec_local + LO_unused2;
++  int tmp = get_reg_temp(branch_regs[i].regmap);
++  void *t_exit[4], *loop;
++  int j, n, step;
++  for (j = 0; j < il->nchk; j++)
++    if (get_reg(branch_regs[i].regmap, il->chk_reg[j]) < 0)
++      return;
++  if (tmp < 0)
++    return;
++  assem_debug("; idle skip, %d cycles\n", il->iter);
++  host_tempreg_acquire();
++  emit_readword(&last_count, tmp);
++  emit_readword(lc_seen, HOST_TEMPREG);
++  emit_writeword(tmp, lc_seen);
++  emit_cmp(tmp, HOST_TEMPREG);
++  t_exit[il->nchk] = out;
++  emit_jne(0);
++  for (j = 0; j < il->nchk; j++) {
++    emit_addimm(get_reg(branch_regs[i].regmap, il->chk_reg[j]), il->chk_ofs[j], tmp);
++    emit_andimm(tmp, 0x1fffffff, tmp);
++    emit_cmpimm(tmp, 0x800000);
++    t_exit[j] = out;
++    emit_jc(0);
++  }
++  // skip n iterations while the back-edge check after them would not fire
++  for (n = 64; n >= 1; n /= 8) {
++    step = n * il->iter;
++    if (step + adj >= 65536)
++      continue;
++    loop = out;
++    emit_cmpimm(cc, -(step + adj));
++    void *t_next = out;
++    emit_jge(0);
++    emit_addimm(cc, step, cc);
++    emit_jmp(loop);
++    set_jump_target(t_next, out);
++  }
++  for (j = 0; j <= il->nchk; j++)
++    set_jump_target(t_exit[j], out);
++  host_tempreg_release();
++}
++
++// PsyQ "while (VSync(1) < n);": VSync(1) reads the hblank counter (root counter 1)
++// and returns lines since the last vblank. Iterations between two counter ticks
++// and before the next event are identical (the stack is rewritten with the same
++// values), so whole iterations are skipped, measured from two equal ones.
++static const u32 vsync1_code[][2] = { // VSync() of R4, mode 1 path
++  { 0x00, 0x3c020000 }, { 0x04, 0x8c420000 }, { 0x08, 0x3c050000 }, { 0x0c, 0x8ca50000 },
++  { 0x10, 0x27bdffd8 }, { 0x14, 0xafbf0020 }, { 0x18, 0xafb1001c }, { 0x1c, 0xafb00018 },
++  { 0x20, 0x8c500000 }, { 0x24, 0x8ca20000 }, { 0x28, 0x00000000 }, { 0x2c, 0xafa20010 },
++  { 0x30, 0x8fa30010 }, { 0x34, 0x8ca20000 }, { 0x38, 0x00000000 }, { 0x3c, 0x1462fff9 },
++  { 0x40, 0x00000000 }, { 0x44, 0x8fa20010 }, { 0x48, 0x3c030000 }, { 0x4c, 0x8c630000 },
++  { 0x50, 0x00000000 }, { 0x54, 0x00431023 }, { 0x58, 0x04810005 }, { 0x5c, 0x3051ffff },
++  { 0x70, 0x24020001 }, { 0x74, 0x1082003a }, { 0x78, 0x00000000 }, { 0x160, 0x02201021 },
++  { 0x164, 0x8fbf0020 }, { 0x168, 0x8fb1001c }, { 0x16c, 0x8fb00018 }, { 0x170, 0x03e00008 },
++  { 0x174, 0x27bd0028 },
++};
++static u32 vsync1_rcnt_ptr; // where VSync() gets the counter address
++
++static int vsync1_loop_check(struct compile_state *st, int i)
++{
++  u32 ba = cinfo[i].ba, f, w, j;
++  const u32 *m = (u32 *)psxRegs.ptrs.psxM;
++  // jal VSync; li a0, 1; slt rX, v0, rY; bnez rX, <jal>; nop
++  if (!psx3d_idle_skip || ba + 12 != st->start + i*4 || !is_ram_addr(ba)
++      || (ba & 0x1fffff) > 0x200000 - 20)
++    return 0;
++  m += (ba & 0x1fffff) >> 2;
++  if ((m[0] >> 26) != 3 || m[1] != 0x24040001 || (m[2] & 0xffe007ff) != 0x0040002a
++      || m[3] != (0x1400fffc | (((m[2] >> 11) & 31) << 21)) || m[4] != 0)
++    return 0;
++  f = (ba & 0xf0000000) | ((m[0] & 0x3ffffff) << 2);
++  if (!is_ram_addr(f) || (f & 0x1fffff) > 0x200000 - 0x178)
++    return 0;
++  m = (u32 *)psxRegs.ptrs.psxM + ((f & 0x1fffff) >> 2);
++  for (j = 0; j < ARRAY_SIZE(vsync1_code); j++) {
++    w = m[vsync1_code[j][0] / 4];
++    if (((w >> 26) == 0x0f || (w >> 26) == 0x23) && !(vsync1_code[j][1] & 0xffff))
++      w &= 0xffff0000; // lui/lw of globals
++    if (w != vsync1_code[j][1])
++      return 0;
++  }
++  vsync1_rcnt_ptr = (m[2] << 16) + (s16)m[3];
++  SysPrintf("VSync(1) loop @%08x\n", ba);
++  return 1;
++}
++
++// hblank count as read by rcnt1_read_count_m1
++static u32 vsync1_hcnt(u32 c)
++{
++  return ((uint64_t)(c - rcnts[1].cycleStart) * 0x1e6cde) >> 32;
++}
++
++static int ndrc_vsync1_skip(int cc)
++{
++  static u32 x1, d1, lc1;
++  u32 x = last_count + cc, d = x - x1, a = vsync1_rcnt_ptr, v;
++  int k, ke;
++  x1 = x;
++  if (last_count != lc1) { // an event came, maybe after this iteration's loads
++    lc1 = last_count;
++    d1 = 0;
++    return cc;
++  }
++  if (d != d1 || d - 1 >= 4096 || (rcnts[1].mode & 0x101) != 0x100 || !is_ram_addr(a)
++      || (psxMu32(a) & 0x1fffffff) != 0x1f801110) {
++    d1 = d;
++    return cc;
++  }
++  // the last iteration saw no tick: skip iterations up to the next tick and event
++  v = vsync1_hcnt(x);
++  if (vsync1_hcnt(x - d) != v)
++    return cc;
++  k = (rcnts[1].rate - (x - rcnts[1].cycleStart) % rcnts[1].rate) / d - 1;
++  ke = -cc / (int)d - 2;
++  if (ke < k)
++    k = ke;
++  for (; k > 0; k--)
++    if (vsync1_hcnt(x + (k + 1) * d) == v)
++      break;
++  if (k <= 0)
++    return cc;
++  x1 += k * d;
++  return cc + k * d;
++}
++
++static void vsync1_loop_assemble(int i, int cc)
++{
++  u_int reglist = get_host_reglist(branch_regs[i].regmap);
++  assem_debug("; VSync(1) skip\n");
++  save_regs(reglist);
++  emit_mov(cc, 0);
++  emit_far_call(ndrc_vsync1_skip);
++  emit_mov(0, cc);
++  restore_regs(reglist);
++}
++
+ static void vsync_hack_assemble(int i, int ld_ofs, int cc)
+ {
+   int sp = get_reg(branch_regs[i].regmap, 29);
+@@ -5914,6 +6166,10 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
+   if(i==(cinfo[i].ba-st->start)>>2) assem_debug("idle loop\n");
+   if(!match) invert=1;
+   if (vsync_hack && (vsync_hack >> 16) == i) invert=1;
++  struct idle_loop il;
++  int idle = idle_loop_check(st, i, &il);
++  int vsync1 = !idle && dops[i].ooo && vsync1_loop_check(st, i);
++  if ((idle || vsync1) && dops[i].ooo) invert=1;
+   #ifdef CORTEX_A8_BRANCH_PREDICTION_HACK
+   if(i>(cinfo[i].ba-st->start)>>2) invert=1;
+   #endif
+@@ -6050,6 +6306,10 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
+         if(taken) set_jump_target(taken, out);
+         if (vsync_hack && (vsync_hack >> 16) == i)
+           vsync_hack_assemble(i, vsync_hack & 0xffff, cc);
++        if (idle)
++          idle_loop_assemble(i, &il, 0, cc);
++        if (vsync1)
++          vsync1_loop_assemble(i, cc);
+         #ifdef CORTEX_A8_BRANCH_PREDICTION_HACK
+         if (match && (!internal || !dops[(cinfo[i].ba-st->start)>>2].is_ds)) {
+           if(adj) {
+@@ -6148,6 +6408,8 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
+       do_cc(st,i,i_regmap,&adj,cinfo[i].ba,TAKEN,0);
+       assem_debug("cycle count (adj)\n");
+       if(adj) emit_addimm(cc, cinfo[i].ccadj + CLOCK_ADJUST(2) - adj, cc);
++      if (idle)
++        idle_loop_assemble(i, &il, adj, cc);
+       load_regs_bt(st,branch_regs[i].regmap,branch_regs[i].dirty,cinfo[i].ba);
+       if(internal)
+         assem_debug("branch: internal\n");
+@@ -6948,6 +7210,8 @@ void new_dynarec_load_blocks(const void *save, int size)
  
  void new_dynarec_print_stats(void)
  {
@@ -298,7 +571,7 @@ index fb99df6..1f2f418 100644
  #ifdef STAT_PRINT
    size_t i, lmem = 0;
    for (i = 0; i < ARRAY_SIZE(jumps); i++) {
-@@ -6956,7 +6975,7 @@ void new_dynarec_print_stats(void)
+@@ -6956,7 +7220,7 @@ void new_dynarec_print_stats(void)
        lmem += sizeof(*ji) + ji->alloc * sizeof(ji->e[0]) + sizeof(size_t) * 2;
    }
  
@@ -307,7 +580,7 @@ index fb99df6..1f2f418 100644
      stat_bc_direct, stat_bc_restore,
      stat_ht_lookups, stat_jump_in_lookups, stat_restore_tries,
      stat_restore_compares, stat_inv_addr_calls, stat_inv_hits,
-@@ -9604,7 +9623,16 @@ static void block_info_finish(const struct compile_state *st,
+@@ -9604,7 +9868,16 @@ static void block_info_finish(const struct compile_state *st,
    perf_dump_write(st, beginning, end);
  }
  
@@ -324,6 +597,18 @@ index fb99df6..1f2f418 100644
  {
    struct compile_state st;
    u_int pagelimit = 0;
+diff --git a/libpcsxcore/new_dynarec/new_dynarec.h b/libpcsxcore/new_dynarec/new_dynarec.h
+index 387aaac..b42e3c7 100644
+--- a/libpcsxcore/new_dynarec/new_dynarec.h
++++ b/libpcsxcore/new_dynarec/new_dynarec.h
+@@ -30,6 +30,7 @@ struct ndrc_globals
+ 	} thread;
+ };
+ extern struct ndrc_globals ndrc_g;
++extern int psx3d_idle_skip; // fast-forward polling loops (read when compiling)
+ 
+ void new_dynarec_init(void);
+ void new_dynarec_cleanup(void);
 diff --git a/libpcsxcore/psx3d_depth.h b/libpcsxcore/psx3d_depth.h
 new file mode 100644
 index 0000000..9c55cbb
