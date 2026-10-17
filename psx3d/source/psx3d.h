@@ -89,6 +89,7 @@ extern bool ui_wants_3d;
 static inline float ui_depth(float d) { return ui_eye * d * ui_parallax; }
 u64 video_take_wait_ticks(void);
 u64 video_take_xfer_ticks(void);
+int video_probe_top(void);
 // core (patches/0002): real 3D renders each eye into its own VRAM
 void psx3d_set_strength(float px);
 void psx3d_set_half3d(int on);

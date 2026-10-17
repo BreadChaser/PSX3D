@@ -1118,6 +1118,11 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 				pica_stats(pb, sizeof(pb));
 				if (log_linked() || sw_prof || sw_stats)
 					log_printf("  %s\n", pb);
+				void pica_probe(char *buf, int n);
+				if (log_linked() || sw_prof || sw_stats) {
+					pica_probe(pb, sizeof(pb));   // what reached the screen
+					log_printf("  %s; top fb %d\n", pb, video_probe_top());
+				}
 			}
 #endif
 			if (sw_prof) {

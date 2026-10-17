@@ -296,6 +296,23 @@ bool video_snapshot(u16 *out, int w, int h)
 	return true;
 }
 
+// test (stats): brightness of the top framebuffer (8x8 samples, 0-255)
+int video_probe_top(void)
+{
+	u16 w, h;
+	u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &w, &h);   // w = 240 rows of the rotated screen
+	if (!fb)
+		return -1;
+	GSPGPU_InvalidateDataCache(fb, w * h * 3);
+	int sum = 0;
+	for (int j = 0; j < 8; j++)
+		for (int i = 0; i < 8; i++) {
+			const u8 *p = fb + ((h * (2 * j + 1) / 16) * w + w * (2 * i + 1) / 16) * 3;
+			sum += (p[0] + p[1] + p[2]) / 3;
+		}
+	return sum / 64;
+}
+
 u64 video_take_xfer_ticks(void)
 {
 	u64 t = xfer_ticks;
@@ -346,7 +363,17 @@ static void draw_game(float eye_dx)
 	C2D_Image img = { t, &st };
 	float dw = config_screen_mode() ? 400 : 320, dh = 240;
 	C3D_TexSetFilter(t, g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST, g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST);
+	// the picture's alpha is the PS1 mask bit (0 for most pixels): copy it
+	// unblended and untested. The renderer leaves its own blending and alpha
+	// test behind, which blacked the picture out whenever the game's last
+	// draw of a frame used them.
+	C2D_Flush();
+	C3D_AlphaTest(false, GPU_ALWAYS, 0);
+	C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
 	C2D_DrawImageAt(img, (400 - dw) / 2 + eye_dx, (240 - dh) / 2, 0.5f, NULL, dw / w, dh / h);
+	C2D_Flush();
+	C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
+		GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA);   // citro2d's own, for the overlays
 #else
 	draw_game_tex(&tex, eye_dx);
 #endif
@@ -388,6 +415,10 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	video_gpu_frame_begin();
 #ifdef PSX3D_PICA
 	C2D_Prepare();   // the hardware renderer changed the GPU state
+	// ...including some C2D_Prepare leaves alone: back to citro3d's defaults
+	C3D_AlphaTest(false, GPU_ALWAYS, 0);
+	C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
+		GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA);
 #endif
 #ifdef PSX3D_PICA
 	pica_state_lost();

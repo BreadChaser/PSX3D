@@ -509,10 +509,10 @@ index 76f76af..0dbd6a9 100644
   int cycle_diff;
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 0000000..7a3ffdc
+index 0000000..205fb50
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,1922 @@
+@@ -0,0 +1,1953 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -2371,19 +2371,27 @@ index 0000000..7a3ffdc
 +// called by the frontend once per shown frame: the displayed VRAM area.
 +// PICA_PIC_GPU: draw tex; PICA_PIC_NONE: the display is off (black);
 +// PICA_PIC_CPU: 24-bit mode (movies), the core's own picture
++static unsigned st_pic[3];   // frames shown per PICA_PIC_* result
++static int pic_x, pic_y, pic_w, pic_h;   // the last area shown
 +int pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h)
 +{
 +	flush();
-+	if (!ready || (gpu.status & PSX_GPU_STATUS_RGB24))
++	if (!ready || (gpu.status & PSX_GPU_STATUS_RGB24)) {
++		st_pic[PICA_PIC_CPU]++;
 +		return PICA_PIC_CPU;
-+	if ((gpu.status & PSX_GPU_STATUS_BLANKING) || gpu.screen.w <= 0 || gpu.screen.h <= 0)
++	}
++	if ((gpu.status & PSX_GPU_STATUS_BLANKING) || gpu.screen.w <= 0 || gpu.screen.h <= 0) {
++		st_pic[PICA_PIC_NONE]++;
 +		return PICA_PIC_NONE;
++	}
++	st_pic[PICA_PIC_GPU]++;
 +	int x = gpu.screen.src_x, y = gpu.screen.src_y, sw = gpu.screen.w, sh = gpu.screen.h;
 +	if (pica_debug & 32) {   // debug: the whole of VRAM
 +		x = 0; y = 0; sw = VRAM_W; sh = VRAM_H;
 +	} else if (disp_used && gpu.frameskip.set) {   // the last frame that was drawn
 +		x = disp_x; y = disp_y; sw = disp_w; sh = disp_h;
 +	}
++	pic_x = x; pic_y = y; pic_w = sw; pic_h = sh;
 +	*tex = &vram_tex;
 +	*l = (float)x / VRAM_W;
 +	*r = (float)(x + sw) / VRAM_W;
@@ -2417,6 +2425,29 @@ index 0000000..7a3ffdc
 +		st_batches, st_prims, st_decodes, st_evict, st_inval, st_uploads, st_syncs, st_readbacks, st_splits, (unsigned)(linearSpaceFree() / 1024),
 +		ps.dx1, ps.dy1, ps.dx2, ps.dy2, ps.ox, ps.oy, gpu.screen.src_x, gpu.screen.src_y, gpu.screen.w, gpu.screen.h);
 +	st_batches = st_prims = st_decodes = st_uploads = st_syncs = st_evict = st_inval = st_readbacks = st_splits = 0;
++}
++
++// test (stats): what was shown in the last second, and how bright the shown
++// area of the render target is now (8x8 samples, 0-31; no GPU sync)
++void pica_probe(char *buf, int n)
++{
++	int lum = -1;
++	if (ready && vram_tex.data && pic_w > 0 && pic_h > 0) {
++		const u16 *src = vram_tex.data;
++		int sum = 0;
++		for (int j = 0; j < 8; j++)
++			for (int i = 0; i < 8; i++) {
++				int x = (pic_x + pic_w * (2 * i + 1) / 16) & (VRAM_W - 1);
++				int y = (pic_y + pic_h * (2 * j + 1) / 16) & (VRAM_H - 1);
++				u16 p = src[tiled(x, y, VRAM_W)];
++				sum += ((p >> 11) + ((p >> 6) & 31) + ((p >> 1) & 31)) / 3;
++			}
++		lum = sum / 64;
++	}
++	snprintf(buf, n, "pic gpu %u none %u cpu %u; status %08x screen %d,%d %dx%d; shown %d,%d %dx%d lum %d",
++		st_pic[PICA_PIC_GPU], st_pic[PICA_PIC_NONE], st_pic[PICA_PIC_CPU], (unsigned)gpu.status,
++		gpu.screen.src_x, gpu.screen.src_y, gpu.screen.w, gpu.screen.h, pic_x, pic_y, pic_w, pic_h, lum);
++	memset(st_pic, 0, sizeof(st_pic));
 +}
 +
 +// ------------------------------------------------------------------ PSX3D stereo hooks
