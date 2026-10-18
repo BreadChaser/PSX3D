@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "psx3d.h"
+#include "statsview.h"
 
 #define NBUF         16
 #define BUF_FRAMES   512            // 11.6 ms each, 186 ms in total
@@ -127,11 +128,11 @@ static void csnd_submit(const u32 *frames, size_t n)
 {
 	u64 played = csnd_played();
 	if (write_pos < played + 64) {   // ran dry: carry on a little ahead of the player
-		st.underruns++;
+		if (statsview_collecting()) st.underruns++;
 		write_pos = played + 512;
 	}
 	if (write_pos + n > played + RING - 256) {   // far ahead: drop rather than overwrite
-		st.dropped += n;
+		if (statsview_collecting()) st.dropped += n;
 		return;
 	}
 	for (size_t i = 0; i < n; i++) {
@@ -379,7 +380,7 @@ static void submit(const u32 *frames, size_t n)
 	}
 	for (size_t i = 0; i < n; i++) {
 		if (cur_fill == 0 && !buf_free(cur)) {
-			st.dropped += n - i;   // every buffer is queued: we're far ahead
+			if (statsview_collecting()) st.dropped += n - i;   // every buffer is queued: we're far ahead
 			return;
 		}
 		((u32 *)wb[cur].data_pcm16)[cur_fill++] = frames[i];
@@ -413,7 +414,7 @@ size_t audio_write(const int16_t *data, size_t frames)
 		data = tone_buf;
 	}
 
-	{
+	if (sw_stats || sw_prof || log_linked()) {
 		// stair-stepping detector: share of samples identical to the previous one
 		static u32 prev;
 		const u32 *d = (const u32 *)data;
@@ -425,9 +426,10 @@ size_t audio_write(const int16_t *data, size_t frames)
 			prev = d[i];
 		}
 	}
-	{
+	if (sw_stats || sw_prof || log_linked()) {
 		// longest time between two writes
 		static u64 last_t;
+		if (!st.calls) last_t = 0;
 		u64 t = svcGetSystemTick();
 		if (last_t && t - last_t > st.max_gap)
 			st.max_gap = t - last_t;
@@ -448,12 +450,14 @@ size_t audio_write(const int16_t *data, size_t frames)
 	}
 
 	u32 q = queued_frames() + (use_csnd ? 0 : cur_fill);
-	st.calls++;
-	st.frames_in += frames;
-	if (q < st.min_q) st.min_q = q;
-	if (q > st.max_q) st.max_q = q;
-	if (!use_csnd && !ndspChnIsPlaying(0))
-		st.underruns++;   // the DSP ran out of buffers (it restarts on the next one)
+	if (statsview_collecting()) {
+		st.calls++;
+		st.frames_in += frames;
+		if (q < st.min_q) st.min_q = q;
+		if (q > st.max_q) st.max_q = q;
+		if (!use_csnd && !ndspChnIsPlaying(0))
+			st.underruns++;   // DSP ran out of buffers; next buffer restarts it
+	}
 
 	// steer by a slow average: the queue level saws by a frame of audio per write
 	avg_queue += ((double)q - avg_queue) * 0.02;

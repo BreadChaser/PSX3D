@@ -183,11 +183,19 @@ int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id)
 typedef struct { int x, y, w, h; const char *label; unsigned id; } tbutton_t;
 
 #define TB_MENU 0xff
-static const tbutton_t tbuttons[] = {
+static const tbutton_t normal_buttons[] = {
 	{   8,  60, 110, 110, "L2", RETRO_DEVICE_ID_JOYPAD_L2 },
 	{ 202,  60, 110, 110, "R2", RETRO_DEVICE_ID_JOYPAD_R2 },
 	{ 125,   6,  70,  30, "MENU", TB_MENU },
 };
+
+static const tbutton_t detail_buttons[] = {
+	{ 8, 184, 110, 30, "L2", RETRO_DEVICE_ID_JOYPAD_L2 },
+	{ 202, 184, 110, 30, "R2", RETRO_DEVICE_ID_JOYPAD_R2 },
+	{ 125, 184, 70, 30, "MENU", TB_MENU },
+};
+#define tbuttons (g_cfg.show_fps == 2 ? detail_buttons : normal_buttons)
+#define BUTTON_COUNT 3
 
 bool touch_buttons_active(void)
 {
@@ -198,7 +206,7 @@ static const tbutton_t *touched(void)
 {
 	if (!(held & KEY_TOUCH))
 		return NULL;
-	for (size_t i = 0; i < sizeof(tbuttons) / sizeof(tbuttons[0]); i++) {
+	for (size_t i = 0; i < BUTTON_COUNT; i++) {
 		const tbutton_t *b = &tbuttons[i];
 		if (touch.px >= b->x && touch.px < b->x + b->w && touch.py >= b->y && touch.py < b->y + b->h)
 			return b;
@@ -227,12 +235,12 @@ static u16 touch_mask(void)
 void touch_buttons_draw(void)
 {
 	const tbutton_t *hit = touched();
-	for (size_t i = 0; i < sizeof(tbuttons) / sizeof(tbuttons[0]); i++) {
+	for (size_t i = 0; i < BUTTON_COUNT; i++) {
 		const tbutton_t *b = &tbuttons[i];
 		u32 bg = b == hit ? C2D_Color32(70, 80, 120, 255) : C2D_Color32(28, 30, 42, 255);
 		ui_rect(b->x, b->y, b->w, b->h, bg);
-		float sz = b->id == TB_MENU ? 0.45f : 0.8f;
-		ui_text(b->x + b->w / 2 - (b->id == TB_MENU ? 18 : 12), b->y + b->h / 2 - (b->id == TB_MENU ? 8 : 14),
+		float sz = b->id == TB_MENU || g_cfg.show_fps == 2 ? 0.45f : 0.8f;
+		ui_text(b->x + b->w / 2 - (b->id == TB_MENU ? 18 : 12), b->y + b->h / 2 - (b->id == TB_MENU || g_cfg.show_fps == 2 ? 8 : 14),
 			sz, C2D_Color32(150, 155, 175, 255), "%s", b->label);
 	}
 }

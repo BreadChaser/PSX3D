@@ -100,7 +100,7 @@ void config_load(void)
 		else if (strcmp(k, "smooth") == 0)
 			g_cfg.smooth = atoi(v) != 0;
 		else if (strcmp(k, "show_fps") == 0)
-			g_cfg.show_fps = atoi(v) != 0;
+			g_cfg.show_fps = atoi(v) >= 0 && atoi(v) <= 2 ? atoi(v) : 0;
 		else if (strcmp(k, "stereo") == 0)
 			g_cfg.stereo = atoi(v) % 3;
 

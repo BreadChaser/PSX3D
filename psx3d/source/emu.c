@@ -7,6 +7,7 @@
 #include <stdarg.h>
 #include <time.h>
 #include "psx3d.h"
+#include "statsview.h"
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
 
 #define SRM_CHECK_FRAMES 180
@@ -567,7 +568,7 @@ static void menu_draw_bottom(void *ud)
 	snprintf(m->val[M_SCREEN], 48, "%s", screen_names[config_screen_mode()]);
 	snprintf(m->val[M_3D], 48, "%s", s3d_names[g_cfg.stereo]);
 	snprintf(m->val[M_SMOOTH], 48, "%s", g_cfg.smooth ? "on" : "off");
-	snprintf(m->val[M_FPS], 48, "%s", g_cfg.show_fps ? "on" : "off");
+	snprintf(m->val[M_FPS], 48, "%s", g_cfg.show_fps == 2 ? "Detailed" : g_cfg.show_fps ? "FPS" : "Off");
 	snprintf(m->val[M_RES3D], 48, "%s", g_cfg.half3d ? "half (faster)" : "full");
 	snprintf(m->val[M_REWIND], 48, "%s", gamecfg_int("rewind", 0) ? (rewind_active() ? "on" : "on (unavailable)") : "off");
 	snprintf(m->val[M_AUTOSAVE], 48, "%s", g_cfg.autosave ? "on" : "off");
@@ -759,7 +760,7 @@ static bool menu_run(void)
 				} break;
 				case M_SMOOTH: g_cfg.smooth ^= 1; break;
 				case M_RES3D: g_cfg.half3d ^= 1; psx3d_set_half3d(g_cfg.half3d); break;
-				case M_FPS: g_cfg.show_fps ^= 1; break;
+				case M_FPS: statsview_cycle(); break;
 				case M_CORE:
 					if (k & KEY_A) {
 						m.core_page = true;
@@ -819,13 +820,12 @@ resume:
 static void game_draw_bottom(void *ud)
 {
 	(void)ud;
-	u32 dim = C2D_Color32(110, 110, 125, 255), white = C2D_Color32(230, 230, 240, 255);
+	u32 white = C2D_Color32(230, 230, 240, 255);
 	C2D_DrawRectSolid(0, 0, 0.05f, 320, 240, C2D_Color32(0, 0, 0, 255));   // in game it's always black
 
 	if (touch_buttons_active())
 		touch_buttons_draw();
-	if (g_cfg.show_fps)
-		ui_text(4, 222, 0.42f, dim, "%.1f fps  %.1fms", fps_measured, emu_ms);
+	statsview_draw();
 	if (osd_frames > 0) {
 		osd_frames--;
 		ui_text(4, 204, 0.45f, white, "%s", osd_msg);
@@ -974,6 +974,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 
 	if (sw_pmu0 >= 0)
 		pmu_start(sw_pmu0, sw_pmu1 >= 0 ? sw_pmu1 : 0);
+	statsview_begin(game_title);
 	fps_t0 = osGetTime();
 	u64 t_run = 0, t_present = 0, t_run_max = 0;
 	int acap_frames = 0;
@@ -1015,7 +1016,8 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 					osd("Rewound as far as it goes");
 			}
 			audio_muted = true;
-			retro_run();   // show the rewound frame
+			retro_run();
+			statsview_frame();   // count the emulated vblank, including rewind/FF
 			audio_muted = false;
 		} else {
 			if (input_rewind() && !rewind_hint) {
@@ -1030,12 +1032,14 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			for (int extra = ff ? 3 : 0; extra > 0; extra--) {
 				audio_muted = true;
 				retro_run();
+				statsview_frame();
 				rewind_capture();
 			}
 			audio_muted = false;
 			pmu_begin();
 			retro_run();
 			pmu_end();
+			statsview_frame();
 			rewind_capture();
 			if (sw_acap && ++acap_frames == 60)   // same emulated frame every run
 				audio_hash_start(44100 * 10);
@@ -1068,20 +1072,25 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			t_run_max = t1 - t0;
 
 		// touch the bottom screen to open the menu
-		if (menu_touched()) {
+		if (statsview_touch()) {
+			bottom_backlight(true);
+		} else if (menu_touched()) {
 			if (!menu_run())
 				break;
 			fps_t0 = osGetTime();
 			fps_frames = present_count = 0;
+			t_run = t_present = t_run_max = 0;
+			dup_frames = late_frames = 0;
+			statsview_begin(game_title);
 			next_deadline = svcGetSystemTick();
 		}
 
 		ui_begin();
 		t1 = svcGetSystemTick();
-		video_present(true, speed_icon ? game_draw_top : NULL, game_draw_bottom, NULL);
+		video_present(true, speed_icon ? game_draw_top : NULL, statsview_redraw(osd_frames) ? game_draw_bottom : NULL, NULL);
 		t_present += svcGetSystemTick() - t1;
 
-		if (++game_frames == 120 && g_cfg.bottom_off && !touch_buttons_active() && !g_cfg.show_fps)
+		if (++game_frames >= 120 && g_cfg.bottom_off && !touch_buttons_active() && !g_cfg.show_fps)
 			bottom_backlight(false);
 
 		if (++srm_counter >= SRM_CHECK_FRAMES) {
@@ -1094,41 +1103,53 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			fps_measured = fps_frames * 1000.0f / (now - fps_t0);
 			emu_ms = t_run / (float)present_count / CPU_TICKS_PER_MSEC;
 			present_ms = t_present / (float)present_count / CPU_TICKS_PER_MSEC;
-			// SD writes cost a ~40ms hitch on Old 3DS: per-second stats
-			// only when sent to a PC or profiling
-			float wait_ms = video_take_wait_ticks() / (float)present_count / CPU_TICKS_PER_MSEC;
-			float xfer_ms = video_take_xfer_ticks() / (float)present_count / CPU_TICKS_PER_MSEC;
-			if (log_linked() || sw_prof || sw_stats)
-				log_printf("fps %.1f  emu %.2fms (max %.2f)  present %.2fms (wait %.2f) xfer %.2f  skip %u late %u cb %d\n",
-					fps_measured, emu_ms, t_run_max / (float)CPU_TICKS_PER_MSEC, present_ms,
-					wait_ms, xfer_ms, dup_frames, late_frames, abuf_status_cb != NULL);
-			dup_frames = late_frames = 0;
-			{
-				float gms; u64 gap;
-				video_take_gpu_stats(&gms, &gap);
-				u64 qw = video_take_pending_wait_ticks();
-				float heap_ms = video_take_heap_flush_ticks() / (float)present_count / CPU_TICKS_PER_MSEC;
+			if (statsview_collecting()) {
+				statsview_sample sample = { .fps = fps_measured, .target = fps_target,
+				 .emu = emu_ms, .max = t_run_max / (float)CPU_TICKS_PER_MSEC, .present = present_ms,
+				 .skipped = dup_frames, .late = late_frames, .elapsed = now - fps_t0 };
+				// SD writes cost a ~40ms hitch on Old 3DS: per-second stats
+				// only when sent to a PC or profiling
+				float wait_ms = video_take_wait_ticks() / (float)present_count / CPU_TICKS_PER_MSEC;
+				sample.wait = wait_ms;
+				float xfer_ms = video_take_xfer_ticks() / (float)present_count / CPU_TICKS_PER_MSEC;
 				if (log_linked() || sw_prof || sw_stats)
-					log_printf("  gpu %.2fms/frame, frame end to next begin %.2fms, heap flush %.3fms, queue wait %.3fms\n", gms / present_count,
-						gap / (float)present_count / CPU_TICKS_PER_MSEC, heap_ms, qw / (float)present_count / CPU_TICKS_PER_MSEC);
-			}
-			char abuf[160];
-			audio_stats(abuf, sizeof(abuf));
-			if (log_linked() || sw_prof || sw_stats)
-				log_printf("  %s\n", abuf);
-			pmu_report();
-			if (renderer_is_gpu()) {
-				void pica_stats(char *buf, int n);
-				char pb[512];
-				pica_stats(pb, sizeof(pb));
-				if (log_linked() || sw_prof || sw_stats)
-					log_printf("  %s\n", pb);
-				void pica_probe(char *buf, int n);
-				if (log_linked() || sw_prof || sw_stats) {
-					pica_probe(pb, sizeof(pb));   // what reached the screen
-					log_printf("  %s; top fb %d\n", pb, video_probe_top());
+					log_printf("fps %.1f  emu %.2fms (max %.2f)  present %.2fms (wait %.2f) xfer %.2f  skip %u late %u cb %d\n",
+						fps_measured, emu_ms, t_run_max / (float)CPU_TICKS_PER_MSEC, present_ms,
+						wait_ms, xfer_ms, dup_frames, late_frames, abuf_status_cb != NULL);
+				dup_frames = late_frames = 0;
+				{
+					float gms; u64 gap;
+					video_take_gpu_stats(&gms, &gap);
+					sample.gpu = gms / present_count;
+					u64 qw = video_take_pending_wait_ticks();
+					float heap_ms = video_take_heap_flush_ticks() / (float)present_count / CPU_TICKS_PER_MSEC;
+					if (log_linked() || sw_prof || sw_stats)
+						log_printf("  heap flush %.3fms, queue wait %.3fms\n", heap_ms, qw / (float)present_count / CPU_TICKS_PER_MSEC);
+					if (log_linked() || sw_prof || sw_stats)
+						log_printf("  gpu %.2fms/frame, frame end to next begin %.2fms\n", gms / present_count,
+							gap / (float)present_count / CPU_TICKS_PER_MSEC);
 				}
+				char abuf[256], renderer[768] = "";
+				audio_stats(abuf, sizeof(abuf));
+				sample.audio = abuf; sample.renderer = renderer;
+				if (log_linked() || sw_prof || sw_stats)
+					log_printf("  %s\n", abuf);
+				pmu_report();
+				if (renderer_is_gpu()) {
+					void pica_stats(char *buf, int n);
+					char pb[512];
+					pica_stats(renderer, sizeof(renderer));
+					if (log_linked() || sw_prof || sw_stats)
+						log_printf("  %s\n", renderer);
+					void pica_probe(char *buf, int n);
+					if (log_linked() || sw_prof || sw_stats) {
+						pica_probe(pb, sizeof(pb));   // what reached the screen
+						log_printf("  %s; top fb %d\n", pb, video_probe_top());
+					}
+				}
+				statsview_update(&sample);
 			}
+			dup_frames = late_frames = 0;
 			if (sw_prof) {
 				static const char *const names[6] = { "compile", "inval", "spu", "gpu", "irq", "cdr" };
 				char pb[200]; int n = 0;
