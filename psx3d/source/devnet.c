@@ -460,6 +460,16 @@ static void network_main(void *unused)
 				if (SOCU_GetNetworkOpt(SOL_CONFIG, NETOPT_IP_INFO, &ip, &ip_size) == 0 &&
 				    (peer.sin_addr.s_addr & ip.netmask.s_addr) == (ip.ip.s_addr & ip.netmask.s_addr))
 					serve_client(fd);
+				// SOC close can reset a connection with response bytes still queued.
+				// Half-close first, then let the reader consume its framed response.
+				shutdown(fd, SHUT_WR);
+				u64 close_deadline = osGetTime() + 1000;
+				char discard[64];
+				while (osGetTime() < close_deadline) {
+					int n = recv(fd, discard, sizeof(discard), 0);
+					if (!n || (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) break;
+					svcSleepThread(2000000);
+				}
 				closesocket(fd);
 			}
 		}
