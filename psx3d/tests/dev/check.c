@@ -80,9 +80,10 @@ bool devnet_take(char *out)
 }
 void devnet_reply(const char *json) { snprintf(response, sizeof(response), "%s", json); }
 void devnet_status(const char *json) { snprintf(status, sizeof(status), "%s", json); }
+static dev_measurement captured;
 void devnet_sample(const dev_measurement *s, bool reset)
 {
-	(void)s;
+	if (s) captured = *s;
 	(void)reset;
 }
 bool devnet_shot(const char *path, bool bottom)
@@ -133,6 +134,11 @@ int main(void)
 	dev_remote = true;
 	dev_init();
 	assert(init_calls == 1);
+	statsview_sample counters = {.elapsed = 1000,
+	 .renderer = "pica: ends: atlas 0; evictions by size 0 0 0 0; sync reasons cpu 0 tex 1; 12 batches 34 prims 56 tile decodes (7 evictions 8 invalidations) 9 uploads 10 syncs 11 readbacks"};
+	dev_sample(&counters, "", 100, 1, 2, 3);
+	assert(captured.v[11] == 12 && captured.v[13] == 56 && captured.v[17] == 10 && captured.v[18] == 11);
+
 	char path[PATH_LEN], save[PATH_LEN], title[PATH_LEN], err[160], game[PATH_LEN];
 	char bad[] = "game=Crash state=oops";
 	assert(!switches_run(bad, game, sizeof(game), err, sizeof(err)));

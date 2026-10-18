@@ -590,10 +590,11 @@ void dev_sample(const statsview_sample *s, const char *probe, int top_lum, doubl
 	snprintf(m.probe, sizeof(m.probe), "%s", probe);
 	if (renderer_is_gpu()) {
 		unsigned v[8] = {0};
-		const char *p = strstr(m.pica, "; evictions by size ");
+		// Stats may insert diagnostic sections before the stable counter labels.
+		const char *p = strstr(m.pica, " batches ");
 		if (p)
-			p = strchr(p + 1, ';');
-		if (p && sscanf(p + 1,
+			while (p > m.pica && isdigit((unsigned char)p[-1])) p--;
+		if (p && sscanf(p,
 		                "%u batches %u prims %u tile decodes (%u evictions %u invalidations) %u uploads %u "
 		                "syncs %u readbacks",
 		                &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7]) == 8)

@@ -9,7 +9,7 @@ extern const char *const dev_columns[DEV_METRICS];
 typedef struct {
 	u64 seq, ms;
 	double v[DEV_METRICS];
-	char audio[256], pica[768], probe[512];
+	char audio[256], pica[1024], probe[512];
 } dev_measurement;
 void devnet_init(void);
 void devnet_notification_done(void);
