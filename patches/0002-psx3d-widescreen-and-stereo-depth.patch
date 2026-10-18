@@ -946,10 +946,10 @@ index 76f76afe..0e684ace 100644
    sem_post(&t.sem_done);
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 00000000..417a5eec
+index 00000000..c3201056
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,2106 @@
+@@ -0,0 +1,2166 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -977,6 +977,7 @@ index 00000000..417a5eec
 +#include "../gpulib/gpu.h"
 +#include "../gpulib/gpu_timing.h"
 +#include "gpu_pica.h"
++#include "../../frontend/plugin_lib.h"
 +
 +#define VRAM_W 1024
 +#define VRAM_H 512
@@ -1033,6 +1034,9 @@ index 00000000..417a5eec
 +static int u_proj, u_texscale;
 +static C3D_Tex vram_tex;              // the PS1 VRAM render target
 +static C3D_RenderTarget *target;
++static C3D_Tex dither_tex;            // repeated PS1 4x4 signed offsets (8x8 hardware minimum)
++static int applied_dither = -1;     // independent of stage 0 / STP mask pass
++static unsigned dither_config = 1;   // 0 off, 1 E1-controlled, 2 force
 +static C3D_Tex stage_tex;             // CPU uploads on their way into the target
 +// A private copy of the last drawn scanout. Skipped frames still execute
 +// large fills and CPU uploads, so holding VRAM coordinates is not enough.
@@ -1139,6 +1143,7 @@ index 00000000..417a5eec
 +	u8 blend;      // BL_*
 +	u8 texmode;    // TX_*
 +	u8 pass;       // two-pass modes: 0 opaque texels, 1 semi-transparent texels
++	u8 dither;     // ordered dither on eligible polygons only
 +	u8 mask;       // GP0 E6: bit 0 drawn pixels get the mask bit, bit 1 masked pixels are kept
 +	int sc[4];     // scissor x1, y1, x2, y2 in VRAM coordinates
 +} drawstate;
@@ -1208,7 +1213,11 @@ index 00000000..417a5eec
 +	if (!p)
 +		return 0;
 +	u32 r = p & 31, g = (p >> 5) & 31, b = (p >> 10) & 31;
-+	r = (r << 3) | (r >> 2); g = (g << 3) | (g >> 2); b = (b << 3) | (b >> 2);
++	// PS1 modulation operates on 5-bit channels: (tex5 * colour8) / 16
++	// before dithering/truncation. Bit replication brightens modulated colours
++	// by up to 7/248 and moves different channels across quantization levels.
++	// A raw texel modulated by 0x80 still truncates back to its original tex5.
++	r <<= 3; g <<= 3; b <<= 3;
 +	return (r << 24) | (g << 16) | (b << 8) | ((p & 0x8000) ? 128 : 255);
 +}
 +
@@ -1905,6 +1914,7 @@ index 00000000..417a5eec
 +	C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_COLOR);
 +	for (int i = 1; i < 6; i++)
 +		C3D_TexEnvInit(C3D_GetTexEnv(i));
++	applied_dither = -1;
 +	base_dirty = false;
 +	sent_valid = false;
 +}
@@ -2011,6 +2021,19 @@ index 00000000..417a5eec
 +				GPU_ONE_MINUS_DST_ALPHA, add ? GPU_ONE : GPU_DST_ALPHA, MASK_SA, GPU_ONE);
 +		}
 +	}
++	// The STP pass changes only stage 0. Keep stage 1 independently valid
++	// instead of resending its registers and texture binding after each mask.
++	if (applied_dither != d->dither) {
++		C3D_TexEnv *env = C3D_GetTexEnv(1);
++		C3D_TexEnvInit(env);   // alpha passes through unchanged (STP/blending)
++		if (d->dither) {
++			C3D_TexBind(1, &dither_tex);
++			C3D_TexEnvSrc(env, C3D_RGB, GPU_PREVIOUS, GPU_TEXTURE1, 0);
++			C3D_TexEnvFunc(env, C3D_RGB, GPU_ADD_SIGNED);
++		} else
++			C3D_TexBind(1, NULL);
++		applied_dither = d->dither;
++	}
 +	if (d->texmode != TX_NONE && (!sent_valid || sent.atlas != d->atlas || sent.texmode == TX_NONE || atlas[d->atlas].rebind)) {
 +		if (atlas[d->atlas].rebind)
 +			clear_tex_cache();
@@ -2083,7 +2106,7 @@ index 00000000..417a5eec
 +	{   // simulator: what was drawn, to compare builds
 +		// the state only when it changes: how draws are grouped doesn't count
 +		static u32 last_st[4] = { ~0u };
-+		u32 st[4] = { cur.atlas, cur.blend, cur.texmode, cur.pass };
++		u32 st[4] = { cur.atlas, cur.blend, cur.texmode, cur.pass | (cur.dither << 8) };
 +		if (memcmp(st, last_st, sizeof(st)) && vpos > vstart) {
 +			sim_hash(st, sizeof(st));
 +			memcpy(last_st, st, sizeof(st));
@@ -2108,7 +2131,13 @@ index 00000000..417a5eec
 +// start drawing with this state: ends the batch if anything differs
 +static u32 cur_area_gen = ~0u;
 +
-+static inline void use_state(int at, int blend, int texmode, int pass)
++static inline bool polygon_dither(u32 cmd)
++{
++	return dither_config && (dither_config == 2 || (ps.texpage & 0x200)) &&
++		((cmd & 4) ? !(cmd & 1) : (cmd & 0x10));
++}
++
++static inline void use_state(int at, int blend, int texmode, int pass, bool dither)
 +{
 +	u8 mask = ps.mask & 3;
 +	// A later primitive checking the mask must see the previous primitive's
@@ -2116,7 +2145,7 @@ index 00000000..417a5eec
 +	if ((mask & 2) && vpos != vstart)
 +		flush();
 +	if (at == cur.atlas && blend == cur.blend && texmode == cur.texmode && pass == cur.pass &&
-+		mask == cur.mask && ps.area_gen == cur_area_gen && !atlas[at].rebind)
++		mask == cur.mask && dither == cur.dither && ps.area_gen == cur_area_gen && !atlas[at].rebind)
 +		return;
 +	st_why[at != cur.atlas ? 0 : (blend != cur.blend || texmode != cur.texmode || pass != cur.pass) ? 1 :
 +		ps.area_gen != cur_area_gen ? 2 : 3]++;
@@ -2126,6 +2155,7 @@ index 00000000..417a5eec
 +	cur.texmode = texmode;
 +	cur.pass = pass;
 +	cur.mask = mask;
++	cur.dither = dither;
 +	cur.sc[0] = ps.dx1; cur.sc[1] = ps.dy1; cur.sc[2] = ps.dx2; cur.sc[3] = ps.dy2;
 +	cur_area_gen = ps.area_gen;
 +	state_dirty = true;
@@ -2216,7 +2246,7 @@ index 00000000..417a5eec
 +	return n - 2;
 +}
 +
-+static void noinline emit_tris(const pvtx *v, int ntri, int blend, int texmode, tcache *tex, bool polygon)
++static void noinline emit_tris(const pvtx *v, int ntri, int blend, int texmode, tcache *tex, bool polygon, bool dither)
 +{
 +	bool semi = blend != BL_OPAQUE;
 +	if (!ready || (pica_debug & 4096))   // debug 4096: primitives decoded, not drawn
@@ -2306,7 +2336,7 @@ index 00000000..417a5eec
 +	}
 +	int passes = (blend == BL_SUB || blend == BL_QUARTER) ? 2 : 1;
 +	for (int p = 0; p < passes; p++) {
-+		use_state(0, blend, texmode, p);
++		use_state(0, blend, texmode, p, dither);
 +		pvtx *o = alloc_verts(nv);
 +		if (!o)
 +			return;
@@ -2374,7 +2404,7 @@ index 00000000..417a5eec
 +	u32 a = blend == BL_OPAQUE ? 0xff000000 : textured ? 0x80000000 : 0x40000000;
 +	u32 rawcol = (textured && (cmd & 1)) ? 0x808080 : 0;
 +	int du = tex->ax - tex->rx, dv = tex->ay - tex->ry;
-+	use_state(0, BL_HALF, TX_MOD, 0);
++	use_state(0, BL_HALF, TX_MOD, 0, polygon_dither(cmd));
 +	pvtx *o = alloc_verts(quad ? 6 : 3);
 +	if (!o)
 +		return;
@@ -2451,7 +2481,7 @@ index 00000000..417a5eec
 +		}
 +	}
 +	int texmode = !textured ? TX_NONE : (cmd & 1) ? TX_RAW : TX_MOD;
-+	emit_tris(tri, ntri, blend_of(cmd), texmode, tex, true);
++	emit_tris(tri, ntri, blend_of(cmd), texmode, tex, true, polygon_dither(cmd));
 +}
 +
 +// one sprite (or a part of one) at x, y with page texels from u, v
@@ -2462,17 +2492,18 @@ index 00000000..417a5eec
 +	tcache *tex = NULL;
 +	if (textured) {
 +		bool fx = ps.texpage & (1 << 12), fy = ps.texpage & (1 << 13);
-+		// texture coordinates wrap at 256: split where they do (not flipped)
-+		if (!fx && u + sw > 256 && u < 256) {
-+			int k = 256 - u;
++		// Split at each wrap in either direction, including repeated pages.
++		// Flipped texels run u, u-1, ... 0, 255; their first span is u+1.
++		if (sw > (fx ? u + 1 : 256 - u)) {
++			int k = fx ? u + 1 : 256 - u;
 +			sprite(x, y, k, sh, u, v, col, cmd, clut);
-+			sprite(x + k, y, sw - k, sh, 0, v, col, cmd, clut);
++			sprite(x + k, y, sw - k, sh, fx ? 255 : 0, v, col, cmd, clut);
 +			return;
 +		}
-+		if (!fy && v + sh > 256 && v < 256) {
-+			int k = 256 - v;
++		if (sh > (fy ? v + 1 : 256 - v)) {
++			int k = fy ? v + 1 : 256 - v;
 +			sprite(x, y, sw, k, u, v, col, cmd, clut);
-+			sprite(x, y + k, sw, sh - k, u, 0, col, cmd, clut);
++			sprite(x, y + k, sw, sh - k, u, fy ? 255 : 0, col, cmd, clut);
 +			return;
 +		}
 +		u0 = u; v0 = v;
@@ -2489,7 +2520,7 @@ index 00000000..417a5eec
 +		{ x, y, u0, v0, col }, { x + sw, y, u1, v0, col }, { x, y + sh, u0, v1, col },
 +		{ x + sw, y, u1, v0, col }, { x + sw, y + sh, u1, v1, col }, { x, y + sh, u0, v1, col } };
 +	int texmode = !textured ? TX_NONE : (cmd & 1) ? TX_RAW : TX_MOD;
-+	emit_tris(q, 2, blend_of(cmd), texmode, tex, false);
++	emit_tris(q, 2, blend_of(cmd), texmode, tex, false, false);
 +}
 +
 +static void draw_rect(const u32 *w, u32 cmd)
@@ -2529,7 +2560,7 @@ index 00000000..417a5eec
 +	pvtx a2 = a, b2 = b;
 +	a2.x += ox; a2.y += oy; b2.x += ox; b2.y += oy;
 +	q[0] = a; q[1] = b; q[2] = a2; q[3] = b; q[4] = b2; q[5] = a2;
-+	emit_tris(q, 2, blend, TX_NONE, NULL, false);
++	emit_tris(q, 2, blend, TX_NONE, NULL, false, false);
 +}
 +
 +// GP0 02: fill a VRAM rectangle (ignores the drawing area and mask)
@@ -2553,7 +2584,7 @@ index 00000000..417a5eec
 +	pvtx q[6] = {
 +		{ x, y, 0, 0, col }, { x + fw, y, 0, 0, col }, { x, y + fh, 0, 0, col },
 +		{ x + fw, y, 0, 0, col }, { x + fw, y + fh, 0, 0, col }, { x, y + fh, 0, 0, col } };
-+	emit_tris(q, 2, BL_OPAQUE, TX_NONE, NULL, false);
++	emit_tris(q, 2, BL_OPAQUE, TX_NONE, NULL, false, false);
 +	ps.dx1 = save[0]; ps.dy1 = save[1]; ps.dx2 = save[2]; ps.dy2 = save[3];
 +	ps.area_gen++;
 +	ps.mask = save_mask;
@@ -2640,6 +2671,8 @@ index 00000000..417a5eec
 +	C3D_TexEnvInit(env);
 +	C3D_TexEnvSrc(env, C3D_Both, GPU_TEXTURE0, 0, 0);
 +	C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
++	C3D_TexEnvInit(C3D_GetTexEnv(1));   // CPU uploads must never be dithered
++	applied_dither = -1;
 +	C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
 +	C3D_AlphaTest(false, GPU_ALWAYS, 0);
 +	alias_i ^= 1;
@@ -2677,7 +2710,12 @@ index 00000000..417a5eec
 +void renderer_finish(void) {}
 +void renderer_notify_screen_change(const struct psx_gpu_screen *screen) { (void)screen; }
 +void renderer_set_interlace(int enable, int is_odd) { (void)enable; (void)is_odd; }
-+void renderer_set_config(const struct rearmed_cbs *config) { (void)config; }
++void renderer_set_config(const struct rearmed_cbs *config)
++{
++	// Vertices already queued retain their captured state. The next primitive
++	// gets the new option and use_state splits the batch when necessary.
++	dither_config = config->dithering;
++}
 +void renderer_flush_queues(void) { flush(); }
 +
 +void renderer_sync_ecmds(uint32_t *ecmds)
@@ -2834,10 +2872,13 @@ index 00000000..417a5eec
 +		C3D_TexDelete(&atlas[0].tex);
 +	if (stage_tex.data)
 +		C3D_TexDelete(&stage_tex);
++	if (dither_tex.data)
++		C3D_TexDelete(&dither_tex);
 +	if (vbuf)
 +		linearFree(vbuf_base);
 +	memset(&atlas[0].tex, 0, sizeof(atlas[0].tex));
 +	memset(&stage_tex, 0, sizeof(stage_tex));
++	memset(&dither_tex, 0, sizeof(dither_tex));
 +	vbuf = vbuf_base = NULL;
 +}
 +
@@ -2868,6 +2909,25 @@ index 00000000..417a5eec
 +		goto fail;
 +	C3D_TexSetFilter(&atlas[0].tex, GPU_NEAREST, GPU_NEAREST);
 +	C3D_TexSetWrap(&atlas[0].tex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
++	if (!C3D_TexInit(&dither_tex, 8, 8, GPU_RGBA8))
++		goto fail;
++	C3D_TexSetFilter(&dither_tex, GPU_NEAREST, GPU_NEAREST);
++	C3D_TexSetWrap(&dither_tex, GPU_REPEAT, GPU_REPEAT);
++	{
++		// ADD_SIGNED subtracts 128 from the sum. Coordinates are generated
++		// from absolute VRAM position by the vertex shader, with no extra
++		// vertex attribute or per-pixel CPU work. Rows are bottom-up.
++		static const int matrix[4][4] = {
++			{ -4, 0, -3, 1 }, { 2, -2, 3, -1 },
++			{ -3, 1, -4, 0 }, { 3, -1, 2, -2 } };
++		u32 *dst = dither_tex.data;
++		for (int y = 0; y < 8; y++)
++			for (int x = 0; x < 8; x++) {
++				u32 c = 128 + matrix[y & 3][x & 3];
++				dst[tiled(x, 7 - y, 8)] = (c << 24) | (c << 16) | (c << 8) | 255;
++			}
++		GSPGPU_FlushDataCache(dst, 8 * 8 * 4);
++	}
 +	// all cells free but the reserved square's (the last one)
 +	for (int i = 0; i < CELLS * CELLS; i++)
 +		cell_owner[i] = CELL_FREE;

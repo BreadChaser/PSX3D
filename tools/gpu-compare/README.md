@@ -46,18 +46,18 @@ Synthetic mask, blend and ordering probes can run without ROMs or states:
 python3 tools/gpu-compare/inspect_trace.py /tmp/correct-sim/sh.gputrace
 ```
 
-`--check` verifies exact reference RGB for the mask cases with exact colour
-arithmetic and mask survival for quarter blending (whose colour rounding still
-differs by one 5-bit step). `known-mask-half-blend` deliberately documents a
+`--check` verifies exact reference RGB for the selected mask cases, including
+the subtract/quarter probes after correcting the target quantization model. `known-mask-half-blend` deliberately documents a
 remaining failure and is not counted as a passing regression. The high-frequency
 polygon probe likewise visualizes residual PS1/PICA interpolation differences.
 See [REPORT.md](REPORT.md) for game images, fixes and benchmark priorities.
 
 Limits: the fake GPU models this shader's affine interpolation, nearest tiled
-texture lookup, TEV stage 0, alpha tests and blend factors. It does not emulate
+texture lookup, TEV stages (including the signed dither add), alpha tests and blend factors. It does not emulate
 PICA precision, memory/cache races, command processor, shader execution or the
-hardware clipping bugs. RGBA5551 conversion uses rounding; verify actual PICA
-quantization on hardware before using single-level RGB errors as evidence.
+hardware clipping bugs. RGBA5551 conversion drops the low three bits of the 8-bit blend result, as
+also modeled by Azahar; verify actual PICA interpolation/TEV precision on
+hardware before using single-level RGB errors as evidence.
 These are raw PS1 scanout images, not 3DS final-screen centering/scaling. The
 trace records the display rectangle at the end of each host frame; it does not
 model a real CRT, mid-frame changes or the frontend's delayed presentation.
@@ -94,3 +94,33 @@ accept `FRAME_EVERY`, `FRAME_FIRST` and `FRAME_LAST` to limit **image output**;
 all commands and reference snapshots are still replayed/verified. Old replay
 binaries ignore these variables: rebuild before long captures to avoid saving
 thousands of PPMs on the shared tmpfs.
+
+## Colour/dither follow-up
+
+[CORRECTNESS-2.md](CORRECTNESS-2.md) contains the subsequent modulation, GPU
+dithering and flipped-wrap fixes, independent oracle comparisons, all requested
+frame metrics, CPU/submission cost estimates, build hashes and hardware notes.
+P.E.Op.S. has positive-only dither bias; `--reference neon` selects the upstream
+gpu_neon **portable C** renderer's signed-dither oracle. Only the original
+P.E.Op.S. replay asserts equality to captured full-VRAM snapshots.
+
+For native replays without rebuilding/copying the capture core:
+
+```sh
+BUILD_DIR=/tmp/correct2-sim REPLAY_ONLY=1 tools/gpu-compare/build.sh
+/tmp/correct-sim/venv/bin/python tools/gpu-compare/compare.py \
+    --build /tmp/correct2-sim --reference neon --frames 10 30 60 \
+    --reuse-traces --output /tmp/correct2-sim/final
+```
+
+`--pica /path/to/old-replayer` selects a prior renderer for deterministic A/B.
+The comparer sets `GPU_FRAMES=10,30,60` in new replayers so only selected PPMs
+are written; all commands and full-reference verification still execute.
+`GPU_DITHER=0`/`2` test disabled/force config; changing the reference config
+intentionally skips equality to enabled-dither capture snapshots. The synthetic
+trace extension tag 7 is one uint32 config value, used only to test option changes
+with pending batches. Traces from capture do not contain it.
+
+The new sprite-wrap fixture uses explicitly labeled independent modulo
+addressing because P.E.Op.S. crashes on a flipped negative span. No game data,
+traces or full VRAM dumps are added to the repository.

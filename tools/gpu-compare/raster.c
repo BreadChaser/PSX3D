@@ -6,9 +6,10 @@
 #include <string.h>
 #include <assert.h>
 
+unsigned sim_dither_setups;
 static C3D_RenderTarget rt;
 static C3D_BufInfo buf;
-static C3D_Tex texture;
+static C3D_Tex textures[2];
 static C3D_TexEnv envs[6];
 static float proj[4][4], texscale[2];
 static int viewport[4], scissor[4], scissor_on;
@@ -21,7 +22,7 @@ unsigned sim_tiled(int x, int y, int w)
     return ((y>>3)*(w>>3)+(x>>3))*64+m;
 }
 
-void C3D_TexBind(int u, C3D_Tex *t) { assert(u == 0); texture = *t; }
+void C3D_TexBind(int u, C3D_Tex *t) { assert(u < 2); if(t) textures[u] = *t; else memset(&textures[u],0,sizeof(textures[u])); }
 C3D_RenderTarget *C3D_RenderTargetCreateFromTex(C3D_Tex *t, int f, int l, int d)
 { (void)f; (void)l; (void)d; rt.tex = t; return &rt; }
 bool C3D_FrameDrawOn(C3D_RenderTarget *t) { rt = *t; return true; }
@@ -36,9 +37,9 @@ void C3D_AlphaBlend(int a,int b,int c,int d,int e,int f)
 { blend[0]=a; blend[1]=b; blend[2]=c; blend[3]=d; blend[4]=e; blend[5]=f; }
 void C3D_BlendingColor(u32 c) { constant_alpha=(c>>24)/255.f; }
 void C3D_AlphaTest(bool e,int f,int r) { alpha_on=e; alpha_func=f; alpha_ref=r; }
-C3D_TexEnv *C3D_GetTexEnv(int i) { assert(i<6); return &envs[i]; }
+C3D_TexEnv *C3D_GetTexEnv(int i) { assert(i<6); if(i==1)sim_dither_setups++; return &envs[i]; }
 void C3D_TexEnvInit(C3D_TexEnv *e)
-{ memset(e,0,sizeof(*e)); e->scale[0]=e->scale[1]=1; }
+{ memset(e,0,sizeof(*e)); e->scale[0]=e->scale[1]=1; e->src[0][0]=e->src[1][0]=GPU_PREVIOUS; e->func[0]=e->func[1]=GPU_REPLACE; }
 static int channel(int m) { return m==C3D_Alpha; }
 void C3D_TexEnvSrc(C3D_TexEnv *e,int m,int a,int b,int c)
 {
@@ -61,13 +62,16 @@ void C3D_FVUnifSet(int t,int id,float x,float y,float z,float w)
 }
 static float clamp(float x) { return fminf(1.f,fmaxf(0.f,x)); }
 static void unpack(u16 p,float *v)
-{ v[0]=(p>>11)/31.f; v[1]=((p>>6)&31)/31.f; v[2]=((p>>1)&31)/31.f; v[3]=p&1; }
+{ v[0]=(((p>>11)<<3)|((p>>11)>>2))/255.f; v[1]=((((p>>6)&31)<<3)|(((p>>6)&31)>>2))/255.f; v[2]=((((p>>1)&31)<<3)|(((p>>1)&31)>>2))/255.f; v[3]=p&1; }
 u16 sim_target_pixel(int x,int y)
 { return ((u16*)rt.tex->data)[sim_tiled(x,y,rt.tex->width)]; }
-static void sample(float u,float v,float *c)
+static void sample(int unit,float u,float v,float *c)
 {
-    int x=(int)floorf(u*texscale[0]*texture.width);
-    int y=(int)floorf(v*texscale[1]*texture.height);
+    C3D_Tex texture=textures[unit];
+    if(!texture.data) { memset(c,0,4*sizeof(float)); return; }
+    int x=(int)floorf(u*(unit ? 1.f : texscale[0])*texture.width);
+    int y=(int)floorf(v*(unit ? 1.f : texscale[1])*texture.height);
+    if(unit) { x=(x%texture.width+texture.width)%texture.width; y=(y%texture.height+texture.height)%texture.height; }
     x=x<0?0:x>=texture.width?texture.width-1:x;
     y=y<0?0:y>=texture.height?texture.height-1:y;
     unsigned i=sim_tiled(x,texture.height-1-y,texture.width);
@@ -102,7 +106,7 @@ static int test(float a)
     }
 }
 typedef struct { s16 x,y,u,v; u32 rgba; } Vertex;
-typedef struct { float x,y,u,v,c[4]; } Varying;
+typedef struct { float x,y,u,v,dx,dy,c[4]; } Varying;
 static float edge(const Varying *a,const Varying *b,float x,float y)
 { return (b->x-a->x)*(y-a->y)-(b->y-a->y)*(x-a->x); }
 static int top_left(const Varying *a,const Varying *b)
@@ -120,6 +124,7 @@ void C3D_DrawArrays(int primitive,int first,int n)
             v[j].x=viewport[0]+(x+1)*viewport[2]*.5f;
             v[j].y=rt.tex->height-viewport[1]-(y+1)*viewport[3]*.5f;
             v[j].u=a->u; v[j].v=a->v;
+            v[j].dx=a->x/32.f; v[j].dy=a->y/32.f;
             for(int k=0;k<4;k++)v[j].c[k]=((a->rgba>>(8*k))&255)/255.f;
         }
         float area=edge(&v[0],&v[1],v[2].x,v[2].y);
@@ -137,19 +142,41 @@ void C3D_DrawArrays(int primitive,int first,int n)
             if(b[0]<0||b[1]<0||b[2]<0)continue;
             if((b[0]==0&&!top_left(&v[1],&v[2]))||(b[1]==0&&!top_left(&v[2],&v[0]))||(b[2]==0&&!top_left(&v[0],&v[1])))continue;
             for(int k=0;k<3;k++)b[k]/=area;
-            float tc[4],pc[4],s[4],d[4];
+            float tc[4],dt[4],pc[4],s[4]={0},d[4];
             float u=v[0].u+b[1]*(v[1].u-v[0].u)+b[2]*(v[2].u-v[0].u);
             float t=v[0].v+b[1]*(v[1].v-v[0].v)+b[2]*(v[2].v-v[0].v);
-            sample(u,t,tc);
-            for(int k=0;k<4;k++) {
+            sample(0,u,t,tc);
+            float du=v[0].dx+b[1]*(v[1].dx-v[0].dx)+b[2]*(v[2].dx-v[0].dx);
+            float dv=v[0].dy+b[1]*(v[1].dy-v[0].dy)+b[2]*(v[2].dy-v[0].dy);
+            sample(1,du,dv,dt);
+            for(int k=0;k<4;k++)
                 pc[k]=v[0].c[k]+b[1]*(v[1].c[k]-v[0].c[k])+b[2]*(v[2].c[k]-v[0].c[k]);
-                C3D_TexEnv *e=&envs[0]; int ch=k==3;
-                float a=e->src[ch][0]==GPU_TEXTURE0?tc[k]:pc[k];
-                float z=e->src[ch][1]==GPU_TEXTURE0?tc[k]:pc[k];
-                if(ch&&e->inv_alpha)a=1-a;
-                s[k]=clamp((e->func[ch]==GPU_MODULATE?a*z:a)*e->scale[ch]);
-                // TEV produces an 8-bit component before the alpha test/blender.
-                s[k]=floorf(s[k]*255+.5f)/255.f;
+            for(int stage=0;stage<6;stage++) {
+                float previous[4]; memcpy(previous,s,sizeof(s));
+                for(int k=0;k<4;k++) {
+                    C3D_TexEnv *e=&envs[stage]; int ch=k==3;
+                    float args[2];
+                    for(int j=0;j<2;j++) {
+                        switch(e->src[ch][j]) {
+                        case GPU_TEXTURE0: args[j]=tc[k]; break;
+                        case GPU_TEXTURE1: args[j]=dt[k]; break;
+                        case GPU_PREVIOUS: args[j]=previous[k]; break;
+                        case GPU_PRIMARY_COLOR: args[j]=pc[k]; break;
+                        default: args[j]=0; break;
+                        }
+                    }
+                    if(ch&&e->inv_alpha)args[0]=1-args[0];
+                    float value;
+                    switch(e->func[ch]) {
+                    case GPU_MODULATE: value=args[0]*args[1]; break;
+                    case GPU_ADD_SIGNED: value=args[0]+args[1]-128/255.f; break;
+                    case GPU_REPLACE: value=args[0]; break;
+                    default: assert(0); value=0;
+                    }
+                    // Model the byte output of each TEV stage. This is not
+                    // an emulation of PICA's full interpolation precision.
+                    s[k]=floorf(clamp(value*e->scale[ch])*255+.5f)/255.f;
+                }
             }
             if(!test(s[3]))continue;
             unsigned idx=sim_tiled(x,y,rt.tex->width);
@@ -160,7 +187,10 @@ void C3D_DrawArrays(int primitive,int first,int n)
                 float z=d[k]*factor(blend[k==3?5:3],k,s,d);
                 pc[k]=clamp(blend[k==3?1:0]==GPU_BLEND_REVERSE_SUBTRACT?z-a:a+z);
             }
-            *pixel=((int)(pc[0]*31+.5f)<<11)|((int)(pc[1]*31+.5f)<<6)|((int)(pc[2]*31+.5f)<<1)|(pc[3]>=.5f);
+            // PICA RGB5A1 drops the low three bits of the blended 8-bit
+            // component (also modeled by Azahar Common::Color::EncodeRGB5A1).
+            // The original harness rounded normalized floats to 31 instead.
+            *pixel=(((int)(pc[0]*255+1e-4f)>>3)<<11)|(((int)(pc[1]*255+1e-4f)>>3)<<6)|(((int)(pc[2]*255+1e-4f)>>3)<<1)|(pc[3]>=.5f);
         }
     }
 }

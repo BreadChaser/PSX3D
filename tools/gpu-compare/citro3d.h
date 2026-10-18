@@ -11,11 +11,11 @@ typedef struct { int DVLE[1]; } DVLB_s;
 typedef struct { void *vertexShader; } shaderProgram_s;
 enum { GPU_RGBA8, GPU_TEXFACE_2D, GPU_FLOAT, GPU_UNSIGNED_BYTE, GPU_VERTEX_SHADER, GPU_CULL_NONE, GPU_WRITE_COLOR,
 	GPU_SCISSOR_NORMAL, GPU_SCISSOR_DISABLE, GPU_BLEND_ADD, GPU_TRIANGLES, C3D_Both, GPU_TEXTURE0, GPU_PRIMARY_COLOR,
-	GPU_MODULATE, GPU_REPLACE, GPU_NEAREST, GPU_LINEAR, GPU_REPEAT, GPU_CLAMP_TO_EDGE };
+	GPU_MODULATE, GPU_REPLACE, GPU_PREVIOUS, GPU_TEXTURE1, GPU_ADD_SIGNED, GPU_NEAREST, GPU_LINEAR, GPU_REPEAT, GPU_CLAMP_TO_EDGE };
 typedef enum { GPU_ZERO, GPU_ONE, GPU_SRC_COLOR, GPU_ONE_MINUS_SRC_COLOR, GPU_DST_COLOR, GPU_ONE_MINUS_DST_COLOR,
 	GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA, GPU_DST_ALPHA, GPU_ONE_MINUS_DST_ALPHA, GPU_SRC_ALPHA_SATURATE } GPU_BLENDFACTOR;
 typedef enum { GPU_NEVER, GPU_ALWAYS, GPU_EQUAL, GPU_NOTEQUAL, GPU_LESS, GPU_LEQUAL, GPU_GREATER, GPU_GEQUAL } GPU_TESTFUNC;
-extern unsigned sim_c3d_draws;
+extern unsigned sim_c3d_draws, sim_dither_setups;
 static inline bool C3D_TexInit(C3D_Tex *t, int w, int h, int f) { (void)f; t->data = calloc(w * h, 4); t->format = f; t->width = w; t->height = h; return t->data != NULL; }
 static inline bool C3D_TexInitVRAM(C3D_Tex *t, int w, int h, int f) { return C3D_TexInit(t, w, h, f); }
 static inline void C3D_TexDelete(C3D_Tex *t) { free(t->data); t->data = NULL; }

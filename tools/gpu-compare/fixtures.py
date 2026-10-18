@@ -109,7 +109,68 @@ def generate(directory):
     t.init(vram)
     t.commands([0xe6000002,0x67808080,xy(16,16),uv(0,0),xy(64,64)])
     t.finish()
-    return ["polygon-sampling", "transparent-add-mask", "stp-half-mask", "stp-mask-order", "forced-add-mask", "stp-sub-mask", "stp-quarter-mask", "stp-batch-order", "known-mask-half-blend"]
+    # All texture depths, distinct palette addresses, same-address palette
+    # replacement, raw mode, and half-strength modulation. PS1 colour 31 *
+    # vertex 64 / 128 is 15, not 16 (replicating the low bits produces 16).
+    vram=[0]*(1024*512)
+    for depth in range(3):
+        px=640+depth*64
+        for y in range(32):
+            for x in range(32 if depth==2 else 16 if depth==1 else 8):
+                vram[y*1024+px+x]=0x7fff if depth==2 else 0x0101 if depth==1 else 0x1111
+    vram[480*1024+1]=0x7fff
+    vram[481*1024+1]=0x001f
+    t=Trace(directory/"texture-colours.gputrace")
+    t.init(vram)
+    for depth in range(3):
+        x=16+depth*80
+        t.commands([0xe1000000|(10+depth)|(depth<<7),
+                    0x65404040,xy(x,16),uv(0,0,480<<6),xy(32,32),
+                    0x64404040,xy(x,56),uv(0,0,480<<6),xy(32,32)])
+    # Switching CLUT must find a different entry.
+    t.commands([0xe100000a,0x65808080,xy(16,96),uv(0,0,481<<6),xy(32,32)])
+    # Updating the original CLUT must invalidate its existing decoded entry.
+    t.words(3,[1,480,1,1,0]);t.record(4,struct.pack("<H",0x7c00))
+    t.commands([0x65808080,xy(56,96),uv(0,0,480<<6),xy(32,32)])
+    t.finish()
+    vram=[0]*(1024*512)
+    for y in range(32):
+        for x in range(32):vram[y*1024+640+x]=16|(16<<5)|(16<<10)
+    t=Trace(directory/"ordered-dither.gputrace")
+    t.init(vram)
+    t.commands([0xe100030a])
+    # Eligible gouraud and modulated polygons, plus flat/raw/sprite exclusions.
+    for x,cmd in [(17,0x38),(65,0x3c),(113,0x20),(161,0x2d)]:
+        positions=[(x,17),(x+32,17),(x,49),(x+32,49)] if cmd&8 else [(x,17),(x+32,17),(x,49)]
+        words=[(cmd<<24)|0x6c6c6c]
+        for k,(xx,yy) in enumerate(positions):
+            if k and cmd&16: words.append(0x6c6c6c)
+            words.append(xy(xx,yy))
+            if cmd&4:words.append(uv(0 if k%2==0 else 31,0 if k<2 else 31,0x10a if k==1 else 0))
+        t.commands(words)
+    t.commands([0x646c6c6c,xy(209,17),uv(0,0),xy(32,32)])
+    # Same gouraud under E1 off: force option should still dither it.
+    t.commands([0xe100010a,0x386c6c6c,xy(17,65),0x6c6c6c,xy(49,65),0x6c6c6c,xy(17,97),0x6c6c6c,xy(49,97)])
+    # Upload with a pending dithered batch: stage 1 must be reset.
+    t.commands([0xe100030a,0x386c6c6c,xy(65,65),0x6c6c6c,xy(97,65),0x6c6c6c,xy(65,97),0x6c6c6c,xy(97,97)])
+    t.words(3,[113,65,8,8,0]);t.record(4,struct.pack("<64H",*([0x4210]*64)))
+    # Capture the option per primitive even when toggled with queued vertices.
+    for x,mode in [(17,1),(65,0),(113,1)]:
+        t.words(7,[mode])
+        t.commands([0xe100030a,0x386c6c6c,xy(x,113),0x6c6c6c,xy(x+32,113),0x6c6c6c,xy(x,145),0x6c6c6c,xy(x+32,145)])
+    t.finish()
+    vram=[0]*(1024*512)
+    for v in range(256):
+        for u in range(256):
+            vram[v*1024+640+u]=(u&31)|((v&31)<<5)|((8+(u>>5))<<10)
+    t=Trace(directory/"sprite-wrap.gputrace")
+    t.init(vram)
+    for i,(fx,fy,u,v) in enumerate([(False,False,250,250),(True,False,5,250),(False,True,250,5),(True,True,5,5)]):
+        t.commands([0xe100010a|(fx<<12)|(fy<<13),0x65808080,xy(16+i*64,16),uv(u,v),xy(40,40)])
+    # More than a page, both flipped: repeated wraps then clipping.
+    t.commands([0xe100310a,0x65808080,xy(16,80),uv(0,0),xy(600,300)])
+    t.finish()
+    return ["sprite-wrap", "ordered-dither", "texture-colours", "polygon-sampling", "transparent-add-mask", "stp-half-mask", "stp-mask-order", "forced-add-mask", "stp-sub-mask", "stp-quarter-mask", "stp-batch-order", "known-mask-half-blend"]
 
 
 def main():
@@ -124,23 +185,66 @@ def main():
         for renderer in ["peops", "pica"]:
             dest=args.output/name/renderer
             dest.mkdir(parents=True,exist_ok=True)
+            if name=="sprite-wrap" and renderer=="peops":
+                # P.E.Op.S. reads outside VRAM for the negative flipped span.
+                # Use direct modulo addressing as the independent oracle.
+                from PIL import Image
+                im=Image.new("RGB",(320,240))
+                cases=[(16+i*64,16,40,40,fx,fy,u,v) for i,(fx,fy,u,v) in enumerate([(False,False,250,250),(True,False,5,250),(False,True,250,5),(True,True,5,5)])]
+                cases.append((16,80,304,160,True,True,0,0))
+                for x,y,w,h,fx,fy,u,v in cases:
+                    for dy in range(h):
+                        for dx in range(w):
+                            uu=(u+(-dx if fx else dx))&255
+                            vv=(v+(-dy if fy else dy))&255
+                            im.putpixel((x+dx,y+dy),tuple(c*255//31 for c in [uu&31,vv&31,8+(uu>>5)]))
+                im.save(dest/"frame-0001.ppm")
+                continue
             binary=args.pica if renderer=="pica" and args.pica else args.build/("replay-"+renderer)
             subprocess.run([binary,args.output/(name+".gputrace"),dest],check=True)
         reference=args.output/name/"peops/frame-0001.ppm"
         pica=args.output/name/"pica/frame-0001.ppm"
-        print(name,images(reference,pica,args.output,name))
+        print(name,images(reference,pica,args.output,name,"PS1 modulo addressing" if name=="sprite-wrap" else "P.E.Op.S."))
+        if args.check and name=="sprite-wrap":
+            from PIL import Image,ImageChops
+            assert ImageChops.difference(Image.open(reference),Image.open(pica)).getbbox() is None, "sprite wrap"
+        if args.check and name=="ordered-dither":
+            from PIL import Image
+            import os
+            im=Image.open(pica)
+            mode=int(os.environ.get("GPU_DITHER","1"))
+            matrix=[[-4,0,-3,1],[2,-2,3,-1],[-3,1,-4,0],[3,-1,2,-2]]
+            for base,enabled in [((20,20),True),((68,20),True),((20,68),mode==2),((68,68),True)]:
+                for y in range(base[1],base[1]+8):
+                    for x in range(base[0],base[0]+8):
+                        level=(108+(matrix[y&3][x&3] if enabled and mode else 0))>>3
+                        expected=(level*255//31,)*3
+                        assert im.getpixel((x,y))==expected,(x,y,im.getpixel((x,y)),expected)
+            for base,enabled in [((20,116),True),((68,116),False),((116,116),True)]:
+                for y in range(base[1],base[1]+8):
+                    for x in range(base[0],base[0]+8):
+                        level=(108+(matrix[y&3][x&3] if enabled else 0))>>3
+                        assert im.getpixel((x,y))==(level*255//31,)*3,("option change",x,y)
+            for point,level in [((116,20),13),((164,20),16),((212,20),13),((116,68),16)]:
+                assert im.getpixel(point)==(level*255//31,)*3,("exclusion/upload",point,im.getpixel(point))
+        if args.check and name=="texture-colours":
+            from PIL import Image
+            for path in [reference,pica]:
+                im=Image.open(path)
+                for x in [20,100,180]:
+                    assert im.getpixel((x,20))==(255,255,255), (path,x,"raw")
+                    assert im.getpixel((x,60))==(123,123,123), (path,x,"modulate")
+                assert im.getpixel((20,100))==(255,0,0), (path,"CLUT selection")
+                assert im.getpixel((60,100))==(0,0,255), (path,"CLUT invalidation")
         if args.check and name=="transparent-add-mask":
             from PIL import Image
             expected=Image.open(reference).getpixel((20,20))
             actual=Image.open(pica).getpixel((20,20))
             assert expected==(255,0,0) and actual==expected, (expected,actual)
-        if args.check and name in ["transparent-add-mask", "stp-half-mask", "stp-mask-order", "forced-add-mask", "stp-batch-order"]:
+        if args.check and name in ["transparent-add-mask", "stp-half-mask", "stp-mask-order", "forced-add-mask", "stp-batch-order", "stp-sub-mask", "stp-quarter-mask"]:
             from PIL import Image, ImageChops
             assert ImageChops.difference(Image.open(reference),Image.open(pica)).getbbox() is None, name
-        if args.check and name in ["stp-sub-mask", "stp-quarter-mask"]:
-            from PIL import Image
-            im=Image.open(pica)
-            assert im.getpixel((20,20))==(0,255,0) and im.getpixel((28,20))[1]==0, name
+
 
 
 if __name__=="__main__":

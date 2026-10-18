@@ -1,0 +1,186 @@
+{
+  "traces": {
+    "o3auto": "00ab80c88de475f0b3f47edc6781d077e8a6982f6673939bd4b3e93a64cb6367",
+    "sh": "0ee08cfa18027525393fde4934c6c62767735e646f11a470d20db12c8e4115d7",
+    "r4": "8ca776ed0b94ed71d31874590fba38376e2250f7b05a3f0fcbba062fbf88f798",
+    "ctr": "43d653cc927066c46ea1ef69d11f3a0cfe605cd3b39734b0a3206630539117c8",
+    "gt2": "819db9c0a2eb80be76302b40d230f42f88ab531983304d93ff2ad05a8e06d572"
+  },
+  "revisions": {
+    "baseline": {
+      "o3auto": {
+        "draws_per_host_frame_31_60": 13.5,
+        "draw_hash_60": "4f056760a6786c63"
+      },
+      "sh": {
+        "draws_per_host_frame_31_60": 358.5,
+        "draw_hash_60": "2aead1eeecc9b3f9"
+      },
+      "r4": {
+        "draws_per_host_frame_31_60": 40.166666666666664,
+        "draw_hash_60": "2c737b2d8a96f44b"
+      },
+      "ctr": {
+        "draws_per_host_frame_31_60": 31.766666666666666,
+        "draw_hash_60": "aaecb5426e3650e4"
+      },
+      "gt2": {
+        "draws_per_host_frame_31_60": 197.0,
+        "draw_hash_60": "e5c966de952eacbe"
+      }
+    },
+    "model-baseline": {
+      "o3auto": {
+        "draws_per_host_frame_31_60": 13.5,
+        "draw_hash_60": "4f056760a6786c63"
+      },
+      "sh": {
+        "draws_per_host_frame_31_60": 358.5,
+        "draw_hash_60": "2aead1eeecc9b3f9"
+      },
+      "r4": {
+        "draws_per_host_frame_31_60": 40.166666666666664,
+        "draw_hash_60": "2c737b2d8a96f44b"
+      },
+      "ctr": {
+        "draws_per_host_frame_31_60": 31.766666666666666,
+        "draw_hash_60": "aaecb5426e3650e4"
+      },
+      "gt2": {
+        "draws_per_host_frame_31_60": 197.0,
+        "draw_hash_60": "e5c966de952eacbe"
+      }
+    },
+    "modulation": {
+      "o3auto": {
+        "draws_per_host_frame_31_60": 13.5,
+        "draw_hash_60": "f1f302c085da8d6b"
+      },
+      "sh": {
+        "draws_per_host_frame_31_60": 358.5,
+        "draw_hash_60": "d1d1f10561613235"
+      },
+      "r4": {
+        "draws_per_host_frame_31_60": 40.166666666666664,
+        "draw_hash_60": "0f997476460d65c7"
+      },
+      "ctr": {
+        "draws_per_host_frame_31_60": 31.766666666666666,
+        "draw_hash_60": "92543615ef403bec"
+      },
+      "gt2": {
+        "draws_per_host_frame_31_60": 197.0,
+        "draw_hash_60": "380481060e7ed6d2"
+      }
+    },
+    "dither-final": {
+      "o3auto": {
+        "draws_per_host_frame_31_60": 13.5,
+        "dither_stage_setups_per_host_frame_31_60": 6.0,
+        "draw_hash_60": "14d1794bcf34e5cc"
+      },
+      "sh": {
+        "draws_per_host_frame_31_60": 358.5,
+        "dither_stage_setups_per_host_frame_31_60": 122.46666666666667,
+        "draw_hash_60": "d420883311b32c09"
+      },
+      "r4": {
+        "draws_per_host_frame_31_60": 48.03333333333333,
+        "dither_stage_setups_per_host_frame_31_60": 29.266666666666666,
+        "draw_hash_60": "4501e958eb309a8d"
+      },
+      "ctr": {
+        "draws_per_host_frame_31_60": 32.666666666666664,
+        "dither_stage_setups_per_host_frame_31_60": 14.733333333333333,
+        "draw_hash_60": "445511492cbb4f0a"
+      },
+      "gt2": {
+        "draws_per_host_frame_31_60": 203.03333333333333,
+        "dither_stage_setups_per_host_frame_31_60": 126.9,
+        "draw_hash_60": "ff49c4f0a74dd6f8"
+      }
+    },
+    "neon-baseline": {
+      "o3auto": {
+        "draws_per_host_frame_31_60": 13.5,
+        "dither_stage_setups_per_host_frame_31_60": 0.5,
+        "draw_hash_60": "4f056760a6786c63"
+      },
+      "sh": {
+        "draws_per_host_frame_31_60": 358.5,
+        "dither_stage_setups_per_host_frame_31_60": 1.5,
+        "draw_hash_60": "2aead1eeecc9b3f9"
+      },
+      "r4": {
+        "draws_per_host_frame_31_60": 40.166666666666664,
+        "dither_stage_setups_per_host_frame_31_60": 10.1,
+        "draw_hash_60": "2c737b2d8a96f44b"
+      },
+      "ctr": {
+        "draws_per_host_frame_31_60": 31.766666666666666,
+        "dither_stage_setups_per_host_frame_31_60": 2.6333333333333333,
+        "draw_hash_60": "aaecb5426e3650e4"
+      },
+      "gt2": {
+        "draws_per_host_frame_31_60": 197.0,
+        "dither_stage_setups_per_host_frame_31_60": 1.1333333333333333,
+        "draw_hash_60": "e5c966de952eacbe"
+      }
+    },
+    "final": {
+      "o3auto": {
+        "draw_hash_60": "14d1794bcf34e5cc",
+        "draws_per_host_frame_31_60": 13.5,
+        "dither_stage_setups_per_host_frame_31_60": 1.5
+      },
+      "sh": {
+        "draw_hash_60": "d420883311b32c09",
+        "draws_per_host_frame_31_60": 358.5,
+        "dither_stage_setups_per_host_frame_31_60": 3.5
+      },
+      "r4": {
+        "draw_hash_60": "4501e958eb309a8d",
+        "draws_per_host_frame_31_60": 48.03333333333333,
+        "dither_stage_setups_per_host_frame_31_60": 29.266666666666666
+      },
+      "ctr": {
+        "draw_hash_60": "445511492cbb4f0a",
+        "draws_per_host_frame_31_60": 32.666666666666664,
+        "dither_stage_setups_per_host_frame_31_60": 7.166666666666667
+      },
+      "gt2": {
+        "draw_hash_60": "ff49c4f0a74dd6f8",
+        "draws_per_host_frame_31_60": 203.03333333333333,
+        "dither_stage_setups_per_host_frame_31_60": 114.23333333333333
+      }
+    },
+    "before-dither-state-cache": {
+      "o3auto": {
+        "draws_per_host_frame_31_60": 13.5,
+        "dither_stage_setups_per_host_frame_31_60": 6.0,
+        "draw_hash_60": "14d1794bcf34e5cc"
+      },
+      "sh": {
+        "draws_per_host_frame_31_60": 358.5,
+        "dither_stage_setups_per_host_frame_31_60": 122.46666666666667,
+        "draw_hash_60": "d420883311b32c09"
+      },
+      "r4": {
+        "draws_per_host_frame_31_60": 48.03333333333333,
+        "dither_stage_setups_per_host_frame_31_60": 29.266666666666666,
+        "draw_hash_60": "4501e958eb309a8d"
+      },
+      "ctr": {
+        "draws_per_host_frame_31_60": 32.666666666666664,
+        "dither_stage_setups_per_host_frame_31_60": 14.733333333333333,
+        "draw_hash_60": "445511492cbb4f0a"
+      },
+      "gt2": {
+        "draws_per_host_frame_31_60": 203.03333333333333,
+        "dither_stage_setups_per_host_frame_31_60": 126.9,
+        "draw_hash_60": "ff49c4f0a74dd6f8"
+      }
+    }
+  },
+  "notes": "Original P.E.Op.S. baseline uses rounded target model; model-baseline corrects truncation. final and neon-baseline use gpu_neon C oracle. Draw hashes cover canonical vertices/sample texels/state; dither is packed at pass bit 8, rasterization is not hashed."
+}

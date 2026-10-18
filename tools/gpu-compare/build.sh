@@ -6,6 +6,7 @@ build=${BUILD_DIR:-/tmp/correct-sim}
 devtools=${PSX3D_DEVTOOLS:-/home/tony/Development/PS1_3ds/devtools}
 source "$devtools/env.sh"
 mkdir -p "$build"
+if [[ ${REPLAY_ONLY:-0} != 1 ]]; then
 # A separate copy keeps simulator flags and object files out of the 3DS build.
 if [[ ! -d $build/core_capture ]]; then
     cp -a "$repo/core" "$build/core_capture"
@@ -48,6 +49,7 @@ arm-linux-gnueabihf-gcc -O2 -g -march=armv6k -mfloat-abi=hard -mfpu=vfp -marm \
     "$build/core_capture/pcsx_rearmed_libretro_ctrsim.a" \
     -Wl,--wrap=renderer_do_cmd_list,--wrap=renderer_sync_ecmds,--wrap=renderer_update_caches \
     -static -lpthread -lm
+fi
 python3 - "$repo" "$build" <<'PY'
 import sys,pathlib
 s=(pathlib.Path(sys.argv[1])/'core/plugins/gpulib/gpu.c').read_text()
@@ -56,6 +58,10 @@ a=s.index('const unsigned char cmd_lengths[256]');b=s.index('};',a)+2
 PY
 cc -O2 -g -fno-strict-aliasing -I "$repo/core" -I "$build" \
     "$here/replay.c" "$repo/core/plugins/dfxvideo/gpulib_if.c" -lm -o "$build/replay-peops"
-cc -O2 -g -fno-strict-aliasing -DPSX3D_SIM -DPICA -I "$repo/core" -I "$build" -I "$here" \
+cc -O2 -g -fno-strict-aliasing -DPSX3D_SIM -DPICA -DPICA_SIM_HASH -I "$repo/core" -I "$build" -I "$here" \
     "$here/replay.c" "$here/raster.c" "$repo/core/plugins/gpu_pica/gpu_pica.c" -lm -o "$build/replay-pica"
-echo "Built $build/runner_capture and native replayers"
+# Independent signed-dither oracle; uses the portable C/vector path on x86.
+cc -O2 -g -fno-strict-aliasing -DGPU_COMPARE_ALT_REFERENCE -DTEXTURE_CACHE_4BPP -I "$repo/core" -I "$build" \
+    "$here/replay.c" "$repo/core/plugins/gpu_neon/psx_gpu_if.c" \
+    "$repo/core/plugins/gpulib/prim.c" -lm -o "$build/replay-neon"
+echo "Built native replayers in $build"

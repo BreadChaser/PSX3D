@@ -284,7 +284,11 @@ static const char *const notes[][3] = {
 	{ "pcsx_rearmed_frameskip_type", "Faster when the 3DS can't keep up", "Skips drawing some frames when the 3DS falls behind, so the game itself keeps full speed. auto skips only when needed." },
 	{ "pcsx_rearmed_frameskip_threshold", "Higher = skips sooner", NULL },
 	{ "pcsx_rearmed_frameskip_interval", "Higher = smoother speed, choppier picture", "The most frames that can be skipped in a row." },
+#ifdef PSX3D_PICA
+	{ "pcsx_rearmed_dithering", "PS1 colour shading", "Adds the PS1's fine colour pattern to shaded polygons. Off gives smoother-looking bands. enabled follows the game; force also enables it when the game turns it off." },
+#else
 	{ "pcsx_rearmed_dithering", "Slightly slower when on", "The PS1's colour dithering pattern. Off gives a cleaner picture and saves a little time." },
+#endif
 	{ "pcsx_rearmed_gpu_unai_fast_lighting", "Faster (small)", "A quicker way to shade textured polygons. Colours can be slightly off in some games." },
 	{ "pcsx_rearmed_gpu_unai_lighting", "Off is faster, but most 3D games look wrong", NULL },
 	{ "pcsx_rearmed_gpu_unai_blending", "Off is faster, but transparency breaks", NULL },
