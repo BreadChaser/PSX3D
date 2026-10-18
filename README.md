@@ -4,11 +4,9 @@ PSX3D is a standalone PlayStation emulator for Nintendo 3DS by **BreadChaser**,
 built around PCSX-ReARMed. It runs without RetroArch. This project is a work
 in progress.
 
-**The first PS1 emulator for the 3DS that draws on the 3DS GPU.** On an Old 3DS
-it runs games up to twice as fast as the PCSX-ReARMed software renderer used by
-other 3DS PS1 emulators (Crash Bandicoot: 47.8 vs 22.8 FPS, Ridge Racer Type 4:
-53.7 vs 32.0), and it makes games like Crash Bandicoot playable at full game
-speed on the original 3DS.
+**The first PS1 emulator for the 3DS that draws on the 3DS GPU.** The GPU
+renderer improves performance on Old 3DS. Both GPU and Software renderers are
+included, and automatic frameskip can bring lighter games to full game speed.
 
 > **The GPU renderer is experimental and still has many issues.** Some games
 > show drawing errors, missing effects or flicker, and it is not yet as
@@ -26,6 +24,10 @@ speed on the original 3DS.
   <img src="docs/screenshots/silent-hill.png" alt="Silent Hill gameplay" width="400">
 </p>
 <p align="center">
+  <img src="docs/screenshots/settings-old.png" alt="Old 3DS settings" width="300">
+  <img src="docs/screenshots/settings-new.png" alt="New 3DS settings" width="300">
+</p>
+<p align="center">
   <img src="docs/screenshots/touch-layout.png" alt="Old 3DS bottom-screen touch controls" width="320">
 </p>
 
@@ -37,7 +39,7 @@ speed on the original 3DS.
   games expose all options supported by the console.
 - Library with box art, clean titles, multi-disc grouping and large SD support
   without scanning the entire card.
-- Ten save-state slots, per-game memory cards, cheats and disc swapping.
+- Ten save-state slots with picture previews, per-game memory cards, cheats and disc swapping.
 - 4:3, stretched and widescreen display modes; stereo screen depth on New 3DS.
 - Remappable controls, touch buttons and fast-forward/rewind hotkeys.
   **Old 3DS has no stereo 3D or rewind.**
@@ -48,32 +50,42 @@ speed on the original 3DS.
 
 ## Performance
 
-Frames per second with frameskip off, measured on 2026-10-18 without screen
-streaming. Full speed is 60.
+v0.3.1, measured on 2026-10-18 in the supplied benchmark scenes. Old 3DS had
+BootNTR loaded with a low quality 30 / 128 KiB/s stream; New 3DS had no NTR.
+Frameskip-off numbers are emulated frames per second. Full speed is 60 FPS,
+or 100% game speed; automatic frameskip shows fewer pictures to improve speed.
 
-| Game | Old 3DS, GPU | Old 3DS, Software | New 3DS |
+| Game | Old GPU, off (FPS) | Old GPU, auto (game speed) | New Software, off (FPS) |
 |---|---:|---:|---:|
-| Ridge Racer Type 4 | 53.7 | 32.0 | 60 |
-| Castlevania: Symphony of the Night | 53.5 | 56.0 | 60 |
-| Crash Bandicoot | 47.8 | 22.8 | 60 |
-| Silent Hill | 35.0 | 28.6 | 60 |
-| Crash Team Racing | 30.0 | 20.6 | 60 |
-| Gran Turismo 2 | 28.1 | 21.5 | 60 |
+| Ridge Racer Type 4 | 58.5 | 100.0% | 60.0 |
+| Castlevania: Symphony of the Night | 54.7 | 100.0% | 60.0 |
+| Crash Bandicoot | 49.1 | 100.0% | 60.0 |
+| Silent Hill | 38.1 | 85.6% | 60.0 |
+| Crash Team Racing | 31.0 | 65.9% | 60.0 |
+| Gran Turismo 2 | 31.1 | 68.5% | 60.0 |
+
+New 3DS Software also averaged 100% with automatic frameskip in all six scenes.
+Symphony of the Night's default **Software** preset on Old 3DS measured 51.8 FPS
+with frameskip off and 100.0% game speed with auto. Its New 3DS GPU spot check
+averaged 60.0 FPS off and 100.0% with auto.
 
 On the Old 3DS, automatic frameskip brings lighter games such as Crash
 Bandicoot, Ridge Racer Type 4 and Symphony of the Night to full game speed by
 showing fewer pictures. The heaviest 3D games still run below full speed.
+Old 3DS audio underruns were zero with automatic frameskip in these samples;
+forced frameskip off still underruns in some slow scenes.
 The GPU renderer also looks sharper on the Old 3DS: it draws every line, where
 the software renderer uses half-height 3D there to save time.
 
-Details of how these were measured: [hardware check](docs/release-check-v0.3.0.md).
+Details of how these were measured: [hardware check](docs/release-check-v0.3.1.md).
+Changes: [v0.3.1 release notes](docs/release-notes-v0.3.1.md).
 
 ## Presets and settings
 
 Games are recognised by their disc, and a built-in preset picks the best
 settings for each game separately on Old and New 3DS. Games without a preset
 show every option the console supports. Your own choices override the preset,
-and **Reset to defaults** (global or per game) brings it back. In v0.3.0,
+and **Reset to defaults** (global or per game) brings it back. In v0.3.1,
 Castlevania: Symphony of the Night uses the software renderer on both consoles.
 
 The library's **X** button opens the global settings; **Settings** in the pause
@@ -142,7 +154,6 @@ filename. Internet is needed only for initial downloads.
   Use the Software renderer for games that look wrong.
 - Display centering and interlaced modes are not implemented.
 - Demanding 3D games run below full speed on Old 3DS.
-- Save-state thumbnails can be blank or stale, especially on Old 3DS.
 - Heavy Wi-Fi traffic and slow cover downloads can cause audio clicks.
 
 When reporting a problem, include the affected session's `log.txt`.

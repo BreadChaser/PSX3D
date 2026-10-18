@@ -142,6 +142,10 @@ Same fixed low NTR, pmurender on, warm5/sample15. Each binary tests old and full
 
 ## Crash purple-fragment attribution
 
+Later investigation identified this as the game's authored Wumpa-fruit idle
+animation. See [the traced colour-table evidence](crash-idle-colour.md). The
+observations below record the earlier attribution stage, before that finding.
+
 **The purple body/head fragment exists in the RELEASED v0.3.0 gate2 build too.** It is not exclusive to the new submission, primitive, texture, skip-gate, frontend or split-layout experiments. This comparison establishes presence, not that every path has the same frequency or that the defect is fixed.
 
 Old 3DS, Crash protected state 2, GPU, frameskip off, RTT auto, same beach scene; BootNTR loaded with the unchanged active requested quality 30/128KiB/s stream. Gate2 identity and immutable CIA SHA256 were checked before loading. Four lossless release stills initially missed the intermittent fragment. A subsequent 35s passive recording of the existing stream caught it in the same idle-animation pose. No NTR request or input was sent by the receiver.
@@ -192,6 +196,10 @@ The measured final CIA is `devtools/o3ds60/best-stack/PSX3D.cia`, SHA256 `7472f3
 Final candidate records are 24 successful runs/360 complete intervals; matched release records are 12 successful runs/180 intervals. All have zero near-black probes, which does not exclude bright corruption. All results are short automated slot 2 samples, with end-of-run stills inspected for expected content. Native texture/stack replay matched 110 comparable full-VRAM frames across the six states; layout candidates matched 21,600 draw hashes. Parser/polygon/presentation sanitizer checks and CIA packaging pass. The Crash purple-fragment attribution is documented in the dedicated picture comparison above; sparse stills/probes do not establish a flicker-free renderer. Dense provides evenly spaced picture-selection decisions; actual LCD interval jitter was not measured, and the R4 result shows remaining conservative density headroom. Audio underrun rates are shown explicitly. Remote speaker listening was unavailable. FF mutes audio and is only a headroom diagnostic. No protected benchmark state was written; no push performed.
 
 ## Final console state
+
+This is the state at the end of the earlier performance session. Later v0.3.1
+candidate installs supersede it; see [the candidate check](release-check-v0.3.1.md)
+for the current state and blocked downgrade restoration.
 
 Both consoles are restored to the immutable released v0.3.0 gate2 CIA, build `release-v030-rttgate-2`, SHA256 `fa690587e25e07f91bc7f521c3ec60226eae21438998b8b68f3991885c7c5429`. Old restoration/identity/library/no-active-batch verification completed at 10:50:43 UTC; New was separately restored and reverified at 10:39 UTC. Both top/bottom library screenshots were visually reviewed. No protected benchmark slots were written. No pending driver, upload or benchmark remains.
 

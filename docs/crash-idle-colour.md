@@ -3,7 +3,7 @@
 On both 3DS consoles, and with both renderers, Crash Bandicoot sometimes
 shows a magenta body and head while standing still on the first beach.
 This is the game's own Wumpa-fruit idle animation, not an emulation or
-rendering defect. No source change was made.
+rendering defect. No renderer correction was made.
 
 ## What the game does
 
