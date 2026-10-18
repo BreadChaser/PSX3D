@@ -1254,7 +1254,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 						log_printf("  gpu %.2fms/frame, frame end to next begin %.2fms\n", gms / present_count,
 							gap / (float)present_count / CPU_TICKS_PER_MSEC);
 				}
-				char abuf[256], renderer[768] = "", pb[512] = "";
+				char abuf[256], renderer[1024] = "", pb[512] = "";
 				double cycles, ev0, ev1;
 				pmu_sample(&cycles, &ev0, &ev1);
 				audio_stats(abuf, sizeof(abuf));

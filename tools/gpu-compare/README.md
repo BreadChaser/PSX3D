@@ -196,3 +196,34 @@ keep a host-booted title separate from the hardware Dracula-fight state. Warmup
 and recorded inputs each start at input-script frame 1. Use `GPU_FRAMES=10,30,60`
 to avoid filling shared tmpfs with unnecessary images. Archive private evidence
 under ignored `devtools/`, then remove the simulator copy when finished.
+
+## Disjoint texture regions (RTT round two)
+
+`rttcache=new` (default with `rtt=new`) retains separate squares for disjoint
+regions sharing a texture page/CLUT/window. `rttcache=old` selects round one's
+single growing square without disabling its precise RTT tracking. Native replay
+uses `PICA_DEBUG=524288` for cache-off, `0` for cache-on, and `262144` for the
+original RTT mode. Restart/reload when changing these switches.
+
+`rtt.py` now compares all three modes, including repeated disjoint indexed
+sprites, oblique textured polygons, source replacement and palette replacement.
+`SIM_CHECK_ATLAS_LIFETIME=1` adds a delayed atlas-reader guard alongside the
+staging guard. GPU writes to the atlas follow command ordering; CPU overwrites
+must wait for pending readers. These guards check observed samples and cannot
+model PICA cache coherency or prefetching.
+
+The rasterizer uses integer texture edge numerators for nearest-neighbour
+selection. Single-precision interpolation previously selected different texels
+at exact integer boundaries after translating a texture within the atlas.
+Rebuild **both** baseline and candidate against this rasterizer for A/B; stored
+metrics from the earlier rasterizer are not directly comparable. This remains
+a functional oracle, not a model of PICA's subpixel precision.
+
+`PICA_CACHE_TRACE=/path/cache.log` logs `decode`, `evict`, `grow`, `invalidate`,
+`palette` and `source` events as `event depth page clut window log2-size rx ry
+64-bit-tile-mask generation`. `upload` records contain `x y width height generation`.
+The regular stats line now attributes syncs to CPU reads/copy fallbacks, texture
+reads, CLUT reads, eviction, invalidation, growth, vertices and staging. `prev`
+counts previous-frame texture/upload waits separately. See
+[the round-two report](../../docs/gpu-rtt-round2.md) for measurements and console
+A/B commands.

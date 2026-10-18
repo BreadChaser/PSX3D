@@ -31,10 +31,31 @@ static void check_stage_pending(void)
     for (int i=0;i<512*256;i++)
         assert(!stage_used[i] || pixels[i]==stage_expected[i]);
 }
+// Atlas readers are also delayed on hardware. Record only sampled words,
+// then reject a CPU rewrite while a submitted/queued draw can still read it.
+static C3D_Tex pending_atlas;
+static u32 atlas_expected[1024*1024], atlas_indices[1024*1024];
+static u8 atlas_used[1024*1024];
+static unsigned atlas_count;
+static int check_atlas = -1;
+static void check_atlas_pending(void)
+{
+    if (check_atlas < 0) check_atlas = getenv("SIM_CHECK_ATLAS_LIFETIME") != NULL;
+    if (!check_atlas || !pending_atlas.data) return;
+    const u32 *pixels=pending_atlas.data;
+    for (unsigned j=0;j<atlas_count;j++) {
+        unsigned i=atlas_indices[j];
+        assert(pixels[i]==atlas_expected[i]);
+    }
+}
 void C3D_FrameEnd(u8 flags)
 {
     (void)flags;
     check_stage_pending();
+    check_atlas_pending();
+    for (unsigned j=0;j<atlas_count;j++) atlas_used[atlas_indices[j]]=0;
+    atlas_count=0;
+    pending_atlas.data=NULL;
     memset(stage_used,0,sizeof(stage_used));
     pending_stage.data=NULL;
 }
@@ -89,12 +110,12 @@ static void unpack(u16 p,float *v)
 { v[0]=(((p>>11)<<3)|((p>>11)>>2))/255.f; v[1]=((((p>>6)&31)<<3)|(((p>>6)&31)>>2))/255.f; v[2]=((((p>>1)&31)<<3)|(((p>>1)&31)>>2))/255.f; v[3]=p&1; }
 u16 sim_target_pixel(int x,int y)
 { return ((u16*)rt.tex->data)[sim_tiled(x,y,rt.tex->width)]; }
-static void sample(int unit,float u,float v,float *c)
+static void sample(int unit,double u,double v,float *c)
 {
     C3D_Tex texture=textures[unit];
     if(!texture.data) { memset(c,0,4*sizeof(float)); return; }
-    int x=(int)floorf(u*(unit ? 1.f : texscale[0])*texture.width);
-    int y=(int)floorf(v*(unit ? 1.f : texscale[1])*texture.height);
+    int x=(int)floor(u*(unit ? 1.f : texscale[0])*texture.width);
+    int y=(int)floor(v*(unit ? 1.f : texscale[1])*texture.height);
     if(unit) { x=(x%texture.width+texture.width)%texture.width; y=(y%texture.height+texture.height)%texture.height; }
     x=x<0?0:x>=texture.width?texture.width-1:x;
     y=y<0?0:y>=texture.height?texture.height-1:y;
@@ -102,6 +123,15 @@ static void sample(int unit,float u,float v,float *c)
     if(texture.format==GPU_RGBA5551) unpack(((u16*)texture.data)[i],c);
     else {
         u32 p=((u32*)texture.data)[i];
+        if (check_atlas && unit==0 && texture.width==1024 && texture.height==1024) {
+            assert(!pending_atlas.data || pending_atlas.data==texture.data);
+            pending_atlas=texture;
+            if (!atlas_used[i]) {
+                atlas_used[i]=1;
+                atlas_indices[atlas_count++]=i;
+                atlas_expected[i]=p;
+            }
+        }
         for(int k=0;k<4;k++) c[k]=((p>>(24-k*8))&255)/255.f;
     }
 }
@@ -130,8 +160,8 @@ static int test(float a)
     }
 }
 typedef struct { s16 x,y,u,v; u32 rgba; } Vertex;
-typedef struct { float x,y,u,v,dx,dy,c[4]; } Varying;
-static float edge(const Varying *a,const Varying *b,float x,float y)
+typedef struct { double x,y,u,v,dx,dy; float c[4]; } Varying;
+static double edge(const Varying *a,const Varying *b,double x,double y)
 { return (b->x-a->x)*(y-a->y)-(b->y-a->y)*(x-a->x); }
 static int top_left(const Varying *a,const Varying *b)
 { return b->y<a->y || (b->y==a->y && b->x>a->x); }
@@ -140,6 +170,7 @@ void C3D_DrawArrays(int primitive,int first,int n)
     assert(primitive==GPU_TRIANGLES && n%3==0 && rt.tex);
     sim_c3d_draws++;
     check_stage_pending();
+    check_atlas_pending();
     if (check_stage && textures[0].format==GPU_RGBA5551 &&
         textures[0].width==512 && textures[0].height==256) {
         pending_stage=textures[0];
@@ -170,7 +201,7 @@ void C3D_DrawArrays(int primitive,int first,int n)
             v[j].dx=a->x/32.f; v[j].dy=a->y/32.f;
             for(int k=0;k<4;k++)v[j].c[k]=((a->rgba>>(8*k))&255)/255.f;
         }
-        float area=edge(&v[0],&v[1],v[2].x,v[2].y);
+        double area=edge(&v[0],&v[1],v[2].x,v[2].y);
         if(area==0)continue;
         if(area<0) { Varying tmp=v[1]; v[1]=v[2]; v[2]=tmp; area=-area; }
         int x0=fmaxf(0,floorf(fminf(v[0].x,fminf(v[1].x,v[2].x))));
@@ -181,14 +212,21 @@ void C3D_DrawArrays(int primitive,int first,int n)
             if(x<viewport[0]||x>=viewport[0]+viewport[2]||y<rt.tex->height-viewport[1]-viewport[3]||y>=rt.tex->height-viewport[1])continue;
             int bottom=rt.tex->height-1-y;
             if(scissor_on&&(x<scissor[0]||x>=scissor[2]||bottom<scissor[1]||bottom>=scissor[3]))continue;
-            float b[3]={edge(&v[1],&v[2],x+.5f,y+.5f),edge(&v[2],&v[0],x+.5f,y+.5f),edge(&v[0],&v[1],x+.5f,y+.5f)};
+            double b[3]={edge(&v[1],&v[2],x+.5f,y+.5f),edge(&v[2],&v[0],x+.5f,y+.5f),edge(&v[0],&v[1],x+.5f,y+.5f)};
             if(b[0]<0||b[1]<0||b[2]<0)continue;
             if((b[0]==0&&!top_left(&v[1],&v[2]))||(b[1]==0&&!top_left(&v[2],&v[0]))||(b[2]==0&&!top_left(&v[0],&v[1])))continue;
+            // Renderer positions are quarter pixels and UVs are integers. Keep
+            // their edge equations exact until nearest-neighbour selection.
+            // Float interpolation rounded integer boundaries differently after
+            // translating the same texture to another atlas cell.
+            long long den=llround(area*16);
+            long long un=llround((b[1]*(v[1].u-v[0].u)+b[2]*(v[2].u-v[0].u))*16);
+            long long vn=llround((b[1]*(v[1].v-v[0].v)+b[2]*(v[2].v-v[0].v))*16);
+            long long ui=(long long)v[0].u+(un>=0 ? un/den : -((-un+den-1)/den));
+            long long vi=(long long)v[0].v+(vn>=0 ? vn/den : -((-vn+den-1)/den));
             for(int k=0;k<3;k++)b[k]/=area;
             float tc[4],dt[4],pc[4],s[4]={0},d[4];
-            float u=v[0].u+b[1]*(v[1].u-v[0].u)+b[2]*(v[2].u-v[0].u);
-            float t=v[0].v+b[1]*(v[1].v-v[0].v)+b[2]*(v[2].v-v[0].v);
-            sample(0,u,t,tc);
+            sample(0,ui,vi,tc);
             float du=v[0].dx+b[1]*(v[1].dx-v[0].dx)+b[2]*(v[2].dx-v[0].dx);
             float dv=v[0].dy+b[1]*(v[1].dy-v[0].dy)+b[2]*(v[2].dy-v[0].dy);
             sample(1,du,dv,dt);
@@ -245,6 +283,15 @@ void C3D_DrawArrays(int primitive,int first,int n)
             if(rt.tex->format==GPU_RGBA8) {
                 u32 p=0; for(int k=0;k<4;k++) p|=(u32)(pc[k]*255+.5f)<<(24-8*k); *(u32*)pixel=p;
             } else *(u16*)pixel=(((int)(pc[0]*255+1e-4f)>>3)<<11)|(((int)(pc[1]*255+1e-4f)>>3)<<6)|(((int)(pc[2]*255+1e-4f)>>3)<<1)|(pc[3]>=.5f);
+        }
+    }
+    // GPU writes to the atlas are ordered after older GPU readers. They
+    // retire those readers without requiring a CPU-side synchronization.
+    if (check_atlas && pending_atlas.data==rt.tex->data) {
+        const u32 *pixels=pending_atlas.data;
+        for (unsigned j=0;j<atlas_count;j++) {
+            unsigned i=atlas_indices[j];
+            atlas_expected[i]=pixels[i];
         }
     }
 }
