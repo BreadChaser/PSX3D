@@ -32,12 +32,18 @@ static bool consume_switch_url(void)
 	FILE *in = fopen(PSX3D_DIR "/switches.txt", "r");
 	if (!in)
 		return true; // remote-only invocation need not create a file
+	// Most remote updates have no startup URL. Avoid rewriting their credentials.
+	char word[512];
+	bool has_update = false;
+	while (fscanf(in, "%511s", word) == 1)
+		if (!strncmp(word, "update=", 7)) has_update = true;
+	if (!has_update) { bool ok = !ferror(in); fclose(in); return ok; }
+	rewind(in);
 	FILE *out = fopen(PSX3D_DIR "/switches.update.tmp", "w");
 	if (!out) {
 		fclose(in);
 		return false;
 	}
-	char word[512];
 	bool ok = true;
 	while (fscanf(in, "%511s", word) == 1)
 		if (strncmp(word, "update=", 7) && fprintf(out, "%s\n", word) < 0)
@@ -47,8 +53,17 @@ static bool consume_switch_url(void)
 	fclose(in);
 	if (fclose(out))
 		ok = false;
-	if (ok)
-		ok = !rename(PSX3D_DIR "/switches.update.tmp", PSX3D_DIR "/switches.txt");
+	if (ok) {
+		// 3DS FS rename does not replace an existing FAT file.
+		const char *path = PSX3D_DIR "/switches.txt", *backup = PSX3D_DIR "/switches.update.bak";
+		remove(backup);
+		ok = !rename(path, backup);
+		if (ok && rename(PSX3D_DIR "/switches.update.tmp", path)) {
+			rename(backup, path);
+			ok = false;
+		}
+		if (ok) remove(backup);
+	}
 	return ok;
 }
 bool dev_update(const char *args, char *result, size_t capacity)
