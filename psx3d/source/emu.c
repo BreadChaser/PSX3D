@@ -9,6 +9,7 @@
 #include "psx3d.h"
 #include "settings_menu.h"
 #include "statsview.h"
+#include "devtools.h"
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
 
 #define SRM_CHECK_FRAMES 180
@@ -179,7 +180,7 @@ static bool audio_muted;
 
 static void audio_sample_cb(int16_t l, int16_t r)
 {
-	if (audio_muted || input_fast_forward()) return;
+	if (audio_muted || (!dev_batch_active() && input_fast_forward())) return;
 	int16_t s[2] = { l, r };
 	audio_write(s, 1);
 }
@@ -213,7 +214,7 @@ static void game_draw_top(void *ud)
 
 static size_t audio_batch_cb(const int16_t *data, size_t frames)
 {
-	if (audio_muted || input_fast_forward())
+	if (audio_muted || (!dev_batch_active() && input_fast_forward()))
 		return frames;
 	return audio_write(data, frames);
 }
@@ -222,7 +223,7 @@ static void input_poll_cb(void) { input_poll(); }
 
 static int16_t input_state_cb(unsigned port, unsigned device, unsigned index, unsigned id)
 {
-	return input_state(port, device, index, id);
+	return dev_batch_active() ? 0 : input_state(port, device, index, id);
 }
 
 // ---------------------------------------------------------------- files
@@ -356,6 +357,16 @@ static bool state_load_from(int slot)
 	free(buf);
 	if (ok)
 		rewind_reset();
+	return ok;
+}
+
+bool emu_debug_state(int slot, bool save)
+{
+	if (!core_initialized || slot < 0 || slot > 9)
+		return false;
+	bool ok = save ? state_save_to(slot) : state_load_from(slot);
+	if (ok)
+		sw_state = state_slot = slot;
 	return ok;
 }
 
@@ -640,6 +651,10 @@ static bool menu_run(void)
 	srm_save(false);
 
 	while (aptMainLoop()) {
+		if (dev_tick(true)) {
+			game_menu_open = false;
+			return false;
+		}
 		input_poll();
 		u32 k = input_keys_down();
 
@@ -954,6 +969,7 @@ static void set_game_name(const char *path)
 static void game_apt(APT_HookType hook, void *param)
 {
 	(void)param;
+	if (hook == APTHOOK_ONSUSPEND || hook == APTHOOK_ONSLEEP) dev_interrupt();
 	// performance counters (test tool) off whenever the system takes over
 	if (hook == APTHOOK_ONSUSPEND || hook == APTHOOK_ONSLEEP || hook == APTHOOK_ONEXIT)
 		pmu_stop();
@@ -969,7 +985,7 @@ static void game_apt(APT_HookType hook, void *param)
 	}
 }
 
-bool emu_run_game(const char *path, const char *save_name, const char *title)
+static bool run_game(const char *path, const char *save_name, const char *title)
 {
 	struct retro_game_info info = { .path = path };
 	struct retro_system_av_info av;
@@ -1047,29 +1063,33 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	{
 		char prefix[PATH_LEN];
 		make_path(prefix, sizeof(prefix), PSX3D_STATE_DIR, "");
-		if (g_cfg.autosave && sw_state < 0 && states_resume_prompt(prefix) && state_load_from(STATE_AUTO))
+		if (!dev_enabled() && g_cfg.autosave && sw_state < 0 && states_resume_prompt(prefix) && state_load_from(STATE_AUTO))
 			osd("Continuing where you left off");
 	}
 	if (game_capabilities().rewind && gamecfg_int("rewind", 0))
 		rewind_start();
+	bool initial_state_ok = true;
 	if (sw_state >= 0) {
 		state_slot = sw_state;
-		log_printf("test: slot %d %s\n", sw_state, state_load_from(sw_state) ? "loaded" : "failed");
+		log_printf("test: slot %d %s\n", sw_state, (initial_state_ok = state_load_from(sw_state)) ? "loaded" : "failed");
 	}
 	osd("%s", __ctr_svchax ? "Dynarec enabled" : "Interpreter mode (no Luma SVC access) - slow");
 
 	if (sw_pmu0 >= 0)
 		pmu_start(sw_pmu0, sw_pmu1 >= 0 ? sw_pmu1 : 0);
+	dev_game_started(game_title, initial_state_ok);
 	statsview_begin(game_title);
 	fps_t0 = osGetTime();
 	game_menu_open = false;
 	input_gameplay(true);
+	if (dev_batch_active()) input_fast_forward_off();
 	u64 t_run = 0, t_present = 0, t_run_max = 0;
 	int acap_frames = 0;
 	u64 next_deadline = svcGetSystemTick();
 	aptHookCookie apt_cookie;
 	aptHook(&apt_cookie, game_apt, NULL);
 	while (aptMainLoop()) {
+		if (dev_enabled() && dev_tick(true)) break;
 		// A disc swap may revoke a capability. Free its history at a safe point.
 		if (!game_capabilities().rewind && rewind_active()) rewind_stop();
 		// Pace by the clock, not by vsync: a heavy frame (Silent Hill
@@ -1080,7 +1100,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		u64 now_t = svcGetSystemTick();
 		bool late = now_t > next_deadline + frame_ticks / 8;   // last frame overran its slot
 		late_frames += late;
-		if (!input_fast_forward() && now_t < next_deadline)
+		if ((dev_batch_active() || !input_fast_forward()) && now_t < next_deadline)
 			svcSleepThread((next_deadline - now_t) * 1000000000ULL / SYSCLOCK_ARM11);
 		else if (now_t > next_deadline + 3 * frame_ticks)
 			next_deadline = now_t;   // far behind (loading, menu): don't race to catch up
@@ -1094,8 +1114,10 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		}
 		u64 t0 = svcGetSystemTick();
 		static bool rewind_hint;
-		speed_icon = input_rewind() && rewind_active() ? -1 : input_fast_forward() ? 1 : 0;
-		if (input_rewind() && rewind_active()) {
+		bool rewinding = !dev_batch_active() && input_rewind();
+		bool ff = !dev_batch_active() && input_fast_forward();
+		speed_icon = rewinding && rewind_active() ? -1 : ff ? 1 : 0;
+		if (rewinding && rewind_active()) {
 			// step back about 6 times a second of game time, shown at 20/s
 			static int rw;
 			if (++rw >= 3) {
@@ -1108,13 +1130,12 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			statsview_frame();   // count the emulated vblank, including rewind/FF
 			audio_muted = false;
 		} else {
-			if (input_rewind() && !rewind_hint) {
+			if (rewinding && !rewind_hint) {
 				osd("Enable Rewind in Settings first");
 				rewind_hint = true;
 			}
-			if (!input_rewind())
+			if (!rewinding)
 				rewind_hint = false;
-			bool ff = input_fast_forward();
 			options_fast_forward(ff);
 			// fast-forward: up to 3 more frames per shown frame, no sound
 			for (int extra = ff ? 3 : 0; extra > 0; extra--) {
@@ -1161,10 +1182,10 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			t_run_max = t1 - t0;
 
 		// touch the bottom screen to open the menu
-		if (statsview_touch()) {
+		if (!dev_batch_active() && statsview_touch()) {
 			bottom_backlight(true);
 		}
-		if (menu_touched()) {
+		if (!dev_batch_active() && menu_touched()) {
 			if (!menu_run())
 				break;
 			fps_t0 = osGetTime();
@@ -1212,6 +1233,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 				float wait_ms = video_take_wait_ticks() / (float)present_count / CPU_TICKS_PER_MSEC;
 				sample.wait = wait_ms;
 				float xfer_ms = video_take_xfer_ticks() / (float)present_count / CPU_TICKS_PER_MSEC;
+				sample.xfer = xfer_ms;
 				if (log_linked() || sw_prof || sw_stats)
 					log_printf("fps %.1f  emu %.2fms (max %.2f)  present %.2fms (wait %.2f) xfer %.2f  skip %u late %u cb %d\n",
 						fps_measured, emu_ms, t_run_max / (float)CPU_TICKS_PER_MSEC, present_ms,
@@ -1223,13 +1245,18 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 					sample.gpu = gms / present_count;
 					u64 qw = video_take_pending_wait_ticks();
 					float heap_ms = video_take_heap_flush_ticks() / (float)present_count / CPU_TICKS_PER_MSEC;
+					sample.heap = heap_ms;
+					sample.queue = qw / (float)present_count / CPU_TICKS_PER_MSEC;
+					sample.gap = gap / (float)present_count / CPU_TICKS_PER_MSEC;
 					if (log_linked() || sw_prof || sw_stats)
 						log_printf("  heap flush %.3fms, queue wait %.3fms\n", heap_ms, qw / (float)present_count / CPU_TICKS_PER_MSEC);
 					if (log_linked() || sw_prof || sw_stats)
 						log_printf("  gpu %.2fms/frame, frame end to next begin %.2fms\n", gms / present_count,
 							gap / (float)present_count / CPU_TICKS_PER_MSEC);
 				}
-				char abuf[256], renderer[768] = "";
+				char abuf[256], renderer[768] = "", pb[512] = "";
+				double cycles, ev0, ev1;
+				pmu_sample(&cycles, &ev0, &ev1);
 				audio_stats(abuf, sizeof(abuf));
 				sample.audio = abuf; sample.renderer = renderer;
 				if (log_linked() || sw_prof || sw_stats)
@@ -1237,16 +1264,16 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 				pmu_report();
 				if (renderer_is_gpu()) {
 					void pica_stats(char *buf, int n);
-					char pb[512];
 					pica_stats(renderer, sizeof(renderer));
 					if (log_linked() || sw_prof || sw_stats)
 						log_printf("  %s\n", renderer);
 					void pica_probe(char *buf, int n);
-					if (log_linked() || sw_prof || sw_stats) {
+					if (dev_enabled() || log_linked() || sw_prof || sw_stats) {
 						pica_probe(pb, sizeof(pb));   // what reached the screen
-						log_printf("  %s; top fb %d\n", pb, video_probe_top());
+						if (log_linked() || sw_prof || sw_stats) log_printf("  %s; top fb %d\n", pb, video_probe_top());
 					}
 				}
+				if (dev_enabled()) dev_sample(&sample, pb, video_probe_top(), cycles, ev0, ev1);
 				statsview_update(&sample);
 			}
 			dup_frames = late_frames = 0;
@@ -1291,7 +1318,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	pmu_stop();
 	log_printf("game: leaving\n");
 	rewind_stop();
-	if (g_cfg.autosave)
+	if (!dev_enabled() && g_cfg.autosave)
 		log_printf("auto-save: %s\n", state_save_to(STATE_AUTO) ? "written" : "failed");
 	bottom_backlight(true);
 	srm_save(false);
@@ -1303,4 +1330,11 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	core_initialized = false;
 	video_game_end();
 	return true;
+}
+
+bool emu_run_game(const char *path, const char *save_name, const char *title)
+{
+	bool ok = run_game(path, save_name, title);
+	dev_game_ended(ok);
+	return ok;
 }

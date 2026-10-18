@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include "libretro.h"
 
-#define PSX3D_VERSION  "0.3.0"
+#define PSX3D_VERSION  "0.3.2"
 #define PSX3D_DIR      "sdmc:/3ds/PSX3D"
 #define PSX3D_BIOS_DIR PSX3D_DIR "/bios"
 #define PSX3D_SAVE_DIR PSX3D_DIR "/saves"

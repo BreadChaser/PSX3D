@@ -7,7 +7,8 @@
 #include <assert.h>
 
 unsigned sim_dither_setups;
-static C3D_RenderTarget rt;
+static C3D_RenderTarget rt, targets[8];
+static int ntargets;
 static C3D_BufInfo buf;
 static C3D_Tex textures[2];
 static C3D_TexEnv envs[6];
@@ -15,6 +16,28 @@ static float proj[4][4], texscale[2];
 static int viewport[4], scissor[4], scissor_on;
 static int blend[6], alpha_on, alpha_func, alpha_ref;
 static float constant_alpha;
+
+// Optional delayed-reader guard: synchronous rasterization alone cannot
+// detect a CPU upload overwritten before hardware consumes its texture.
+static C3D_Tex pending_stage;
+static u16 stage_expected[512*256];
+static u8 stage_used[512*256];
+static int check_stage = -1;
+static void check_stage_pending(void)
+{
+    if (check_stage < 0) check_stage = getenv("SIM_CHECK_STAGE_LIFETIME") != NULL;
+    if (!check_stage || !pending_stage.data) return;
+    const u16 *pixels=pending_stage.data;
+    for (int i=0;i<512*256;i++)
+        assert(!stage_used[i] || pixels[i]==stage_expected[i]);
+}
+void C3D_FrameEnd(u8 flags)
+{
+    (void)flags;
+    check_stage_pending();
+    memset(stage_used,0,sizeof(stage_used));
+    pending_stage.data=NULL;
+}
 
 unsigned sim_tiled(int x, int y, int w)
 {
@@ -24,7 +47,7 @@ unsigned sim_tiled(int x, int y, int w)
 
 void C3D_TexBind(int u, C3D_Tex *t) { assert(u < 2); if(t) textures[u] = *t; else memset(&textures[u],0,sizeof(textures[u])); }
 C3D_RenderTarget *C3D_RenderTargetCreateFromTex(C3D_Tex *t, int f, int l, int d)
-{ (void)f; (void)l; (void)d; rt.tex = t; return &rt; }
+{ (void)f; (void)l; (void)d; assert(ntargets<8); C3D_RenderTarget *p=&targets[ntargets++]; p->tex=t; return p; }
 bool C3D_FrameDrawOn(C3D_RenderTarget *t) { rt = *t; return true; }
 C3D_BufInfo *C3D_GetBufInfo(void) { return &buf; }
 int BufInfo_Add(C3D_BufInfo *b, const void *d, int s, int n, u64 p)
@@ -49,9 +72,10 @@ void C3D_TexEnvSrc(C3D_TexEnv *e,int m,int a,int b,int c)
 void C3D_TexEnvFunc(C3D_TexEnv *e,int m,int f)
 { for(int k=0;k<2;k++) if(m==C3D_Both||k==channel(m)) e->func[k]=f; }
 void C3D_TexEnvScale(C3D_TexEnv *e,int m,int s)
-{ assert(s==GPU_TEVSCALE_2); for(int k=0;k<2;k++) if(m==C3D_Both||k==channel(m)) e->scale[k]=2; }
+{ assert(s==GPU_TEVSCALE_2||s==GPU_TEVSCALE_4); for(int k=0;k<2;k++) if(m==C3D_Both||k==channel(m)) e->scale[k]=s==GPU_TEVSCALE_2?2:4; }
 void C3D_TexEnvOpAlpha(C3D_TexEnv *e,int a,int b,int c)
-{ (void)b; (void)c; assert(a==GPU_TEVOP_A_ONE_MINUS_SRC_ALPHA); e->inv_alpha=1; }
+{ e->alpha_op[0]=a; e->alpha_op[1]=b; e->alpha_op[2]=c; }
+void C3D_TexEnvColor(C3D_TexEnv *e,u32 color) { e->color=color; }
 int shaderInstanceGetUniformLocation(void *s,const char *n)
 { (void)s; return !strcmp(n,"proj")?0:4; }
 void C3D_FVUnifSet(int t,int id,float x,float y,float z,float w)
@@ -115,6 +139,25 @@ void C3D_DrawArrays(int primitive,int first,int n)
 {
     assert(primitive==GPU_TRIANGLES && n%3==0 && rt.tex);
     sim_c3d_draws++;
+    check_stage_pending();
+    if (check_stage && textures[0].format==GPU_RGBA5551 &&
+        textures[0].width==512 && textures[0].height==256) {
+        pending_stage=textures[0];
+        int u0=512,u1=0,v0=256,v1=0;
+        for (int i=first;i<first+n;i++) {
+            const Vertex *v=(const void*)((const u8*)buf.data+i*buf.stride);
+            if (v->u<u0) u0=v->u;
+            if (v->u>u1) u1=v->u;
+            if (v->v<v0) v0=v->v;
+            if (v->v>v1) v1=v->v;
+        }
+        assert(u0>=0 && u1<=512 && v0>=0 && v1<=256);
+        for (int y=v0;y<v1;y++) for (int x=u0;x<u1;x++) {
+            unsigned k=sim_tiled(x,255-y,512);
+            stage_used[k]=1;
+            stage_expected[k]=((u16*)pending_stage.data)[k];
+        }
+    }
     for(int i=first;i<first+n;i+=3) {
         Varying v[3];
         for(int j=0;j<3;j++) {
@@ -157,17 +200,25 @@ void C3D_DrawArrays(int primitive,int first,int n)
                     C3D_TexEnv *e=&envs[stage]; int ch=k==3;
                     float args[2];
                     for(int j=0;j<2;j++) {
+                        int component=k;
+                        if(ch) switch(e->alpha_op[j]) {
+                        case GPU_TEVOP_A_SRC_R:component=0;break;
+                        case GPU_TEVOP_A_SRC_G:component=1;break;
+                        case GPU_TEVOP_A_SRC_B:component=2;break;
+                        }
                         switch(e->src[ch][j]) {
-                        case GPU_TEXTURE0: args[j]=tc[k]; break;
-                        case GPU_TEXTURE1: args[j]=dt[k]; break;
-                        case GPU_PREVIOUS: args[j]=previous[k]; break;
-                        case GPU_PRIMARY_COLOR: args[j]=pc[k]; break;
+                        case GPU_TEXTURE0: args[j]=tc[component]; break;
+                        case GPU_TEXTURE1: args[j]=dt[component]; break;
+                        case GPU_PREVIOUS: args[j]=previous[component]; break;
+                        case GPU_PRIMARY_COLOR: args[j]=pc[component]; break;
+                        case GPU_CONSTANT: args[j]=((e->color>>(8*component))&255)/255.f; break;
                         default: args[j]=0; break;
                         }
                     }
-                    if(ch&&e->inv_alpha)args[0]=1-args[0];
+                    if(ch) for(int j=0;j<2;j++) if(e->alpha_op[j]==GPU_TEVOP_A_ONE_MINUS_SRC_ALPHA) args[j]=1-args[j];
                     float value;
                     switch(e->func[ch]) {
+                    case GPU_ADD: value=args[0]+args[1]; break;
                     case GPU_MODULATE: value=args[0]*args[1]; break;
                     case GPU_ADD_SIGNED: value=args[0]+args[1]-128/255.f; break;
                     case GPU_REPLACE: value=args[0]; break;
@@ -180,8 +231,9 @@ void C3D_DrawArrays(int primitive,int first,int n)
             }
             if(!test(s[3]))continue;
             unsigned idx=sim_tiled(x,y,rt.tex->width);
-            u16 *pixel=(u16*)rt.tex->data+idx;
-            unpack(*pixel,d);
+            void *pixel=(char*)rt.tex->data+idx*(rt.tex->format==GPU_RGBA8?4:2);
+            if(rt.tex->format==GPU_RGBA8) { u32 p=*(u32*)pixel; for(int k=0;k<4;k++) d[k]=((p>>(24-8*k))&255)/255.f; }
+            else unpack(*(u16*)pixel,d);
             for(int k=0;k<4;k++) {
                 float a=s[k]*factor(blend[k==3?4:2],k,s,d);
                 float z=d[k]*factor(blend[k==3?5:3],k,s,d);
@@ -190,7 +242,9 @@ void C3D_DrawArrays(int primitive,int first,int n)
             // PICA RGB5A1 drops the low three bits of the blended 8-bit
             // component (also modeled by Azahar Common::Color::EncodeRGB5A1).
             // The original harness rounded normalized floats to 31 instead.
-            *pixel=(((int)(pc[0]*255+1e-4f)>>3)<<11)|(((int)(pc[1]*255+1e-4f)>>3)<<6)|(((int)(pc[2]*255+1e-4f)>>3)<<1)|(pc[3]>=.5f);
+            if(rt.tex->format==GPU_RGBA8) {
+                u32 p=0; for(int k=0;k<4;k++) p|=(u32)(pc[k]*255+.5f)<<(24-8*k); *(u32*)pixel=p;
+            } else *(u16*)pixel=(((int)(pc[0]*255+1e-4f)>>3)<<11)|(((int)(pc[1]*255+1e-4f)>>3)<<6)|(((int)(pc[2]*255+1e-4f)>>3)<<1)|(pc[3]>=.5f);
         }
     }
 }

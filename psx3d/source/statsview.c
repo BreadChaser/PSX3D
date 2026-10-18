@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "statsview.h"
+#include "devtools.h"
 
 #define ROWS 14
 static char title[80], lines[ROWS][128], brief[128], speed_label[32];
@@ -17,7 +18,7 @@ static float budget_fraction;
 
 bool statsview_collecting(void)
 {
-	return g_cfg.show_fps || sw_stats || sw_prof || sw_pmu0 >= 0 || log_linked();
+	return dev_enabled() || g_cfg.show_fps || sw_stats || sw_prof || sw_pmu0 >= 0 || log_linked();
 }
 
 static const char *opt(const char *name)
@@ -58,6 +59,8 @@ void statsview_frame(void)
 {
 	if (statsview_collecting()) emulated++;
 }
+
+unsigned statsview_emulated(void) { return emulated; }
 
 void statsview_update(const statsview_sample *s)
 {

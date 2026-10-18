@@ -20,6 +20,7 @@ bool sw_stats, sw_prof;
 int sw_pmu0=-1;
 char CdromId[10];
 bool log_linked(void) { return false; }
+bool dev_enabled(void) { return false; }
 unsigned audio_occupancy(void) { return 50; }
 size_t linearSpaceFree(void) { return 1024*1024; }
 

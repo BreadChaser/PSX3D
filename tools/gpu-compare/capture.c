@@ -7,8 +7,10 @@ uint16_t *psx3d_vram2;
 unsigned sim_flips; /* older simulator gpu.c diagnostic */
 void psx3d_set_half3d(int on) { (void)on; }
 static FILE *out;
+static int enabled;
 static void record(unsigned tag, const void *data, unsigned bytes)
 {
+    if(!enabled)return;
     if(!out) {
         const char *path=getenv("GPU_TRACE");
         if(!path)return;
@@ -55,7 +57,13 @@ void trace_frame(int frame)
 
 void trace_state(void)
 {
+    enabled=1;
     record(2,gpu.ex_regs,32);
     int rect[5]={0,0,1024,512,1}; record(3,rect,20);
     record(4,gpu.vram,1024*512*2);
 }
+
+// GP0 80h is executed by gpulib before renderer_update_caches. Record it
+// explicitly so native replay can independently test the GPU copy path.
+void trace_vram_copy(const uint32_t *params)
+{ record(8,params,16); }

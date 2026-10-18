@@ -5,6 +5,7 @@
 #include <string.h>
 #include "psx3d.h"
 #include "settings_menu.h"
+#include "devtools.h"
 
 #define ROWS 9
 #define ROW_H 24
@@ -713,6 +714,11 @@ int libui_run(char *out_path, size_t len)
 	bool home_pending = false;
 	static u32 frame_no;
 	while (aptMainLoop()) {
+		if (dev_tick(false)) {
+			music_play(false);
+			ui_wants_3d = false;
+			return 3;
+		}
 		input_poll();
 		u32 k = input_keys_down(), h = input_keys_held();
 		n = nview;

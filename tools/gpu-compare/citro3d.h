@@ -4,14 +4,14 @@ typedef struct { void *data; u16 width, height; int format; } C3D_Tex;
 typedef struct { int dummy; } C3D_AttrInfo, DVLB_s_inner;
 typedef struct { C3D_Tex *tex; } C3D_RenderTarget;
 typedef struct { const void *data; int stride; } C3D_BufInfo;
-typedef struct { int src[2][3], func[2], scale[2], inv_alpha; } C3D_TexEnv;
+typedef struct { int src[2][3], func[2], scale[2], alpha_op[3]; u32 color; } C3D_TexEnv;
 typedef union { struct { float w, z, y, x; }; float c[4]; } C3D_FVec;
 typedef struct { C3D_FVec r[4]; } C3D_Mtx;
 typedef struct { int DVLE[1]; } DVLB_s;
 typedef struct { void *vertexShader; } shaderProgram_s;
 enum { GPU_RGBA8, GPU_TEXFACE_2D, GPU_FLOAT, GPU_UNSIGNED_BYTE, GPU_VERTEX_SHADER, GPU_CULL_NONE, GPU_WRITE_COLOR,
 	GPU_SCISSOR_NORMAL, GPU_SCISSOR_DISABLE, GPU_BLEND_ADD, GPU_TRIANGLES, C3D_Both, GPU_TEXTURE0, GPU_PRIMARY_COLOR,
-	GPU_MODULATE, GPU_REPLACE, GPU_PREVIOUS, GPU_TEXTURE1, GPU_ADD_SIGNED, GPU_NEAREST, GPU_LINEAR, GPU_REPEAT, GPU_CLAMP_TO_EDGE };
+	GPU_MODULATE, GPU_REPLACE, GPU_PREVIOUS, GPU_TEXTURE1, GPU_ADD_SIGNED, GPU_NEAREST, GPU_LINEAR, GPU_REPEAT, GPU_CLAMP_TO_EDGE, GPU_CONSTANT, GPU_ADD, GPU_TEVSCALE_4, GPU_TEVOP_A_SRC_ALPHA, GPU_TEVOP_A_SRC_R, GPU_TEVOP_A_SRC_G, GPU_TEVOP_A_SRC_B };
 typedef enum { GPU_ZERO, GPU_ONE, GPU_SRC_COLOR, GPU_ONE_MINUS_SRC_COLOR, GPU_DST_COLOR, GPU_ONE_MINUS_DST_COLOR,
 	GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA, GPU_DST_ALPHA, GPU_ONE_MINUS_DST_ALPHA, GPU_SRC_ALPHA_SATURATE } GPU_BLENDFACTOR;
 typedef enum { GPU_NEVER, GPU_ALWAYS, GPU_EQUAL, GPU_NOTEQUAL, GPU_LESS, GPU_LEQUAL, GPU_GREATER, GPU_GEQUAL } GPU_TESTFUNC;
@@ -55,7 +55,7 @@ static inline void shaderProgramInit(shaderProgram_s *p) { (void)p; }
 static inline void shaderProgramSetVsh(shaderProgram_s *p, void *d) { (void)p; (void)d; }
 static inline void shaderProgramFree(shaderProgram_s *p) { (void)p; }
 int shaderInstanceGetUniformLocation(void *s, const char *n);
-static inline void C3D_FrameEnd(u8 f) { (void)f; }
+void C3D_FrameEnd(u8 f);
 static inline bool C3D_FrameBegin(u8 f) { (void)f; return true; }
 enum { GPU_RGBA5551_ = 100, GPU_SHORT = 101, GPU_ONE_MINUS_CONSTANT_ALPHA = 102, GPU_CONSTANT_ALPHA = 103,
 	GPU_BLEND_REVERSE_SUBTRACT = 104, C3D_RGB = 105, C3D_Alpha = 106, GPU_TEVSCALE_2 = 107, GPU_TEVOP_A_ONE_MINUS_SRC_ALPHA = 108 };
@@ -70,3 +70,5 @@ typedef u64 u64_alias;
 
 unsigned sim_tiled(int x, int y, int w);
 u16 sim_target_pixel(int x, int y);
+
+void C3D_TexEnvColor(C3D_TexEnv *e, u32 color);

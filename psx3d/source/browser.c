@@ -7,6 +7,7 @@
 #include <string.h>
 #include <strings.h>
 #include "psx3d.h"
+#include "devtools.h"
 
 #define MAX_ENTRIES 4096
 #define LINES 13
@@ -271,6 +272,8 @@ bool browser_run(char *out_path, size_t out_len)
 		load_dir("sdmc:/");
 
 	while (aptMainLoop()) {
+		if (dev_tick(false))
+			return false;
 		input_poll();
 		u32 k = input_keys_down(), h = input_keys_held();
 
