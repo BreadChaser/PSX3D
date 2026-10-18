@@ -77,25 +77,55 @@ def stage(path):
     t.finish()
 
 
+def regions(path):
+    """Scattered sprites sharing a CLUT must retain independent atlas squares."""
+    vram = [0]*(1024*512)
+    for y in range(256):
+        for x in range(64):
+            vram[y*1024+640+x] = 0x1234 ^ ((x+y)&7)*0x1111
+    for clut in range(24):
+        for i in range(16):
+            vram[480*1024+clut*16+i] = (i+1) | ((clut+1)<<5) | ((31-i)<<10)
+    t = Trace(path); t.init(vram)
+    t.commands([0xe100000a])
+    for frame in range(1, 5):
+        for clut in range(24):
+            for j, (u, v) in enumerate([(0,0), (224,224), (32,160), (192,32)]):
+                x, y = (clut%8)*38+j*2, (clut//8)*64+j*4
+                t.commands([0x65808080, xy(x,y), uv(u,v,(480<<6)|clut), xy(16,16)])
+            # Oblique polygons land exactly on integer texel boundaries.
+            # The oracle must be invariant to the square's atlas placement.
+            t.commands([0x25808080, xy(x+2,y+18), uv(192,32,(480<<6)|clut),
+                        xy(x+17,y+23), uv(205,32,10), xy(x+4,y+38), uv(192,47)])
+        # Source and palette replacements must invalidate every overlapping
+        # retained square, while queued readers retain their old contents.
+        t.words(3, [640,0,8,32,0]); t.record(4, b'\x21\x43'*(8*32))
+        t.words(3, [1,480,1,1,0]); t.record(4, bytes([frame+1,0]))
+        t.words(5, [frame,0,0,0,320,240,320,240,0,0,0,0])
+    t.f.close()
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--replay', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True)
     a = p.parse_args()
     a.output.mkdir(parents=True, exist_ok=True)
-    for name, generate in [('direct', direct), ('copy', copy), ('stage', stage), ('palette', palette)]:
+    for name, generate in [('direct', direct), ('copy', copy), ('stage', stage), ('palette', palette), ('regions', regions)]:
         trace = a.output / (name+'.gputrace')
         generate(trace)
         hashes = []
-        for label, debug in [('old', '262144'), ('new', '0')]:
+        for label, debug in [('old', '262144'), ('cache-off', '524288'), ('new', '0')]:
             dest = a.output/name/label
             dest.mkdir(parents=True, exist_ok=True)
             result = subprocess.run([a.replay,trace,dest], check=True, capture_output=True, text=True,
-                env=dict(os.environ,PICA_DEBUG=debug,GPU_HASH_VRAM='1',PICA_STATS='1',SIM_CHECK_STAGE_LIFETIME='1'))
+                env=dict(os.environ,PICA_DEBUG=debug,GPU_HASH_VRAM='1',PICA_STATS='1',SIM_CHECK_STAGE_LIFETIME='1',SIM_CHECK_ATLAS_LIFETIME='1'))
             (dest/'replay.log').write_text(result.stderr)
             hashes.append(re.findall(r'VRAM hash (\w+)',result.stderr))
-        assert hashes[0] and hashes[0] == hashes[1], (name, hashes)
-        assert (a.output/name/'old/frame-0001.ppm').read_bytes() == (a.output/name/'new/frame-0001.ppm').read_bytes()
+        assert hashes[0] and hashes[0] == hashes[1] == hashes[2], (name, hashes)
+        for picture in (a.output/name/'old').glob('*.ppm'):
+            assert picture.read_bytes() == (a.output/name/'new'/picture.name).read_bytes()
+            assert picture.read_bytes() == (a.output/name/'cache-off'/picture.name).read_bytes()
         print(name, 'scanout and complete VRAM match')
 
 
