@@ -34,27 +34,28 @@ those faces minus the r60 circle, with six-pixel gaps between separate faces.
 The knob has r19, 31px maximum travel and a four-pixel dead zone. It feeds the full
 signed `RETRO_DEVICE_INDEX_ANALOG_RIGHT` range and centers on release.
 
-Without a stick, Old 3DS bound cluster buttons **tile the entire 192x192 area**, with
-six-pixel gaps and no curved cut-outs. The footprint is x104..296/y24..216:
+Without a stick, Old 3DS bound cluster buttons **tile the entire 216x216 area**, with
+six-pixel gaps and no curved cut-outs. The full-screen panel is x0..320/y0..240. The centered cluster footprint is
+x92..308/y12..228, leaving 12px at the top, right and bottom:
 
 | Bound buttons | Layout |
 |---|---|
 | 0 | No cluster artwork or targets |
-| 1 | One 192x192 square |
-| 2 | Two 93x192 vertical halves; order follows left/right slot position, then row |
-| 3 | Complete row keeps two 93x93 squares; third spans the other row at 192x93 |
-| 4 | Four 93x93 squares in their original quarter positions |
+| 1 | One 216x216 square |
+| 2 | Two 105x216 vertical halves; order follows left/right slot position, then row |
+| 3 | Complete row keeps two 105x105 squares; third spans the other row at 216x105 |
+| 4 | Four 105x105 squares in their original quarter positions |
 
 Marks are centered in each actual face. Action-coloured accents hug
 each face's outer cluster edges; internal gap edges retain the subtle border. Accents
 follow the bound action, rather than the slot (palette below). With a stick,
-quarter marks retain the approved visible-area centroids at offsets ±58.6066
-from (200,120). Merged half marks sit 75px from the stick center on that half's
+quarter marks use the expanded faces’ visible-area centroids at offsets ±63.8176
+from (200,120). Merged half marks sit 87px from the stick center on that half's
 axis, inside the visible strip; the sole full-ring mark stays in its slot's
 original quarter so it cannot cover the stick. The former cut-out area is
 touchable only when it is filled by a rectangular face. The gaps never accept input.
 
-The side footprint is x32..88/y64..176, with MENU above and the brand below:
+The side footprint is x12..68/y64..176, with MENU above and the brand below:
 
 | Bound side slots | Layout |
 |---|---|
@@ -68,18 +69,18 @@ limits. Old 3DS cannot run rewind, so its second side slot is unavailable.
 New 3DS exposes both when permitted, allowing both side-tiling variants.
 
 New 3DS click buttons use the approved **edge column**, separate from the Old
-3DS cluster. With both slots bound, top is x188..288/y16..114 (100x98), bottom
-is x188..288/y126..224 (100x98). With exactly one bound, either slot fills
-x188..288/y16..224 (100x208). None means no click-column faces or hit targets.
+3DS cluster. With both slots bound, top is x208..308/y12..114 (100x102), bottom
+is x208..308/y126..228 (100x102). With exactly one bound, either slot fills
+x208..308/y12..228 (100x216). None means no click-column faces or hit targets.
 Marks stay centered and a 3px action-coloured accent runs only along the
-screen-edge side (x285..288 in Right placement). The default L3/R3 accents
+screen-edge side (x305..308 in Right placement). The default L3/R3 accents
 are cyan. Controls names are positional **Touch top / Touch bottom**, while
 `map_TOUCH_L3/R3` keys and preset slot identities stay compatible.
 
 Global **Stick-click buttons: Right / Left** controls New layout placement.
-Left moves the click column to x32..132 (accent x32..35) and the side column
-to x232..288, with MENU and brand on the right. MENU target x20..90/y0..40,
-mirrored to x230..300. The brand remains 62px wide and its four-color bar ends
+Left moves the click column to x12..112 (accent x12..15) and the side column
+to x252..308, with MENU and brand on the right. MENU target x0..82/y0..40,
+mirrored to x238..320. The brand remains 62px wide and its four-color bar ends
 at the D. The Old 3DS cluster tiling never applies to this New 3DS column.
 
 The action palette is shared by touch accents, symbols and the Controls page's
@@ -123,10 +124,14 @@ field now participates in startup selection; DEFAULT inherits global and no
 seeded entry enables GPU. Explicit game choices and testing switches take
 precedence. See [release validation](../../../docs/release-v0.3.0.md).
 
+MENU, side slots and brand/FPS start 12px from the left edge; New Left
+placement mirrors them to the right edge. Side slots remain vertically centered.
+The in-game panel fills all 320x240 pixels; menu panels are unchanged.
+
 FPS replaces the brand in its 62px corner: a 16px title-font rate (for example
 `40.8 FPS`), a smaller game-speed percentage below it, and the same four-colour
 bar ending at the text edge. New 3DS Left placement right-aligns both labels at
-x288. Off restores the original brand. With no touch slots, FPS wakes/keeps the
+x308. Off restores the original brand. With no touch slots, FPS wakes/keeps the
 bottom backlight on and draws only MENU and the readout on black. Tapping the
 readout cycles to Detailed; its tap target no longer steals the bottom of the
 New 3DS click buttons. Detailed retains its stats, MENU, and full-width footer.
@@ -139,11 +144,13 @@ changes. Hidden diagnostics do not trigger FPS redraws; interaction, OSD and
 menu transitions can still repaint as needed. The FPS path skips detailed
 formatting, option lookups and text-buffer reparsing during sample updates.
 
-Illustrative mockups (SVG and PNG; desktop fonts, not console captures):
+Mockups regenerated from production drawing calls (SVG and PNG; desktop fonts,
+not console captures):
 `fps-old-full`, `fps-new-stacked`, `fps-new-left`, and `fps-blank`.
 Build checks: 3DSX and CIA. Host checks: `tests/statsview/check.c` covers visible
 value invalidation, rounded unchanged values, speed changes, mirrored label/bar
-alignment, and the existing Detailed formatter/cycling. No console access.
+alignment, and the existing Detailed formatter/cycling. The old one-line `fps/target fps % ms` draw has been removed; FPS draws only
+the two corner labels and their bar. No console access.
 
 ## Presets, inheritance and permissions
 

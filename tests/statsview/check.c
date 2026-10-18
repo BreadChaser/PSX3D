@@ -73,9 +73,9 @@ int main(void) {
  assert(!statsview_redraw(0));
  frames(120); statsview_update(&s); assert(!strcmp(speed_label,"200% speed"));
  assert(statsview_redraw(0));
- statsview_draw(); assert(labels==2 && bars==4 && label_x==32 && bar_end==94 && label_align==0);
+ statsview_draw(); assert(labels==2 && bars==4 && label_x==12 && bar_end==74 && label_align==0);
  g_new3ds=true; g_cfg.touch_click_left=1;
- statsview_draw(); assert(labels==4 && bars==8 && label_x==288 && bar_end==288 && label_align==C2D_AlignRight);
+ statsview_draw(); assert(labels==4 && bars==8 && label_x==308 && bar_end==308 && label_align==C2D_AlignRight);
  g_new3ds=false; g_cfg.touch_click_left=0;
  statsview_cycle(); assert(g_cfg.show_fps==2);
  frames(60); statsview_update(&s);

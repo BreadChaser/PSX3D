@@ -117,7 +117,7 @@ void statsview_draw(void)
 	u32 color = C2D_Color32(175, 183, 198, 255);
 	if (g_cfg.show_fps == 1) {
 		bool left = g_new3ds && g_cfg.touch_click_left;
-		float x = left ? 288 : 32;
+		float x = left ? 308 : 12;
 		u32 align = left ? C2D_AlignRight : 0;
 		u32 ink = C2D_Color32(43, 51, 96, 255);
 		ui_text_pixels(libui_font(), x, 204, 16, 0, 62, ink, align, brief);
@@ -125,7 +125,7 @@ void statsview_draw(void)
 		const unsigned colors[] = { 0xd0313b, 0xe8b21c, 0x2fa36b, 0x2f6fc4 };
 		for (int j = 0; j < 4; j++) {
 			unsigned c = colors[j];
-			C2D_DrawRectSolid((left ? 226 : 32)+16*j, 220, .5f, 14, 2,
+			C2D_DrawRectSolid((left ? 246 : 12)+16*j, 220, .5f, 14, 2,
 				C2D_Color32(c>>16, c>>8, c, 255));
 		}
 		return;

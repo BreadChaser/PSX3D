@@ -15,6 +15,13 @@
 #include "../../source/gamecfg.c"
 #include "../../source/options.c"
 #include "../../source/ui.c"
+#include "../../source/statsview.c"
+bool sw_stats, sw_prof;
+int sw_pmu0=-1;
+char CdromId[10];
+bool log_linked(void) { return false; }
+unsigned audio_occupancy(void) { return 50; }
+size_t linearSpaceFree(void) { return 1024*1024; }
 
 bool g_new3ds, sw_o3ds, sw_nosputhread, sw_nogputhread, sw_noskip, sw_fs1, sw_fs3;
 char sw_cdra[8], sw_clock[8], sw_opt[8][48];
@@ -111,7 +118,7 @@ void C2D_TextGetDimensions(C2D_Text *t,float sx,float sy,float *w,float *h)
 }
 static unsigned host_rgb(u32 c) { return (c&255)<<16 | (c&0xff00) | (c>>16&255); }
 void C2D_DrawRectSolid(float x,float y,float z,float w,float h,u32 c)
-{ (void)z; ink_bounds(x,y,x+w,y+h); if(svg) fprintf(svg,"<rect x='%g' y='%g' width='%g' height='%g' fill='#%06x'/>\n",x,y,w,h,host_rgb(c)); }
+{ if(z==0.1f) assert(x==0 && y==0 && w==320 && h==240); ink_bounds(x,y,x+w,y+h); if(svg) fprintf(svg,"<rect x='%g' y='%g' width='%g' height='%g' fill='#%06x'/>\n",x,y,w,h,host_rgb(c)); }
 static unsigned gradient_id;
 static void svg_gradient(float x,float y,float x2,float y2,u32 a,u32 b)
 {
@@ -167,11 +174,17 @@ void C2D_DrawText(C2D_Text *t,u32 flags,float x,float y,float z,float sx,float s
  if (!svg) return;
  if(!t->font && (flags&C2D_AtBaseline) && y!=22)
   assert(sy*30 <= (g_new3ds?16:13)+0.01f); // labels never grow past the default size
+ if(t->font && (flags&C2D_AtBaseline) && y==204) {
+  charWidthInfo_s *cw=C2D_FontGetCharWidthInfo(t->font,t->text[0]);
+  bool left=g_new3ds && g_cfg.touch_click_left;
+  if(t->text[0]=='4') assert(fabsf(x+cw->left*sx-(left?246:12))<0.005f);
+  if(t->text[0]=='S') assert(fabsf(x+(cw->left+cw->glyphWidth)*sx-(left?308:74))<0.005f);
+ }
  if(t->font && (flags&C2D_AtBaseline) && y==214) {
   charWidthInfo_s *cw=C2D_FontGetCharWidthInfo(t->font,t->text[0]);
   bool left=g_new3ds && g_cfg.touch_click_left;
-  if(t->text[0]=='P') assert(fabsf(x+cw->left*sx-(left?226:32))<0.005f);
-  if(t->text[0]=='D') assert(fabsf(x+(cw->left+cw->glyphWidth)*sx-(left?288:94))<0.005f);
+  if(t->text[0]=='P') assert(fabsf(x+cw->left*sx-(left?246:12))<0.005f);
+  if(t->text[0]=='D') assert(fabsf(x+(cw->left+cw->glyphWidth)*sx-(left?308:74))<0.005f);
  }
  va_list ap; va_start(ap,sy);
  u32 c=va_arg(ap,u32);
@@ -214,7 +227,7 @@ static const game_preset_t blank_fixture=GAME_PRESET_SAME("TEST00002",
  {0,0,0,0,0,0,PRESET_RENDERER_DEFAULT,INHERIT_TEST_SLOTS});
 static const game_preset_t enabled_fixture=GAME_PRESET_SAME("TEST00003",
  {1,1,0,1,1,1,PRESET_RENDERER_DEFAULT,INHERIT_TEST_SLOTS});
-static void paint(const char *name) { shot(name); touch_buttons_draw(); shot_end(); }
+static void paint(const char *name) { shot(name); touch_buttons_draw(); statsview_draw(); shot_end(); }
 static void clean_input(bool model)
 {
  input_gameplay(false); g_new3ds=model; game_presets_reset(); input_map_reset();
@@ -246,7 +259,7 @@ static void layout_checks(void)
  input_map_set(12,RETRO_DEVICE_ID_JOYPAD_X);
  assert(touch_button_visible(2)); paint("bottom-l2r2-triangle");
  controls_shot("controls-bound-slot",12);
- tbutton_t third=touch_button(2); assert(third.x==104 && third.y==123 && third.w==192 && third.h==93);
+ tbutton_t third=touch_button(2); assert(third.x==92 && third.y==123 && third.w==216 && third.h==105);
  poll(KEY_TOUCH,280,180); assert(button(RETRO_DEVICE_ID_JOYPAD_X)); poll(0,0,0);
  input_control_cycle(14,-1); // no hotkeys: row 14 is the stick
  assert(touch_stick_active()); paint("bottom-l2r2-triangle-stick");
@@ -260,15 +273,15 @@ static void layout_checks(void)
   int count=__builtin_popcount(mask), area=0;
   for(int i=0;i<4;i++) if(mask&(1u<<i)) {
    tbutton_t b=touch_button(i); area+=b.w*b.h;
-   assert(b.x>=104 && b.y>=24 && b.x+b.w<=296 && b.y+b.h<=216);
-   assert(b.w>=93 && b.h>=93);
+   assert(b.x>=92 && b.y>=12 && b.x+b.w<=308 && b.y+b.h<=228);
+   assert(b.w>=105 && b.h>=105);
    for(int x=b.x;x<b.x+b.w;x++) for(int y=b.y;y<b.y+b.h;y++) {
     assert(touch_button_contains(i,x,y));
     for(int j=0;j<4;j++) if(j!=i) assert(!touch_button_contains(j,x,y));
    }
    poll(0,0,0); poll(KEY_TOUCH,b.x+b.w/2,b.y+b.h/2); assert(button(remap_default[10+i]));
   }
-  assert(area==(count==1 ? 192*192 : count==2 ? 2*93*192 : count==3 ? 2*93*93+192*93 : 4*93*93));
+  assert(area==(count==1 ? 216*216 : count==2 ? 2*105*216 : count==3 ? 2*105*105+216*105 : 4*105*105));
   poll(0,0,0);
   if(mask==1) paint("bottom-one-button");
   if(mask==3) paint("bottom-two-buttons");
@@ -295,7 +308,7 @@ static void curved_fill_checks(void)
  for(unsigned mask=1;mask<16;mask++) {
   for(int i=0;i<4;i++) input_map_set(10+i,(mask&(1u<<i)) ? remap_default[10+i] : -1);
   stick_cutout_draw(); // Exercise cached arc clipping for every binding mask.
-  for(int x=104;x<296;x++) for(int y=24;y<216;y++) {
+  for(int x=92;x<308;x++) for(int y=12;y<228;y++) {
    int owners=0;
    for(int i=0;i<4;i++) {
     tbutton_t b=touch_button(i);
@@ -307,13 +320,13 @@ static void curved_fill_checks(void)
    assert(owners<=1);
    if(__builtin_popcount(mask)==1) assert(owners==((x-200)*(x-200)+(y-120)*(y-120)>=3600));
   }
-  if(mask==1) { assert(touch_button(0).w==192 && touch_button(0).h==192); paint("stick-one-button"); }
-  if(mask==3) { assert(touch_button(0).h==192 && touch_button(1).h==192); paint("stick-two-columns"); }
-  if(mask==5) { assert(touch_button(0).w==192 && touch_button(2).w==192); paint("stick-two-rows"); }
-  if(mask==9) { assert(touch_button(0).w==192 && touch_button(3).w==192); paint("stick-two-diagonal"); }
+  if(mask==1) { assert(touch_button(0).w==216 && touch_button(0).h==216); paint("stick-one-button"); }
+  if(mask==3) { assert(touch_button(0).h==216 && touch_button(1).h==216); paint("stick-two-columns"); }
+  if(mask==5) { assert(touch_button(0).w==216 && touch_button(2).w==216); paint("stick-two-rows"); }
+  if(mask==9) { assert(touch_button(0).w==216 && touch_button(3).w==216); paint("stick-two-diagonal"); }
  }
  input_map_set(10,12); input_map_set(11,13); input_map_set(12,9); input_map_set(13,-1);
- assert(touch_button(2).w==192 && touch_button(2).h==93);
+ assert(touch_button(2).w==216 && touch_button(2).h==105);
  paint("bottom-l2r2-triangle-stick");
  poll(0,0,0); poll(KEY_TOUCH,280,180); assert(button(9)); poll(0,0,0);
  assert(!touch_button_contains(2,200,150));
@@ -341,39 +354,39 @@ static void side_and_new_checks(void)
 {
  clean_input(true); hide_touch();
  input_map_set(14,INPUT_FF_TOGGLE); tbutton_t a=touch_button(4);
- assert(a.x==32 && a.y==64 && a.w==56 && a.h==112);
+ assert(a.x==12 && a.y==64 && a.w==56 && a.h==112);
  paint("side-one-button");
- input_gameplay(true); poll(KEY_TOUCH,60,160); assert(input_fast_forward());
+ input_gameplay(true); poll(KEY_TOUCH,40,160); assert(input_fast_forward());
  poll(0,0,0); assert(touch_button_lit(4)); paint("side-one-button-lit");
  (void)input_touch_changed(); assert(!input_touch_changed()); input_gameplay(false);
  input_map_set(15,INPUT_REWIND_HOLD); a=touch_button(4); tbutton_t b=touch_button(5);
  assert(a.y==64 && a.h==48 && b.y==128 && b.h==48);
  paint("side-two-buttons");
  input_map_set(14,-1); b=touch_button(5); assert(b.y==64 && b.h==112);
- poll(0,0,0); poll(KEY_TOUCH,60,100); assert(touch_slot_held(5));
+ poll(0,0,0); poll(KEY_TOUCH,40,100); assert(touch_slot_held(5));
  input_map_set(15,-1); assert(!touch_buttons_active());
  for(int left=0;left<2;left++) {
   g_cfg.touch_click_left=left;
-  int x0=left ? 32 : 188;
+  int x0=left ? 12 : 208;
   for(unsigned mask=0;mask<4;mask++) {
    input_map_set(12,(mask&1)?14:-1); input_map_set(13,(mask&2)?15:-1);
    a=touch_button(2); b=touch_button(3);
    if(mask==3) {
-    assert(a.x==x0 && a.y==16 && a.w==100 && a.h==98);
-    assert(b.x==x0 && b.y==126 && b.w==100 && b.h==98);
+    assert(a.x==x0 && a.y==12 && a.w==100 && a.h==102);
+    assert(b.x==x0 && b.y==126 && b.w==100 && b.h==102);
     poll(0,0,0); paint(left ? "new3ds-left" : "new3ds-l3r3");
    } else if(mask) {
     tbutton_t only=touch_button(mask==1?2:3);
-    assert(only.x==x0 && only.y==16 && only.w==100 && only.h==208);
+    assert(only.x==x0 && only.y==12 && only.w==100 && only.h==216);
     poll(0,0,0);
     paint(left ? (mask==1 ? "new3ds-left-remapped" : "new3ds-left-one-r3") :
      (mask==1 ? "new3ds-one-button" : "new3ds-one-r3"));
    }
    // Every column pixel, surrounding edge and the gap has exactly its drawn owner.
-   for(int x=x0-1;x<=x0+100;x++) for(int y=15;y<=224;y++) {
+   for(int x=x0-1;x<=x0+100;x++) for(int y=11;y<=228;y++) {
     bool in=x>=x0 && x<x0+100;
-    bool top=in && (mask&1) && y>=16 && y<(mask==3?114:224);
-    bool bottom=in && (mask&2) && y>=(mask==3?126:16) && y<224;
+    bool top=in && (mask&1) && y>=12 && y<(mask==3?114:228);
+    bool bottom=in && (mask&2) && y>=(mask==3?126:12) && y<228;
     assert(touch_button_contains(2,x,y)==top);
     assert(touch_button_contains(3,x,y)==bottom);
    }
@@ -385,7 +398,7 @@ static void side_and_new_checks(void)
    }
    poll(0,0,0); assert(touch_buttons_active()==(mask!=0));
   }
-  input_map_set(14,16); assert(touch_button(4).x==(left ? 232 : 32));
+  input_map_set(14,16); assert(touch_button(4).x==(left ? 252 : 12));
   assert(touch_button_contains(TB_MENU,left ? 270 : 50,20));
   input_map_set(14,-1);
  }
@@ -492,8 +505,8 @@ static void symbol_checks(void)
 }
 static void stats_input_checks(void)
 {
- for(int model=0;model<2;model++) {
-  clean_input(model); input_gameplay(true); g_cfg.show_fps=2;
+ for(int model=0;model<2;model++) for(int left=0;left<=model;left++) {
+  clean_input(model); g_cfg.touch_click_left=left; input_gameplay(true); g_cfg.show_fps=2;
   poll(KEY_TOUCH,200,120); assert(!right_axis(0) && !right_axis(1));
   assert(!menu_touched() && !input_stats_touched());
   for(int i=0;i<INPUT_TOUCH_N;i++) assert(!touch_slot_held(i));
@@ -501,13 +514,29 @@ static void stats_input_checks(void)
   poll(0,0,0); poll(KEY_TOUCH,150,223); assert(input_stats_touched());
   assert(!input_stats_touched() && !menu_touched());
   poll(0,0,0); g_cfg.show_fps=1;
-  if(model) { tbutton_t b=touch_button(3); assert(b.y+b.h<=216); }
+  if(model) {
+   tbutton_t b=touch_button(3); assert(b.y+b.h==228);
+   poll(KEY_TOUCH,b.x+50,227); assert(button(15) && !input_stats_touched());
+   poll(0,0,0);
+  }
   hide_touch();
-  poll(KEY_TOUCH,150,223); assert(input_stats_touched() && !menu_touched());
+  poll(KEY_TOUCH,left ? 270 : 40,210); assert(input_stats_touched() && !menu_touched());
   poll(0,0,0); poll(KEY_TOUCH,150,100); assert(menu_touched());
   poll(0,0,0); g_cfg.show_fps=0; input_gameplay(false);
  }
  puts("PASS: Detailed suppresses hidden controls, MENU remains reachable, stats taps never open blank-layout menus");
+}
+static void fps_mockups(void)
+{
+ clean_input(false); g_cfg.show_fps=1;
+ strcpy(brief,"40.8 FPS"); strcpy(speed_label,"68% speed");
+ paint("fps-old-full");
+ clean_input(true); paint("fps-new-stacked");
+ g_cfg.touch_click_left=1; paint("fps-new-left");
+ clean_input(false); hide_touch(); paint("fps-blank");
+ // No slots plus FPS draws MENU/readout, and Off draws nothing.
+ assert(!touch_buttons_active());
+ g_cfg.show_fps=0;
 }
 int main(void)
 {
@@ -517,6 +546,7 @@ int main(void)
  assert(!FT_New_Face(ft,getenv("PSX3D_BODY_FONT"),0,&body_face));
  assert(!FT_Set_Pixel_Sizes(title_face,0,30)); assert(!FT_Set_Pixel_Sizes(body_face,0,30));
  config_load(); layout_checks(); curved_fill_checks(); side_and_new_checks(); action_checks(); serial_config_checks(); symbol_checks(); stats_input_checks();
+ fps_mockups();
  confirm_accept=false; confirm_step=0; assert(!ui_confirm("RESET?","Cancel test",false));
  confirm_accept=true; confirm_step=0; assert(ui_confirm("RESET?","Accept test",false));
  shot("reset-global"); confirm_t c={"RESET ALL SETTINGS?","Restore this console's defaults and all slot bindings? Game overrides are kept."}; confirm_draw(&c); shot_end();

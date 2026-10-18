@@ -23,4 +23,5 @@ void hidCircleRead(circlePosition *p);
 void irrstCstickRead(circlePosition *p);
 void hidTouchRead(touchPosition *p);
 bool aptMainLoop(void);
+size_t linearSpaceFree(void);
 #endif

@@ -1,46 +1,46 @@
 <svg xmlns='http://www.w3.org/2000/svg' width='640' height='480' viewBox='0 0 320 240'><rect width='320' height='240' fill='black'/>
-<rect x='20' y='0' width='280' height='240' fill='#060918'/>
-<text x='32' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(32 0) scale(1 1) translate(-32 0)' fill='#ebeeff' text-anchor='start'>M</text>
-<text x='42.6609' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(42.6609 0) scale(1 1) translate(-42.6609 0)' fill='#ebeeff' text-anchor='start'>E</text>
-<text x='51.5' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(51.5 0) scale(1 1) translate(-51.5 0)' fill='#ebeeff' text-anchor='start'>N</text>
-<text x='60.9464' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(60.9464 0) scale(1 1) translate(-60.9464 0)' fill='#ebeeff' text-anchor='start'>U</text>
-<rect x='32' y='27' width='9' height='2' fill='#d0313b'/>
-<rect x='32' y='220' width='14' height='2' fill='#d0313b'/>
-<rect x='43' y='27' width='9' height='2' fill='#e8b21c'/>
-<rect x='48' y='220' width='14' height='2' fill='#e8b21c'/>
-<rect x='54' y='27' width='9' height='2' fill='#2fa36b'/>
-<rect x='64' y='220' width='14' height='2' fill='#2fa36b'/>
-<rect x='65' y='27' width='9' height='2' fill='#2f6fc4'/>
-<rect x='80' y='220' width='14' height='2' fill='#2f6fc4'/>
-<text x='30.7999' y='214' font-family='Michroma' font-size='16' transform='translate(30.7999 0) scale(0.782664 1) translate(-30.7999 0)' fill='#2b3360' text-anchor='start'>P</text>
-<text x='42.9769' y='214' font-family='Michroma' font-size='16' transform='translate(42.9769 0) scale(0.782664 1) translate(-42.9769 0)' fill='#2b3360' text-anchor='start'>S</text>
-<text x='56.0734' y='214' font-family='Michroma' font-size='16' transform='translate(56.0734 0) scale(0.782664 1) translate(-56.0734 0)' fill='#2b3360' text-anchor='start'>X</text>
-<text x='69.3787' y='214' font-family='Michroma' font-size='16' transform='translate(69.3787 0) scale(0.782664 1) translate(-69.3787 0)' fill='#2b3360' text-anchor='start'>3</text>
-<text x='81.2882' y='214' font-family='Michroma' font-size='16' transform='translate(81.2882 0) scale(0.782664 1) translate(-81.2882 0)' fill='#2b3360' text-anchor='start'>D</text>
-<rect x='104' y='24' width='93' height='93' fill='#1f2a5a'/>
-<rect x='105' y='25' width='91' height='91' fill='#0c1230'/>
-<rect x='104' y='24' width='93' height='3' fill='#b05ade'/>
-<rect x='104' y='24' width='3' height='93' fill='#b05ade'/>
-<text x='132.956' y='65.9434' font-family='DejaVu Sans' font-size='13' transform='translate(132.956 0) scale(1 1) translate(-132.956 0)' fill='#c8cff0' text-anchor='start'>L</text>
-<text x='142.187' y='65.9434' font-family='DejaVu Sans' font-size='13' transform='translate(142.187 0) scale(1 1) translate(-142.187 0)' fill='#c8cff0' text-anchor='start'>2</text>
-<rect x='203' y='24' width='93' height='93' fill='#1f2a5a'/>
-<rect x='204' y='25' width='91' height='91' fill='#0c1230'/>
-<rect x='203' y='24' width='93' height='3' fill='#b05ade'/>
-<rect x='293' y='24' width='3' height='93' fill='#b05ade'/>
-<text x='249.089' y='65.9434' font-family='DejaVu Sans' font-size='13' transform='translate(249.089 0) scale(1 1) translate(-249.089 0)' fill='#c8cff0' text-anchor='start'>R</text>
-<text x='260.48' y='65.9434' font-family='DejaVu Sans' font-size='13' transform='translate(260.48 0) scale(1 1) translate(-260.48 0)' fill='#c8cff0' text-anchor='start'>2</text>
-<rect x='104' y='123' width='93' height='93' fill='#1f2a5a'/>
-<rect x='105' y='124' width='91' height='91' fill='#0c1230'/>
-<rect x='104' y='213' width='93' height='3' fill='#45bfd0'/>
-<rect x='104' y='123' width='3' height='93' fill='#45bfd0'/>
-<text x='132.915' y='183.157' font-family='DejaVu Sans' font-size='13' transform='translate(132.915 0) scale(1 1) translate(-132.915 0)' fill='#c8cff0' text-anchor='start'>L</text>
-<text x='142.146' y='183.157' font-family='DejaVu Sans' font-size='13' transform='translate(142.146 0) scale(1 1) translate(-142.146 0)' fill='#c8cff0' text-anchor='start'>3</text>
-<rect x='203' y='123' width='93' height='93' fill='#1f2a5a'/>
-<rect x='204' y='124' width='91' height='91' fill='#0c1230'/>
-<rect x='203' y='213' width='93' height='3' fill='#45bfd0'/>
-<rect x='293' y='123' width='3' height='93' fill='#45bfd0'/>
-<text x='249.048' y='183.157' font-family='DejaVu Sans' font-size='13' transform='translate(249.048 0) scale(1 1) translate(-249.048 0)' fill='#c8cff0' text-anchor='start'>R</text>
-<text x='260.439' y='183.157' font-family='DejaVu Sans' font-size='13' transform='translate(260.439 0) scale(1 1) translate(-260.439 0)' fill='#c8cff0' text-anchor='start'>3</text>
+<rect x='0' y='0' width='320' height='240' fill='#060918'/>
+<text x='12' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#ebeeff' text-anchor='start'>M</text>
+<text x='22.6609' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(22.6609 0) scale(1 1) translate(-22.6609 0)' fill='#ebeeff' text-anchor='start'>E</text>
+<text x='31.5' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(31.5 0) scale(1 1) translate(-31.5 0)' fill='#ebeeff' text-anchor='start'>N</text>
+<text x='40.9464' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(40.9464 0) scale(1 1) translate(-40.9464 0)' fill='#ebeeff' text-anchor='start'>U</text>
+<rect x='12' y='27' width='9' height='2' fill='#d0313b'/>
+<rect x='12' y='220' width='14' height='2' fill='#d0313b'/>
+<rect x='23' y='27' width='9' height='2' fill='#e8b21c'/>
+<rect x='28' y='220' width='14' height='2' fill='#e8b21c'/>
+<rect x='34' y='27' width='9' height='2' fill='#2fa36b'/>
+<rect x='44' y='220' width='14' height='2' fill='#2fa36b'/>
+<rect x='45' y='27' width='9' height='2' fill='#2f6fc4'/>
+<rect x='60' y='220' width='14' height='2' fill='#2f6fc4'/>
+<text x='10.7999' y='214' font-family='Michroma' font-size='16' transform='translate(10.7999 0) scale(0.782664 1) translate(-10.7999 0)' fill='#2b3360' text-anchor='start'>P</text>
+<text x='22.9769' y='214' font-family='Michroma' font-size='16' transform='translate(22.9769 0) scale(0.782664 1) translate(-22.9769 0)' fill='#2b3360' text-anchor='start'>S</text>
+<text x='36.0734' y='214' font-family='Michroma' font-size='16' transform='translate(36.0734 0) scale(0.782664 1) translate(-36.0734 0)' fill='#2b3360' text-anchor='start'>X</text>
+<text x='49.3787' y='214' font-family='Michroma' font-size='16' transform='translate(49.3787 0) scale(0.782664 1) translate(-49.3787 0)' fill='#2b3360' text-anchor='start'>3</text>
+<text x='61.2882' y='214' font-family='Michroma' font-size='16' transform='translate(61.2882 0) scale(0.782664 1) translate(-61.2882 0)' fill='#2b3360' text-anchor='start'>D</text>
+<rect x='92' y='12' width='105' height='105' fill='#1f2a5a'/>
+<rect x='93' y='13' width='103' height='103' fill='#0c1230'/>
+<rect x='92' y='12' width='105' height='3' fill='#b05ade'/>
+<rect x='92' y='12' width='3' height='105' fill='#b05ade'/>
+<text x='127.745' y='60.7324' font-family='DejaVu Sans' font-size='13' transform='translate(127.745 0) scale(1 1) translate(-127.745 0)' fill='#c8cff0' text-anchor='start'>L</text>
+<text x='136.976' y='60.7324' font-family='DejaVu Sans' font-size='13' transform='translate(136.976 0) scale(1 1) translate(-136.976 0)' fill='#c8cff0' text-anchor='start'>2</text>
+<rect x='203' y='12' width='105' height='105' fill='#1f2a5a'/>
+<rect x='204' y='13' width='103' height='103' fill='#0c1230'/>
+<rect x='203' y='12' width='105' height='3' fill='#b05ade'/>
+<rect x='305' y='12' width='3' height='105' fill='#b05ade'/>
+<text x='254.3' y='60.7324' font-family='DejaVu Sans' font-size='13' transform='translate(254.3 0) scale(1 1) translate(-254.3 0)' fill='#c8cff0' text-anchor='start'>R</text>
+<text x='265.691' y='60.7324' font-family='DejaVu Sans' font-size='13' transform='translate(265.691 0) scale(1 1) translate(-265.691 0)' fill='#c8cff0' text-anchor='start'>2</text>
+<rect x='92' y='123' width='105' height='105' fill='#1f2a5a'/>
+<rect x='93' y='124' width='103' height='103' fill='#0c1230'/>
+<rect x='92' y='225' width='105' height='3' fill='#45bfd0'/>
+<rect x='92' y='123' width='3' height='105' fill='#45bfd0'/>
+<text x='127.704' y='188.368' font-family='DejaVu Sans' font-size='13' transform='translate(127.704 0) scale(1 1) translate(-127.704 0)' fill='#c8cff0' text-anchor='start'>L</text>
+<text x='136.935' y='188.368' font-family='DejaVu Sans' font-size='13' transform='translate(136.935 0) scale(1 1) translate(-136.935 0)' fill='#c8cff0' text-anchor='start'>3</text>
+<rect x='203' y='123' width='105' height='105' fill='#1f2a5a'/>
+<rect x='204' y='124' width='103' height='103' fill='#0c1230'/>
+<rect x='203' y='225' width='105' height='3' fill='#45bfd0'/>
+<rect x='305' y='123' width='3' height='105' fill='#45bfd0'/>
+<text x='254.259' y='188.368' font-family='DejaVu Sans' font-size='13' transform='translate(254.259 0) scale(1 1) translate(-254.259 0)' fill='#c8cff0' text-anchor='start'>R</text>
+<text x='265.65' y='188.368' font-family='DejaVu Sans' font-size='13' transform='translate(265.65 0) scale(1 1) translate(-265.65 0)' fill='#c8cff0' text-anchor='start'>3</text>
 <circle cx='200' cy='120' r='60' fill='#060918'/>
 <path opacity='1' d='M 140.098 117 L 140.128 116.076' stroke='#1f2a5a' stroke-width='1'/>
 <path opacity='1' d='M 140.128 116.076 L 140.513 112.168' stroke='#1f2a5a' stroke-width='1'/>

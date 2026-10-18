@@ -347,17 +347,17 @@ int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id)
 // dragging the stick never accidentally presses a neighbouring button.
 typedef struct { int x, y, w, h; const char *slot; } tbutton_t;
 static const tbutton_t tbuttons[] = {
-	{ 104, 24, 93, 93, "L2" }, { 203, 24, 93, 93, "R2" },
-	{ 104, 123, 93, 93, "L3" }, { 203, 123, 93, 93, "R3" },
-	{ 32, 64, 56, 48, "X1" }, { 32, 128, 56, 48, "X2" },
-	{ 20, 0, 70, 40, "MENU" },
+	{ 92, 12, 105, 105, "L2" }, { 203, 12, 105, 105, "R2" },
+	{ 92, 123, 105, 105, "L3" }, { 203, 123, 105, 105, "R3" },
+	{ 12, 64, 56, 48, "X1" }, { 12, 128, 56, 48, "X2" },
+	{ 0, 0, 82, 40, "MENU" },
 };
 // Indices match the Old 3DS remap slots; absent physical controls only.
 static const tbutton_t new_tbuttons[] = {
 	{ 0 }, { 0 },
-	{ 188, 16, 100, 98, "L3" }, { 188, 126, 100, 98, "R3" },
+	{ 208, 12, 100, 102, "L3" }, { 208, 126, 100, 102, "R3" },
 	{ 0 }, { 0 },
-	{ 20, 0, 70, 40, "MENU" },
+	{ 0, 0, 82, 40, "MENU" },
 };
 #define TB_MENU INPUT_TOUCH_N
 #define TB_STICK (TB_MENU + 1)
@@ -476,9 +476,9 @@ static tbutton_t touch_button(int i)
 	bool left = g_new3ds && g_cfg.touch_click_left;
 	if (g_new3ds && (i == 2 || i == 3)) {
 		// New 3DS keeps the approved stacked edge column, not the Old cluster.
-		if (left) b.x = 32;
+		if (left) b.x = 12;
 		unsigned clicks = touch_parts() & 12;
-		if (clicks == 4 || clicks == 8) { b.y = 16; b.h = 208; }
+		if (clicks == 4 || clicks == 8) { b.y = 12; b.h = 216; }
 	} else if (!g_new3ds && i < 4) {
 		// Tile the Old 3DS cluster footprint only.
 		unsigned mask = touch_parts() & 15;
@@ -486,44 +486,44 @@ static tbutton_t touch_button(int i)
 		for (int k = 0; k < 4; k++)
 			if ((mask & (1u << k)) && (((k & 1) < (i & 1)) || ((k & 1) == (i & 1) && k < i)))
 				rank++;
-		int x = 104;
+		int x = 92;
 		if (touch_stick_active()) {
 			// Lone rows fill horizontally; two buttons sharing a row split vertically.
 			bool column = count == 2 && (mask == 3 || mask == 12);
 			if (count == 1) {
-				b.x = x; b.y = 24; b.w = b.h = 192;
+				b.x = x; b.y = 12; b.w = b.h = 216;
 			} else if (column) {
-				b.y = 24; b.h = 192;
+				b.y = 12; b.h = 216;
 			} else if (!(mask & (1u << (i ^ 1)))) {
-				b.x = x; b.w = 192;
+				b.x = x; b.w = 216;
 			}
 		} else if (count == 1) {
 			b.x = x;
-			b.y = 24;
-			b.w = b.h = 192;
+			b.y = 12;
+			b.w = b.h = 216;
 		} else if (count == 2) {
-			b.x = x + 99 * rank;
-			b.y = 24;
-			b.w = 93;
-			b.h = 192;
+			b.x = x + 111 * rank;
+			b.y = 12;
+			b.w = 105;
+			b.h = 216;
 		} else if (count == 3) {
 			bool full_top = (mask & 3) == 3;
 			bool wide = full_top ? i >= 2 : i < 2;
-			b.x = x + (wide ? 0 : (i & 1) * 99);
-			b.y = 24 + (i >= 2 ? 99 : 0);
-			b.w = wide ? 192 : 93;
-			b.h = 93;
+			b.x = x + (wide ? 0 : (i & 1) * 111);
+			b.y = 12 + (i >= 2 ? 111 : 0);
+			b.w = wide ? 216 : 105;
+			b.h = 105;
 			// Diagonal/column triples still have one complete row, so this is stable.
 		} else {
-			b.x = x + (i & 1) * 99;
-			b.y = 24 + (i >= 2 ? 99 : 0);
-			b.w = b.h = 93;
+			b.x = x + (i & 1) * 111;
+			b.y = 12 + (i >= 2 ? 111 : 0);
+			b.w = b.h = 105;
 		}
 	}
 	if (i == 4 || i == 5) {
 		b = tbuttons[i];
 		if (left)
-			b.x = 232;
+			b.x = 252;
 		unsigned side = touch_parts() & 48;
 		if (side == 16 || side == 32) {
 			b.y = 64;
@@ -531,7 +531,7 @@ static tbutton_t touch_button(int i)
 		}
 	}
 	if (i == TB_MENU && left)
-		b.x = 230;
+		b.x = 238;
 	return b;
 }
 
@@ -558,7 +558,7 @@ void input_touch_reset(void)
 static bool stats_contains(int x, int y)
 {
 	if (g_cfg.show_fps == 2) return y >= 218;
-	int edge = g_new3ds && g_cfg.touch_click_left ? 226 : 32;
+	int edge = g_new3ds && g_cfg.touch_click_left ? 246 : 12;
 	return g_cfg.show_fps == 1 && x >= edge && x < edge+62 && y >= 184 && y < 224;
 }
 
@@ -851,24 +851,24 @@ static void quadrant_draw(int i)
 	u32 accent = button_ink(ui_input_color(id), enabled);
 	if (hit) accent = C2D_Color32((accent&255)*0.65f+89, ((accent>>8)&255)*0.65f+89, ((accent>>16)&255)*0.65f+89, 255);
 	// Accent only the outer cluster edges touched by this face.
-	int cluster_x = 104;
-	if (b.y == 24)
+	int cluster_x = 92;
+	if (b.y == 12)
 		C2D_DrawRectSolid(b.x, b.y, 0.58f, b.w, 3, accent);
-	if (b.y+b.h == 216)
+	if (b.y+b.h == 228)
 		C2D_DrawRectSolid(b.x, b.y+b.h-3, 0.58f, b.w, 3, accent);
 	if (b.x == cluster_x)
 		C2D_DrawRectSolid(b.x, b.y, 0.58f, 3, b.h, accent);
-	if (b.x+b.w == cluster_x+192)
+	if (b.x+b.w == cluster_x+216)
 		C2D_DrawRectSolid(b.x+b.w-3, b.y, 0.58f, 3, b.h, accent);
 	// Quarter centroids stay fixed. Merged halves use the middle of their
 	// visible strip, keeping even the largest symbol clear of the stick ring.
 	float lx = b.x+b.w/2.0f, ly = b.y+b.h/2.0f;
 	if (curved) {
-		if (b.w == 192 && b.h == 192) {
-			lx = STICK_X + sx*58.6066f; ly = STICK_Y + sy*58.6066f;
-		} else if (b.w == 192) ly = STICK_Y + sy*75;
-		else if (b.h == 192) lx = STICK_X + sx*75;
-		else { lx = STICK_X + sx*58.6066f; ly = STICK_Y + sy*58.6066f; }
+		if (b.w == 216 && b.h == 216) {
+			lx = STICK_X + sx*63.8176f; ly = STICK_Y + sy*63.8176f;
+		} else if (b.w == 216) ly = STICK_Y + sy*87;
+		else if (b.h == 216) lx = STICK_X + sx*87;
+		else { lx = STICK_X + sx*63.8176f; ly = STICK_Y + sy*63.8176f; }
 	}
 	touch_mark(id, lx, ly, g_new3ds ? 16 : 13, g_new3ds ? 3 : 2);
 }
@@ -954,17 +954,17 @@ void touch_buttons_draw(void)
 {
 	if (!touch_buttons_active() && g_cfg.show_fps != 1) return;
 	if (touch_buttons_active())
-		C2D_DrawRectSolid(20, 0, 0.1f, 280, 240, rgb(0x060918));
+		C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, rgb(0x060918));
 	bool left = g_new3ds && g_cfg.touch_click_left;
-	ui_text_pixels(NULL, left ? 288 : 32, 22, 11, 1.5f, 0,
+	ui_text_pixels(NULL, left ? 308 : 12, 22, 11, 1.5f, 0,
 		rgb(0xebeeff), left ? C2D_AlignRight : 0, "MENU");
 	const unsigned header[] = { 0xd0313b, 0xe8b21c, 0x2fa36b, 0x2f6fc4 };
 	for (int j = 0; j < 4; j++) {
-		C2D_DrawRectSolid((left ? 246 : 32)+11*j, 27, 0.5f, 9, 2, rgb(header[j]));
+		C2D_DrawRectSolid((left ? 266 : 12)+11*j, 27, 0.5f, 9, 2, rgb(header[j]));
 		if (g_cfg.show_fps != 1)
-			C2D_DrawRectSolid((left ? 226 : 32)+16*j, 220, 0.5f, 14, 2, rgb(header[j]));
+			C2D_DrawRectSolid((left ? 246 : 12)+16*j, 220, 0.5f, 14, 2, rgb(header[j]));
 	}
-	if (g_cfg.show_fps != 1) ui_text_pixels(libui_font(), left ? 226 : 32, 214, 16, 0, 62, rgb(0x2b3360), 0, "PSX3D");
+	if (g_cfg.show_fps != 1) ui_text_pixels(libui_font(), left ? 246 : 12, 214, 16, 0, 62, rgb(0x2b3360), 0, "PSX3D");
 	if (!g_new3ds) {
 		for (int i = 0; i < 4; i++) if(touch_button_visible(i)) quadrant_draw(i);
 		if (touch_stick_active()) { stick_cutout_draw(); stick_draw(); }

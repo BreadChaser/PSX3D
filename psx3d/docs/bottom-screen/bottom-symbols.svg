@@ -1,97 +1,97 @@
 <svg xmlns='http://www.w3.org/2000/svg' width='640' height='480' viewBox='0 0 320 240'><rect width='320' height='240' fill='black'/>
-<rect x='20' y='0' width='280' height='240' fill='#060918'/>
-<text x='32' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(32 0) scale(1 1) translate(-32 0)' fill='#ebeeff' text-anchor='start'>M</text>
-<text x='42.6609' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(42.6609 0) scale(1 1) translate(-42.6609 0)' fill='#ebeeff' text-anchor='start'>E</text>
-<text x='51.5' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(51.5 0) scale(1 1) translate(-51.5 0)' fill='#ebeeff' text-anchor='start'>N</text>
-<text x='60.9464' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(60.9464 0) scale(1 1) translate(-60.9464 0)' fill='#ebeeff' text-anchor='start'>U</text>
-<rect x='32' y='27' width='9' height='2' fill='#d0313b'/>
-<rect x='32' y='220' width='14' height='2' fill='#d0313b'/>
-<rect x='43' y='27' width='9' height='2' fill='#e8b21c'/>
-<rect x='48' y='220' width='14' height='2' fill='#e8b21c'/>
-<rect x='54' y='27' width='9' height='2' fill='#2fa36b'/>
-<rect x='64' y='220' width='14' height='2' fill='#2fa36b'/>
-<rect x='65' y='27' width='9' height='2' fill='#2f6fc4'/>
-<rect x='80' y='220' width='14' height='2' fill='#2f6fc4'/>
-<text x='30.7999' y='214' font-family='Michroma' font-size='16' transform='translate(30.7999 0) scale(0.782664 1) translate(-30.7999 0)' fill='#2b3360' text-anchor='start'>P</text>
-<text x='42.9769' y='214' font-family='Michroma' font-size='16' transform='translate(42.9769 0) scale(0.782664 1) translate(-42.9769 0)' fill='#2b3360' text-anchor='start'>S</text>
-<text x='56.0734' y='214' font-family='Michroma' font-size='16' transform='translate(56.0734 0) scale(0.782664 1) translate(-56.0734 0)' fill='#2b3360' text-anchor='start'>X</text>
-<text x='69.3787' y='214' font-family='Michroma' font-size='16' transform='translate(69.3787 0) scale(0.782664 1) translate(-69.3787 0)' fill='#2b3360' text-anchor='start'>3</text>
-<text x='81.2882' y='214' font-family='Michroma' font-size='16' transform='translate(81.2882 0) scale(0.782664 1) translate(-81.2882 0)' fill='#2b3360' text-anchor='start'>D</text>
-<rect x='104' y='24' width='93' height='93' fill='#1f2a5a'/>
-<rect x='105' y='25' width='91' height='91' fill='#0c1230'/>
-<rect x='104' y='24' width='93' height='3' fill='#2fa36b'/>
-<rect x='104' y='24' width='3' height='93' fill='#2fa36b'/>
-<path opacity='1' d='M 141.393 52.0334 L 130.993 70.7534' stroke='#2fa36b' stroke-width='1.89091'/>
-<circle cx='141.393' cy='52.0334' r='0.945455' fill='#2fa36b'/>
-<circle cx='130.993' cy='70.7534' r='0.945455' fill='#2fa36b'/>
-<path opacity='1' d='M 130.993 70.7534 L 151.793 70.7534' stroke='#2fa36b' stroke-width='1.89091'/>
-<circle cx='130.993' cy='70.7534' r='0.945455' fill='#2fa36b'/>
-<circle cx='151.793' cy='70.7534' r='0.945455' fill='#2fa36b'/>
-<path opacity='1' d='M 151.793 70.7534 L 141.393 52.0334' stroke='#2fa36b' stroke-width='1.89091'/>
-<circle cx='151.793' cy='70.7534' r='0.945455' fill='#2fa36b'/>
-<circle cx='141.393' cy='52.0334' r='0.945455' fill='#2fa36b'/>
-<rect x='203' y='24' width='93' height='93' fill='#1f2a5a'/>
-<rect x='204' y='25' width='91' height='91' fill='#0c1230'/>
-<rect x='203' y='24' width='93' height='3' fill='#d0313b'/>
-<rect x='293' y='24' width='3' height='93' fill='#d0313b'/>
-<path opacity='1' d='M 269.007 61.3934 L 268.807 63.4223' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 268.807 63.4223 L 268.215 65.3733' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 268.215 65.3733 L 267.254 67.1713' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 267.254 67.1713 L 265.961 68.7473' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 265.961 68.7473 L 264.385 70.0407' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 264.385 70.0407 L 262.587 71.0017' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 262.587 71.0017 L 260.636 71.5936' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 260.636 71.5936 L 258.607 71.7934' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 258.607 71.7934 L 256.578 71.5936' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 256.578 71.5936 L 254.627 71.0017' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 254.627 71.0017 L 252.829 70.0407' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 252.829 70.0407 L 251.253 68.7473' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 251.253 68.7473 L 249.959 67.1713' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 249.959 67.1713 L 248.998 65.3733' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 248.998 65.3733 L 248.406 63.4223' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 248.406 63.4223 L 248.207 61.3934' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 248.207 61.3934 L 248.406 59.3645' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 248.406 59.3645 L 248.998 57.4135' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 248.998 57.4135 L 249.959 55.6155' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 249.959 55.6155 L 251.253 54.0395' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 251.253 54.0395 L 252.829 52.7461' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 252.829 52.7461 L 254.627 51.785' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 254.627 51.785 L 256.578 51.1932' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 256.578 51.1932 L 258.607 50.9934' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 258.607 50.9934 L 260.636 51.1932' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 260.636 51.1932 L 262.587 51.785' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 262.587 51.785 L 264.385 52.7461' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 264.385 52.7461 L 265.961 54.0395' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 265.961 54.0395 L 267.254 55.6155' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 267.254 55.6155 L 268.215 57.4135' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 268.215 57.4135 L 268.807 59.3645' stroke='#d0313b' stroke-width='1.89091'/>
-<path opacity='1' d='M 268.807 59.3645 L 269.007 61.3934' stroke='#d0313b' stroke-width='1.89091'/>
-<rect x='104' y='123' width='93' height='93' fill='#1f2a5a'/>
-<rect x='105' y='124' width='91' height='91' fill='#0c1230'/>
-<rect x='104' y='213' width='93' height='3' fill='#2f6fc4'/>
-<rect x='104' y='123' width='3' height='93' fill='#2f6fc4'/>
-<path opacity='1' d='M 133.073 170.287 L 149.713 186.927' stroke='#2f6fc4' stroke-width='1.89091'/>
-<circle cx='133.073' cy='170.287' r='0.945455' fill='#2f6fc4'/>
-<circle cx='149.713' cy='186.927' r='0.945455' fill='#2f6fc4'/>
-<path opacity='1' d='M 149.713 170.287 L 133.073 186.927' stroke='#2f6fc4' stroke-width='1.89091'/>
-<circle cx='149.713' cy='170.287' r='0.945455' fill='#2f6fc4'/>
-<circle cx='133.073' cy='186.927' r='0.945455' fill='#2f6fc4'/>
-<rect x='203' y='123' width='93' height='93' fill='#1f2a5a'/>
-<rect x='204' y='124' width='91' height='91' fill='#0c1230'/>
-<rect x='203' y='213' width='93' height='3' fill='#d77fb5'/>
-<rect x='293' y='123' width='3' height='93' fill='#d77fb5'/>
-<path opacity='1' d='M 249.767 169.767 L 267.447 169.767' stroke='#d77fb5' stroke-width='1.89091'/>
-<circle cx='249.767' cy='169.767' r='0.945455' fill='#d77fb5'/>
-<circle cx='267.447' cy='169.767' r='0.945455' fill='#d77fb5'/>
-<path opacity='1' d='M 267.447 169.767 L 267.447 187.447' stroke='#d77fb5' stroke-width='1.89091'/>
-<circle cx='267.447' cy='169.767' r='0.945455' fill='#d77fb5'/>
-<circle cx='267.447' cy='187.447' r='0.945455' fill='#d77fb5'/>
-<path opacity='1' d='M 267.447 187.447 L 249.767 187.447' stroke='#d77fb5' stroke-width='1.89091'/>
-<circle cx='267.447' cy='187.447' r='0.945455' fill='#d77fb5'/>
-<circle cx='249.767' cy='187.447' r='0.945455' fill='#d77fb5'/>
-<path opacity='1' d='M 249.767 187.447 L 249.767 169.767' stroke='#d77fb5' stroke-width='1.89091'/>
-<circle cx='249.767' cy='187.447' r='0.945455' fill='#d77fb5'/>
-<circle cx='249.767' cy='169.767' r='0.945455' fill='#d77fb5'/>
+<rect x='0' y='0' width='320' height='240' fill='#060918'/>
+<text x='12' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#ebeeff' text-anchor='start'>M</text>
+<text x='22.6609' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(22.6609 0) scale(1 1) translate(-22.6609 0)' fill='#ebeeff' text-anchor='start'>E</text>
+<text x='31.5' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(31.5 0) scale(1 1) translate(-31.5 0)' fill='#ebeeff' text-anchor='start'>N</text>
+<text x='40.9464' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(40.9464 0) scale(1 1) translate(-40.9464 0)' fill='#ebeeff' text-anchor='start'>U</text>
+<rect x='12' y='27' width='9' height='2' fill='#d0313b'/>
+<rect x='12' y='220' width='14' height='2' fill='#d0313b'/>
+<rect x='23' y='27' width='9' height='2' fill='#e8b21c'/>
+<rect x='28' y='220' width='14' height='2' fill='#e8b21c'/>
+<rect x='34' y='27' width='9' height='2' fill='#2fa36b'/>
+<rect x='44' y='220' width='14' height='2' fill='#2fa36b'/>
+<rect x='45' y='27' width='9' height='2' fill='#2f6fc4'/>
+<rect x='60' y='220' width='14' height='2' fill='#2f6fc4'/>
+<text x='10.7999' y='214' font-family='Michroma' font-size='16' transform='translate(10.7999 0) scale(0.782664 1) translate(-10.7999 0)' fill='#2b3360' text-anchor='start'>P</text>
+<text x='22.9769' y='214' font-family='Michroma' font-size='16' transform='translate(22.9769 0) scale(0.782664 1) translate(-22.9769 0)' fill='#2b3360' text-anchor='start'>S</text>
+<text x='36.0734' y='214' font-family='Michroma' font-size='16' transform='translate(36.0734 0) scale(0.782664 1) translate(-36.0734 0)' fill='#2b3360' text-anchor='start'>X</text>
+<text x='49.3787' y='214' font-family='Michroma' font-size='16' transform='translate(49.3787 0) scale(0.782664 1) translate(-49.3787 0)' fill='#2b3360' text-anchor='start'>3</text>
+<text x='61.2882' y='214' font-family='Michroma' font-size='16' transform='translate(61.2882 0) scale(0.782664 1) translate(-61.2882 0)' fill='#2b3360' text-anchor='start'>D</text>
+<rect x='92' y='12' width='105' height='105' fill='#1f2a5a'/>
+<rect x='93' y='13' width='103' height='103' fill='#0c1230'/>
+<rect x='92' y='12' width='105' height='3' fill='#2fa36b'/>
+<rect x='92' y='12' width='3' height='105' fill='#2fa36b'/>
+<path opacity='1' d='M 136.182 46.8224 L 125.782 65.5424' stroke='#2fa36b' stroke-width='1.89091'/>
+<circle cx='136.182' cy='46.8224' r='0.945455' fill='#2fa36b'/>
+<circle cx='125.782' cy='65.5424' r='0.945455' fill='#2fa36b'/>
+<path opacity='1' d='M 125.782 65.5424 L 146.582 65.5424' stroke='#2fa36b' stroke-width='1.89091'/>
+<circle cx='125.782' cy='65.5424' r='0.945455' fill='#2fa36b'/>
+<circle cx='146.582' cy='65.5424' r='0.945455' fill='#2fa36b'/>
+<path opacity='1' d='M 146.582 65.5424 L 136.182 46.8224' stroke='#2fa36b' stroke-width='1.89091'/>
+<circle cx='146.582' cy='65.5424' r='0.945455' fill='#2fa36b'/>
+<circle cx='136.182' cy='46.8224' r='0.945455' fill='#2fa36b'/>
+<rect x='203' y='12' width='105' height='105' fill='#1f2a5a'/>
+<rect x='204' y='13' width='103' height='103' fill='#0c1230'/>
+<rect x='203' y='12' width='105' height='3' fill='#d0313b'/>
+<rect x='305' y='12' width='3' height='105' fill='#d0313b'/>
+<path opacity='1' d='M 274.218 56.1824 L 274.018 58.2113' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 274.018 58.2113 L 273.426 60.1623' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 273.426 60.1623 L 272.465 61.9603' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 272.465 61.9603 L 271.172 63.5363' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 271.172 63.5363 L 269.596 64.8297' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 269.596 64.8297 L 267.798 65.7907' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 267.798 65.7907 L 265.847 66.3826' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 265.847 66.3826 L 263.818 66.5824' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 263.818 66.5824 L 261.789 66.3826' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 261.789 66.3826 L 259.838 65.7907' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 259.838 65.7907 L 258.04 64.8297' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 258.04 64.8297 L 256.464 63.5363' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 256.464 63.5363 L 255.17 61.9603' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 255.17 61.9603 L 254.209 60.1623' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 254.209 60.1623 L 253.617 58.2113' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 253.617 58.2113 L 253.418 56.1824' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 253.418 56.1824 L 253.617 54.1535' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 253.617 54.1535 L 254.209 52.2025' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 254.209 52.2025 L 255.17 50.4045' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 255.17 50.4045 L 256.464 48.8285' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 256.464 48.8285 L 258.04 47.5351' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 258.04 47.5351 L 259.838 46.5741' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 259.838 46.5741 L 261.789 45.9822' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 261.789 45.9822 L 263.818 45.7824' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 263.818 45.7824 L 265.847 45.9822' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 265.847 45.9822 L 267.798 46.5741' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 267.798 46.5741 L 269.596 47.5351' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 269.596 47.5351 L 271.172 48.8285' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 271.172 48.8285 L 272.465 50.4045' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 272.465 50.4045 L 273.426 52.2025' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 273.426 52.2025 L 274.018 54.1535' stroke='#d0313b' stroke-width='1.89091'/>
+<path opacity='1' d='M 274.018 54.1535 L 274.218 56.1824' stroke='#d0313b' stroke-width='1.89091'/>
+<rect x='92' y='123' width='105' height='105' fill='#1f2a5a'/>
+<rect x='93' y='124' width='103' height='103' fill='#0c1230'/>
+<rect x='92' y='225' width='105' height='3' fill='#2f6fc4'/>
+<rect x='92' y='123' width='3' height='105' fill='#2f6fc4'/>
+<path opacity='1' d='M 127.862 175.498 L 144.502 192.138' stroke='#2f6fc4' stroke-width='1.89091'/>
+<circle cx='127.862' cy='175.498' r='0.945455' fill='#2f6fc4'/>
+<circle cx='144.502' cy='192.138' r='0.945455' fill='#2f6fc4'/>
+<path opacity='1' d='M 144.502 175.498 L 127.862 192.138' stroke='#2f6fc4' stroke-width='1.89091'/>
+<circle cx='144.502' cy='175.498' r='0.945455' fill='#2f6fc4'/>
+<circle cx='127.862' cy='192.138' r='0.945455' fill='#2f6fc4'/>
+<rect x='203' y='123' width='105' height='105' fill='#1f2a5a'/>
+<rect x='204' y='124' width='103' height='103' fill='#0c1230'/>
+<rect x='203' y='225' width='105' height='3' fill='#d77fb5'/>
+<rect x='305' y='123' width='3' height='105' fill='#d77fb5'/>
+<path opacity='1' d='M 254.978 174.978 L 272.658 174.978' stroke='#d77fb5' stroke-width='1.89091'/>
+<circle cx='254.978' cy='174.978' r='0.945455' fill='#d77fb5'/>
+<circle cx='272.658' cy='174.978' r='0.945455' fill='#d77fb5'/>
+<path opacity='1' d='M 272.658 174.978 L 272.658 192.658' stroke='#d77fb5' stroke-width='1.89091'/>
+<circle cx='272.658' cy='174.978' r='0.945455' fill='#d77fb5'/>
+<circle cx='272.658' cy='192.658' r='0.945455' fill='#d77fb5'/>
+<path opacity='1' d='M 272.658 192.658 L 254.978 192.658' stroke='#d77fb5' stroke-width='1.89091'/>
+<circle cx='272.658' cy='192.658' r='0.945455' fill='#d77fb5'/>
+<circle cx='254.978' cy='192.658' r='0.945455' fill='#d77fb5'/>
+<path opacity='1' d='M 254.978 192.658 L 254.978 174.978' stroke='#d77fb5' stroke-width='1.89091'/>
+<circle cx='254.978' cy='192.658' r='0.945455' fill='#d77fb5'/>
+<circle cx='254.978' cy='174.978' r='0.945455' fill='#d77fb5'/>
 <circle cx='200' cy='120' r='60' fill='#060918'/>
 <path opacity='1' d='M 140.098 117 L 140.128 116.076' stroke='#1f2a5a' stroke-width='1'/>
 <path opacity='1' d='M 140.128 116.076 L 140.513 112.168' stroke='#1f2a5a' stroke-width='1'/>
@@ -204,11 +204,11 @@
 <circle cx='200' cy='120' r='19.75' fill='#6f86e8'/>
 <defs><linearGradient id='g35' gradientUnits='userSpaceOnUse' x1='181.75' y1='101.75' x2='181.75' y2='138.25'><stop stop-color='#283a82'/><stop offset='1' stop-color='#182254'/></linearGradient></defs>
 <ellipse cx='200' cy='120' rx='18.25' ry='18.25' fill='url(#g35)'/>
-<rect x='32' y='64' width='56' height='112' fill='#1f2a5a'/>
-<rect x='33' y='65' width='54' height='110' fill='#0c1230'/>
-<rect x='32' y='64' width='3' height='112' fill='#9aa5c8'/>
+<rect x='12' y='64' width='56' height='112' fill='#1f2a5a'/>
+<rect x='13' y='65' width='54' height='110' fill='#0c1230'/>
+<rect x='12' y='64' width='3' height='112' fill='#9aa5c8'/>
 <defs><linearGradient id='g36' gradientUnits='userSpaceOnUse' x1='0' y1='113.24' x2='0' y2='126.76'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 59.48 120 L 50.12 113.24 L 50.12 126.76 Z' shape-rendering='crispEdges' fill='url(#g36)'/>
+<path d='M 39.48 120 L 30.12 113.24 L 30.12 126.76 Z' shape-rendering='crispEdges' fill='url(#g36)'/>
 <defs><linearGradient id='g37' gradientUnits='userSpaceOnUse' x1='0' y1='113.24' x2='0' y2='126.76'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 69.88 120 L 60.52 113.24 L 60.52 126.76 Z' shape-rendering='crispEdges' fill='url(#g37)'/>
+<path d='M 49.88 120 L 40.52 113.24 L 40.52 126.76 Z' shape-rendering='crispEdges' fill='url(#g37)'/>
 </svg>
