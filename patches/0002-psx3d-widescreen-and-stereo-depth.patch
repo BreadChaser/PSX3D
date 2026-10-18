@@ -1007,10 +1007,10 @@ index 76f76afe..0e684ace 100644
    sem_post(&t.sem_done);
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 00000000..f7e72355
+index 00000000..fe550669
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,2454 @@
+@@ -0,0 +1,2735 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -1340,18 +1340,37 @@ index 00000000..f7e72355
 +	return ((p & 31) << 11) | (((p >> 5) & 31) << 6) | (((p >> 10) & 31) << 1) | (p >> 15);
 +}
 +
++typedef u32 __attribute__((may_alias)) u32a;
++
 +// ------------------------------------------------------------------ deferred fills
 +
 +typedef struct { s16 x, y, w, h; u16 col; } pfill;
 +static pfill fills[32];
 +static int nfills;
 +
-+static void apply_fill(const pfill *f)
++static void apply_fill_reference(const pfill *f)
 +{
 +	for (int r = 0; r < f->h; r++) {
 +		u16 *row = gpu.vram + ((f->y + r) & 511) * VRAM_W;
 +		for (int k = 0; k < f->w; k++)
 +			row[(f->x + k) & 1023] = f->col;
++	}
++}
++
++static void apply_fill(const pfill *f)
++{
++	// gldbg=131072: baseline renderer CPU paths.
++	if (pica_debug & 131072) { apply_fill_reference(f); return; }
++	// GP0 fills start and end on 16-pixel boundaries. Split horizontal
++	// wrapping once, then fill pairs without a wrap test for every pixel.
++	int first = f->w < VRAM_W - f->x ? f->w : VRAM_W - f->x;
++	u32 col = f->col | ((u32)f->col << 16);
++	for (int r = 0; r < f->h; r++) {
++		u32a *row = (u32a *)(gpu.vram + ((f->y + r) & 511) * VRAM_W);
++		for (int k = 0; k < first / 2; k++)
++			row[f->x / 2 + k] = col;
++		for (int k = 0; k < (f->w - first) / 2; k++)
++			row[k] = col;
 +	}
 +}
 +
@@ -1600,13 +1619,42 @@ index 00000000..f7e72355
 +	return s;
 +}
 +
-+static bool cache_valid(tcache *c)
++static bool cache_valid_reference(tcache *c)
 +{
 +	if (c->checked == gen_clock)   // nothing written since the last check
 +		return true;
 +	int px = c->page & 15, py = (c->page >> 4) & 1;
 +	int nb = c->depth == 0 ? 1 : c->depth == 1 ? 2 : 4;
 +	if (block_stamp(px, py * 16, nb, 16) > c->stamp)
++		return false;
++	if (c->depth < 2) {
++		int cx = (c->clut & 0x3f) * 16, cy = (c->clut >> 6) & 511;
++		int cw = c->depth == 0 ? 16 : 256;
++		if (block_stamp(cx >> 6, cy >> 4, ((cx + cw - 1) >> 6) - (cx >> 6) + 1, 1) > c->stamp)
++			return false;
++	}
++	c->checked = gen_clock;
++	return true;
++}
++
++static bool cache_valid(tcache *c)
++{
++	// gldbg=131072: baseline renderer CPU paths.
++	if (pica_debug & 131072) { return cache_valid_reference(c); }
++	if (c->checked == gen_clock)   // nothing written since the last check
++		return true;
++	int px = (c->page & 15) * 64, py = ((c->page >> 4) & 1) * 256;
++	int sh = 2 - c->depth, w = 256 >> sh, h = 256;
++	// Without a texture window, only this cached square can be read.
++	// Writes elsewhere in the page must not invalidate its decoded tiles.
++	if (!c->win) {
++		px += c->rx >> sh;
++		py += c->ry;
++		h = 32 << c->lg;
++		w = h >> sh;
++	}
++	int nbx = ((px + w - 1) >> 6) - (px >> 6) + 1;
++	if (block_stamp(px >> 6, py >> 4, nbx, h >> 4) > c->stamp)
 +		return false;
 +	if (c->depth < 2) {
 +		int cx = (c->clut & 0x3f) * 16, cy = (c->clut >> 6) & 511;
@@ -1656,13 +1704,145 @@ index 00000000..f7e72355
 +	}
 +}
 +
-+static void decode_rect(tcache *c, int u0, int u1, int v0, int v1)
++static void decode_rect_reference(tcache *c, int u0, int u1, int v0, int v1)
 +{
 +	int t0 = (u0 - c->rx) >> 5, t1 = (u1 - c->rx) >> 5, s0 = (v0 - c->ry) >> 5, s1 = (v1 - c->ry) >> 5;
 +	u64 need = 0;
 +	for (int r = s0; r <= s1; r++)
 +		for (int k = t0; k <= t1; k++)
 +			need |= 1ull << (r * 8 + k);
++	need &= ~c->tiles;
++	if (!need)
++		return;
++	u32 *dst = atlas[0].tex.data;
++	int aw = atlas[0].w, ah = atlas[0].h;
++	const u16 *vram = gpu.vram;
++	int px = (c->page & 15) * 64, py = ((c->page >> 4) & 1) * 256;
++	{
++		// the VRAM the texels needed come from (the window can fetch from
++		// anywhere in the page), and the CLUT: GPU drawing there
++		// (render-to-texture) and pending fills have to reach software VRAM
++		int sh = 2 - c->depth;   // texels per VRAM word: 4, 2, 1
++		int lo = c->rx + t0 * 32, hi = c->rx + t1 * 32 + 31;
++		int vx = px, vy = py, vw = 256 >> sh, vh = 256;
++		if (!c->win) {
++			vx = px + (lo >> sh);
++			vy = py + c->ry + s0 * 32;
++			vw = (hi >> sh) - (lo >> sh) + 1;
++			vh = (s1 - s0 + 1) * 32;
++		}
++		int cx = (c->clut & 0x3f) * 16, cy = (c->clut >> 6) & 511, cw = c->depth == 0 ? 16 : 256;
++		pica_readback_rect_local(vx, vy, vw, vh);
++		if (c->depth < 2)
++			pica_readback_rect_local(cx, cy, cw, 1);
++		// (settling the whole page wrote CTR's screen clears out every frame)
++		if (nfills) {
++			settle_fills(vx, vy, vw, vh);
++			if (c->depth < 2)
++				settle_fills(cx, cy, cw, 1);
++		}
++	}
++	u32 pal[256];
++	if (c->depth < 2) {
++		int cx = (c->clut & 0x3f) * 16, cy = (c->clut >> 6) & 511;
++		int n = c->depth == 0 ? 16 : 256;
++		const u16 *crow = vram + cy * VRAM_W;
++		for (int i = 0; i < n; i++)
++			pal[i] = texel_rgba(crow[(cx + i) & 1023]);
++	}
++	// the atlas is 8x8 tiles of 64 texels in Z order: offsets of the 32
++	// texels of a block row from its first, and of the row within a tile
++	static const u16 xoff[32] = {
++		0, 1, 4, 5, 16, 17, 20, 21, 64, 65, 68, 69, 80, 81, 84, 85,
++		128, 129, 132, 133, 144, 145, 148, 149, 192, 193, 196, 197, 208, 209, 212, 213 };
++	static const u8 yoff[8] = { 0, 2, 8, 10, 32, 34, 40, 42 };
++	for (int t = 0; t < 64; t++) {
++		if (!(need & (1ull << t)))
++			continue;
++		int lu = (t & 7) * 32, lv = (t >> 3) * 32;           // inside the square
++		int tu = c->rx + lu;                                  // in the page
++		int au = c->ax + lu;                                  // in the atlas
++		for (int y = 0; y < 32; y++) {
++			int v = c->ry + lv + y;
++			// texture memory runs bottom-up: atlas row r is sampled at t = (r + 0.5) / height
++			int ty = ah - 1 - (c->ay + lv + y);
++			u32 *d = dst + ((ty >> 3) * (aw >> 3) + (au >> 3)) * 64 + yoff[ty & 7];
++			if (c->win) {
++				// texture window: page texel (u, v) shows texel
++				// ((u & ~mask) | (offset & mask), same for v)
++				u32 w = c->win;
++				int mx = (w & 0x1f) * 8, my = ((w >> 5) & 0x1f) * 8;
++				int ox = ((w >> 10) & 0x1f) * 8 & mx, oy = ((w >> 15) & 0x1f) * 8 & my;
++				int wv = ((v & ~my) | oy) & 255;
++				const u16 *row = vram + ((py + wv) & 511) * VRAM_W;
++				for (int x = 0; x < 32; x++) {
++					int wu = (((tu + x) & ~mx) | ox) & 255;
++					u32 texel;
++					if (c->depth == 0)
++						texel = pal[(row[(px + wu / 4) & 1023] >> ((wu & 3) * 4)) & 15];
++					else if (c->depth == 1)
++						texel = pal[(row[(px + wu / 2) & 1023] >> ((wu & 1) * 8)) & 255];
++					else
++						texel = texel_rgba(row[(px + wu) & 1023]);
++					d[xoff[x]] = texel;
++				}
++				continue;
++			}
++			const u16 *row = vram + ((py + v) & 511) * VRAM_W;
++			if (c->depth == 0) {
++				const u16 *s = row + ((px + tu / 4) & 1023);   // 8 words, inside one page row
++				for (int x = 0; x < 8; x++) {
++					u32 w = s[x];
++					u32 *dd = d + xoff[x * 4];   // 4 texels: offsets +0 +1 +4 +5
++					dd[0] = pal[w & 15];
++					dd[1] = pal[(w >> 4) & 15];
++					dd[4] = pal[(w >> 8) & 15];
++					dd[5] = pal[w >> 12];
++				}
++			} else if (c->depth == 1) {
++				for (int x = 0; x < 16; x++) {
++					u32 w = row[(px + tu / 2 + x) & 1023];
++					u32 *dd = d + xoff[x * 2];   // 2 texels: +0 +1
++					dd[0] = pal[w & 255];
++					dd[1] = pal[w >> 8];
++				}
++			} else {
++				for (int x = 0; x < 32; x++)
++					d[xoff[x]] = texel_rgba(row[(px + tu + x) & 1023]);
++			}
++		}
++		st_decodes++;
++	}
++	// the GPU reads the atlas from memory: write the decoded texels out of
++	// the CPU cache. A 32x32 block is 4 runs of 1KB (4 tiles of an 8-row
++	// band); neighbouring blocks of a row continue those runs.
++	for (int r = 0; r < 8; r++) {
++		u32 row = (u32)(need >> (r * 8)) & 0xff;
++		while (row) {
++			int k0 = __builtin_ctz(row), k1 = k0;
++			while (k1 < 7 && (row >> (k1 + 1)) & 1)
++				k1++;
++			row &= ~(((2u << k1) - 1) & ~((1u << k0) - 1));
++			int ty0 = ah - 1 - (c->ay + r * 32 + 31);   // the lowest atlas row of the blocks
++			for (int band = 0; band < 4; band++)
++				flush_range(dst + (((ty0 >> 3) + band) * (aw >> 3) + ((c->ax + k0 * 32) >> 3)) * 64,
++					(k1 - k0 + 1) * 1024);   // 4 tiles x 64 texels x 4 bytes per block
++		}
++	}
++	c->tiles |= need;
++	atlas[0].rebind = true;
++}
++
++static void decode_rect(tcache *c, int u0, int u1, int v0, int v1)
++{
++	// gldbg=131072: baseline renderer CPU paths.
++	if (pica_debug & 131072) { decode_rect_reference(c, u0, u1, v0, v1); return; }
++	int t0 = (u0 - c->rx) >> 5, t1 = (u1 - c->rx) >> 5, s0 = (v0 - c->ry) >> 5, s1 = (v1 - c->ry) >> 5;
++	u64 need = 0;
++	// Each tile row needs the same contiguous range of columns.
++	u64 columns = ((1u << (t1 - t0 + 1)) - 1) << t0;
++	for (int r = s0; r <= s1; r++)
++		need |= columns << (r * 8);
 +	need &= ~c->tiles;
 +	if (!need)
 +		return;
@@ -2540,8 +2720,6 @@ index 00000000..f7e72355
 +
 +static void noinline __attribute__((cold)) draw_poly_slow(pvtx *v, int n, bool quad, bool textured, u32 page, u32 clut, u32 cmd);
 +
-+typedef u32 __attribute__((may_alias)) u32a;
-+
 +static void draw_poly(const u32 *w, u32 cmd)
 +{
 +	bool quad = cmd & 8, gouraud = cmd & 0x10, textured = cmd & 4;
@@ -2803,7 +2981,7 @@ index 00000000..f7e72355
 +
 +// the CPU wrote a VRAM rectangle (upload, copy, state load): put it into
 +// the render target too, through a staging texture
-+static void push_to_target(int x, int y, int w, int h)
++static void push_to_target_reference(int x, int y, int w, int h)
 +{
 +	if (!ready || w <= 0 || h <= 0)
 +		return;
@@ -2851,6 +3029,109 @@ index 00000000..f7e72355
 +		// like the texture pages: stage row r is sampled at t = (r + 0.5) / STAGE_H
 +		for (int c = 0; c < w; c++)
 +			dst[tiled(c, STAGE_H - 1 - (sy + r), STAGE_W)] = pixel_5551(src[x + c]);
++	}
++	{   // the 8-row tile rows written
++		int tr0 = (STAGE_H - 1 - (sy + h - 1)) >> 3, tr1 = (STAGE_H - 1 - sy) >> 3;
++		GSPGPU_FlushDataCache(dst + tr0 * (STAGE_W / 8) * 64, (tr1 - tr0 + 1) * (STAGE_W / 8) * 64 * 2);
++	}
++	flush();
++	if (vpos + 6 > vlimit)
++		gpu_sync();
++	if (base_dirty)
++		apply_base();
++	// copied 1:1, unblended, over everything
++	C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
++	set_area(0, 0, VRAM_W, VRAM_H);
++	C3D_TexEnv *env = C3D_GetTexEnv(0);
++	C3D_TexEnvInit(env);
++	C3D_TexEnvSrc(env, C3D_Both, GPU_TEXTURE0, 0, 0);
++	C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
++	C3D_TexEnvInit(C3D_GetTexEnv(1));   // CPU uploads must never be dithered
++	applied_dither = -1;
++	C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
++	C3D_AlphaTest(false, GPU_ALWAYS, 0);
++	alias_i ^= 1;
++	tex_alias[alias_i] = stage_tex;
++	C3D_TexBind(0, &tex_alias[alias_i]);
++	clear_tex_cache();
++	s16 x0 = x, y0 = y, x1 = x + w, y1 = y + h, sw = w, v0 = sy, v1 = sy + h;
++	// u, v in stage texels; the shader scale is switched to the stage size
++	pvtx q[6] = {
++		{ x0, y0, 0, v0, 0 }, { x1, y0, sw, v0, 0 }, { x0, y1, 0, v1, 0 },
++		{ x1, y0, sw, v0, 0 }, { x1, y1, sw, v1, 0 }, { x0, y1, 0, v1, 0 } };
++	to_gpu(q, 6);
++	memcpy(vbuf + vpos, q, sizeof(q));
++	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_texscale, 1.0f / STAGE_W, 1.0f / STAGE_H, 0, 0);
++	C3D_DrawArrays(GPU_TRIANGLES, vpos, 6);   // the next textured batch sets its own scale
++	vpos += 6;
++	vstart = vpos;
++	seq++;
++	sent_valid = false;
++	state_dirty = true;
++	st_uploads++;
++}
++
++static void push_to_target(int x, int y, int w, int h)
++{
++	// gldbg=131072: baseline renderer CPU paths.
++	if (pica_debug & 131072) { push_to_target_reference(x, y, w, h); return; }
++	if (!ready || w <= 0 || h <= 0)
++		return;
++	if (!frame_open) {   // e.g. a state load: do it when the next GPU frame opens
++		if (npend == 16) {   // too many: everything, once
++			pend[0] = (prect){ 0, 0, VRAM_W, VRAM_H };
++			npend = 1;
++		}
++		if (!(npend == 1 && pend[0].w == VRAM_W && pend[0].h == VRAM_H))
++			pend[npend++] = (prect){ x, y, w, h };
++		return;
++	}
++	// parts past the right or bottom edge wrap around to the left or top
++	x &= VRAM_W - 1;
++	y &= VRAM_H - 1;
++	if (x + w > VRAM_W || y + h > VRAM_H) {
++		int w1 = x + w > VRAM_W ? VRAM_W - x : w, h1 = y + h > VRAM_H ? VRAM_H - y : h;
++		push_to_target(x, y, w1, h1);
++		if (w1 < w) push_to_target(0, y, w - w1, h1);
++		if (h1 < h) push_to_target(x, 0, w1, h - h1);
++		if (w1 < w && h1 < h) push_to_target(0, 0, w - w1, h - h1);
++		return;
++	}
++	// the stage is smaller than VRAM (GPU memory is scarce): bigger areas go in pieces
++	if (w > STAGE_W || h > STAGE_H) {
++		for (int py = y; py < y + h; py += STAGE_H)
++			for (int px = x; px < x + w; px += STAGE_W)
++				push_to_target(px, py, x + w - px < STAGE_W ? x + w - px : STAGE_W,
++					y + h - py < STAGE_H ? y + h - py : STAGE_H);
++		return;
++	}
++	// uploads stack up in the stage; the GPU must run them before it is reused
++	if (stage_y + h > STAGE_H)
++		gpu_sync();
++	if (pica_async && pica_frame_pending && pica_frame_pending() && pica_wait_frame) {
++		pica_wait_frame();
++		synced_seq = frame_seq;
++	}
++	int sy = stage_y;
++	stage_y += h;
++	u16 *dst = stage_tex.data;
++	const u16 *vram = gpu.vram;
++	static const u8 xoff[8] = { 0, 1, 4, 5, 16, 17, 20, 21 };
++	for (int r = 0; r < h; r++) {
++		const u16 *src = vram + (y + r) * VRAM_W + x;
++		// Adjacent pairs stay adjacent in Morton order. Convert both pixels
++		// together; memcpy also accepts an odd VRAM x.
++		u16 *row = dst + tiled(0, STAGE_H - 1 - (sy + r), STAGE_W);
++		int c = 0;
++		for (; c + 1 < w; c += 2) {
++			u32 p;
++			memcpy(&p, src + c, sizeof(p));
++			u32 q = ((p & 0x001f001f) << 11) | ((p & 0x03e003e0) << 1) |
++				((p & 0x7c007c00) >> 9) | ((p >> 15) & 0x00010001);
++			*(u32a *)(row + (c >> 3) * 64 + xoff[c & 7]) = q;
++		}
++		if (c < w)
++			row[(c >> 3) * 64 + xoff[c & 7]] = pixel_5551(src[c]);
 +	}
 +	{   // the 8-row tile rows written
 +		int tr0 = (STAGE_H - 1 - (sy + h - 1)) >> 3, tr1 = (STAGE_H - 1 - sy) >> 3;
