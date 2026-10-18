@@ -1,7 +1,7 @@
 # v0.3.0 settings and switches
 
 Paths below are relative to `sdmc:/3ds/PSX3D/`. No GPU profile is enabled in
-this release. Software is the factory default for both console families.
+this release. GPU is the factory default on Old 3DS; Software on New 3DS.
 
 ## Frontend configuration
 
@@ -9,7 +9,7 @@ this release. Software is the factory default for both console families.
 
 | Key | Values / factory behavior |
 |---|---|
-| `renderer` | `sw` (default), `gpu`; normal **Renderer: Software / GPU (experimental)** setting; apply by closing and reopening game |
+| `renderer` | `sw` (New default), `gpu` (Old default); normal **Renderer: Software / GPU (experimental)** setting; apply by closing and reopening game |
 | `show_fps` | 0 Off (default), 1 FPS footer, 2 Detailed replaces touch layout |
 | `smooth` | 1 default; 0 sharp scaled pixels |
 | `stereo` | 0 off, 1 screen depth (default), 2 experimental real 3D (software, debug-only); slider activates it |
@@ -44,7 +44,7 @@ rewind entirely; explicit PS1 touch bindings remain editable.
 on control save. Legacy `map_TOUCH_SELECT` is removed. The pre-0.2 `games.ini`
 `<game>=<screen>` fallback is read until a game reset removes its entry.
 
-Global Reset to defaults restores Software and console defaults while keeping
+Global Reset to defaults restores the console renderer default (Old GPU, New Software) and other console defaults while keeping
 library location, game overrides and saves. Game Reset to global defaults
 removes game overrides and restores global settings plus the current preset;
 the running renderer changes only after closing/reopening. Controls reset

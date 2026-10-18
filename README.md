@@ -53,7 +53,7 @@ with an extra cache), so expect the following:
 
 ## Renderer choice
 
-Software is the default on both Old and New 3DS. **Settings → Renderer** offers
+GPU is the default on Old 3DS; Software is the default on New 3DS. **Settings → Renderer** offers
 **Software** and **GPU (experimental)** in the library and in-game menu. The library choice is global; the in-game choice is saved for
 that game. Close and reopen the game to apply it. `renderer=sw|gpu` in
 `switches.txt` overrides the choice for testing.

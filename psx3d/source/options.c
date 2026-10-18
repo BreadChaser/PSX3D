@@ -152,7 +152,7 @@ static void finish_register(void)
 		option_t *o = &opts[nopts++];
 		o->key = strdup(RENDERER_KEY);
 		o->desc = strdup("Renderer");
-		o->info = strdup("Software is the recommended default. GPU rendering is experimental and may draw games incorrectly. Changes take effect when you close and reopen the game. In-game changes are saved for this game. switches.txt renderer=sw|gpu overrides this choice.");
+		o->info = strdup("GPU is the default on Old 3DS; Software on New 3DS. GPU rendering is experimental and may draw games incorrectly. Changes take effect when you close and reopen the game. In-game changes are saved for this game. switches.txt renderer=sw|gpu overrides this choice.");
 		o->values[0] = strdup("Software");
 		o->values[1] = strdup("GPU (experimental)");
 		o->nvalues = 2;

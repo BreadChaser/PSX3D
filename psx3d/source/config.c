@@ -54,7 +54,7 @@ static void set_defaults(void)
 	g_cfg.autosave = 1;
 	g_cfg.audio_stretch = 50; // both models: only used when sound runs low
 	g_cfg.half3d = !g_new3ds;
-	g_cfg.renderer = 1;   // software is the release default on both models
+	g_cfg.renderer = g_new3ds; // Old defaults to GPU; New defaults to software
 	g_cfg.touch_stick = -1;
 	input_map_reset();
 	for (size_t i = 0; i < sizeof(tuned_defaults) / sizeof(tuned_defaults[0]); i++)

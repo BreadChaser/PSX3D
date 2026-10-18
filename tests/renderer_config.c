@@ -45,7 +45,7 @@ static int renderer_option(void)
 int main(void)
 {
 	config_load();
-	assert(g_cfg.renderer == 1);
+	assert(g_cfg.renderer == 0);
 	assert(g_cfg.half3d == 1);   // Old 3DS software default survives
 	struct retro_variable vars[] = {
 		{ "example", "Example; first|second" }, { NULL, NULL }
@@ -133,5 +133,13 @@ int main(void)
 	assert(g_cfg.renderer == 0);
 	config_reset_defaults();
 	assert(g_cfg.renderer == 1);
-	puts("renderer config: software defaults on both models, normal visibility, cycling, persistence, per-game override and global restoration passed");
+	g_new3ds = false;
+	config_reset_defaults();
+	assert(g_cfg.renderer == 0);
+	preset_renderer = PRESET_RENDERER_SOFTWARE;
+	config_game_begin("old-curated");
+	assert(config_game_renderer() == 1);
+	config_game_end();
+	assert(g_cfg.renderer == 0);
+	puts("renderer config: console defaults (Old GPU, New Software), normal visibility, cycling, persistence, per-game override and global restoration passed");
 }

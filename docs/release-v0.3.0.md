@@ -4,7 +4,7 @@ Local branch **release/v0.3.0**, based on GPU renderer **9b4dc04**. No push,
 deployment or console access was performed. The final CIA title version is
 3072 and the application version is 0.3.0.
 
-**Software is the factory default on both Old and New 3DS**, including games
+**GPU is the factory default on Old 3DS; Software on New 3DS**, including games
 without a profile. **Settings → Renderer** is a normal global/per-game choice:
 **Software / GPU (experimental)**. A game must be closed and reopened to apply
 it. The same choice remains in Core options; no debug flag is required.
@@ -63,7 +63,7 @@ working sources exactly.
   SOFTWARE/GPU field > global choice. DEFAULT inherits global. Identification
   occurs after GPU_init, so a changed curated choice triggers one bounded
   startup reload before emulation. Disc swaps never switch the active renderer.
-  Game reset restores its preset/global choice; global reset restores Software.
+  Game reset restores its preset/global choice; global reset restores the console default (Old GPU, New Software).
 - Keeper upload code retains the newer staging lifetime fence, bank limit and
   dither-combiner reset, plus direct local readback calls on the owner. Packed
   conversion/fill stores and narrower cached-square checks are the only keeper
@@ -133,7 +133,7 @@ than a detected raster change.
   remain. No new build failure remains.
 - Host controls/config/presets/reset/hotkeys tests pass under ASan/UBSan,
   including real input code and Detailed hidden-control/menu/footer checks.
-  Renderer config tests cover normal visibility, both software defaults,
+  Renderer config tests cover normal visibility, console-specific renderer defaults,
   per-game/global isolation, preset precedence and reset.
 - Audio resampler sanitizer checks and stats formatter/cache checks pass.
   GPU coordinate/held-scanout sanitizer regressions pass.
@@ -213,7 +213,7 @@ by the integration worker.
 | Old / GPU experimental | 9b4dc04 slot 2, frameskip off: Crash **40.7**, CTR **25.5**, GT2 **28.7 FPS** |
 | New / GPU experimental + worker | slot 0, skip off: SH **~58.5**, CTR **~55.8**, Crash **~58.7–60 FPS** |
 
-1. Fresh config and unknown game must select Software on Old/New. Confirm the
+1. Fresh config and unknown game must select GPU on Old and Software on New. Confirm the
    normal global and per-game renderer labels, reopen-to-apply behavior,
    persistence, global/game resets and testing-switch precedence. Verify no
    seeded profile opts into GPU. With a temporary test profile only, verify

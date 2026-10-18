@@ -364,7 +364,7 @@ void ui_help_panel(float y0, const char *title, const char *impact, const char *
 
 // help for PSX3D's own settings, by name
 static const char *const own_help[][3] = {
-	{ "Renderer", "GPU is experimental", "Software is the default on both consoles. GPU can draw games incorrectly. Close and reopen the game to apply a change. In-game choices are saved for this game; global choices apply to other games unless a curated profile overrides them." },
+	{ "Renderer", "GPU is experimental", "GPU is the default on Old 3DS; Software on New 3DS. GPU can draw games incorrectly. Close and reopen the game to apply a change. In-game choices are saved for this game; global choices apply to other games unless a curated profile overrides them." },
 	{ "Screen", "Widescreen can be slower", "4:3 is the original picture. Stretch fills the screen. Widescreen makes 3D games draw a wider view (uses the game's own widescreen code when there is one). Remembered per game." },
 	{ "Screen (default)", "Widescreen can be slower", "The screen mode for games you haven't set one for. 4:3 is the original picture, stretch fills the screen, widescreen draws a wider view in 3D games." },
 	{ "3D", "No speed effect", "screen depth puts the game picture slightly behind the screen when the 3D slider is up." },
