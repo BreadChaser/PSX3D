@@ -123,9 +123,27 @@ field now participates in startup selection; DEFAULT inherits global and no
 seeded entry enables GPU. Explicit game choices and testing switches take
 precedence. See [release validation](../../../docs/release-v0.3.0.md).
 
-FPS shares this layout; Detailed replaces it with stats, MENU, and footer
-cycling. Its hidden controls cannot receive touches. All drawing callbacks use
+FPS replaces the brand in its 62px corner: a 16px title-font rate (for example
+`40.8 FPS`), a smaller game-speed percentage below it, and the same four-colour
+bar ending at the text edge. New 3DS Left placement right-aligns both labels at
+x288. Off restores the original brand. With no touch slots, FPS wakes/keeps the
+bottom backlight on and draws only MENU and the readout on black. Tapping the
+readout cycles to Detailed; its tap target no longer steals the bottom of the
+New 3DS click buttons. Detailed retains its stats, MENU, and full-width footer.
+Its hidden controls cannot receive touches. All drawing callbacks use
 video_present and the PICA worker owner when that renderer is active.
+
+FPS samples use the existing one-second interval and invalidate the retained
+bottom target only when the displayed tenth of an FPS or whole speed percentage
+changes. Hidden diagnostics do not trigger FPS redraws; interaction, OSD and
+menu transitions can still repaint as needed. The FPS path skips detailed
+formatting, option lookups and text-buffer reparsing during sample updates.
+
+Illustrative mockups (SVG and PNG; desktop fonts, not console captures):
+`fps-old-full`, `fps-new-stacked`, `fps-new-left`, and `fps-blank`.
+Build checks: 3DSX and CIA. Host checks: `tests/statsview/check.c` covers visible
+value invalidation, rounded unchanged values, speed changes, mirrored label/bar
+alignment, and the existing Detailed formatter/cycling. No console access.
 
 ## Presets, inheritance and permissions
 

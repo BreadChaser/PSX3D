@@ -1,0 +1,23 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='640' height='480' viewBox='0 0 320 240'><rect width='320' height='240' fill='black'/>
+<rect x='20' y='0' width='280' height='240' fill='#060918'/>
+<text x='251.107' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(251.107 0) scale(1 1) translate(-251.107 0)' fill='#ebeeff' text-anchor='start'>M</text>
+<text x='261.768' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(261.768 0) scale(1 1) translate(-261.768 0)' fill='#ebeeff' text-anchor='start'>E</text>
+<text x='270.607' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(270.607 0) scale(1 1) translate(-270.607 0)' fill='#ebeeff' text-anchor='start'>N</text>
+<text x='280.054' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(280.054 0) scale(1 1) translate(-280.054 0)' fill='#ebeeff' text-anchor='start'>U</text>
+<rect x='246' y='27' width='9' height='2' fill='#d0313b'/>
+<rect x='257' y='27' width='9' height='2' fill='#e8b21c'/>
+<rect x='268' y='27' width='9' height='2' fill='#2fa36b'/>
+<rect x='279' y='27' width='9' height='2' fill='#2f6fc4'/>
+<rect x='32' y='16' width='100' height='98' fill='#1f2a5a'/>
+<rect x='33' y='17' width='98' height='96' fill='#0c1230'/>
+<rect x='32' y='16' width='3' height='98' fill='#45bfd0'/>
+<text x='71.2958' y='70.6' font-family='DejaVu Sans' font-size='16' transform='translate(71.2958 0) scale(1 1) translate(-71.2958 0)' fill='#c8cff0' text-anchor='start'>L</text>
+<text x='83.1958' y='70.6' font-family='DejaVu Sans' font-size='16' transform='translate(83.1958 0) scale(1 1) translate(-83.1958 0)' fill='#c8cff0' text-anchor='start'>3</text>
+<rect x='32' y='126' width='100' height='98' fill='#1f2a5a'/>
+<rect x='33' y='127' width='98' height='96' fill='#0c1230'/>
+<rect x='32' y='126' width='3' height='98' fill='#45bfd0'/>
+<text x='69.9667' y='180.6' font-family='DejaVu Sans' font-size='16' transform='translate(69.9667 0) scale(1 1) translate(-69.9667 0)' fill='#c8cff0' text-anchor='start'>R</text>
+<text x='84.525' y='180.6' font-family='DejaVu Sans' font-size='16' transform='translate(84.525 0) scale(1 1) translate(-84.525 0)' fill='#c8cff0' text-anchor='start'>3</text>
+<text x='0' y='204' transform='translate(226 0) scale(0.6300813008130081 1)' font-family='Michroma' font-size='16' fill='#2b3360'>40.8 FPS</text>
+<text x='288' y='216' text-anchor='end' font-family='DejaVu Sans' font-size='9' fill='#2b3360'>68% speed</text>
+<rect x='226' y='220' width='14' height='2' fill='#d0313b'/><rect x='242' y='220' width='14' height='2' fill='#e8b21c'/><rect x='258' y='220' width='14' height='2' fill='#2fa36b'/><rect x='274' y='220' width='14' height='2' fill='#2f6fc4'/></svg>

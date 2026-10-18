@@ -827,7 +827,7 @@ static void game_draw_bottom(void *ud)
 	if (g_cfg.show_fps == 2) {
 		ui_rect(125, 184, 70, 30, C2D_Color32(28, 30, 42, 255));
 		ui_text(142, 191, .45f, white, "MENU");
-	} else if (touch_buttons_active())
+	} else if (touch_buttons_active() || g_cfg.show_fps == 1)
 		touch_buttons_draw();
 	statsview_draw();
 	if (osd_frames > 0) {
@@ -1128,7 +1128,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		t1 = svcGetSystemTick();
 		// A bottom render target is retained when omitted from video_present.
 		// Repaint only on interaction/overlay changes; menus invalidate it.
-				bool touch_changed = input_touch_changed();
+		bool touch_changed = input_touch_changed();
 		bool stats_changed = statsview_redraw(osd_frames);
 		bool repaint = game_frames < 2 || stats_changed || touch_changed;
 		video_present(true, speed_icon ? game_draw_top : NULL, repaint ? game_draw_bottom : NULL, NULL);

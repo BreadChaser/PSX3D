@@ -12,8 +12,19 @@ typedef void *C2D_TextBuf;
 typedef struct { int px, py; } touchPosition;
 #define KEY_TOUCH 1
 #define C2D_WithColor 0
-#define C2D_Color32(r,g,b,a) 0
-static struct { int show_fps; } g_cfg;
+#define C2D_Color32(r,g,b,a) ((u32)(r) | (u32)(g)<<8 | (u32)(b)<<16 | (u32)(a)<<24)
+static struct { int show_fps, touch_click_left; } g_cfg;
+static bool g_new3ds;
+#define C2D_AlignRight 1
+static int labels, bars;
+static float label_x, bar_end;
+static u32 label_align;
+static void *libui_font(void) { return NULL; }
+static void ui_text_pixels(void *font, float x, float y, float pixels, float spacing, float width, u32 color, u32 align, const char *s) {
+ labels++; label_x=x; label_align=align;
+ assert(width==62 || width==-62);
+}
+static void C2D_DrawRectSolid(float x,float y,float z,float w,float h,u32 c) { bars++; bar_end=x+w; }
 static bool sw_stats, sw_prof, linked;
 static int g_syscore_pct=30, parses, saves, sw_pmu0=-1;
 static u32 keys;
@@ -51,7 +62,23 @@ int main(void) {
   .renderer="pica: cmdlist 1ms; state 1ms; ends: atlas 1; evictions by size 0 0 0 0; 22 batches 88 prims 17 tile decodes (0 evictions 0 invalidations) 19 uploads 3 syncs 2 readbacks"};
  frames(60); statsview_update(&s); // discard the partial/hidden interval
  frames(60); statsview_update(&s);
- assert(strstr(brief,"100%"));
+ assert(!strcmp(brief,"30.0 FPS") && !strcmp(speed_label,"100% speed"));
+ assert(statsview_redraw(0)); assert(!statsview_redraw(0));
+ int fps_parses=parses;
+ s.emu=21; s.max=29; s.gpu=.3;
+ frames(60); statsview_update(&s);
+ assert(!statsview_redraw(0) && parses==fps_parses);
+ s.fps=30.04f; frames(60); statsview_update(&s); assert(!statsview_redraw(0));
+ s.fps=30.1f; frames(60); statsview_update(&s); assert(statsview_redraw(0));
+ assert(!statsview_redraw(0));
+ frames(120); statsview_update(&s); assert(!strcmp(speed_label,"200% speed"));
+ assert(statsview_redraw(0));
+ statsview_draw(); assert(labels==2 && bars==4 && label_x==32 && bar_end==94 && label_align==0);
+ g_new3ds=true; g_cfg.touch_click_left=1;
+ statsview_draw(); assert(labels==4 && bars==8 && label_x==288 && bar_end==288 && label_align==C2D_AlignRight);
+ g_new3ds=false; g_cfg.touch_click_left=0;
+ statsview_cycle(); assert(g_cfg.show_fps==2);
+ frames(60); statsview_update(&s);
  assert(strstr(lines[2],"Draw 30  skip 30  late 9"));
  assert(strstr(lines[7],"underruns 7"));
  assert(strstr(lines[10],"19/17  sync/read 3/2"));
@@ -59,11 +86,10 @@ int main(void) {
  assert(statsview_redraw(0)); assert(!statsview_redraw(0));
  int old=parses; frames(60); statsview_update(&s); assert(parses==old); assert(!statsview_redraw(0));
  // Extra emulated frames count toward speed even when not presented (FF).
- frames(120); statsview_update(&s); assert(strstr(brief,"200%"));
- s.target=50; frames(50); statsview_update(&s); assert(strstr(brief,"100%"));
+ frames(120); statsview_update(&s); assert(strstr(lines[1],"200%"));
+ s.target=50; frames(50); statsview_update(&s); assert(strstr(lines[1],"100%"));
  s.audio="audio off"; frames(50); statsview_update(&s); assert(!strcmp(lines[7],"Audio off"));
  s.target=60; s.audio="underruns=7";
- statsview_cycle(); assert(g_cfg.show_fps==2);
  keys=KEY_TOUCH; touch.py=190; assert(!statsview_touch()); // touch controls/menu retained
  touch.py=222; assert(statsview_touch() && g_cfg.show_fps==0);
  assert(statsview_redraw(0)); keys=0; statsview_redraw(0); assert(!statsview_redraw(0));

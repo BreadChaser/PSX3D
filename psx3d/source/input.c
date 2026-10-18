@@ -532,8 +532,6 @@ static tbutton_t touch_button(int i)
 	}
 	if (i == TB_MENU && left)
 		b.x = 230;
-	// Leave a separate footer strip for compact FPS on either layout.
-	if (g_cfg.show_fps == 1 && b.y + b.h > 216) b.h = 216 - b.y;
 	return b;
 }
 
@@ -556,6 +554,14 @@ void input_touch_reset(void)
 	touch_revision++;
 }
 
+// FPS uses the brand corner; Detailed retains its full-width footer.
+static bool stats_contains(int x, int y)
+{
+	if (g_cfg.show_fps == 2) return y >= 218;
+	int edge = g_new3ds && g_cfg.touch_click_left ? 226 : 32;
+	return g_cfg.show_fps == 1 && x >= edge && x < edge+62 && y >= 184 && y < 224;
+}
+
 static void touch_update(void)
 {
 	stick_x = stick_y = 0;
@@ -564,7 +570,7 @@ static void touch_update(void)
 		touch_blocked = false;
 		return;
 	}
-	if (gameplay && g_cfg.show_fps && touch.py >= 218) {
+	if (gameplay && stats_contains(touch.px, touch.py)) {
 		touch_hit = -1;
 		if (!touch_blocked && (down & KEY_TOUCH)) stats_pending = true;
 		return;
@@ -602,7 +608,7 @@ static void touch_update(void)
 
 static void touch_menu_update(void)
 {
-	if (gameplay && (g_cfg.show_fps == 2 || (g_cfg.show_fps && touch.py >= 218))) return;
+	if (gameplay && (g_cfg.show_fps == 2 || stats_contains(touch.px, touch.py))) return;
 	if (!touch_blocked && (down & KEY_TOUCH) && (!touch_buttons_active() || touch_hit == TB_MENU))
 		menu_pending = true;
 }
@@ -946,15 +952,17 @@ static void touch_rect_draw(int i, bool left)
 
 void touch_buttons_draw(void)
 {
-	if (!touch_buttons_active()) return;
-	C2D_DrawRectSolid(20, 0, 0.1f, 280, 240, rgb(0x060918));
+	if (!touch_buttons_active() && g_cfg.show_fps != 1) return;
+	if (touch_buttons_active())
+		C2D_DrawRectSolid(20, 0, 0.1f, 280, 240, rgb(0x060918));
 	bool left = g_new3ds && g_cfg.touch_click_left;
 	ui_text_pixels(NULL, left ? 288 : 32, 22, 11, 1.5f, 0,
 		rgb(0xebeeff), left ? C2D_AlignRight : 0, "MENU");
 	const unsigned header[] = { 0xd0313b, 0xe8b21c, 0x2fa36b, 0x2f6fc4 };
 	for (int j = 0; j < 4; j++) {
 		C2D_DrawRectSolid((left ? 246 : 32)+11*j, 27, 0.5f, 9, 2, rgb(header[j]));
-		C2D_DrawRectSolid((left ? 226 : 32)+16*j, 220, 0.5f, 14, 2, rgb(header[j]));
+		if (g_cfg.show_fps != 1)
+			C2D_DrawRectSolid((left ? 226 : 32)+16*j, 220, 0.5f, 14, 2, rgb(header[j]));
 	}
 	if (g_cfg.show_fps != 1) ui_text_pixels(libui_font(), left ? 226 : 32, 214, 16, 0, 62, rgb(0x2b3360), 0, "PSX3D");
 	if (!g_new3ds) {

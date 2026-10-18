@@ -6,8 +6,8 @@
 #include "statsview.h"
 
 #define ROWS 14
-static char title[80], lines[ROWS][128], brief[128];
-static C2D_Text text[ROWS], short_text, footer;
+static char title[80], lines[ROWS][128], brief[128], speed_label[32];
+static C2D_Text text[ROWS], footer;
 static C2D_TextBuf buf;
 static unsigned emulated;
 extern char CdromId[10];
@@ -31,8 +31,6 @@ static void parse(void)
 	if (!buf) buf = C2D_TextBufNew(2048);
 	if (!buf) return;
 	C2D_TextBufClear(buf);
-	C2D_TextParse(&short_text, buf, brief);
-	C2D_TextOptimize(&short_text);
 	C2D_TextParse(&footer, buf, "Tap here: Off / FPS / Detailed");
 	C2D_TextOptimize(&footer);
 	for (int i = 0; i < ROWS; i++) {
@@ -46,7 +44,8 @@ void statsview_begin(const char *name)
 {
 	snprintf(title, sizeof(title), "%.48s", name);
 	memset(lines, 0, sizeof(lines));
-	strcpy(brief, "Waiting for stats...");
+	strcpy(brief, "--.- FPS");
+	strcpy(speed_label, "--% speed");
 	strcpy(lines[0], "PERFORMANCE / waiting for stats");
 	emulated = 0;
 	reset_interval = true;
@@ -66,12 +65,21 @@ void statsview_update(const statsview_sample *s)
 	emulated = 0;
 	if (!g_cfg.show_fps) return;
 	if (reset_interval) { reset_interval = false; return; } // drain counters accumulated while hidden
-	char previous[sizeof(lines)], previous_brief[sizeof(brief)];
-	memcpy(previous, lines, sizeof(lines));
-	memcpy(previous_brief, brief, sizeof(brief));
-	float old_budget = budget_fraction;
 	float speed = s->elapsed && s->target ? frames * 100000.0f / s->elapsed / s->target : 0;
-	snprintf(brief, sizeof(brief), "%.1f/%.1f fps  %.0f%%  %.1fms", s->fps, s->target, speed, s->emu);
+	if (g_cfg.show_fps == 1) {
+		char next_brief[sizeof(brief)], next_speed[sizeof(speed_label)];
+		snprintf(next_brief, sizeof(next_brief), "%.1f FPS", s->fps);
+		snprintf(next_speed, sizeof(next_speed), "%.0f%% speed", speed);
+		// Samples arrive once per second. Only visible values invalidate FPS.
+		if (strcmp(brief, next_brief) || strcmp(speed_label, next_speed))
+			dirty = true;
+		strcpy(brief, next_brief);
+		strcpy(speed_label, next_speed);
+		return;
+	}
+	char previous[sizeof(lines)];
+	memcpy(previous, lines, sizeof(lines));
+	float old_budget = budget_fraction;
 	snprintf(lines[0], sizeof(lines[0]), "%.27s  %.9s", title, CdromId);
 	snprintf(lines[1], sizeof(lines[1]), "HOST %.1f / %.1f fps    SPEED %.0f%%", s->fps, s->target, speed);
 	snprintf(lines[2], sizeof(lines[2]), "Draw %u  skip %u  late %u / second", frames > s->skipped ? frames - s->skipped : 0, s->skipped, s->late);
@@ -99,18 +107,30 @@ void statsview_update(const statsview_sample *s)
 	}
 	snprintf(lines[12], sizeof(lines[12]), "PS1 clock %.8s  GTE regs %.8s", opt("pcsx_rearmed_psxclock"), opt("pcsx_rearmed_gteregsunneeded"));
 	snprintf(lines[13], sizeof(lines[13]), "GTE flags %.8s  light %.8s  WS %s", opt("pcsx_rearmed_nogteflags"), opt("pcsx_rearmed_gpu_unai_fast_lighting"), config_widescreen() ? "on" : "off");
-	if (memcmp(previous, lines, sizeof(lines)) || strcmp(previous_brief, brief) ||
+	if (memcmp(previous, lines, sizeof(lines)) ||
 	    (int)(old_budget*308) != (int)(budget_fraction*308)) parse();
 }
 
 void statsview_draw(void)
 {
-	if (!g_cfg.show_fps || !buf) return;
+	if (!g_cfg.show_fps) return;
 	u32 color = C2D_Color32(175, 183, 198, 255);
 	if (g_cfg.show_fps == 1) {
-		C2D_DrawText(&short_text, C2D_WithColor, 4, 222, .6f, .42f, .42f, color);
+		bool left = g_new3ds && g_cfg.touch_click_left;
+		float x = left ? 288 : 32;
+		u32 align = left ? C2D_AlignRight : 0;
+		u32 ink = C2D_Color32(43, 51, 96, 255);
+		ui_text_pixels(libui_font(), x, 204, 16, 0, 62, ink, align, brief);
+		ui_text_pixels(NULL, x, 216, 9, 0, -62, ink, align, speed_label);
+		const unsigned colors[] = { 0xd0313b, 0xe8b21c, 0x2fa36b, 0x2f6fc4 };
+		for (int j = 0; j < 4; j++) {
+			unsigned c = colors[j];
+			C2D_DrawRectSolid((left ? 226 : 32)+16*j, 220, .5f, 14, 2,
+				C2D_Color32(c>>16, c>>8, c, 255));
+		}
 		return;
 	}
+	if (!buf) return;
 	for (int i=0; i<ROWS; i++)
 		C2D_DrawText(&text[i], C2D_WithColor, 6, 3+i*12, .6f, .38f, .38f,
 			i == 1 ? C2D_Color32(125,215,185,255) : color);
@@ -127,7 +147,8 @@ void statsview_cycle(void)
 		reset_interval = true;
 		memset(lines, 0, sizeof(lines));
 		strcpy(lines[0], "PERFORMANCE / waiting for stats");
-		strcpy(brief, "Waiting for stats...");
+		strcpy(brief, "--.- FPS");
+		strcpy(speed_label, "--% speed");
 		parse();
 	}
 	g_cfg.show_fps = (g_cfg.show_fps + 1) % 3;
@@ -150,7 +171,7 @@ bool statsview_redraw(int osd)
 	static touchPosition previous_touch;
 	touchPosition touch; hidTouchRead(&touch);
 	u32 keys = hidKeysHeld() & KEY_TOUCH;
-	bool changed = dirty || mode != g_cfg.show_fps || osd || previous_osd || keys != held || (keys && (touch.px != previous_touch.px || touch.py != previous_touch.py));
+	bool changed = dirty || mode != g_cfg.show_fps || osd || previous_osd || (g_cfg.show_fps == 2 && (keys != held || (keys && (touch.px != previous_touch.px || touch.py != previous_touch.py))));
 	previous_touch = touch;
 	dirty = false; mode = g_cfg.show_fps; previous_osd = osd; held = keys;
 	return changed;
