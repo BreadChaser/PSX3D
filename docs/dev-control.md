@@ -211,7 +211,9 @@ remove SD or press HOME. Hashes validate transfer integrity; a token and trusted
 LAN/host are still needed because plain HTTP is not authenticated transport.
 
 Self-overwrite follows FBI's installer: it specifically skips title/ticket
-deletion when replacing its own running title before `AM_StartCiaInstall`.
+deletion when replacing its own running title before `AM_StartCiaInstallOverwrite`. The explicit overwrite entry point also
+allows replacing a higher-version diagnostic CIA with the lower-version release
+without deleting its running title/ticket.
 After successful AM writes/finish, PSX3D completes the response, tears down the
 network/core/video normally and requests libctru's `aptSetChainloaderToSelf()`.
 No `svcBackdoor`, raw CP15 writes, reboot, or system-title operations are used.

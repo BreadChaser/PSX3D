@@ -133,7 +133,7 @@ Result AM_GetCiaFileInfo(int media, AM_TitleInfo *info, Handle h)
 	info->titleID = cia_id;
 	return 0;
 }
-Result AM_StartCiaInstall(int media, Handle *handle)
+Result AM_StartCiaInstallOverwrite(Handle *handle, int media)
 {
 	assert(media == MEDIATYPE_SD);
 	starts++;
