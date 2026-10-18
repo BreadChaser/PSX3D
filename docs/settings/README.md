@@ -4,22 +4,25 @@ Based on `10a5ac8` (`t3/fps-in-layout`). Frontend only; no console access or pus
 
 ## Before and after
 
-Previously, library settings had a single scrolling list of 14 entries. The
-paused game's Settings page mixed display, performance, controls, sound, resets
-and diagnostics in another long list. Renderer appeared again in Core options.
+The first cleanup (`7793779`) replaced the mixed lists with six category
+subpages. This follow-up replaces those six subpages with **one scrolling list**
+in both contexts. DISPLAY, PERFORMANCE, CONTROLS, SOUND, GENERAL and ADVANCED
+are small, non-selectable headers with the app's four-colour bar and a divider.
+Up/Down skips them, touch ignores them, and a header is inserted only after a
+visible child is found, so empty sections disappear. Selection follows the same
+setting when changing renderer, FPS mode or resetting changes row visibility.
+B returns directly to the library or pause menu. Controls... and Core options...
+remain child pages; B returns to their selected row in the settings list.
+Left/Right changes values; A changes a value or opens a child page.
 
-Both now open the same six groups. A opens a group; B returns to the selected
-group, then to the library or pause menu. Left/Right changes values; A also
-changes values or opens a child page. Every ordinary group fits on one screen.
-
-| Page | Library defaults | In-game settings |
+| Section, in scroll order | Library defaults | In-game settings |
 | --- | --- | --- |
-| Display | Screen mode, Smoothing, New 3DS 3D | Same |
-| Performance | Renderer, Software-only Half-height 3D (faster), Show FPS | Same, plus Rewind when the console/preset permits |
-| Controls | Controls..., New 3DS Bottom-screen buttons | Same; side choice also hidden for blank layouts and Detailed stats |
-| Sound | Smooth audio when slow, Menu sounds, Library music | Same |
-| General | Continue where I left off, Reset to defaults | Same; reset removes this game's overrides |
-| Advanced | Core options | Core options; audio recording/test tone only with debug=1 |
+| DISPLAY | Screen mode, Smoothing, New 3DS 3D | Same |
+| PERFORMANCE | Renderer, Software-only Half-height 3D (faster), Show FPS | Same |
+| CONTROLS | Controls..., New 3DS Bottom-screen buttons | Same; side choice also hidden for blank layouts and Detailed stats |
+| SOUND | Smooth audio when slow, Menu sounds, Library music | Same |
+| GENERAL | Continue where I left off, Reset to defaults | Continue where I left off, New 3DS/preset-only Rewind, Reset to defaults |
+| ADVANCED | Core options... | Core options...; audio recording/test tone only with debug=1 |
 
 The pause menu remains Resume, Save state, Load state, Swap disc (multi-disc
 only), Cheats, Settings, Reset game, Exit to library. It has seven entries for
@@ -34,8 +37,9 @@ single-disc games and eight for multi-disc games. Diagnostics stay in Advanced.
 | screen depth / real (exp.) | Screen depth / Full 3D (test) | Full 3D remains debug-only and Software-only; GPU shows effective Screen depth for an existing full-3D preference |
 | 3D resolution: full / half (faster) | Half-height 3D (faster): Off / On, under Performance | Software-only polygon shortcut, unrelated to the 3D slider; hidden for GPU |
 | Stick-click buttons: Right / Left | Bottom-screen buttons: Right side / Left side | New 3DS layout mirrors touch buttons, Menu, logo and FPS corner; Old 3DS ignores this setting |
-| Controls | Controls... inside the Controls group | Distinguishes the remapping page from its group |
+| Controls | Controls... under the CONTROLS heading | Marks the remapping child page |
 | Reset to global defaults (in game) | Reset to defaults | Help explicitly says it restores the game preset/library defaults and keeps saves/cheats/shared settings |
+| Core options | Core options... | Marks the remaining Advanced child page |
 | Renderer in Core options | Removed duplicate | Renderer lives only in Performance |
 | Raw core stereo / widescreen (if registered) | Hidden | Frontend owns 3D and Screen mode; prevents duplicate controls |
 | Debug: record audio / Debug: test tone | Advanced, debug=1 only | Troubleshooting, not normal player settings |
@@ -142,22 +146,55 @@ belong to the game. Other frontend choices and core options remain shared.
 In-game help identifies shared settings. Per-game reset clears game overrides;
 global reset keeps per-game overrides, saves, cheats and library paths.
 
+## Old 3DS rewind audit
+
+Every rewind reference in `psx3d/source` was inspected. Old 3DS does not expose
+rewind or execute it, including with New 3DS config/per-game files. The existing
+capability gate already covered the UI/input paths; this follow-up adds an
+explicit early hardware guard inside the engine and regression tests.
+
+| Checked location | Old 3DS result |
+| --- | --- |
+| [`presets.c`](../../psx3d/source/presets.c), `game_capabilities` | Uncurated default is off; final hardware clamp overrides even a preset with `rewind=1`. New 3DS still respects curated feature availability. |
+| [`libui.c`](../../psx3d/source/libui.c), `settings_items` | Global list has no Rewind option on either model; rewind belongs to the game. |
+| [`emu.c`](../../psx3d/source/emu.c), `menu_items`, `M_REWIND` action | Row omitted; action independently checks the capability. Pause menu has no rewind action. |
+| [`input.c`](../../psx3d/source/input.c), `ps1_ids`, `input_map_cycle`, `touch_map_enabled` | Rewind remains a stable stored action ID, but cycling either direction skips it for every physical/touch slot. |
+| `input.c`, `control_item` | Rewind side-slot row and Hotkey: rewind row omitted. |
+| `input.c`, `input_control_value`, `input_control_color`, `input_controls_help` | Loaded forbidden physical bindings display none, touch bindings display Hide; no rewind label, colour or help is presented. |
+| `input.c`, `touch_default_binding`, `touch_parts`, `touch_button_visible`, `touch_slot_held`, `touch_mask`, `touch_mark`, `touch_button_lit` | No default or remapped rewind touch button is drawn or hit-tested, in any slot. No PS1 mask bit is generated for an action ID. |
+| `input.c`, `actions_update` | Rewind hotkey mask is zero, so SELECT+L does no rewind work and is not consumed; SELECT and L1 reach the PS1 normally. Physical/touch bindings to rewind are ignored. |
+| `input.c`, `input_rewind`, `input_gameplay` | Capability gate prevents rewind input; entering/leaving gameplay clears held action state. |
+| [`psx3d.h`](../../psx3d/source/psx3d.h), action IDs/API; `input.c`, `input_ps1_name`; [`ui.c`](../../psx3d/source/ui.c), rewind help/button symbols | Generic text/artwork retained for New 3DS; all callers that expose an action on Old are filtered as above. |
+| [`config.c`](../../psx3d/source/config.c), `config_load`, `config_game_begin`, `config_controls_save`; [`gamecfg.c`](../../psx3d/source/gamecfg.c), load/get/set | Existing map/hotkey keys and per-game `rewind=1` remain portable; they cannot bypass the capability checks. A global `rewind` key is not a supported frontend setting. |
+| `emu.c`, `emu_run_game` startup and capability-change handling | Stored `rewind=1` starts only when capability allows it. Active history is stopped if the capability disappears. |
+| `emu.c`, gameplay loop / speed icon / Enable Rewind hint | All stepping, hint and icon paths require `input_rewind()`, which is false on Old. Capture calls are harmless while inactive. |
+| [`rewind.c`](../../psx3d/source/rewind.c), `rewind_start` | Explicit `!g_new3ds` guard now runs before querying state size, allocating buffers or creating a worker, independent of the preset gate. |
+| `rewind.c`, `rewind_capture`, `rewind_step`, `rewind_reset`, `rewind_stop`; `emu.c` state-load/reset/exit calls | Inactive guards prevent capture/stepping/work. Reset/stop calls do not start rewind. |
+
+The host tests load New 3DS-style global and game files with `rewind=1`, rewind
+bindings in physical and multiple touch slots, and `hotkey_rewind=SELECT+L`.
+An explicitly rewind-enabled preset still cannot expose it on Old. Tests cover
+all remap slots in both directions, hidden control rows/values/help/touch,
+normal SELECT+L PS1 input, and the in-game setting filter. A separate test
+compiles the actual rewind engine with host worker stubs: even with a deliberately
+incorrect enabled capability on Old, serialization, allocation and worker counts
+all stay zero. A New 3DS start/stop still works with the stub worker.
+
 ## Offline screenshots and validation
 
 These use the production menu tables, visibility filters and drawing functions
 through the existing bottom-screen host renderer. The title font is Michroma;
 the system font is approximated with DejaVu Sans. They are **offline mockups**,
-not hardware screenshots. Individual images cover every group, both models and
-both menu contexts, with Old/Software alternatives and Core options samples.
+not hardware screenshots. Gallery section buttons show different **scroll
+positions in the same list**. Only Controls... and Core options... open pages.
+Old defaults to GPU; New defaults to Software.
 
 | Context | Old 3DS | New 3DS |
 | --- | --- | --- |
-| Library groups | ![Old global](old-global-Settings.png) | ![New global](new-global-Settings.png) |
-| In-game groups | ![Old game](old-game-Settings.png) | ![New game](new-game-Settings.png) |
-| Library Display | ![Old display](old-global-Display.png) | ![New display](new-global-Display.png) |
-| In-game Display | ![Old display](old-game-Display.png) | ![New display](new-game-Display.png) |
-| Library Performance | ![Old performance](old-global-Performance.png) | ![New performance](new-global-Performance.png) |
-| In-game Performance | ![Old performance](old-game-Performance.png) | ![New performance](new-game-Performance.png) |
+| Library list, top | ![Old global](old-global-Settings.png) | ![New global](new-global-Settings.png) |
+| In-game list, top | ![Old game](old-game-Settings.png) | ![New game](new-game-Settings.png) |
+| Library list, General | ![Old general](old-global-General.png) | ![New general](new-global-General.png) |
+| In-game list, General | ![Old general](old-game-General.png) | ![New general](new-game-General.png) |
 
 [Old Software library](old-global-Software.png) ·
 [Old Software in game](old-game-Software.png) ·
@@ -165,17 +202,19 @@ both menu contexts, with Old/Software alternatives and Core options samples.
 
 Checks:
 
-- `python3 tests/settings/run.py`: ASan/UBSan; production menu filters and
-  drawing, all four console/renderer combinations, preset restrictions,
-  blank/Detailed/FPS side visibility, disc gating, debug gating, conditional
-  core rows, main selection restoration, full-label/value spacing, mockups.
-- `bash tests/renderer_config.sh`: default renderers, single renderer control,
-  legacy stereo/half-height/side values, Old stereo lock including debug/test
-  override, New stereo persistence, per-game renderer overrides and resets.
+- `python3 tests/settings/run.py`: ASan/UBSan; production menu filters/drawing,
+  model/renderer/preset visibility, blank/Detailed/FPS side visibility, disc/debug
+  gating, conditional core rows, header-skipping navigation and wraparound,
+  touch/header/footer exclusion at every scroll position, main selection
+  restoration, full-label/value spacing, copied-SD rewind and engine tests,
+  regenerated mockups.
+- `bash tests/renderer_config.sh`: legacy config, renderers, Old stereo lock,
+  New stereo persistence, per-game scopes and resets.
 - `bash psx3d/tests/host/run.sh`: existing controls, presets, hotkeys, reset
   confirmation, touch layouts and FPS tests under ASan/UBSan.
 - `source /home/tony/Development/PS1_3ds/devtools/env.sh && make -j16`.
 - `make cia` with the supplied bannertool and makerom paths.
 
 Both packages build. Existing path-truncation/unused-variable and executable-stack
-warnings remain. No hardware interaction or runtime hardware validation was done.
+warnings remain. No console interaction or hardware runtime validation was done.
+See [validation and package hashes](validation.txt).

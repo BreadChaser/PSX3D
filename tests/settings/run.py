@@ -29,6 +29,11 @@ with tempfile.TemporaryDirectory() as tmp:
                PSX3D_TITLE_FONT=str(root/'psx3d/tests/host/Michroma-Regular.ttf'),
                PSX3D_BODY_FONT=subprocess.check_output(['fc-match', '-f', '%{file}', 'DejaVu Sans'], text=True))
     subprocess.run([str(tmp/'check')], cwd=tmp, env=env, check=True)
+    subprocess.run(['cc', '-std=gnu11', '-g', '-Wall', '-Wextra', '-fsanitize=address,undefined',
+                    '-I'+str(root/'psx3d/tests/host'), '-I'+str(root/'psx3d/source'),
+                    '-I'+str(root/'core/deps/libretro-common/include'),
+                    str(root/'tests/settings/rewind.c'), '-o', str(tmp/'rewind')], check=True)
+    subprocess.run([str(tmp/'rewind')], cwd=tmp, check=True)
 with tempfile.TemporaryDirectory() as fonts:
     conf = Path(fonts)/'fonts.conf'
     conf.write_text('<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd"><fontconfig><include>/etc/fonts/fonts.conf</include><dir>' + str(root/'psx3d/tests/host') + '</dir></fontconfig>')

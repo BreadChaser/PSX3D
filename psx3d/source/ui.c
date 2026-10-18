@@ -282,13 +282,15 @@ int flist_row_at(const flist_t *f, float y0, float row_h, float py)
 	return (int)floorf(f->scroll + (py - y0) / row_h);
 }
 
-void flist_draw(const flist_t *f, int n, int sel, float x, float y0, float w, float row_h, int rows,
-	const char *(*label)(int, void *), const char *(*value)(int, void *), void *ud, u32 accent)
+void flist_draw_sections(const flist_t *f, int n, int sel, float x, float y0, float w, float row_h, int rows,
+	const char *(*label)(int, void *), const char *(*value)(int, void *), void *ud, u32 accent, bool (*header)(int, void *))
 {
 	if (value == input_control_value) accent = input_control_color(sel);
 	// highlight: soft glow, gradient bar, accent edge
 	float hy = y0 + (f->hl - f->scroll) * row_h;
-	if (hy > y0 - row_h && hy < y0 + rows * row_h) {
+	int highlight_row = (int)floorf(f->hl + 0.5f);
+	if (hy > y0 - row_h && hy < y0 + rows * row_h &&
+	    !(header && highlight_row >= 0 && highlight_row < n && header(highlight_row, ud))) {
 		float bob = sinf(f->t * 2.0f) * 0.8f;
 		C2D_DrawRectSolid(x - 2, hy - 2 + bob, 0.2f, w + 4, row_h + 4, C2D_Color32(60, 90, 200, 40));
 		C2D_DrawRectangle(x, hy + bob, 0.21f, w, row_h,
@@ -305,6 +307,18 @@ void flist_draw(const flist_t *f, int n, int sel, float x, float y0, float w, fl
 		if (ry + row_h > y0 + rows * row_h) edge = 1.0f - (ry + row_h - (y0 + rows * row_h)) / row_h;
 		if (edge <= 0.02f)
 			continue;
+		if (header && header(i, ud)) {
+			u8 alpha = (u8)(255 * edge);
+			ui_text_ex(NULL, x + 12, ry + 4, 0.33f,
+				C2D_Color32(125, 145, 190, alpha), 0, label(i, ud));
+			const u32 colors[] = { 0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28 };
+			for (int j = 0; j < 4; j++)
+				C2D_DrawRectSolid(x + 12 + j * 10, ry + 19, 0.3f, 8, 1,
+					(colors[j] & 0xffffff) | ((u32)alpha << 24));
+			C2D_DrawRectSolid(x + 56, ry + 19, 0.3f, w - 68, 1,
+				C2D_Color32(30, 42, 72, alpha));
+			continue;
+		}
 		float lift = i < FLIST_MAX ? f->lift[i] : (i == sel);
 		float bob = sinf(f->t * 1.6f + i * 0.9f) * (0.6f + 0.8f * lift);
 		u8 c = (u8)(150 + 105 * lift), a = (u8)(255 * edge);
@@ -329,6 +343,12 @@ void flist_draw(const flist_t *f, int n, int sel, float x, float y0, float w, fl
 					C2D_Color32(130, 160, 230, a), C2D_AlignRight, v);
 		}
 	}
+}
+
+void flist_draw(const flist_t *f, int n, int sel, float x, float y0, float w, float row_h, int rows,
+	const char *(*label)(int, void *), const char *(*value)(int, void *), void *ud, u32 accent)
+{
+	flist_draw_sections(f, n, sel, x, y0, w, row_h, rows, label, value, ud, accent, NULL);
 }
 
 // ---------------------------------------------------------------- help panel
@@ -380,7 +400,7 @@ static const char *const own_help[][3] = {
 	{ "Bottom-screen buttons", "Affects every game", "Place New 3DS touch buttons on the Right side or Left side. Menu and the logo move to the opposite side." },
 	{ "Rewind", "This game only", "Save recent moments so you can hold your Rewind button or shortcut to go back. Needs free memory; available only when this console and the game's preset allow it." },
 	{ "Continue where I left off", "Affects every game", "Save your place when you leave a game and offer to continue next time." },
-	{ "Core options", "Affects every game", "BIOS, memory cards and extra picture, sound and compatibility choices. Use these if a game needs help to boot or play correctly." },
+	{ "Core options...", "Affects every game", "BIOS, memory cards and extra picture, sound and compatibility choices. Use these if a game needs help to boot or play correctly." },
 	{ "Menu sounds", "Affects every game", "Play a sound when you move through menus or select an item." },
 	{ "Library music", "Library only", "Play background music while browsing your games." },
 	{ "Debug: record audio", NULL, "Record 30 seconds of game audio for troubleshooting." },

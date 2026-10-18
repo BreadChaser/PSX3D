@@ -305,6 +305,9 @@ typedef struct {
 void flist_update(flist_t *f, int sel, int n, int rows);
 void flist_draw(const flist_t *f, int n, int sel, float x, float y0, float w, float row_h, int rows,
 	const char *(*label)(int, void *), const char *(*value)(int, void *), void *ud, u32 accent);
+void flist_draw_sections(const flist_t *f, int n, int sel, float x, float y0, float w, float row_h, int rows,
+	const char *(*label)(int, void *), const char *(*value)(int, void *), void *ud, u32 accent,
+	bool (*header)(int, void *));
 int flist_row_at(const flist_t *f, float y0, float row_h, float py);
 void flist_snap(flist_t *f, int sel, int n, int rows);
 void ui_help_panel(float y0, const char *title, const char *impact, const char *text);
