@@ -73,3 +73,19 @@ old renderer) and gpu_pica are retained.
 
 Clean dual-renderer CIA build passes. All allocated ELF sections and the
 complete 3DSX remain identical to the vendored baseline.
+
+### Stage 3: unused dependencies
+
+Removed 953 dependency/header files absent from the clean 3DS dependency
+manifests: lightrec/lightning/mman implementations, ARMv7 memory code,
+unused libretro-common audio/video/network/media/test/sample subsystems and
+uncompiled libchdr dependency sources/assets. Every standalone licence and
+AUTHORS notice remains, including those belonging to removed implementations.
+The remaining shared lightrec declarations are included by ARM core code.
+
+CHD codecs, miniz-based compressed image handling, libretro VFS/thread/CPU
+features, cheats and PPF support remain. Clean dual-renderer CIA build passes;
+all allocated ELF sections and the complete 3DSX match the vendored baseline.
+The frontend host suite and developer-control/transport/updater suites pass
+with ASan/UBSan. Generated host mockups were archived under devtools and the
+tracked reference images restored.

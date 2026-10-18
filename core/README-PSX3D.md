@@ -26,3 +26,11 @@ unused CD plugin implementation were removed. The portable P.E.Op.S./NEON
 files still used as independent host test oracles live under
 `tools/gpu-compare/reference/`; they are never linked into PSX3D.
 `plugins/cdrcimg/cdrcimg.h` remains because shared frontend code includes it.
+
+Unused lightrec/lightning/mman implementations, ARMv7 memory routines,
+libretro-common subsystems and uncompiled dependency sources/assets were
+removed using the clean 3DS compiler dependency manifests. All standalone
+licence/author notices remain. Required ARMv6 memory routines, VFS/threading,
+CHD codecs (miniz, LZMA, FLAC, Huffman and Zstandard), compressed disc support,
+cheats and patch support remain. Included lightrec declarations are retained
+because shared ARM code still preprocesses them.
