@@ -214,11 +214,8 @@ bool dev_update(const char *args, char *result, size_t capacity)
 		failure = "cannot consume update switch; title untouched";
 		goto done;
 	}
-	// AM's ordinary import rejects a lower title version (D8E08027).
-	// Explicit overwrite supports returning from diagnostic builds to a release;
-	// title/media checks above still restrict this to our own SD application.
-	failure = "AM_StartCiaInstallOverwrite failed; use FBI recovery";
-	if (R_FAILED(rc = AM_StartCiaInstallOverwrite(&destination, MEDIATYPE_SD)))
+	failure = "AM_StartCiaInstall failed; use FBI recovery";
+	if (R_FAILED(rc = AM_StartCiaInstall(MEDIATYPE_SD, &destination)))
 		goto done;
 	installing = true;
 	for (offset = 0; offset < total;) {
