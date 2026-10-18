@@ -51,6 +51,36 @@ with an extra cache), so expect the following:
 - Rewind is not available.
 - There are no ZL/ZR buttons; L2 and R2 are on-screen buttons on the touch screen.
 
+## GPU renderer (in development)
+
+The release above draws the PlayStation picture in software on the CPU. The
+[`gpu-renderer`](https://github.com/BreadChaser/PSX3D/tree/gpu-renderer) branch
+replaces that with a renderer that draws on the 3DS GPU, which frees up most of
+the CPU for emulation. It is the main focus of development, mainly for the Old
+3DS. It is not released yet; build it from the branch to try it.
+
+Old 3DS, frameskip off (full speed is 60 for these titles):
+
+| Game | Software renderer (v0.2.0) | GPU renderer |
+|---|---|---|
+| Crash Bandicoot | ~22 FPS | 39 FPS |
+| Silent Hill | | 29 FPS |
+| Ridge Racer Type 4 | | 31 FPS |
+| Gran Turismo 2 | | 28 FPS |
+| Crash Team Racing | | 24.5 FPS |
+
+On a New 3DS the same branch runs Crash Bandicoot, Silent Hill, Ridge Racer
+Type 4 and Gran Turismo 2 at a full 60 FPS, and Crash Team Racing at 50-52.
+
+On the Old 3DS the limit is now the CPU running the PlayStation code itself
+(its small 16 KB instruction cache in particular), not drawing. Work on the
+branch is aimed at that: the dynarec, the GTE, sound mixing, and moving sound
+and disc reading to the second CPU core. The near-term goal is full game speed
+with frameskip on an Old 3DS.
+
+Known gaps in the GPU renderer: no dithering, no display centering, and Silent
+Hill's mask-bit effects are not drawn yet.
+
 ## Installation
 
 1. Download `PSX3D.cia` from [Releases](https://github.com/BreadChaser/PSX3D/releases).
