@@ -116,6 +116,17 @@ bindings when the game loads; the obsolete key is removed on the next controls
 save/reset. On preserves custom mappings while binding otherwise inherited
 slots; Off hides all touch slots and the stick. Auto requires no migration.
 
+## Release v0.3.0 integration
+
+Software is the factory renderer on both consoles. The per-console renderer
+field now participates in startup selection; DEFAULT inherits global and no
+seeded entry enables GPU. Explicit game choices and testing switches take
+precedence. See [release validation](../../../docs/release-v0.3.0.md).
+
+FPS shares this layout; Detailed replaces it with stats, MENU, and footer
+cycling. Its hidden controls cannot receive touches. All drawing callbacks use
+video_present and the PICA worker owner when that renderer is active.
+
 ## Presets, inheritance and permissions
 
 Uncurated games expose every available setting, hack and touch control.

@@ -3,9 +3,12 @@
 `show_fps=0/1/2` in `sdmc:/3ds/PSX3D/config.ini` selects Off, FPS,
 or Detailed. Existing 0/1 files retain their meaning; invalid values become 0.
 Choose Show FPS repeatedly, or tap the bottom 22-pixel stats/footer strip, to
-cycle. Off is enabled again through the menu. On Old 3DS, Detailed moves the
-L2, Menu and R2 controls into a 30-pixel row below the panel; their hitboxes move
-with them. The game picture gets no new overlay. Configuration is saved on each
+cycle. Off is enabled again through the menu. FPS shares the touch layout;
+Detailed replaces it on both consoles, with a visible MENU button at
+x125..195/y184..214 and the stats footer at y218..240. Hidden touch buttons,
+stick and touch actions do not fire under the panel. Physical controls and
+hotkeys stay available. Footer taps never open the blank-layout menu.
+The game picture gets no new overlay. Configuration is saved on each
 mode change (one SD write, outside the periodic rendering path).
 
 ![Offline mockup, fixture data and approximate font](statsview-mockup.png)
@@ -105,8 +108,8 @@ Hardware checks for the parent/operator (not performed here):
 5. Enable auto/fixed frameskip and FF. Check speed uses emulated frames, while
    Draw/skip and host throughput remain separately labelled. Test menu pause,
    state load, rewind and returning from HOME for stale samples or bottom damage.
-6. On Old 3DS, hold/slide/release each L2/R2 touch button in Detailed and FPS;
-   verify matching hitboxes/highlights and Menu access. On New 3DS tap outside
-   the footer to open the menu. Verify OSD/audio warning readability.
+6. On both consoles, verify FPS retains controls and Detailed suppresses all
+   hidden touch controls. Check its MENU button, footer cycling, physical
+   controls/hotkeys, and OSD/audio-warning readability.
 7. Run stats and prof with each display state; verify existing log lines and
    profile counters remain available and interval resets agree with the panel.

@@ -4571,7 +4571,7 @@ index 4b9b57e6..c2d56b87 100644
    ex_regs[1] |= gpu_unai.GPU_GP1 & 0x1ff;
  
 diff --git a/plugins/gpulib/gpu.c b/plugins/gpulib/gpu.c
-index f04e3a55..b20fa43a 100644
+index f04e3a55..0445a8dc 100644
 --- a/plugins/gpulib/gpu.c
 +++ b/plugins/gpulib/gpu.c
 @@ -1,3 +1,4 @@
@@ -4735,13 +4735,15 @@ index f04e3a55..b20fa43a 100644
    uint32_t addr, *list, ld_addr;
    int len, left, count, ld_count = 32;
    int cpu_cycles_sum = 0;
-@@ -993,6 +1069,23 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
+@@ -993,6 +1069,25 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
        continue;
      }
  
 +    // PSX3D: without list walking, nodes (often one primitive each) are
 +    // gathered and drawn in one call: the per-call cost was most of the work
-+    if (len && !progress_addr && psx3d_chain_batch) {
++    // Software must preserve main's command boundaries (notably GT2's
++    // half-height polygon path); chain coalescing belongs to PICA only.
++    if (psx3d_renderer_is_pica() && len && !progress_addr && psx3d_chain_batch) {
 +      if (batch_len + len > ARRAY_SIZE(batch))
 +        batch_flush(batch, &batch_len, &cpu_cycles_sum, &cpu_cycles_last);
 +      if (gpu.cmd_len == 0) {
@@ -4759,7 +4761,7 @@ index f04e3a55..b20fa43a 100644
      if (len) {
        left = do_cmd_buffer(&gpu, list + 1, len, &cpu_cycles_sum, &cpu_cycles_last);
        if (left) {
-@@ -1019,6 +1112,8 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
+@@ -1019,6 +1114,8 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
      }
    }
  
@@ -4768,7 +4770,7 @@ index f04e3a55..b20fa43a 100644
    sync_ecmds_status_bits(&gpu);
  
    //printf(" -> %d %d\n", cpu_cycles_sum, cpu_cycles_last);
-@@ -1085,6 +1180,10 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+@@ -1085,6 +1182,10 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
    int i;
  
    switch (type) {
@@ -4779,7 +4781,7 @@ index f04e3a55..b20fa43a 100644
      case 1: // save
        if (gpu.cmd_len > 0) {
          flush_cmd_buffer(&gpu);
-@@ -1092,12 +1191,15 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+@@ -1092,12 +1193,15 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
        }
  
        sync_renderer(&gpu);
@@ -4795,7 +4797,7 @@ index f04e3a55..b20fa43a 100644
        //memcpy(gpu.regs, freeze->ulControl, sizeof(gpu.regs));
        memcpy(gpu.ex_regs, freeze->ulControl + 0xe0, sizeof(gpu.ex_regs));
        gpu.status = freeze->ulStatus;
-@@ -1105,7 +1207,9 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+@@ -1105,7 +1209,9 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
        for (i = 8; i > 1; i--)
          GPUwriteStatus((i << 24) | freeze->ulControl[i]);
        renderer_sync_ecmds(gpu.ex_regs);
@@ -4806,7 +4808,7 @@ index f04e3a55..b20fa43a 100644
        gpu_async_sync_ecmds(&gpu);
        break;
    }
-@@ -1263,7 +1367,22 @@ void GPUrearmedCallbacks(const struct rearmed_cbs *cbs)
+@@ -1263,7 +1369,22 @@ void GPUrearmedCallbacks(const struct rearmed_cbs *cbs)
    renderer_set_config(cbs);
    vout_set_config(cbs);
  
@@ -4831,7 +4833,7 @@ index f04e3a55..b20fa43a 100644
  
  // for standalone plugins only
 diff --git a/plugins/gpulib/gpu.h b/plugins/gpulib/gpu.h
-index e929fe60..6c8b3c0c 100644
+index e929fe60..1450997a 100644
 --- a/plugins/gpulib/gpu.h
 +++ b/plugins/gpulib/gpu.h
 @@ -136,6 +136,22 @@ struct psx_gpu {
@@ -4877,11 +4879,6 @@ index e929fe60..6c8b3c0c 100644
  }
  
  /* listing these here for correct linkage if rasterizer uses c++ */
-@@ -209,3 +231,4 @@ void SysPrintf(const char *fmt, ...);
- #endif
- 
- #endif /* __GPULIB_GPU_H__ */
-+
 diff --git a/plugins/gpulib/gpu_async.c b/plugins/gpulib/gpu_async.c
 index a67509b3..9f460143 100644
 --- a/plugins/gpulib/gpu_async.c

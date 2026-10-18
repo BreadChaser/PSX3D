@@ -500,7 +500,9 @@ static void stats_input_checks(void)
   poll(0,0,0); poll(KEY_TOUCH,150,195); assert(menu_touched());
   poll(0,0,0); poll(KEY_TOUCH,150,223); assert(input_stats_touched());
   assert(!input_stats_touched() && !menu_touched());
-  poll(0,0,0); g_cfg.show_fps=1; hide_touch();
+  poll(0,0,0); g_cfg.show_fps=1;
+  if(model) { tbutton_t b=touch_button(3); assert(b.y+b.h<=216); }
+  hide_touch();
   poll(KEY_TOUCH,150,223); assert(input_stats_touched() && !menu_touched());
   poll(0,0,0); poll(KEY_TOUCH,150,100); assert(menu_touched());
   poll(0,0,0); g_cfg.show_fps=0; input_gameplay(false);

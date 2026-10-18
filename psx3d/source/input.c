@@ -532,6 +532,8 @@ static tbutton_t touch_button(int i)
 	}
 	if (i == TB_MENU && left)
 		b.x = 230;
+	// Leave a separate footer strip for compact FPS on either layout.
+	if (g_cfg.show_fps == 1 && b.y + b.h > 216) b.h = 216 - b.y;
 	return b;
 }
 
@@ -954,7 +956,7 @@ void touch_buttons_draw(void)
 		C2D_DrawRectSolid((left ? 246 : 32)+11*j, 27, 0.5f, 9, 2, rgb(header[j]));
 		C2D_DrawRectSolid((left ? 226 : 32)+16*j, 220, 0.5f, 14, 2, rgb(header[j]));
 	}
-	ui_text_pixels(libui_font(), left ? 226 : 32, 214, 16, 0, 62, rgb(0x2b3360), 0, "PSX3D");
+	if (g_cfg.show_fps != 1) ui_text_pixels(libui_font(), left ? 226 : 32, 214, 16, 0, 62, rgb(0x2b3360), 0, "PSX3D");
 	if (!g_new3ds) {
 		for (int i = 0; i < 4; i++) if(touch_button_visible(i)) quadrant_draw(i);
 		if (touch_stick_active()) { stick_cutout_draw(); stick_draw(); }

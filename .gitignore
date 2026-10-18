@@ -5,3 +5,6 @@ psx3d/build/
 *.map
 psx3d/romfs/gfx/
 *.cia
+
+# Local release verification logs (small durable results live in docs/)
+/release-validation/

@@ -163,7 +163,7 @@ No consoles were touched. Back up existing states/configuration before testing.
 2. Fresh-launch the same state twice with `acap`, off then on: core hash must
    match. Repeat with `nosputhread` if diagnosing work sharing, comparing that
    pair separately from threaded output. Optionally repeat with `csnd` for the
-   fallback. The release branch has no `acap` or `nosputhread` switches.
+   fallback. The integrated v0.3.0 release retains both diagnostic switches.
 3. On New 3DS use full-speed Crash/Silent Hill, frameskip off, setting on/off.
    Pitch must remain unchanged; logged rate should stay within ±0.5%. Also
    try a slower scene. On release main use Core options to disable frameskip
@@ -183,3 +183,12 @@ No consoles were touched. Back up existing states/configuration before testing.
 6. Play GT2/CTR for 10–15 minutes on both models, including scene transitions,
    then save/load and Continue again. Watch for cache recompilation hitches or
    FPS/PMU regressions: simulator results cannot predict Old 3DS I-cache layout.
+
+## Release integration status
+
+The audio/memory group is retained for functionality, independently of the
+renderer hot-path speed keeper. An external Old 3DS run saved Crash slot 2 to
+spare slot 9 and loaded it successfully with the combined memory changes.
+**Known issue: the Old 3DS save-state thumbnail was missing (“No preview”).**
+State data and restored gameplay worked; long-session memory stress and this
+complete release binary still require hardware acceptance.

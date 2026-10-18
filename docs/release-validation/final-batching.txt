@@ -1,0 +1,5 @@
+disjoint scanout + full VRAM match
+overlap scanout + full VRAM match
+capacity scanout + full VRAM match
+area-mask-upload scanout + full VRAM match
+vertex-wrap scanout + full VRAM match

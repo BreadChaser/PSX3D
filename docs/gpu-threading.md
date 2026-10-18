@@ -141,6 +141,25 @@ changed. Use a fresh directory initially; `--reuse` reruns an already prepared
 copy. Logs and hashes stay in that directory. The initial manual copy/run is
 also retained at `/tmp/n3thread-sim`.
 
+## Release v0.3.0 combined regression
+
+Software is the default on both consoles; the PICA owner hook is installed
+only for an opted-in GPU game. Software retains its original New 3DS renderer
+thread and never initializes the PICA atlas, dithering resources or worker
+presentation hook. Both menus and gameplay bottom callbacks go through the
+same synchronous video_present owner dispatch when PICA is active.
+
+The combined renderer adds legal additive reordering and solid/half batch
+sharing. Consequently worker drains and save-state flushes can change the
+ordered draw checksum without changing primitives. The updated regression
+also compares **each frame's triangle topology, state, positions and sampled
+texels** as a multiset, normalizing BL_HALF to BL_OPAQUE only for triangles
+whose vertex alpha is uniformly 255. It checks all five scenes including R4,
+with off/on/repeated-on and five toggles plus six save/load round trips. This
+is a command-content check, not raster, cache or hardware validation. Independent
+native raster ordering/mask fixtures and CTR captured replays cover batching.
+See [the release report](release-v0.3.0.md) for the final results.
+
 ## Hardware acceptance (not yet run)
 
 Reserve the consoles with the benchmark worker before starting. Use this

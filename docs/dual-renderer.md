@@ -1,25 +1,29 @@
 # Dual renderer implementation and verification
 
 Based on `gpu-renderer` commit `30c62a9`. Both gpulib renderers are included in
-one frontend. GPU remains the default. No console was contacted or modified;
-no changes were pushed.
+one frontend. Release v0.3.0 defaults to Software on both console families.
+No console was contacted or modified by the integration worker; no changes
+were pushed. Final combined results are in [the release report](release-v0.3.0.md).
 
 ## Selection
 
-Set `debug=1` in `sdmc:/3ds/PSX3D/config.ini`, then open **Settings → Core
-options → Renderer** in the library or in-game menu. Values are **GPU** and
-**Software**. Close and reopen the game to apply a change; reset and state load
-do not switch a running game's renderer. The option's help explains this.
+Open **Settings → Renderer** in the library or in-game menu. Values are
+**Software** and **GPU (experimental)**; no debug flag is required. The same
+choice is available under Core options. Close and reopen the game to apply a
+change; reset and state load do not change the running renderer.
 
-- Library changes set the global default (`renderer=gpu|sw` in `config.ini`).
-- In-game changes immediately save `renderer=gpu|sw` in
-  `sdmc:/3ds/PSX3D/games/<game>.ini`, alongside screen/rewind/control settings.
-  The global default is restored on leaving the game. This field can be used
-  by future profiles; no profile system is introduced here.
-- `renderer=sw` or `renderer=gpu` in `switches.txt` (or launch arguments) wins
-  over both settings without changing either saved value. Remove the switch
-  to test menu selection. The log reports the renderer actually started.
-- Without `debug=1`, the setting is hidden; saved choices still apply.
+- Library choices save `renderer=sw|gpu` globally in `config.ini`.
+- In-game choices save `renderer=sw|gpu` in `games/<game>.ini`. Leaving the game
+  restores the global choice; per-game reset removes its override.
+- Precedence: testing switch, explicit per-game choice, this console's curated
+  renderer field, global choice. DEFAULT inherits the global choice; the
+  factory global default is Software. No profile enables GPU yet; a commented
+  per-console example is in `game_presets.h`.
+- The serial is identified after GPU initialization. If a curated profile
+  changes the choice, startup unloads and initializes once more before any
+  emulated frame. Disc swaps do not change the active renderer mid-game.
+- `renderer=sw|gpu` in `switches.txt` or arguments overrides settings without
+  saving. The log reports the renderer actually started.
 
 The root `GPU=pica` / `GPU=unai` frontend build modes were removed deliberately.
 Passing `GPU=` now gives an explicit migration error. Use plain `make` and the
@@ -40,11 +44,17 @@ Dispatch uses direct conditional calls/tail branches at command-list and
 renderer-control boundaries. There is no selection test or indirect call per
 primitive. PICA's stereo stubs are omitted in dual builds; software supplies
 the stereo hooks, with stereo activation blocked for PICA. gpulib guards
-PICA-specific deferred fills/readbacks/scanout and enables its worker only for
-Software. Software retains the New 3DS GPU worker and Old 3DS main-thread,
-half-height polygon rendering. The async declarations now have C linkage and
+PICA-specific deferred fills/readbacks/scanout and keeps software
+threading distinct from the PICA worker owner hook. Software retains the New
+3DS software raster worker and Old 3DS main-thread, half-height polygon
+rendering. The async declarations now have C linkage and
 the software adapter sees `USE_ASYNC_GPU`, so its stereo synchronization
 actually waits for the worker before changing/freeing its buffers.
+
+Software also keeps main’s uncoalesced DMA command boundaries: GPU chain
+batching altered GT2 half-height output and is now gated to PICA. Old 3DS
+1x presentation, overlapping GPU submissions and targeted cache cleaning are
+PICA-only; software retains its original supersampled presentation.
 
 Frontend presentation, frame callbacks, statistics and VRAM dump behavior use
 the active renderer, independently of pending settings. All `PSX3D_PICA`
@@ -86,16 +96,18 @@ additional):
 | Software stereo flag ring | 256 KiB static in software-only builds | 256 KiB heap only while software real 3D is active |
 | Software second VRAM | 2,105,344 bytes, lazy | Same size, lazy; released at shutdown |
 | Software frontend right-eye linear buffer / texture | 1 MiB each from startup in software-only builds | 1 MiB each only when real 3D is requested; released at game end |
-| Async software command queue | About 128 KiB plus bookkeeping, when enabled | Same, Software only; disabled on Old 3DS |
+| Async software command queue | About 128 KiB plus bookkeeping, when enabled | Either active renderer on New 3DS; disabled on Old 3DS |
 
 The common frontend still reserves a 1 MiB citro3d command buffer, as the old
 GPU build did (software-only previously used 256 KiB). Both renderers share
 the frontend's RGB565 frame buffers/texture, also needed for GPU movie output.
-GPU mode gains no inactive software VRAM, ring, worker queue or right-eye
-texture allocation. Software mode gains no PICA render target or atlas.
+GPU mode gains no inactive software VRAM, stereo ring or right-eye texture
+allocation; the active PICA renderer uses its own command worker queue.
+Software mode gains no PICA render target or atlas.
 
 Old 3DS heaps continue to be sized from the memory remaining after the process
-image, with the existing 8 MiB mapping reserve and linear heap minimum. Thus
+image, with a 12 MiB mapping reserve, 19 MiB linear heap minimum, and 8 MiB
+dynarec cache (see [audio/memory](audio-and-o3ds-memory.md)). Thus
 the approximately 394 KiB image increase consumes available memory rather
 than requiring another renderer's multi-megabyte buffers. These are ELF and
 allocation-size checks, not measured console free-memory readings; actual
@@ -110,7 +122,12 @@ state outside the primitive loop. The larger binary changes layout, so Old
 3DS I-cache performance cannot be established by simulator timing. A console
 benchmark is still required; no hardware speed claim is made.
 
-## Verification
+## Original selector verification
+
+The size, byte-comparison and simulator measurements below describe the
+original selector implementation against 30c62a9. Later correctness, worker
+and keeper changes supersede those renderer byte comparisons. Temporary
+paths below belong to that earlier worker and may no longer exist.
 
 - Clean dual 3DSX build passed. CIA packaging passed with the specified
   bannertool and makerom. Artifacts are `psx3d/PSX3D.3dsx` and
@@ -118,8 +135,8 @@ benchmark is still required; no hardware speed claim is made.
 - Both patches applied to a clean archive of the upstream core; patch 0002
   also passes reverse-apply checking. No changes to the submodule revision.
 - `tests/renderer_config.sh` compiles the production config/options/gamecfg
-  files on the host using small SDK type stubs. It passes GPU default, Old
-  3DS half-height default, debug visibility, option cycling, persistence,
+  files on the host using small SDK type stubs. The current checks pass Software
+  defaults on both consoles, normal visibility, Old half-height, option cycling, persistence,
   per-game override, global restoration, and v0/v1 option re-registration.
 - Simulator was copied to `/tmp/dualrender-sim`. The requested parent core was
   reconstructed using the committed patches at `30c62a9`; both builds used
@@ -170,7 +187,7 @@ make -j16
 1. Launch the same game/state with each renderer, confirm the logged selection
    and compare the picture, movies, display blanking, audio and input. On Old
    3DS, check Software's half/full 3D resolution option and frameskip.
-2. Enable debug options; change Renderer in-game, confirm it keeps rendering
+2. Change Renderer in the normal in-game Settings menu, confirm it keeps rendering
    normally until closed, reopen and confirm the new choice. Check that a
    second game still inherits the global default. Repeat the library default
    change and `switches.txt` override; remove the override afterward.

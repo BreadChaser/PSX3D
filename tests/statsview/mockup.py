@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory() as tmp:
         color = '#7dd7b9' if i == 1 else '#afb7c6'
         svg.append(f'<text x="6" y="{12+i*12}" fill="{color}">{escape(row)}</text>')
     svg.append('<rect x="6" y="176" width="308" height="3" fill="#dc825a"/>')
-    for x, w, label in [(8,110,'L2'), (125,70,'MENU'), (202,110,'R2')]:
+    for x, w, label in [(125,70,'MENU')]:
         svg.append(f'<rect x="{x}" y="184" width="{w}" height="30" fill="#1c1e2a"/>')
         svg.append(f'<text x="{x+w/2}" y="203" text-anchor="middle">{label}</text>')
     svg.append('<text x="6" y="231">Tap here: Off / FPS / Detailed</text></g></svg>')

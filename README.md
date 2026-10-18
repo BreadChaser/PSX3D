@@ -21,9 +21,9 @@ without RetroArch, behind a frontend written for the 3DS.
 - Save states (10 slots) and per-game memory cards
 - Display modes: 4:3, stretched, and widescreen (renders a wider field of view in supported titles)
 - Disc swapping for multi-disc games
-- Bottom screen backlight turned off during play; touch the bottom screen to open the menu
+- Configurable touch controls and per-console game presets; blank layouts turn off the bottom backlight
 - Safe handling of HOME, sleep and power-off at any point
-- Old 3DS support: faster default settings and on-screen L2/R2 buttons
+- Old 3DS support: faster default settings and configurable touch buttons/right stick
 - No DSP1 needed: the DSP firmware is copied from the system on first start
 
 ## Requirements
@@ -53,9 +53,8 @@ with an extra cache), so expect the following:
 
 ## Renderer choice
 
-Software is the default on both Old and New 3DS. **Settings → Core options →
-Renderer** offers **Software** and **GPU (experimental)** in the library and
-in-game menu. The library choice is global; the in-game choice is saved for
+Software is the default on both Old and New 3DS. **Settings → Renderer** offers
+**Software** and **GPU (experimental)** in the library and in-game menu. The library choice is global; the in-game choice is saved for
 that game. Close and reopen the game to apply it. `renderer=sw|gpu` in
 `switches.txt` overrides the choice for testing.
 
@@ -83,7 +82,8 @@ known limits, and the hardware checklist.
 | In game | A / B / X / Y | Circle / Cross / Triangle / Square |
 | In game | L / R / ZL / ZR | L1 / R1 / L2 / R2 |
 | In game | Circle Pad / C-Stick | D-pad or left analog / right analog |
-| In game | Touch bottom screen | Open menu |
+| In game | Touch MENU (or blank bottom screen) | Open menu |
+| In game | SELECT+R / SELECT+L | Fast forward toggle / rewind hold (when available) |
 
 ## Box art
 
