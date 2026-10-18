@@ -1007,10 +1007,10 @@ index 76f76afe..0e684ace 100644
    sem_post(&t.sem_done);
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 00000000..d05dcd60
+index 00000000..76b991fe
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,3118 @@
+@@ -0,0 +1,3199 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -1052,7 +1052,7 @@ index 00000000..d05dcd60
 +// Texture cache: an entry per (depth, page, CLUT) holding just the part of
 +// the page drawn with so far, an aligned square of 32, 64, 128 or 256
 +// texels (games use many CLUTs, each on a small part of a page). All the
-+// squares live in one atlas texture, in a region per size, so changing
++// squares live in one shared atlas texture, so changing
 +// textures never ends a batch: draw calls are expensive (~20us each on an
 +// Old 3DS).
 +#define NSIZES 4
@@ -1542,14 +1542,47 @@ index 00000000..d05dcd60
 +	mark_drawn_slow(x0,y0,x1,y1);
 +}
 +
-+static void gpu_sync(void);
++enum sync_reason { SY_READ_CPU, SY_READ_TEX, SY_READ_CLUT, SY_EVICT,
++	SY_INVALIDATE, SY_GROW, SY_VERTICES, SY_STAGE, SY_COUNT };
++static unsigned st_sync_reason[SY_COUNT], st_prev_texture, st_prev_upload;
++static enum sync_reason read_reason = SY_READ_CPU;
++#ifdef PSX3D_SIM
++static FILE *cache_trace_log(void)
++{
++	static FILE *log;
++	static bool checked;
++	if (!checked) {
++		checked = true;
++		if (getenv("PICA_CACHE_TRACE")) log = fopen(getenv("PICA_CACHE_TRACE"), "w");
++	}
++	return log;
++}
++static void trace_cache(const char *event, const tcache *c, u64 tiles)
++{
++	FILE *log = cache_trace_log();
++	if (log) fprintf(log, "%s %u %u %u %u %u %u %u %016llx %u\n", event,
++		c->depth, c->page, c->clut, c->win, c->lg, c->rx, c->ry,
++		(unsigned long long)tiles, gen_clock);
++}
++static void trace_upload(int x, int y, int w, int h)
++{
++	FILE *log = cache_trace_log();
++	if (log) fprintf(log, "upload %d %d %d %d %u\n", x, y, w, h, gen_clock);
++}
++#else
++#define trace_cache(event,c,tiles) ((void)0)
++#define trace_upload(x,y,w,h) ((void)0)
++#endif
++static void gpu_sync(enum sync_reason why);
 +
 +// wait until the GPU has run everything queued
 +static void gpu_idle(void)
 +{
 +	if (frame_open) {
-+		gpu_sync();
++		gpu_sync(read_reason);
 +	} else {
++		st_sync_reason[read_reason]++;
++		st_syncs++;
 +		C3D_FrameBegin(0);   // waits for the previous frame
 +		C3D_FrameEnd(0);
 +		C3D_FrameBegin(0);   // and for that empty one
@@ -1754,7 +1787,7 @@ index 00000000..d05dcd60
 +
 +// let the GPU run everything queued and wait, so memory it was going to
 +// read (a texture, the upload stage) can be rewritten in place
-+static void gpu_sync(void)
++static void gpu_sync(enum sync_reason why)
 +{
 +	flush();
 +	if (!frame_open)
@@ -1762,6 +1795,7 @@ index 00000000..d05dcd60
 +	C3D_FrameEnd(0);
 +	C3D_FrameBegin(0);
 +	st_syncs++;
++	st_sync_reason[why]++;
 +	pica_async = false;   // FrameBegin(0) just retired all submitted work
 +	pica_frame_started_local();
 +}
@@ -1830,9 +1864,10 @@ index 00000000..d05dcd60
 +{
 +	if (c->checked == gen_clock) return true;
 +	u64 old = c->tiles;
-+	if (c->depth < 2 && palette_stamp((c->clut & 63)*16, (c->clut >> 6)&511, c->depth ? 256 : 16) > c->stamp)
++	if (c->depth < 2 && palette_stamp((c->clut & 63)*16, (c->clut >> 6)&511, c->depth ? 256 : 16) > c->stamp) {
++		trace_cache("palette", c, old);
 +		c->tiles = 0;
-+	else {
++	} else {
 +		int px = (c->page & 15)*64, py = (c->page >> 4)*256, sh = 2-c->depth;
 +		if (c->win) {
 +			if (fine_stamp(px, py, 256 >> sh, 256) > c->stamp) c->tiles = 0;
@@ -1843,6 +1878,7 @@ index 00000000..d05dcd60
 +					c->tiles &= ~(1ull << t);
 +			}
 +		}
++		if (c->tiles != old) trace_cache("source", c, old & ~c->tiles);
 +	}
 +	c->stamp = c->checked = gen_clock;
 +	return c->tiles == old;
@@ -1926,6 +1962,7 @@ index 00000000..d05dcd60
 +	need &= ~c->tiles;
 +	if (!need)
 +		return;
++	trace_cache("decode", c, need);
 +	u32 *dst = atlas[0].tex.data;
 +	int aw = atlas[0].w, ah = atlas[0].h;
 +	const u16 *vram = gpu.vram;
@@ -1945,10 +1982,14 @@ index 00000000..d05dcd60
 +		}
 +		int cx = (c->clut & 0x3f) * 16, cy = (c->clut >> 6) & 511, cw = c->depth == 0 ? 16 : 256;
 +		trace_rtt(c, "tex", vx, vy, vw, vh);
++		read_reason = SY_READ_TEX;
 +		pica_readback_rect_local(vx, vy, vw, vh);
++		read_reason = SY_READ_CPU;
 +		if (c->depth < 2) {
 +			trace_rtt(c, "clut", cx, cy, cw, 1);
++			read_reason = SY_READ_CLUT;
 +			pica_readback_rect_local(cx, cy, cw, 1);
++			read_reason = SY_READ_CPU;
 +		}
 +		// (settling the whole page wrote CTR's screen clears out every frame)
 +		if (nfills) {
@@ -2062,6 +2103,7 @@ index 00000000..d05dcd60
 +	if (!need)
 +		return;
 +	if (!rtt_old() && c->depth == 2 && !c->win && decode_gpu(c, need)) return;
++	trace_cache("decode", c, need);
 +	u32 *dst = atlas[0].tex.data;
 +	int aw = atlas[0].w, ah = atlas[0].h;
 +	const u16 *vram = gpu.vram;
@@ -2081,10 +2123,14 @@ index 00000000..d05dcd60
 +		}
 +		int cx = (c->clut & 0x3f) * 16, cy = (c->clut >> 6) & 511, cw = c->depth == 0 ? 16 : 256;
 +		trace_rtt(c, "tex", vx, vy, vw, vh);
++		read_reason = SY_READ_TEX;
 +		pica_readback_rect_local(vx, vy, vw, vh);
++		read_reason = SY_READ_CPU;
 +		if (c->depth < 2) {
 +			trace_rtt(c, "clut", cx, cy, cw, 1);
++			read_reason = SY_READ_CLUT;
 +			pica_readback_rect_local(cx, cy, cw, 1);
++			read_reason = SY_READ_CPU;
 +		}
 +		// (settling the whole page wrote CTR's screen clears out every frame)
 +		if (nfills) {
@@ -2213,14 +2259,15 @@ index 00000000..d05dcd60
 +		}
 +}
 +
-+static void texture_idle(tcache *c)
++static void texture_idle(tcache *c, enum sync_reason why)
 +{
 +	if (c->used_seq <= synced_seq) return;
 +	if (pica_async && c->used_seq <= frame_seq && pica_wait_frame) {
 +		pica_wait_frame();
++		st_prev_texture++;
 +		synced_seq = frame_seq;
 +	} else {
-+		gpu_sync();
++		gpu_sync(why);
 +	}
 +}
 +
@@ -2240,7 +2287,8 @@ index 00000000..d05dcd60
 +{
 +	st_evict++;
 +	st_evict_lg[c->lg]++;
-+	texture_idle(c);
++	trace_cache("evict", c, c->tiles);
++	texture_idle(c, SY_EVICT);
 +	drop_entry(c);
 +}
 +
@@ -2306,6 +2354,16 @@ index 00000000..d05dcd60
 +	return c;
 +}
 +
++// Several disjoint sprites may share a page/CLUT. Growing their union to
++// 256x256 throws away decoded cells, wastes the atlas and waits for queued
++// readers. Keep independent, tightly bounded squares for those regions.
++static inline bool region_cache(void) { return !(pica_debug & (262144 | 524288)); }
++static inline bool covers(const tcache *c, int u0, int u1, int v0, int v1)
++{
++	int size = 32 << c->lg;
++	return u0 >= c->rx && u1 < c->rx + size && v0 >= c->ry && v1 < c->ry + size;
++}
++
 +// the texture for drawing texels u0..u1 x v0..v1 (inclusive; past 255 they
 +// wrap, then the whole page is used) of this page and CLUT
 +static tcache *texture_for(u32 page, u32 clut, int u0, int u1, int v0, int v1)
@@ -2325,23 +2383,34 @@ index 00000000..d05dcd60
 +			if (c->depth == depth && c->page == pg && c->clut == cl && c->win == win)
 +				break;
 +	}
-+	if (c && !cache_valid(c)) {
-+		if (!(c->gpu_tiles && !rtt_old() && atlas_target && frame_open)) texture_idle(c);
-+		if (rtt_old()) c->tiles = 0;
-+		c->stamp = c->checked = gen_clock;
-+		st_inval++;
-+	}
++
 +	if (c) {
 +		int size = 32 << c->lg;
 +		if (u0 < c->rx || u1 >= c->rx + size || v0 < c->ry || v1 >= c->ry + size) {
-+			// outside the square: move to one that holds both
-+			int nu0 = u0 < c->rx ? u0 : c->rx, nu1 = u1 > c->rx + size - 1 ? u1 : c->rx + size - 1;
-+			int nv0 = v0 < c->ry ? v0 : c->ry, nv1 = v1 > c->ry + size - 1 ? v1 : c->ry + size - 1;
-+			u0 = nu0; u1 = nu1; v0 = nv0; v1 = nv1;
-+			texture_idle(c);
-+			drop_entry(c);
-+			c = NULL;
++			if (region_cache()) {
++				// The common covering hit keeps the original lookup path.
++				// Only a region miss searches for another square of this key.
++				for (c = buckets[key_hash(depth, pg, cl, win)]; c; c = c->next)
++					if (c->depth == depth && c->page == pg && c->clut == cl && c->win == win &&
++						covers(c, u0, u1, v0, v1)) break;
++			} else {
++				// outside the square: move to one that holds both
++				int nu0 = u0 < c->rx ? u0 : c->rx, nu1 = u1 > c->rx + size - 1 ? u1 : c->rx + size - 1;
++				int nv0 = v0 < c->ry ? v0 : c->ry, nv1 = v1 > c->ry + size - 1 ? v1 : c->ry + size - 1;
++				u0 = nu0; u1 = nu1; v0 = nv0; v1 = nv1;
++				trace_cache("grow", c, c->tiles);
++				texture_idle(c, SY_GROW);
++				drop_entry(c);
++				c = NULL;
++			}
 +		}
++	}
++	if (c && !cache_valid(c)) {
++		if (!(c->gpu_tiles && !rtt_old() && atlas_target && frame_open)) texture_idle(c, SY_INVALIDATE);
++		if (rtt_old()) c->tiles = 0;
++		c->stamp = c->checked = gen_clock;
++		trace_cache("invalidate", c, c->tiles);
++		st_inval++;
 +	}
 +	if (!c) {
 +		int rx, ry, lg = square_for(u0, u1, v0, v1, &rx, &ry);
@@ -2703,7 +2772,7 @@ index 00000000..d05dcd60
 +	if (vpos - sent_vpos >= SEND_VERTS)
 +		send_early();
 +	if (vpos + n > vlimit) {
-+		gpu_sync();   // the GPU has used everything: start the buffer over
++		gpu_sync(SY_VERTICES);   // the GPU has used everything: start the buffer over
 +		if (vpos + n > vlimit)
 +			return NULL;
 +	}
@@ -3387,9 +3456,10 @@ index 00000000..d05dcd60
 +	// those barriers, so a later upload cannot overwrite its pending data.
 +	flush();
 +	if (vpos + 6 > vlimit || stage_y + h > STAGE_H)
-+		gpu_sync();
++		gpu_sync(stage_y + h > STAGE_H ? SY_STAGE : SY_VERTICES);
 +	if (pica_async && pica_frame_pending && pica_frame_pending() && pica_wait_frame) {
 +		pica_wait_frame();
++		st_prev_upload++;
 +		synced_seq = frame_seq;
 +	}
 +	int sy = stage_y;
@@ -3480,9 +3550,10 @@ index 00000000..d05dcd60
 +	// those barriers, so a later upload cannot overwrite its pending data.
 +	flush();
 +	if (vpos + 6 > vlimit || stage_y + h > STAGE_H)
-+		gpu_sync();
++		gpu_sync(stage_y + h > STAGE_H ? SY_STAGE : SY_VERTICES);
 +	if (pica_async && pica_frame_pending && pica_frame_pending() && pica_wait_frame) {
 +		pica_wait_frame();
++		st_prev_upload++;
 +		synced_seq = frame_seq;
 +	}
 +	int sy = stage_y;
@@ -3596,6 +3667,7 @@ index 00000000..d05dcd60
 +{
 +	if (state_changed)
 +		disp_used = false;
++	trace_upload(x, y, w, h);
 +	mark_vram(x, y, w, h);
 +	push_to_target(x, y, w, h);
 +}
@@ -3954,6 +4026,7 @@ index 00000000..d05dcd60
 +	int k0 = snprintf(buf, n, "pica: cmdlist %.2fms in %u calls, %u flushes, timer read %.2fus; ",
 +		t_list / 268111.856, n_list, n_flush, t_svc / 268.111856);
 +	t_list = 0; n_list = n_flush = 0;
++	if (k0 < 0 || k0 >= n) return;
 +	buf += k0; n -= k0;
 +	int k = snprintf(buf, n, "state %.2fms draw %.2fms tex %.2fms; ends: atlas %u blend %u area %u rebind %u; evictions by size %u %u %u %u; ",
 +		t_state / 268111.856, t_draw / 268111.856, t_tex / 268111.856, st_why[0], st_why[1], st_why[2], st_why[3],
@@ -3961,6 +4034,14 @@ index 00000000..d05dcd60
 +	memset(st_why, 0, sizeof(st_why));
 +	memset(st_evict_lg, 0, sizeof(st_evict_lg));
 +	t_state = t_draw = t_tex = 0;
++	if (k < 0 || k >= n) return;
++	buf += k; n -= k;
++	k = snprintf(buf, n, "sync reasons cpu %u tex %u clut %u evict %u inval %u grow %u verts %u stage %u prev %u/%u; ",
++		st_sync_reason[0], st_sync_reason[1], st_sync_reason[2], st_sync_reason[3],
++		st_sync_reason[4], st_sync_reason[5], st_sync_reason[6], st_sync_reason[7], st_prev_texture, st_prev_upload);
++	memset(st_sync_reason, 0, sizeof(st_sync_reason));
++	st_prev_texture = st_prev_upload = 0;
++	if (k < 0 || k >= n) return;
 +	buf += k; n -= k;
 +	snprintf(buf, n, "%u batches %u prims %u tile decodes (%u evictions %u invalidations) %u uploads %u syncs %u readbacks %u splits, rb %u pixels %uK cache gpu tiles %u copies %u; %uK GPU memory free; area %d,%d-%d,%d off %d,%d disp %d,%d %dx%d",
 +		st_batches, st_prims, st_decodes, st_evict, st_inval, st_uploads, st_syncs, st_readbacks, st_splits, st_read_pixels, st_read_bytes/1024, st_gpu_tiles, st_gpu_copies, (unsigned)(linearSpaceFree() / 1024),

@@ -157,6 +157,8 @@ static void parse_switches(int argc, char **argv)
 		else if (!strncmp(a, "state=", 6)) sw_state = atoi(a + 6);
 		else if (!strcmp(a, "rtt=old")) sw_gldbg |= 262144;
 		else if (!strcmp(a, "rtt=new")) sw_gldbg &= ~262144;
+		else if (!strcmp(a, "rttcache=old")) sw_gldbg |= 524288;
+		else if (!strcmp(a, "rttcache=new")) sw_gldbg &= ~524288;
 		else if (!strncmp(a, "gldbg=", 6)) sw_gldbg = atoi(a + 6);
 		else if (!strncmp(a, "vramdump=", 9)) sw_vramdump = atoi(a + 9);
 		else if (!strncmp(a, "pmu=", 4)) sscanf(a + 4, "%x,%x", (unsigned *)&sw_pmu0, (unsigned *)&sw_pmu1);

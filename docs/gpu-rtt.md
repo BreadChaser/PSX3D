@@ -227,3 +227,10 @@ cache barriers on the GPU decode path; queued GX native-copy behavior; New worke
 ownership; asynchronous texture/staging/cache interactions absent from the raster
 model; and Old 3DS instruction-cache layout sensitivity. The native-copy fixture
 uses the fake GX memory copy and is not hardware validation.
+
+## Round-two continuation
+
+[Disjoint-region caching and sync/decode profiling](gpu-rtt-round2.md) continues
+this work from `ce16a3a`. It retains the round-one behavior behind `rttcache=old`
+and documents the candidate, reference-harness precision correction, six-game
+costs and console-worker acceptance steps.
