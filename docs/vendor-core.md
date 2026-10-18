@@ -37,7 +37,7 @@ With that environment, the original patched baseline and the vendored build
 have identical allocated ELF sections, addresses, flags and alignment,
 including `.text`, `.rodata`, `.data`, exception tables, constructors, GOT,
 BSS and TLS. Both also match the immutable RC2 ELF's allocated sections.
-The complete 3DSX is byte-identical to RC2. All six controlled builds within
+The complete 3DSX is byte-identical to RC2. All eight controlled builds within
 this worktree also have byte-identical **complete ELF files**, including debug
 information. RC2's ELF has different nonallocated debug paths; its allocated
 sections and the complete packaged executable content match exactly.
@@ -102,31 +102,33 @@ build and complete ELF/3DSX identity checks pass.
 
 Counts below are exact Git-tree snapshots, not build-directory sizes. Text
 lines count newline characters in files without NUL bytes; byte counts include
-all tracked files. The last pruning commit is `cf54356`; subsequent changes
+all tracked files. The last pruning commit is `819ded7`; subsequent changes
 only clarify documentation. The vendored baseline is `eaaa0ea`.
 
 - Vendored baseline: core **1,392 files / 741,010 text lines / 25,851,020 bytes**.
 - Platform/CPU pruning (`57e7988`): core 1,295 files / 719,004 lines / 24,973,144 bytes.
 - Plugin pruning (`98fd180`): core 1,243 files / 669,750 lines / 23,186,262 bytes.
-- Dependency pruning (`cf54356`): core **290 files / 178,557 lines / 6,371,070 bytes**.
+- Dependency pruning (`cf54356`): core 290 files / 178,557 lines / 6,371,070 bytes.
+- Standalone glue pruning (`819ded7`): core **284 files / 178,194 lines / 6,363,256 bytes**.
 
-Core reduction: **1,102 files, 562,453 lines and 19,479,950 bytes (75.35%)**.
+Core reduction: **1,108 files, 562,816 lines and 19,487,764 bytes (75.38%)**.
 The whole tracked repository, including the relocated host oracles and all
 frontend/docs/assets, goes from **3,713 files / 39,802,710 bytes** to
-**2,626 files / 20,985,281 bytes** at the last pruning commit: **47.28% smaller**.
-Whole-repository text lines drop from 881,728 to 337,784. These are checkout
+**2,620 files / 20,981,552 bytes** at the last pruning commit: **47.29% smaller**.
+Whole-repository text lines drop from 881,728 to 337,491. These are checkout
 contents: Git history still retains the original vendoring commit and deleted
 sources. This work does not rewrite history or claim existing clones shrink.
 
 ## Final verification and evidence
 
 All of `baseline-controlled`, `vendored`, `prune-platform`, `prune-plugins`,
-`prune-deps` and post-commit `final` clean builds pass and produce:
+`prune-deps`, `final`, `prune-plugin-glue` and post-commit `final-verified`
+clean builds pass and produce:
 
 ```text
-Complete ELF SHA256 (same worktree, all six builds):
+Complete ELF SHA256 (same worktree, all eight builds):
 2e6ac50e4cea912f42fc44a8a954872a81b928bd4bc8f8fe422c39977e621bc9
-Complete 3DSX SHA256 (all six builds AND immutable release RC2):
+Complete 3DSX SHA256 (all eight builds AND immutable release RC2):
 0a8f07efdaa20911786a221a4d4a61bf4caa87613c68952fcad14cd610b02f59
 .text   2,146,052 bytes  SHA256 295e5508f2acb083915f9746c53840242a85499907284b537362a42b0bfc99fc
 .rodata   329,324 bytes  SHA256 8bb8dba2cd784d7293017b20fc248e3cbd46b349bad815811442448d492a7eef
