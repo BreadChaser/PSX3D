@@ -3,6 +3,7 @@
 #endif
 #include "devnet.h"
 #include <ctype.h>
+#include <malloc.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -81,6 +82,22 @@ static const char *opt(const char *s)
 	const char *v = options_get(s);
 	return v ? v : "";
 }
+static unsigned heap_free(void)
+{
+#ifdef __3DS__
+	return mallinfo().fordblks;
+#else
+	return 0;
+#endif
+}
+static unsigned linear_free(void)
+{
+#ifdef __3DS__
+	return linearSpaceFree();
+#else
+	return 0;
+#endif
+}
 static void publish_status(void)
 {
 	if (!dev_remote)
@@ -102,6 +119,9 @@ static void publish_status(void)
 	        sw_gldbg, sw_gpu_async ? "true" : "false", sw_gpu_flush ? "true" : "false",
 	        running && !strcmp(opt("pcsx_rearmed_gpu_thread_rendering"), "enabled") ? "true" : "false",
 	        sw_nosputhread ? "true" : "false");
+	p += strlen(p);
+	sprintf(p, ",\"rtt\":\"%s\",\"free_heap\":%u,\"free_linear\":%u",
+	        sw_gldbg & 262144 ? "old" : "new", heap_free(), linear_free());
 	snprintf(json, sizeof(json),
 	         "{\"ok\":true,\"session\":\"%s\",\"console\":\"%s\",\"uptime_s\":%.1f,\"mode\":\"%s\","
 	         "\"game\":\"%s\",\"state\":%d,\"renderer\":\"%s\",\"settings\":{%s},\"error\":\"%s\","
@@ -318,6 +338,27 @@ bool dev_tick(bool playing)
 			else if (!*args || !load_request(args))
 				error_reply("load requires a game or path (max 675 bytes)");
 			// load reply is sent only once loading + initial state have completed.
+		} else if (!strcmp(command, "set") && (!strcmp(args, "rtt=old") || !strcmp(args, "rtt=new"))) {
+			// RTT maps/cache generations cannot change in a live renderer. Repeat
+			// the last explicit load, retaining its state/settings, at a clean boundary.
+			if (batch_active || !playing)
+				error_reply("RTT setting requires a game and idle batch");
+			else {
+				char copy[sizeof(load_line)], next[sizeof(load_line)] = "", *ctx;
+				strcpy(copy, load_line);
+				for (char *w = strtok_r(copy, " ", &ctx); w; w = strtok_r(NULL, " ", &ctx)) {
+					if (!strncmp(w, "rtt=", 4)) continue;
+					if (next[0]) strcat(next, " ");
+					strcat(next, w);
+				}
+				if (strlen(next) + strlen(args) + 2 > sizeof(load_line))
+					error_reply("load settings too long");
+				else {
+					strcat(next, " "); strcat(next, args);
+					strcpy(load_line, next);
+					load_pending = change = command_loading = true;
+				}
+			}
 		} else if (!strcmp(command, "set")) {
 			if (batch_active || !playing || !runtime_set(args))
 				error_reply("setting requires load, or batch active/no game");

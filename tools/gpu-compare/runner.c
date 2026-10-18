@@ -151,6 +151,20 @@ int main(int argc, char **argv)
 			gte_hack_widescreen_q16 = strtol(opt_v[i], NULL, 10);
 			fprintf(stderr, "GTE widescreen Q16: %d\n", gte_hack_widescreen_q16);
 		}
+	// Disc boot uses the HLE BIOS when no BIOS is present. Warm up without
+	// recording uploads/packets, then snapshot the settled renderer state.
+	for (int i = 0, n = getenv("BOOT_FRAMES") ? atoi(getenv("BOOT_FRAMES")) : 0; i < n; i++) {
+		input_frame(i + 1);
+		retro_run();
+	}
+	if (getenv("SAVE_STATE")) {
+		size_t n = retro_serialize_size();
+		void *s = malloc(n);
+		if (!s || !retro_serialize(s, n)) return 2;
+		FILE *f = fopen(getenv("SAVE_STATE"), "wb");
+		if (!f || fwrite(s, 1, n, f) != n || fclose(f)) return 2;
+		free(s);
+	}
 	{ void trace_state(void); trace_state(); }
 	for (int i = getenv("SHIFT") ? atoi(getenv("SHIFT")) : 0; i > 0; i--)
 		retro_run();   // shift frame parity against the game's flips

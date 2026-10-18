@@ -60,7 +60,7 @@ bool switches_set(const char *word)
 	static const char *flags[] = {"prof",         "stats",     "fs1",         "fs3",  "noskip",
 	                              "nogputhread",  "gputhread", "nosputhread", "acap", "renderer=sw",
 	                              "renderer=gpu", "state0",    "showright",   "sbs",  "gpuasync",
-	                              "nogpuasync",   "gpuflush",  "nogpuflush",  "aa"};
+	                              "nogpuasync",   "gpuflush",  "nogpuflush",  "aa", "rtt=old", "rtt=new"};
 	static const char *prefix[] = {"slider=", "state=", "gldbg=", "vramdump=", "pmu=", "cdra=", "clock="};
 	bool known = false;
 	for (unsigned k = 0; k < sizeof(flags) / sizeof(*flags); k++)

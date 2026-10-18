@@ -63,9 +63,10 @@ trace records the display rectangle at the end of each host frame; it does not
 model a real CRT, mid-frame changes or the frontend's delayed presentation.
 24-bit scanout uses CPU VRAM, matching PICA's existing movie fallback.
 
-Capture is at the gpulib renderer boundary. VRAM copies are recorded as the
-resulting CPU upload; this validates their destination upload, not independently
-the copy command or GPU-to-CPU synchronization. The x86 renderer's own texture
+Capture is at the gpulib renderer boundary. GP0 80h copies are recorded as
+an explicit tag 8 (the four command words), followed by their CPU destination
+upload. PICA can execute the GPU copy and skip the paired upload; reference
+replayers apply the upload. Older traces contain only the upload. The x86 renderer's own texture
 readbacks still execute against the fake render target. Proprietary game states
 and traces are deliberately not checked in.
 
@@ -151,3 +152,47 @@ run `fixtures.py --check`. Keep the existing known half-mask/quarter-rounding
 limitations visible. The integration updates `batch_semi` when deferred effects
 are emitted, not while they sit in CPU staging, and preserves untextured alpha
 and dummy-texel tags on the direct additive path.
+
+## Render-to-texture validation
+
+[RTT design, measurements and hardware handoff](../../docs/gpu-rtt.md).
+`rtt.py` checks every RGB5/mask combination, repeated GPU overwrites,
+window fallback, native tile copies, indexed palettes and upload rollover:
+
+```sh
+/tmp/rtt-sim/venv/bin/python tools/gpu-compare/rtt.py \
+  --replay /tmp/rtt-sim/replay-pica --output /tmp/rtt-sim/rtt-fixtures
+```
+
+It selects `PICA_DEBUG=262144` (old) and `0` (new), compares full native VRAM
+and scanout, and enables `SIM_CHECK_STAGE_LIFETIME=1`. This extra guard retains
+upload texture samples until `C3D_FrameEnd` and rejects CPU overwrites before
+submission, even though the rasterizer draws synchronously. Reverting the upload
+reservation fix makes the `stage` fixture fail this check. Rebuild the replay
+with `-fsanitize=address,undefined` to run the same probes under sanitizers.
+
+`PICA_STATS=1` logs renderer counters per frame. `PICA_RTT_TRACE=/path/requests.log`
+logs dependency requests as `kind depth page clut window x y width height
+coarse-dirty-blocks generation display-x display-y display-width display-height`.
+Select the old path for classification; its readback log also prints converted
+pixel counts and words that differed from CPU VRAM immediately before conversion.
+This diagnostic is host-only; it describes the reference stream, not hardware races.
+
+The capture runner accepts `BOOT_FRAMES=N` to warm up before recording,
+`SAVE_STATE=/path/raw.st0` to save after warmup, and `-` as the state argument
+to boot a disc with HLE BIOS. For example:
+
+```sh
+cd /tmp/rtt-sim
+BOOT_FRAMES=1800 SAVE_STATE=states/sotn-title.st0 GPU_TRACE=sotn-title.gputrace \
+  GPU_VERIFY=1 GPU_VERIFY_EVERY=60 /path/to/qemu-arm ./runner_capture \
+  '/path/to/Castlevania - Symphony of the Night (USA).cue' 60 - \
+  /path/to/tools/gpu-compare/options.ini
+```
+
+`--states sotn sotn-menu sotn-fight` explicitly selects the SotN scenes; the
+default remains the five original states. State and trace names are user-defined:
+keep a host-booted title separate from the hardware Dracula-fight state. Warmup
+and recorded inputs each start at input-script frame 1. Use `GPU_FRAMES=10,30,60`
+to avoid filling shared tmpfs with unnecessary images. Archive private evidence
+under ignored `devtools/`, then remove the simulator copy when finished.

@@ -111,8 +111,10 @@ Supported run switches include `renderer=sw|gpu`, `frameskip=off|auto|on`, `stat
 logging/profiling cost; omit them when using the live metrics alone. Subsystem
 startup switches (`nonet`, `nosound`, `csnd`, `noirrst`, `noaa`, `nolcd`, `nocovers`,
 `o3ds`, `minimal`) belong in switches.txt, rather than per-run commands. Unknown
-switches fail explicitly. This base branch has no `rtt=old|new` implementation;
-that switch is rejected until the renderer worker's RTT branch is integrated.
+switches fail explicitly. `rtt=old|new` selects the RTT implementation for each clean load.
+`set rtt=old|new` repeats the last load with its original state/settings, then replies
+after the new game starts; it does not change cache mappings during a live game.
+Status includes `rtt`, `free_heap` and `free_linear` (bytes) under `settings`.
 
 `sdmc:/3ds/PSX3D/bench/results.tsv` contains the exact request, status, number of
 samples, near-black samples, FPS, emulated game speed %, emulation/present/wait/

@@ -53,6 +53,8 @@ void debug_parse_switch(const char *word)
 		sw_state = atoi(word + 6);
 	if (!strcmp(word, "renderer=sw"))
 		sw_renderer = 1;
+	if (!strcmp(word, "rtt=old")) sw_gldbg |= 262144;
+	if (!strcmp(word, "rtt=new")) sw_gldbg &= ~262144;
 	if (!strcmp(word, "renderer=gpu"))
 		sw_renderer = 0;
 }
@@ -159,6 +161,16 @@ int main(void)
 	assert(!strcmp(path, "sdmc:/roms/My Game/my_file.cue"));
 	dev_game_started(title, true);
 	assert(strstr(response, "true"));
+	command("set rtt=old", true);
+	assert(dev_transition());
+	dev_game_ended(true);
+	assert(dev_next_game(path, save, title) && (sw_gldbg & 262144) && sw_state == 2);
+	dev_game_started(title, true);
+	command("set rtt=new", true);
+	dev_game_ended(true);
+	assert(dev_next_game(path, save, title) && !(sw_gldbg & 262144));
+	dev_game_started(title, true);
+	assert(!switches_set("rtt=invalid"));
 	command("set renderer=gpu", true);
 	assert(strstr(response, "false"));
 	command("savestate 9oops", true);
