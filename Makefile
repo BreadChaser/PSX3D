@@ -9,23 +9,22 @@ patch:
 		git -C core apply --reverse --check $$p 2>/dev/null || git -C core apply $$p; \
 	done
 
-# Renderer: pica draws on the 3DS GPU (experimental), unai is the CPU renderer.
-# Switching needs `make clean` first.
-GPU ?= pica
+# The frontend always includes both renderers; selection is a game setting.
+# Core-only builds still accept CTR_GPU=pica/unai for diagnostics.
+ifneq ($(origin GPU),undefined)
+$(error GPU= was replaced by the runtime Renderer setting; build with plain make)
+endif
 EXTERN_SYMS := psx3d_depth_get psx3d_depth_frame psx3d_overlay_get psx3d_ov_seq psx3d_set_strength \
 	psx3d_right_get psx3d_stats psx3d_set_half3d psx3d_prof_t psx3d_prof_c psx3d_prof_on new_dynarec_print_stats \
-	psx3d_irq_t psx3d_irq_c
-ifeq ($(GPU),pica)
+	psx3d_irq_t psx3d_irq_c psx3d_renderer_select
 EXTERN_SYMS += pica_init pica_exit pica_game_begin pica_game_end pica_flush_vertices pica_frame_started pica_frame_ended \
 	pica_thread_call pica_thread_sync pica_state_lost pica_prepare_present pica_picture pica_stats pica_probe pica_debug pica_open_frame pica_async pica_double_buffer pica_wait_frame pica_frame_pending pica_dump_vram
-APP_DEFS := -DPSX3D_PICA
-endif
 
 core: patch
-	$(MAKE) -C core -f Makefile.libretro platform=ctr CTR_GPU=$(GPU) EXTRA_EXTERN_SYMS="$(EXTERN_SYMS)"
+	$(MAKE) -C core -f Makefile.libretro platform=ctr CTR_GPU=dual EXTRA_EXTERN_SYMS="$(EXTERN_SYMS)"
 
 app: core
-	$(MAKE) -C psx3d EXTRA_DEFS="$(APP_DEFS)"
+	$(MAKE) -C psx3d
 
 # Installable CIA. Needs makerom (Project_CTR) and bannertool on PATH,
 # or MAKEROM=/path/to/makerom BANNERTOOL=/path/to/bannertool.
@@ -45,5 +44,5 @@ cia: app
 		-icon psx3d/build/icon.icn -banner psx3d/build/banner.bnr -target t -ver $(VERSION)
 
 clean:
-	$(MAKE) -C core -f Makefile.libretro platform=ctr CTR_GPU=$(GPU) EXTRA_EXTERN_SYMS="$(EXTERN_SYMS)" clean
+	$(MAKE) -C core -f Makefile.libretro platform=ctr CTR_GPU=dual EXTRA_EXTERN_SYMS="$(EXTERN_SYMS)" clean
 	$(MAKE) -C psx3d clean

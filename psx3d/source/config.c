@@ -18,6 +18,7 @@ static int novr;
 static bool in_game;
 void config_set_ws_native(bool on);
 static int default_screen;
+static int default_renderer;
 #define WS_KEY "pcsx_rearmed_psx3d_widescreen"
 
 // Defaults tuned for the 3DS that differ from the core's own defaults.
@@ -40,6 +41,7 @@ static void set_defaults(void)
 	g_cfg.bottom_off = 1;
 	g_cfg.autosave = 1;
 	g_cfg.half3d = !g_new3ds;
+	g_cfg.renderer = 1;   // software is the release default on both models
 	for (size_t i = 0; i < sizeof(tuned_defaults) / sizeof(tuned_defaults[0]); i++)
 		if (tuned_defaults[i][0])
 			config_set_core_override(tuned_defaults[i][0], tuned_defaults[i][1]);
@@ -89,6 +91,8 @@ void config_load(void)
 			g_cfg.bottom_off = atoi(v) != 0;
 		else if (strcmp(k, "half3d") == 0)
 			g_cfg.half3d = atoi(v) != 0;
+		else if (strcmp(k, "renderer") == 0)
+			g_cfg.renderer = strcmp(v, "gpu") != 0;
 		else if (strcmp(k, "autosave") == 0)
 			g_cfg.autosave = atoi(v) != 0;
 		else if (strcmp(k, "debug") == 0)
@@ -129,6 +133,7 @@ void config_save(void)
 	fprintf(f, "sounds=%d\nmusic=%d\nbottom_off=%d\n", g_cfg.sounds, g_cfg.music, g_cfg.bottom_off);
 	fprintf(f, "autosave=%d\n", g_cfg.autosave);
 	fprintf(f, "half3d=%d\n", g_cfg.half3d);
+	fprintf(f, "renderer=%s\n", (in_game ? default_renderer : g_cfg.renderer) ? "sw" : "gpu");
 	if (g_cfg.debug)
 		fprintf(f, "debug=1\n");
 	for (int i = 0; i < novr; i++) {
@@ -193,7 +198,7 @@ static bool stereo_active;
 void config_sync_stereo(void)
 {
 	config_set_core_override("pcsx_rearmed_psx3d_stereo",
-		g_cfg.stereo == 2 && stereo_active ? "enabled" : "disabled");
+		g_cfg.stereo == 2 && stereo_active && !renderer_is_gpu() ? "enabled" : "disabled");
 	options_mark_updated();
 }
 
@@ -265,8 +270,12 @@ void config_game_begin(const char *game)
 {
 	snprintf(cur_game, sizeof(cur_game), "%s", game);
 	default_screen = config_screen_mode();
+	default_renderer = g_cfg.renderer;
 	in_game = true;
 	gamecfg_load(game);
+	const char *renderer = gamecfg_get("renderer");
+	if (renderer && (!strcmp(renderer, "gpu") || !strcmp(renderer, "sw")))
+		g_cfg.renderer = !strcmp(renderer, "sw");
 	int mode = gamecfg_int("screen", -1);
 	if (mode < 0)
 		mode = game_screen_get(game);   // 0.1.1 kept it in games.ini
@@ -283,12 +292,23 @@ void config_game_set_screen(int mode)
 		gamecfg_set_int("screen", mode);
 }
 
+// Like screen mode, the in-game choice belongs to this game. The active
+// renderer stays unchanged until the game is closed and opened again.
+void config_set_renderer(int software)
+{
+	g_cfg.renderer = !!software;
+	if (in_game)
+		gamecfg_set("renderer", software ? "sw" : "gpu");
+}
+
 // back to the library: the default screen mode again
 void config_game_end(void)
 {
 	if (!in_game)
 		return;
+	config_set_stereo_active(false);
 	in_game = false;
+	g_cfg.renderer = default_renderer;
 	gamecfg_end();
 	input_map_reset();   // per-game controls end with the game
 	config_set_ws_native(false);

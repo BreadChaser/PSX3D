@@ -8,6 +8,7 @@
 
 #define MAX_OPTIONS 128
 #define MAX_VALUES  64
+#define RENDERER_KEY "psx3d_renderer"
 
 typedef struct {
 	char *key;
@@ -90,6 +91,8 @@ static const char *locked_value(const char *key)
 
 static bool is_hidden(const char *key)
 {
+	if (!strcmp(key, RENDERER_KEY))
+		return false;
 	if (locked_value(key))
 		return true;
 	for (size_t i = 0; i < sizeof(hidden_prefix) / sizeof(hidden_prefix[0]); i++)
@@ -145,6 +148,15 @@ void options_register(const struct retro_variable *vars)
 
 static void finish_register(void)
 {
+	if (nopts < MAX_OPTIONS) {
+		option_t *o = &opts[nopts++];
+		o->key = strdup(RENDERER_KEY);
+		o->desc = strdup("Renderer");
+		o->info = strdup("Software is the recommended default. GPU rendering is experimental and may draw games incorrectly. Changes take effect when you close and reopen the game. In-game changes are saved for this game. switches.txt renderer=sw|gpu overrides this choice.");
+		o->values[0] = strdup("Software");
+		o->values[1] = strdup("GPU (experimental)");
+		o->nvalues = 2;
+	}
 	nvisible = 0;
 	for (int i = 0; i < nopts; i++)
 		if (!is_hidden(opts[i].key))
@@ -194,6 +206,8 @@ const char *options_get(const char *key)
 {
 	if (!strcmp(key, "pcsx_rearmed_gpu_thread_rendering") && (!g_new3ds || sw_nogputhread))
 		return "disabled";
+	if (!strcmp(key, RENDERER_KEY))
+		return g_cfg.renderer ? "Software" : "GPU (experimental)";
 	const char *ov = locked_value(key);
 	option_t *o = find(key);
 
@@ -271,6 +285,10 @@ const char *options_cycle(int i, int dir)
 		if (cur && strcmp(o->values[j], cur) == 0)
 			idx = j;
 	idx = (idx + dir + o->nvalues) % o->nvalues;
+	if (!strcmp(o->key, RENDERER_KEY)) {
+		config_set_renderer(idx == 0);
+		return o->values[idx];
+	}
 	config_set_core_override(o->key, o->values[idx]);
 	updated = true;
 	return o->values[idx];

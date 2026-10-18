@@ -1,12 +1,21 @@
 diff --git a/Makefile b/Makefile
-index d6379148..1f210654 100644
+index d6379148..f2089dc2 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -291,6 +291,14 @@ frontend/menu.o frontend/plugin_lib.o: CFLAGS += -DBUILTIN_GPU_PEOPS
+@@ -269,6 +269,7 @@ OBJS += plugins/gpulib/gpu.o plugins/gpulib/vout_pl.o plugins/gpulib/prim.o
+ ifeq "$(USE_ASYNC_GPU)" "1"
+ OBJS += plugins/gpulib/gpu_async.o
+ plugins/gpulib/%.o: CFLAGS += -DUSE_ASYNC_GPU
++plugins/gpu_unai/gpulib_if.o: CFLAGS += -DUSE_ASYNC_GPU
+ endif
+ ifeq "$(BUILTIN_GPU)" "neon"
+ CFLAGS += -DGPU_NEON
+@@ -291,7 +292,15 @@ frontend/menu.o frontend/plugin_lib.o: CFLAGS += -DBUILTIN_GPU_PEOPS
  OBJS += plugins/dfxvideo/gpulib_if.o
  endif
  
-+ifeq "$(BUILTIN_GPU)" "pica"
+-ifeq "$(BUILTIN_GPU)" "unai"
++ifneq (,$(filter $(BUILTIN_GPU),pica dual))
 +# PSX3D: the PS1 GPU on the 3DS GPU through citro3d
 +CFLAGS += -DGPU_PICA
 +CFLAGS += -DUSE_GPULIB=1
@@ -14,11 +23,28 @@ index d6379148..1f210654 100644
 +plugins/gpu_pica/gpu_pica.o: CFLAGS += $(PICA_CFLAGS)   # the simulator passes fake 3DS headers
 +endif
 +
- ifeq "$(BUILTIN_GPU)" "unai"
++ifneq (,$(filter $(BUILTIN_GPU),unai dual))
  CFLAGS += -DGPU_UNAI
  CFLAGS += -DUSE_GPULIB=1
+ OBJS += plugins/gpu_unai/gpulib_if.o
+@@ -313,6 +322,15 @@ endif
+ CC_LINK = $(CXX)
+ endif
+ 
++ifeq "$(BUILTIN_GPU)" "dual"
++CFLAGS += -DGPU_DUAL
++OBJS += plugins/gpulib/renderer_dispatch.o
++# Namespace only the renderer interface, leaving each primitive loop intact.
++RENDERER_API := init finish do_cmd_list sync_ecmds update_caches flush_queues set_interlace set_config notify_screen_change
++plugins/gpu_pica/gpu_pica.o: CFLAGS += $(foreach s,$(RENDERER_API),-Drenderer_$(s)=pica_renderer_$(s))
++plugins/gpu_unai/gpulib_if.o: CFLAGS += $(foreach s,$(RENDERER_API),-Drenderer_$(s)=unai_renderer_$(s))
++endif
++
+ # libchdr
+ ifeq "$(HAVE_CHD)" "1"
+ LCHDR = deps/libchdr
 diff --git a/Makefile.libretro b/Makefile.libretro
-index cd53109e..66bbf6c1 100644
+index cd53109e..b693c228 100644
 --- a/Makefile.libretro
 +++ b/Makefile.libretro
 @@ -362,6 +362,9 @@ else ifeq ($(platform), ctr)
@@ -36,7 +62,7 @@ index cd53109e..66bbf6c1 100644
  	OBJS += frontend/3ds/utils.o
  
 -	BUILTIN_GPU = unai
-+	# PSX3D: CTR_GPU=pica builds the 3DS GPU renderer (plugins/gpu_pica)
++	# PSX3D: dual includes both renderers, selected before GPUinit.
 +	CTR_GPU ?= unai
 +	BUILTIN_GPU = $(CTR_GPU)
 +
@@ -959,10 +985,10 @@ index 76f76afe..0e684ace 100644
    sem_post(&t.sem_done);
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 00000000..582b9945
+index 00000000..f7e72355
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,2448 @@
+@@ -0,0 +1,2454 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -2853,6 +2879,7 @@ index 00000000..582b9945
 +	memset(drawn, 0, sizeof(drawn));
 +	have_last = false;
 +}
++
 +// ------------------------------------------------------------------ gpulib renderer interface
 +
 +int renderer_init(void)
@@ -3015,12 +3042,15 @@ index 00000000..582b9945
 +	u_texscale = shaderInstanceGetUniformLocation(prog.vertexShader, "texscale");
 +	// the PS1 VRAM render target lives in VRAM, not in the scarce linear memory
 +	if (!C3D_TexInitVRAM(&vram_tex, VRAM_W, VRAM_H, GPU_RGBA5551))
-+		return false;
++		goto fail;
 +	target = C3D_RenderTargetCreateFromTex(&vram_tex, GPU_TEXFACE_2D, 0, -1);
 +	if (!target)
-+		return false;
++		goto fail;
 +	C3D_TexSetFilter(&vram_tex, GPU_NEAREST, GPU_NEAREST);
 +	return true;
++fail:
++	pica_exit();
++	return false;
 +}
 +
 +static void free_game_buffers(void)
@@ -3136,8 +3166,10 @@ index 00000000..582b9945
 +	pica_game_end();
 +	if (!dvlb)
 +		return;
-+	C3D_RenderTargetDelete(target);
-+	C3D_TexDelete(&vram_tex);
++	if (target) C3D_RenderTargetDelete(target);
++	target = NULL;
++	if (vram_tex.data) C3D_TexDelete(&vram_tex);
++	memset(&vram_tex, 0, sizeof(vram_tex));
 +	shaderProgramFree(&prog);
 +	DVLB_Free(dvlb);
 +	dvlb = NULL;
@@ -3612,7 +3644,7 @@ index 2b5daee6..acafaaf4 100644
  	u8 BLEND_MODE;
  	u8 TEXT_MODE;
 diff --git a/plugins/gpu_unai/gpulib_if.cpp b/plugins/gpu_unai/gpulib_if.cpp
-index 4b9b57e6..a7f0c13a 100644
+index 4b9b57e6..c2d56b87 100644
 --- a/plugins/gpu_unai/gpulib_if.cpp
 +++ b/plugins/gpu_unai/gpulib_if.cpp
 @@ -22,10 +22,13 @@
@@ -3629,7 +3661,17 @@ index 4b9b57e6..a7f0c13a 100644
  #include "old/if.h"
  
  //#include "port.h"
-@@ -111,6 +114,7 @@ void renderer_finish(void)
+@@ -105,12 +108,17 @@ int renderer_init(void)
+   return 0;
+ }
+ 
++static void psx3d_release_buffers(void);
++
+ void renderer_finish(void)
+ {
++  psx3d_stereo_set(0);
++  psx3d_release_buffers();
+ }
  
  void renderer_notify_screen_change(const struct psx_gpu_screen *screen)
  {
@@ -3637,7 +3679,7 @@ index 4b9b57e6..a7f0c13a 100644
    gpu_unai.inn.ilace_mask = gpu_unai.config.ilace_force;
  
    if (gpu.state.downscale_enable)
-@@ -179,8 +183,9 @@ static void gpuGP0Cmd_0xEx(gpu_unai_t &gpu_unai, u32 cmd_word)
+@@ -179,8 +187,9 @@ static void gpuGP0Cmd_0xEx(gpu_unai_t &gpu_unai, u32 cmd_word)
  
      case 5: {
        // GP0(E5h) - Set Drawing Offset (X,Y)
@@ -3649,7 +3691,7 @@ index 4b9b57e6..a7f0c13a 100644
      } break;
  
      case 6: {
-@@ -227,6 +232,480 @@ static inline void textured_sprite(int &cpu_cycles_sum, int &cpu_cycles)
+@@ -227,6 +236,511 @@ static inline void textured_sprite(int &cpu_cycles_sum, int &cpu_cycles)
    gput_sum(cpu_cycles_sum, cpu_cycles, gput_sprite(w, h));
  }
  
@@ -3739,7 +3781,7 @@ index 4b9b57e6..a7f0c13a 100644
 +
 +#define OV_RING 65536
 +#define OV_FLAG_FRAME 2          // frame boundary marker
-+static volatile u32 psx3d_ov_ring[OV_RING];
++static volatile u32 *psx3d_ov_ring; // allocated only while software stereo is active
 +static volatile u32 psx3d_ov_head, psx3d_ov_tail;
 +static u16 *psx3d_ov_buf[2];     // [front] = last complete frame's HUD
 +static volatile int psx3d_ov_front;
@@ -3820,6 +3862,7 @@ index 4b9b57e6..a7f0c13a 100644
 +// and primitives can't end up offset from each other.
 +extern "C" void psx3d_stereo_set(int on)
 +{
++  on = on && !psx3d_renderer_is_pica() && gpu.vram != NULL;
 +  if (on == psx3d_stereo_enabled)
 +    return;
 +  gpu_async_sync(&gpu);
@@ -3830,20 +3873,50 @@ index 4b9b57e6..a7f0c13a 100644
 +  psx3d_prims = 0;
 +  psx3d_seen_3d = false;
 +  if (on) {
++    if (!psx3d_ov_ring)
++      psx3d_ov_ring = (u32 *)malloc(OV_RING * sizeof(u32));
++    if (!psx3d_ov_ring)
++      return;
 +    // same layout as gpulib's VRAM (2MB, drawing may run past the end)
 +    if (!psx3d_vram2_mem)
 +      psx3d_vram2_mem = (u16 *)malloc(1024 * 512 * 2 * 2 + 8192);
-+    if (!psx3d_vram2_mem)
++    if (!psx3d_vram2_mem) {
++      free((void *)psx3d_ov_ring);
++      psx3d_ov_ring = NULL;
 +      return;
++    }
 +    u16 *v2 = (u16 *)(((uintptr_t)psx3d_vram2_mem + 4095) & ~(uintptr_t)4095);
 +    memcpy(v2, gpu.vram, 1024 * 512 * 2);
 +    psx3d_vram2 = v2;
 +  } else {
 +    free(psx3d_vram2_mem);
 +    psx3d_vram2_mem = NULL;
++    free((void *)psx3d_ov_ring);
++    psx3d_ov_ring = NULL;
 +  }
 +  __sync_synchronize();
 +  psx3d_stereo_enabled = on;
++}
++
++// GPUshutdown has already stopped the worker. No software allocations survive
++// into the library or a subsequent PICA game.
++static void psx3d_release_buffers(void)
++{
++  psx3d_vram2 = NULL;
++  free(psx3d_vram2_mem);
++  psx3d_vram2_mem = NULL;
++  free((void *)psx3d_ov_ring);
++  psx3d_ov_ring = NULL;
++  for (int i = 0; i < 2; i++) {
++    free(psx3d_ov_buf[i]);
++    psx3d_ov_buf[i] = NULL;
++  }
++  psx3d_ov_head = psx3d_ov_tail = 0;
++  psx3d_strength = psx3d_zc = 0;
++  psx3d_logz_sum = psx3d_logz_n = 0;
++  memset(psx3d_cur, 0, sizeof(psx3d_cur));
++  memset(&psx3d_pub, 0, sizeof(psx3d_pub));
++  memset(psx3d_pub_st, 0, sizeof(psx3d_pub_st));
 +}
 +
 +// frontend: 3D strength (max far disparity in PS1 pixels, from the slider)
@@ -4130,7 +4203,7 @@ index 4b9b57e6..a7f0c13a 100644
  extern const unsigned char cmd_lengths[256];
  
  int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
-@@ -237,6 +716,7 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
+@@ -237,6 +751,7 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
    le32_t *list = (le32_t *)list_;
    le32_t *list_start = list;
    le32_t *list_end = list + list_len;
@@ -4138,7 +4211,7 @@ index 4b9b57e6..a7f0c13a 100644
  
    if (IS_OLD_RENDERER()) {
      return oldunai_do_cmd_list(list_, list_len, ex_regs,
-@@ -252,12 +732,36 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
+@@ -252,12 +767,36 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
        break;
      }
  
@@ -4175,7 +4248,7 @@ index 4b9b57e6..a7f0c13a 100644
  
      switch (cmd)
      {
-@@ -663,9 +1167,18 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
+@@ -663,9 +1202,18 @@ int renderer_do_cmd_list(u32 *list_, int list_len, uint32_t *ex_regs,
          gpuGP0Cmd_0xEx(gpu_unai, cmd_word);
        } break;
      }
@@ -4195,7 +4268,7 @@ index 4b9b57e6..a7f0c13a 100644
    ex_regs[1] |= gpu_unai.GPU_GP1 & 0x1ff;
  
 diff --git a/plugins/gpulib/gpu.c b/plugins/gpulib/gpu.c
-index f04e3a55..53efc8ad 100644
+index f04e3a55..b20fa43a 100644
 --- a/plugins/gpulib/gpu.c
 +++ b/plugins/gpulib/gpu.c
 @@ -1,3 +1,4 @@
@@ -4213,7 +4286,7 @@ index f04e3a55..53efc8ad 100644
  #include <stdio.h>
  #include <stdlib.h>
  #include <string.h>
-@@ -32,6 +36,23 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+@@ -32,6 +36,31 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
      int *cycles_sum, int *cycles_last);
  static noinline void finish_vram_transfer(struct psx_gpu *gpu, int is_read, int is_async);
  
@@ -4226,6 +4299,14 @@ index f04e3a55..53efc8ad 100644
 +// ...and what the GPU drew is copied back before VRAM is read here
 +void pica_readback_rect(int x, int y, int w, int h);
 +void pica_readback_all(void);
++#ifdef GPU_DUAL
++// Software owns the shared VRAM directly; PICA's deferred work is inactive.
++#define pica_settle_rect(x,y,w,h) do { if (psx3d_renderer_is_pica()) pica_settle_rect(x,y,w,h); } while (0)
++#define pica_settle_vram() do { if (psx3d_renderer_is_pica()) pica_settle_vram(); } while (0)
++#define pica_drop_fills() do { if (psx3d_renderer_is_pica()) pica_drop_fills(); } while (0)
++#define pica_readback_rect(x,y,w,h) do { if (psx3d_renderer_is_pica()) pica_readback_rect(x,y,w,h); } while (0)
++#define pica_readback_all() do { if (psx3d_renderer_is_pica()) pica_readback_all(); } while (0)
++#endif
 +#else
 +#define pica_settle_rect(x, y, w, h)
 +#define pica_settle_vram()
@@ -4237,7 +4318,7 @@ index f04e3a55..53efc8ad 100644
  static void sync_renderer(struct psx_gpu *gpu)
  {
    if (gpu_async_enabled(gpu))
-@@ -582,6 +603,9 @@ static noinline void start_vram_transfer(struct psx_gpu *gpu, uint32_t pos_word,
+@@ -582,6 +611,9 @@ static noinline void start_vram_transfer(struct psx_gpu *gpu, uint32_t pos_word,
    gpu->dma.offset = 0;
    gpu->dma.is_read = is_read;
    gpu->dma_start = gpu->dma;
@@ -4247,7 +4328,7 @@ index f04e3a55..53efc8ad 100644
  
    // postponed until the actual transfer
    //sync_renderer(gpu);
-@@ -686,6 +710,8 @@ int do_vram_copy(uint16_t *vram, const uint32_t *ex_regs, const uint32_t *params
+@@ -686,6 +718,8 @@ int do_vram_copy(uint16_t *vram, const uint32_t *ex_regs, const uint32_t *params
    }
  
    renderer_update_caches(dx, dy, w, h, 0);
@@ -4256,7 +4337,7 @@ index f04e3a55..53efc8ad 100644
    return 4;
  }
  
-@@ -824,8 +850,20 @@ breakloop:
+@@ -824,8 +858,20 @@ breakloop:
    return pos;
  }
  
@@ -4277,7 +4358,7 @@ index f04e3a55..53efc8ad 100644
  {
    int cmd, pos;
    uint32_t old_e3 = gpu->ex_regs[3];
-@@ -869,12 +907,17 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+@@ -869,12 +915,17 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
          cmd = -1; // incomplete cmd, can't consume yet
          break;
        }
@@ -4297,7 +4378,7 @@ index f04e3a55..53efc8ad 100644
        pos += 4;
        continue;
      case 0x00:
-@@ -886,17 +929,24 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+@@ -886,17 +937,24 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
        continue;
      }
  
@@ -4323,7 +4404,7 @@ index f04e3a55..53efc8ad 100644
      }
  
      if (cmd == -1)
-@@ -954,9 +1004,27 @@ void GPUwriteData(uint32_t data)
+@@ -954,9 +1012,27 @@ void GPUwriteData(uint32_t data)
    }
  }
  
@@ -4351,7 +4432,7 @@ index f04e3a55..53efc8ad 100644
    uint32_t addr, *list, ld_addr;
    int len, left, count, ld_count = 32;
    int cpu_cycles_sum = 0;
-@@ -993,6 +1061,23 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
+@@ -993,6 +1069,23 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
        continue;
      }
  
@@ -4375,7 +4456,7 @@ index f04e3a55..53efc8ad 100644
      if (len) {
        left = do_cmd_buffer(&gpu, list + 1, len, &cpu_cycles_sum, &cpu_cycles_last);
        if (left) {
-@@ -1019,6 +1104,8 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
+@@ -1019,6 +1112,8 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
      }
    }
  
@@ -4384,7 +4465,7 @@ index f04e3a55..53efc8ad 100644
    sync_ecmds_status_bits(&gpu);
  
    //printf(" -> %d %d\n", cpu_cycles_sum, cpu_cycles_last);
-@@ -1085,6 +1172,10 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+@@ -1085,6 +1180,10 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
    int i;
  
    switch (type) {
@@ -4395,7 +4476,7 @@ index f04e3a55..53efc8ad 100644
      case 1: // save
        if (gpu.cmd_len > 0) {
          flush_cmd_buffer(&gpu);
-@@ -1092,12 +1183,15 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+@@ -1092,12 +1191,15 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
        }
  
        sync_renderer(&gpu);
@@ -4411,7 +4492,7 @@ index f04e3a55..53efc8ad 100644
        //memcpy(gpu.regs, freeze->ulControl, sizeof(gpu.regs));
        memcpy(gpu.ex_regs, freeze->ulControl + 0xe0, sizeof(gpu.ex_regs));
        gpu.status = freeze->ulStatus;
-@@ -1105,7 +1199,9 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+@@ -1105,7 +1207,9 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
        for (i = 8; i > 1; i--)
          GPUwriteStatus((i << 24) | freeze->ulControl[i]);
        renderer_sync_ecmds(gpu.ex_regs);
@@ -4422,7 +4503,7 @@ index f04e3a55..53efc8ad 100644
        gpu_async_sync_ecmds(&gpu);
        break;
    }
-@@ -1263,7 +1359,22 @@ void GPUrearmedCallbacks(const struct rearmed_cbs *cbs)
+@@ -1263,7 +1367,22 @@ void GPUrearmedCallbacks(const struct rearmed_cbs *cbs)
    renderer_set_config(cbs);
    vout_set_config(cbs);
  
@@ -4447,10 +4528,33 @@ index f04e3a55..53efc8ad 100644
  
  // for standalone plugins only
 diff --git a/plugins/gpulib/gpu.h b/plugins/gpulib/gpu.h
-index e929fe60..12ebcb3f 100644
+index e929fe60..6c8b3c0c 100644
 --- a/plugins/gpulib/gpu.h
 +++ b/plugins/gpulib/gpu.h
-@@ -170,6 +170,10 @@ int  prim_try_simplify_quad_gt(void *simplified, const void *prim);
+@@ -136,6 +136,22 @@ struct psx_gpu {
+ 
+ extern struct psx_gpu gpu;
+ 
++// Selection is fixed between GPUinit and GPUshutdown. 0 = GPU, 1 = software.
++#ifdef GPU_DUAL
++extern int psx3d_renderer_software;
++int psx3d_renderer_select(int software);
++#endif
++static inline int psx3d_renderer_is_pica(void)
++{
++#ifdef GPU_DUAL
++  return !psx3d_renderer_software;
++#elif defined(GPU_PICA)
++  return 1;
++#else
++  return 0;
++#endif
++}
++
+ extern const unsigned char cmd_lengths[256];
+ 
+ struct rearmed_cbs;
+@@ -170,6 +186,10 @@ int  prim_try_simplify_quad_gt(void *simplified, const void *prim);
  
  void cpy_mask(uint16_t *dst, const uint16_t *src, int l, uint32_t r6);
  
@@ -4461,7 +4565,7 @@ index e929fe60..12ebcb3f 100644
  static inline void do_vram_line(uint16_t *vram_, int x, int y,
      uint16_t *mem, int l, int is_read, uint32_t r6)
  {
-@@ -180,6 +184,8 @@ static inline void do_vram_line(uint16_t *vram_, int x, int y,
+@@ -180,6 +200,8 @@ static inline void do_vram_line(uint16_t *vram_, int x, int y,
      cpy_mask(vram, mem, l, r6);
    else
      memcpy(vram, mem, l * 2);
@@ -4470,19 +4574,11 @@ index e929fe60..12ebcb3f 100644
  }
  
  /* listing these here for correct linkage if rasterizer uses c++ */
-@@ -209,3 +215,12 @@ void SysPrintf(const char *fmt, ...);
+@@ -209,3 +231,4 @@ void SysPrintf(const char *fmt, ...);
  #endif
  
  #endif /* __GPULIB_GPU_H__ */
 +
-+static inline int psx3d_renderer_is_pica(void)
-+{
-+#ifdef GPU_PICA
-+  return 1;
-+#else
-+  return 0;
-+#endif
-+}
 diff --git a/plugins/gpulib/gpu_async.c b/plugins/gpulib/gpu_async.c
 index a67509b3..9f460143 100644
 --- a/plugins/gpulib/gpu_async.c
@@ -4761,10 +4857,21 @@ index a67509b3..9f460143 100644
 +
  // vim:shiftwidth=2:expandtab
 diff --git a/plugins/gpulib/gpu_async.h b/plugins/gpulib/gpu_async.h
-index 65248945..463b880a 100644
+index 65248945..0e58b89f 100644
 --- a/plugins/gpulib/gpu_async.h
 +++ b/plugins/gpulib/gpu_async.h
-@@ -17,6 +17,8 @@ int gpu_async_do_cmd_list(struct psx_gpu *gpu, const uint32_t *list, int list_le
+@@ -6,6 +6,10 @@
+ struct psx_gpu;
+ struct psx_gpu_async;
+ 
++#ifdef __cplusplus
++extern "C" {
++#endif
++
+ #define AGPU_DMA_MAX 4096 // words
+ 
+ #ifdef USE_ASYNC_GPU
+@@ -17,6 +21,8 @@ int gpu_async_do_cmd_list(struct psx_gpu *gpu, const uint32_t *list, int list_le
  int gpu_async_try_dma(struct psx_gpu *gpu, const uint32_t *data, int words);
  void gpu_async_enable(struct psx_gpu *gpu, int enable);
  void gpu_async_stop(struct psx_gpu *gpu);
@@ -4773,8 +4880,76 @@ index 65248945..463b880a 100644
  void gpu_async_sync(struct psx_gpu *gpu);
  int  gpu_async_sync_scanout(struct psx_gpu *gpu);
  void gpu_async_sync_ecmds(struct psx_gpu *gpu);
+@@ -40,4 +46,8 @@ void gpu_async_set_interlace(struct psx_gpu *gpu, int enable, int is_odd);
+ 
+ #endif
+ 
++#ifdef __cplusplus
++}
++#endif
++
+ #endif // __GPULIB_GPU_ASYNC_H__
+diff --git a/plugins/gpulib/renderer_dispatch.c b/plugins/gpulib/renderer_dispatch.c
+new file mode 100644
+index 00000000..2afeb84f
+--- /dev/null
++++ b/plugins/gpulib/renderer_dispatch.c
+@@ -0,0 +1,53 @@
++/* PSX3D renderer selection. Dispatch at the command-list boundary; neither
++ * renderer's primitive loop pays an indirect call or selection check. */
++#include "gpu.h"
++
++int psx3d_renderer_software = 1;
++static int live;
++
++int psx3d_renderer_select(int software)
++{
++  if (live)
++    return -1;
++  psx3d_renderer_software = !!software;
++  return 0;
++}
++
++int pica_renderer_init(void);
++int unai_renderer_init(void);
++void pica_renderer_finish(void);
++void unai_renderer_finish(void);
++
++int renderer_init(void)
++{
++  int ret = psx3d_renderer_software ? unai_renderer_init() : pica_renderer_init();
++  live = ret == 0;
++  return ret;
++}
++
++void renderer_finish(void)
++{
++  if (psx3d_renderer_software)
++    unai_renderer_finish();
++  else
++    pica_renderer_finish();
++  live = 0;
++}
++
++// Direct calls allow tail branches, including the hot command-list entry.
++#define DISPATCH(ret, name, args, call) \
++  ret pica_renderer_##name args; \
++  ret unai_renderer_##name args; \
++  ret renderer_##name args { \
++    return psx3d_renderer_software ? unai_renderer_##name call : pica_renderer_##name call; \
++  }
++
++DISPATCH(int, do_cmd_list,
++  (uint32_t *list, int count, uint32_t *ex, int *sum, int *last, int *cmd),
++  (list, count, ex, sum, last, cmd))
++DISPATCH(void, sync_ecmds, (uint32_t *ex), (ex))
++DISPATCH(void, update_caches, (int x, int y, int w, int h, int changed), (x, y, w, h, changed))
++DISPATCH(void, flush_queues, (void), ())
++DISPATCH(void, set_interlace, (int enable, int odd), (enable, odd))
++DISPATCH(void, set_config, (const struct rearmed_cbs *cbs), (cbs))
++DISPATCH(void, notify_screen_change, (const struct psx_gpu_screen *screen), (screen))
 diff --git a/plugins/gpulib/vout_pl.c b/plugins/gpulib/vout_pl.c
-index 07cf6daa..3ad384d9 100644
+index 07cf6daa..362735c0 100644
 --- a/plugins/gpulib/vout_pl.c
 +++ b/plugins/gpulib/vout_pl.c
 @@ -82,6 +82,15 @@ int vout_update(struct psx_gpu *gpu, int src_x, int src_y)
@@ -4785,7 +4960,7 @@ index 07cf6daa..3ad384d9 100644
 +#ifdef GPU_PICA
 +  // PSX3D: the picture is already on the 3DS GPU (gpu_pica); only 24-bit
 +  // modes (movies) still go through the CPU
-+  if (!(gpu->status & PSX_GPU_STATUS_RGB24)) {
++  if (psx3d_renderer_is_pica() && !(gpu->status & PSX_GPU_STATUS_RGB24)) {
 +    void pica_flip(void);
 +    pica_flip();
 +    return 1;

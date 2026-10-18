@@ -18,7 +18,12 @@ done yet: mask bit, texture windows, dithering, 24-bit movies through the
 GPU, real 3D, and broad game testing. Expect glitches; the release builds on
 `main` still use the software renderer.
 
-Build the software renderer instead with `make clean && make GPU=unai`.
+Each build includes both renderers and starts with GPU rendering by default.
+With `debug=1` in `sdmc:/3ds/PSX3D/config.ini`, open **Settings → Core options →
+Renderer** and choose **GPU** or **Software**. Close and reopen the game to apply
+the change. The library setting changes the default; the in-game setting is
+remembered for that game. `renderer=sw` or `renderer=gpu` in `switches.txt`
+overrides both settings for testing. See [the implementation report](docs/dual-renderer.md).
 
 ## Features
 
@@ -98,6 +103,11 @@ git -C core submodule update --init deps/libchdr deps/libretro-common
 make        # psx3d/PSX3D.3dsx
 make cia    # psx3d/PSX3D.cia (requires makerom and bannertool)
 ```
+
+The former root `GPU=pica` / `GPU=unai` build modes have been replaced by the
+runtime setting. After updating from a single-renderer build, run `make clean`
+once. Core-only `CTR_GPU=pica` and `CTR_GPU=unai` builds remain available for
+diagnostics. Host configuration regression: `tests/renderer_config.sh`.
 
 ## Credits
 

@@ -7,9 +7,7 @@
 #include <stdarg.h>
 #include <time.h>
 #include "psx3d.h"
-#ifdef PSX3D_PICA
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
-#endif
 
 #define SRM_CHECK_FRAMES 180
 #define DISPLAY_HZ 59.831        // 3DS LCD refresh rate   // look for memory card writes every ~3 seconds
@@ -928,14 +926,14 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	memset(&disk, 0, sizeof(disk));
 	log_printf("loading %s\n", path);
 	config_game_begin(game_name);   // before loading: the core reads the widescreen option at load
-#ifdef PSX3D_PICA
-	// the hardware renderer's textures need the memory the library music used
-	music_unload();
-	video_gpu_idle();
-	covers_release_gpu();
-	log_printf("gpu_pica: game buffers %s, %uK GPU memory left\n",
-		pica_game_begin(!g_new3ds) ? "ready" : "FAILED", (unsigned)(linearSpaceFree() / 1024));
-#endif
+	bool software = sw_renderer >= 0 ? sw_renderer : g_cfg.renderer;
+	log_printf("renderer: %s (applied at game start)\n", software ? "Software" : "GPU");
+	if (!video_game_begin(software)) {
+		log_printf("renderer initialization failed\n");
+		config_game_end();
+		return false;
+	}
+	config_sync_stereo();
 
 	retro_init();
 	core_initialized = true;
@@ -944,10 +942,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		config_game_end();
 		retro_deinit();
 		core_initialized = false;
-#ifdef PSX3D_PICA
-		pica_game_end();
-		music_reload();
-#endif
+		video_game_end();
 		return false;
 	}
 	// DualShock: starts in digital mode, games switch it to analog themselves,
@@ -1044,13 +1039,11 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			rewind_capture();
 			if (sw_acap && ++acap_frames == 60)   // same emulated frame every run
 				audio_hash_start(44100 * 10);
-#ifdef PSX3D_PICA
-			if (sw_vramdump && --sw_vramdump == 0) {
+			if (renderer_is_gpu() && sw_vramdump && --sw_vramdump == 0) {
 				void pica_dump_vram(const char *path);
 				pica_dump_vram(PSX3D_DIR "/vram.bin");
 				log_printf("test: VRAM dumped\n");
 			}
-#endif
 			if (ff)
 				next_deadline = svcGetSystemTick();
 		}
@@ -1066,7 +1059,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			else if (g_cfg.stereo != 2 || below > 30)
 				config_set_stereo_active(false);
 		}
-		if (g_cfg.stereo == 2)
+		if (!renderer_is_gpu() && g_cfg.stereo == 2)
 			psx3d_depth_frame();   // this frame's depth map is complete
 		u64 t1 = svcGetSystemTick();
 		fps_frames++;
@@ -1124,8 +1117,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			if (log_linked() || sw_prof || sw_stats)
 				log_printf("  %s\n", abuf);
 			pmu_report();
-#ifdef PSX3D_PICA
-			{
+			if (renderer_is_gpu()) {
 				void pica_stats(char *buf, int n);
 				char pb[512];
 				pica_stats(pb, sizeof(pb));
@@ -1137,7 +1129,6 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 					log_printf("  %s; top fb %d\n", pb, video_probe_top());
 				}
 			}
-#endif
 			if (sw_prof) {
 				static const char *const names[6] = { "compile", "inval", "spu", "gpu", "irq", "cdr" };
 				char pb[200]; int n = 0;
@@ -1188,9 +1179,6 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	audio_exit();
 	retro_deinit();
 	core_initialized = false;
-#ifdef PSX3D_PICA
-	pica_game_end();
-	music_reload();
-#endif
+	video_game_end();
 	return true;
 }

@@ -1,8 +1,6 @@
 // Measure citro3d's implicit whole-heap flush separately from GPU work.
 #include "psx3d.h"
-#ifdef PSX3D_PICA
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
-#endif
 
 static u64 heap_ticks;
 
@@ -90,9 +88,8 @@ void __wrap_C3D_DrawElements(GPU_Primitive_t primitive, int count, int type, con
 
 static void flush_ranges(void)
 {
-#ifdef PSX3D_PICA
-	pica_flush_vertices();
-#endif
+	if (renderer_is_gpu())
+		pica_flush_vertices();
 	for (unsigned i = 0; i < nranges; i++)
 		svcStoreProcessDataCache(CUR_PROCESS_HANDLE, (u32)ranges[i].begin,
 			ranges[i].end - ranges[i].begin);

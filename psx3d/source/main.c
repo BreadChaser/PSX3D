@@ -36,7 +36,9 @@ void __system_allocateHeaps(void)
 	u32 reserve = remaining > 80 * MB ? 12 * MB : 8 * MB;
 	u32 linear = remaining / 3;
 	if (linear > 24 * MB) linear = 24 * MB;
-	if (linear < 12 * MB) linear = 12 * MB;
+	// The dual image reduces remaining memory slightly. Keep enough linear
+	// space for the contiguous 4 MiB atlas as well as staging and vertices.
+	if (linear < 14 * MB) linear = 14 * MB;
 	u32 heap = remaining > linear + reserve + 8 * MB ? remaining - linear - reserve : 8 * MB;
 	if (heap > 64 * MB) heap = 64 * MB;
 	if (heap + linear > remaining)
@@ -121,6 +123,7 @@ int sw_state = -1;       // test: load this save state slot when the game starts
 bool sw_nogputhread;
 bool sw_gpu_async = true;
 bool sw_gpu_flush = true;
+int sw_renderer = -1;    // renderer=sw|gpu overrides global/per-game settings
 bool sw_aa;              // test: Old 3DS: gameplay supersampled too
 bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 
@@ -142,6 +145,8 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "gputhread")) sw_nogputhread = false;
 		else if (!strcmp(a, "nosputhread")) sw_nosputhread = true;
 		else if (!strcmp(a, "acap")) sw_acap = true;
+		else if (!strcmp(a, "renderer=sw")) sw_renderer = 1;
+		else if (!strcmp(a, "renderer=gpu")) sw_renderer = 0;
 		else if (!strcmp(a, "state0")) sw_state = 0;
 		else if (!strncmp(a, "state=", 6)) sw_state = atoi(a + 6);
 		else if (!strncmp(a, "gldbg=", 6)) sw_gldbg = atoi(a + 6);

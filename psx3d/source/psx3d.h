@@ -40,6 +40,7 @@ typedef struct {
 	int  bottom_off;   // backlight off on the bottom screen while playing
 	int  autosave;     // save on exit, offer to continue next time
 	int  half3d;       // draw 3D polygons at half vertical resolution (Old 3DS default)
+	int  renderer;     // 0 = GPU, 1 = software; applied when a game starts
 } psx3d_config;
 
 extern psx3d_config g_cfg;
@@ -49,6 +50,7 @@ const char *config_core_override(const char *key);
 bool config_widescreen(void);
 int config_screen_mode(void);
 void config_set_screen_mode(int mode);
+void config_set_renderer(int software);
 void config_game_begin(const char *game);
 void config_game_set_screen(int mode);
 void config_game_end(void);
@@ -72,6 +74,9 @@ const char *options_cycle(int i, int dir);
 
 // video.c
 bool video_init(void);
+bool video_game_begin(bool software);
+void video_game_end(void);
+bool renderer_is_gpu(void);   // active renderer, independent of pending settings
 void video_exit(void);
 void *video_framebuffer(unsigned width, unsigned height, size_t *pitch);
 void video_frame(const void *data, unsigned width, unsigned height, size_t pitch);
@@ -112,6 +117,7 @@ extern int psx3d_prof_on;
 void new_dynarec_print_stats(void);
 extern bool sw_prof, sw_stats, sw_o3ds, sw_fs1, sw_noskip, sw_nosputhread, sw_acap;
 extern int sw_state, sw_gldbg, sw_vramdump;
+extern int sw_renderer;       // -1 = use config; 0 = GPU, 1 = software
 extern int sw_pmu0, sw_pmu1;
 extern char sw_clock[8], sw_cdra[8], sw_opt[8][48];
 // pmu.c - ARM11 performance counters (test tool)
