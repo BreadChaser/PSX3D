@@ -55,7 +55,7 @@ CFLAGS	:=	-g -Wall -O2 -mword-relocations -fomit-frame-pointer -mfpu=vfp \
 			-ffunction-sections \
 			$(ARCH)
 
-PICA_LAYOUT ?= baseline
+PICA_LAYOUT ?= split
 CFLAGS += -DPICA_LAYOUT_NAME=\"$(PICA_LAYOUT)\"
 
 CFLAGS	+=	$(INCLUDE) -D__3DS__ $(EXTRA_DEFS) -I$(COREDIR)/deps/libretro-common/include

@@ -132,7 +132,7 @@ static void publish_status(void)
 	        running && !strcmp(opt("pcsx_rearmed_gpu_thread_rendering"), "enabled") ? "true" : "false",
 	        sw_nosputhread ? "true" : "false");
 	p += strlen(p);
-	p += sprintf(p, ",\"build\":\"release-v031-rc1-" PICA_LAYOUT_NAME "\",\"rtfs\":%s,\"ff\":%s,\"frontend\":%s,\"floataudio\":%s", sw_rtfs ? "true" : "false", sw_ff ? "true" : "false", sw_frontend ? "true" : "false", sw_floataudio ? "true" : "false");
+	p += sprintf(p, ",\"build\":\"release-v031-rc2-" PICA_LAYOUT_NAME "\",\"rtfs\":%s,\"ff\":%s,\"frontend\":%s,\"floataudio\":%s", sw_rtfs ? "true" : "false", sw_ff ? "true" : "false", sw_frontend ? "true" : "false", sw_floataudio ? "true" : "false");
 	p += sprintf(p, ",\"version\":\"%s\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
 	p += sprintf(p, ",\"pica_prims\":%u,\"idle\":%d,\"idleptr\":%d,\"idledelay\":%d", pica_prims, psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay);
 	p += sprintf(p, ",\"skipgate\":\"%s\"", psx3d_skipgate ? "new" : "old");

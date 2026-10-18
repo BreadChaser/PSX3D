@@ -139,7 +139,8 @@ were superseded by `662d92f`; integrate the complete commit stack.
 | `pica_prims_old` | Disable all three | same |
 
 Individual enable keywords accumulate; reset with `pica_prims_old` before
-isolating another experiment. No keyword means old paths. These are diagnostic
+isolating another experiment. In v0.3.1, no keyword enables all three paths;
+use `pica_prims_old` first for individual A/B experiments. These are diagnostic
 switches, not user settings. Both startup `switches.txt` and remote batch/load
 accept them. Remote `set` accepts them at the synchronized between-vblank
 boundary; unlike RTT cache mode, they need no reload. Remote status reports

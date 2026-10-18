@@ -55,8 +55,8 @@ BANNERTOOL ?= bannertool
 # cached icon when this number changes. makerom drops the minor field
 # (bits 4-9) of the title version, so major*16+minor goes in the major field
 # and patch in the micro field. Reserve micro 0..2 for the private pre-release
-# diagnostics (0.3.1/0.3.2): public 0.3.0 must replace those without downgrading.
-# The application/3DSX still reports its actual semantic version (0.3.0).
+# diagnostics (0.3.1/0.3.2). Keep the offset for monotonic public updates:
+# v0.3.0 = 3075, v0.3.1 = 3076.
 VERSION    ?= $(shell sed -n 's/.*PSX3D_VERSION *"\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\)".*/\1 \2 \3/p' psx3d/source/psx3d.h | awk '{print ($$1*16 + $$2)*1024 + $$3 + 3}')
 
 cia: app

@@ -21,7 +21,7 @@
 #define SOTN(disc) GAME_PRESET_SAME(disc, { -1, -1, -1, -1, -1, -1, PRESET_RENDERER_SOFTWARE, INHERIT_SLOTS })
 static const game_preset_t game_presets[] = {
 	// SotN: round-two GPU approaches software parity in the USA fight.
-	// Keep software for v0.3.0: it remains the proven picture on both models.
+	// Keep software: it remains the proven picture on both models.
 	// Regional identities: libretro-database metadat/redump/Sony - PlayStation.dat;
 	// conservative software default applies to all verified regional releases.
 	SOTN("SLUS00067"), SOTN("SLES00524"), SOTN("SCPS45196"),
