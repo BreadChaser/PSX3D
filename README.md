@@ -35,88 +35,43 @@ in progress.
 
 ## Performance
 
-Measured without screen streaming: both consoles were rebooted without BootNTR,
-with no NTR viewer requests and passive UDP monitoring during the session.
-All figures below use the same release CIA, normal PS1 clock, 5 s warmup and
-20 s sampling target (19–20 complete one-second intervals per run).
-Frameskip is off unless marked automatic. Old 3DS uses slot 2;
-New 3DS uses slot 0. These are short saved-scene checks, not whole-game guarantees;
-the fight states differ between consoles. Software retains its Old 3DS
-half-height polygon rendering.
+Frames per second with frameskip off, measured on 2026-10-18 without screen
+streaming. Full speed is 60.
 
-FPS means host-frame throughput, not unique pictures or internal animation rate.
-NTSC full speed is about 60 host frames/s. Automatic frameskip improves game
-speed by drawing fewer pictures.
-
-| Game | Old GPU FPS | Old Software FPS | New Software FPS |
+| Game | Old 3DS, GPU | Old 3DS, Software | New 3DS |
 |---|---:|---:|---:|
-| Crash Bandicoot | 47.77 | 22.76 | 59.99 |
-| Crash Team Racing | 30.02 | 20.59 | 59.99 |
-| Gran Turismo 2 | 28.11 | 21.50 | 60.00 |
-| Silent Hill | 35.01 | 28.64 | 60.03 |
-| Ridge Racer Type 4 | 53.65 | 32.00 | 60.02 |
-| Castlevania: SotN (Dracula fight) | 53.47 | 56.01 | 60.00 |
+| Ridge Racer Type 4 | 53.7 | 32.0 | 60 |
+| Castlevania: Symphony of the Night | 53.5 | 56.0 | 60 |
+| Crash Bandicoot | 47.8 | 22.8 | 60 |
+| Silent Hill | 35.0 | 28.6 | 60 |
+| Crash Team Racing | 30.0 | 20.6 | 60 |
+| Gran Turismo 2 | 28.1 | 21.5 | 60 |
 
-Old 3DS defaults to GPU (experimental), except the SotN Software preset;
-New 3DS defaults to Software. Both Old renderer columns were measured back to
-back in this session. Earlier results with NTR streaming are excluded.
+On the Old 3DS, automatic frameskip brings lighter games such as Crash
+Bandicoot, Ridge Racer Type 4 and Symphony of the Night to full game speed by
+showing fewer pictures. The heaviest 3D games still run below full speed.
+The GPU renderer also looks sharper on the Old 3DS: it draws every line, where
+the software renderer uses half-height 3D there to save time.
 
-### Castlevania: Symphony of the Night
-
-| Console | GPU, retained regions | GPU, single square | Software | GPU, auto frameskip | Software, auto frameskip |
-|---|---:|---:|---:|---:|---:|
-| Old 3DS | 53.47 | 13.90 | 56.01 | 60.00 | 60.00 |
-| New 3DS | 60.00 | 31.02 | 60.00 | 60.00 | 60.00 |
-
-Menu measurements use spare slot 8, with the same warmup/sample durations.
-
-| Console / SotN menu | Automatic GPU | Old RTT/cache | Software |
-|---|---:|---:|---:|
-| Old 3DS | 60.00 | 36.81 | 52.45 |
-| New 3DS | 60.00 | 60.00 | 60.00 |
-
-GPU now runs close to Software in the tested Dracula fight. **Software remains the
-preset on both consoles for v0.3.0**, as it has the proven picture. Retained
-regions (`rttcache=new`) remove repeated texture decoding; the diagnostic
-single-square cache (`rttcache=old`) remains available. The title/menu RTT fix
-also removes the white rectangles seen in earlier captures. Sparse HUD/menu
-screenshots do not establish accuracy throughout the game.
-
-R4 measured 53.65 FPS with automatic RTT and 33.41 with both old paths
-(+60.58%). The gain persists without streaming, so the earlier R4 jump was not
-solely a streaming artifact.
-
-See the [complete hardware check](docs/release-check-v0.3.0.md) for same-binary RTT comparisons,
-RC02 screening flags, save/load checks and picture limits.
+Details of how these were measured: [hardware check](docs/release-check-v0.3.0.md).
 
 ## Presets and settings
 
-Castlevania: Symphony of the Night uses **Software on both consoles** for v0.3.0.
-The updated GPU now runs close to Software in the tested fight, but Software retains
-the proven picture. The preset covers verified USA, Europe, Japan/Asia and Japanese reissue serials:
-`SLUS00067`, `SLES00524`, `SCPS45196`, `SLPM86023`, `SLPM86073`, `SLPM87328`.
-Serial identities were checked against the Redump PlayStation DAT in
-libretro-database; hardware measurements use the USA edition.
+Games are recognised by their disc, and a built-in preset picks the best
+settings for each game separately on Old and New 3DS. Games without a preset
+show every option the console supports. Your own choices override the preset,
+and **Reset to defaults** (global or per game) brings it back. In v0.3.0,
+Castlevania: Symphony of the Night uses the software renderer on both consoles.
 
-Presets are selected by the disc serial, separately for Old and New 3DS.
-Explicit per-game choices override presets; a game reset drops its overrides
-and returns to its preset/global defaults. Global reset restores the console's
-defaults. The library's **X** button opens global settings; **Settings** in the
-pause menu applies to the current game. Renderer changes require reopening it.
+The library's **X** button opens the global settings; **Settings** in the pause
+menu applies to the current game. Settings are one list grouped into Display,
+Performance, Controls, Sound, General and Advanced.
 
-Settings form one scrolling list grouped as **Display, Performance, Controls,
-Sound, General, Advanced**. **Renderer** and **Show FPS** are under Performance;
-**Smooth audio when slow** is under Sound; **Reset to defaults** is under General.
-Advanced contains **Core options...**, filtered to the active renderer/console.
-Show FPS cycles **Off / FPS / Detailed**. FPS shares the bottom touch layout;
-Detailed replaces it with statistics and a MENU button. The game image stays
-clear of debug overlays.
-
-Old 3DS can use its full bottom screen for L2/R2/L3/R3 and a right stick.
-New 3DS can show stick-click buttons where needed. Touch controls can be
-remapped per game, and New 3DS side buttons can be flipped left/right. The
-bottom screen is blank with its backlight off when no controls or readout are
-needed. Uncurated games retain the full available control set.
+The bottom screen shows only what a game needs: on the Old 3DS a right stick
+and L2/R2/L3/R3, on the New 3DS stick-click buttons for games that use them
+(left or right side). Every touch button can be remapped per game. With nothing
+to show, the bottom screen turns off. **Show FPS** can display the frame rate in
+the corner, or detailed statistics.
 
 ## Requirements
 
@@ -150,14 +105,13 @@ library to choose another folder. A 3DSX is also available for Homebrew Launcher
 | In game | Touch MENU, or blank bottom screen | Pause menu |
 | In game | Touch controls | Mapped game buttons |
 
-Hotkeys are remappable; rewind requires New 3DS and enabling it for that game.
+Hotkeys are remappable. Rewind needs a New 3DS and is turned on per game.
 
 ## Box art and files
 
 Box art downloads from [libretro-thumbnails](https://github.com/libretro-thumbnails/libretro-thumbnails)
 and is cached in `sdmc:/3ds/PSX3D/covers/`. Custom PNGs can use the matching
-filename. Internet is needed only for initial downloads. Developer remote
-sessions suppress cover loading to reserve network resources.
+filename. Internet is needed only for initial downloads.
 
 | Under `sdmc:/3ds/PSX3D/` | Contents |
 |---|---|
