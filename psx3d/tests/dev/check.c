@@ -1,6 +1,7 @@
 // Exercise the actual control state machine and run-switch validation without a
 // console: lifecycle, renderer changes, warmup, averages, stop-on-failure, paths.
 #define PSX3D_H
+#define PSX3D_VERSION "test"
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
