@@ -1,5 +1,9 @@
 # GPU reference comparison and fixes
 
+> Historical report: patch/submodule statements describe the original commit.
+> Current builds use tracked core files and host-only oracles in `reference/`;
+> see [the vendoring report](../../docs/vendor-core.md).
+
 Worktree: `t3/gpu-renderer-reference-harness`, starting at `30c62a9`.
 No console access, deployment, push or public posting was performed.
 

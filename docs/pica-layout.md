@@ -120,7 +120,7 @@ Repeat baseline/section/baseline and baseline/os/baseline, preferably screening 
 
 ## Reproduce
 
-From this branch, after the ordinary submodule/patch setup:
+From the current checkout, with the committed core:
 
 ```bash
 tools/pica-layout/build.sh
@@ -149,32 +149,11 @@ worker's existing serial queue, releasing its lock after each four-run batch.
 This is48 runs,624s warm/sample plus installs/protocol overhead. Do not start
 another console scheduler. Highskip/build18 remains canceled.
 
-A direct root merge conflicts in the serialized core patch and build identity.
-`tools/pica-layout/merge-source.py` resolves this through actual sources:
-reconstruct base/current/candidate core files, run a three-way source merge,
-regenerate patch0002 against upstream, and prepare a normal two-parent merge
-commit on `t3/pica-layout-on-o3ds60`. It never changes either worktree. Other
-root files use Git's normal merge result; the target build number and status
-fields are retained, with `-pica-<layout>` appended to the identity. Only core
-Makefile, gpu_pica.c, gpulib/gpu.c and the new pica_layout.h change. Idle, class,
-frontend, PMU and frameskip source remain the worker's versions.
-
-After the worker commits its intended pending source, prepare a fresh merge:
-
-```bash
-python3 /home/tony/.t3/worktrees/PS1_3ds/t3-82d2c88c/tools/pica-layout/merge-source.py \
-  --target t3/o3ds60
-# Review integration/identity.txt and core-source.delta under devtools/pica-layout.
-# In the performance worktree, after acceptance:
-git merge --ff-only t3/pica-layout-on-o3ds60
-```
-
-The patch-backed submodule must be refreshed after merging: in the worker,
-reverse-apply the PRE-MERGE patch0002 to its actual core, then apply the merged
-patch0002 (patch0001 stays applied). Preserve the old patch before merging;
-check its reverse application first. Do not run root make with an old patched
-core and a new patch0002. The script's isolated source reconstruction makes no
-assumption about the state of an active worker core.
+The original integration reconstructed the patched core sources before merging
+them because Git could not merge serialized patch hunks safely. That one-off
+helper was removed when the core was vendored. Current core changes merge as
+ordinary files under `core/`; no submodule refresh or patch regeneration is
+needed. The original source merge and its evidence remain in project history.
 
 Build the integrated split with `make cia PICA_LAYOUT=split`; baseline remains
 the build default until the maintainer explicitly adopts a winner. The new

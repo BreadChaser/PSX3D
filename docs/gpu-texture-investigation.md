@@ -368,11 +368,11 @@ arbitrary game’s feedback draw can be dropped.
 
 ## Reproduction and handoff
 
-Build locally under the repository’s submodule-plus-patch workflow:
+Build locally using the committed core:
 
 ```bash
 source /home/tony/Development/PS1_3ds/devtools/env.sh
-# Core changes are already represented in patch 0002 on this branch.
+# Core changes are ordinary tracked files; no patch step is needed.
 make -j8
 psx3d/tests/dev/run.sh
 psx3d/tests/host/run.sh

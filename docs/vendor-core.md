@@ -37,8 +37,10 @@ With that environment, the original patched baseline and the vendored build
 have identical allocated ELF sections, addresses, flags and alignment,
 including `.text`, `.rodata`, `.data`, exception tables, constructors, GOT,
 BSS and TLS. Both also match the immutable RC2 ELF's allocated sections.
-The complete 3DSX is byte-identical to RC2. ELF debug paths identify this
-worktree; nonallocated debugging information is not an executable change.
+The complete 3DSX is byte-identical to RC2. All six controlled builds within
+this worktree also have byte-identical **complete ELF files**, including debug
+information. RC2's ELF has different nonallocated debug paths; its allocated
+sections and the complete packaged executable content match exactly.
 
 CIA packaging is not deterministic: makerom seeds its random generator from
 `time(0)`, then generates ticket material, ticket ID and content IDs (makerom
@@ -49,8 +51,7 @@ remains 3076. The complete 3DSX is identical too.
 
 ## Pruning and final results
 
-Pruning stages and final size measurements are recorded here after each clean
-build and identity check. No simulator or console result is claimed yet.
+Each resulting source tree passed a clean build and the identity checks below.
 
 ### Stage 1: unused platforms and CPU implementations
 
@@ -89,3 +90,86 @@ all allocated ELF sections and the complete 3DSX match the vendored baseline.
 The frontend host suite and developer-control/transport/updater suites pass
 with ASan/UBSan. Generated host mockups were archived under devtools and the
 tracked reference images restored.
+
+## Final measurements
+
+Counts below are exact Git-tree snapshots, not build-directory sizes. Text
+lines count newline characters in files without NUL bytes; byte counts include
+all tracked files. The last pruning commit is `cf54356`; subsequent changes
+only clarify documentation. The vendored baseline is `eaaa0ea`.
+
+- Vendored baseline: core **1,392 files / 741,010 text lines / 25,851,020 bytes**.
+- Platform/CPU pruning (`57e7988`): core 1,295 files / 719,004 lines / 24,973,144 bytes.
+- Plugin pruning (`98fd180`): core 1,243 files / 669,750 lines / 23,186,262 bytes.
+- Dependency pruning (`cf54356`): core **290 files / 178,557 lines / 6,371,070 bytes**.
+
+Core reduction: **1,102 files, 562,453 lines and 19,479,950 bytes (75.35%)**.
+The whole tracked repository, including the relocated host oracles and all
+frontend/docs/assets, goes from **3,713 files / 39,802,710 bytes** to
+**2,626 files / 20,985,281 bytes** at the last pruning commit: **47.28% smaller**.
+Whole-repository text lines drop from 881,728 to 337,784. These are checkout
+contents: Git history still retains the original vendoring commit and deleted
+sources. This work does not rewrite history or claim existing clones shrink.
+
+## Final verification and evidence
+
+All of `baseline-controlled`, `vendored`, `prune-platform`, `prune-plugins`,
+`prune-deps` and post-commit `final` clean builds pass and produce:
+
+```text
+Complete ELF SHA256 (same worktree, all six builds):
+2e6ac50e4cea912f42fc44a8a954872a81b928bd4bc8f8fe422c39977e621bc9
+Complete 3DSX SHA256 (all six builds AND immutable release RC2):
+0a8f07efdaa20911786a221a4d4a61bf4caa87613c68952fcad14cd610b02f59
+.text   2,146,052 bytes  SHA256 295e5508f2acb083915f9746c53840242a85499907284b537362a42b0bfc99fc
+.rodata   329,324 bytes  SHA256 8bb8dba2cd784d7293017b20fc248e3cbd46b349bad815811442448d492a7eef
+.data     114,404 bytes  SHA256 c173a296a444fe3019c2ab6ce922a39fe92a3016f199dda92656a55e4f677d01
+```
+
+The entire CIA NCCH content is also identical to release RC2 in every build
+(SHA256 `51ce42247ab85dac4b3e91768c80877fddba2ade26d6ac90ad7f1b6dd44533a2`).
+The randomized ticket/TMD metadata explains the differing outer CIA hashes.
+No executable implementation, data, layout, title version or RomFS changes.
+
+The relocated P.E.Op.S./portable NEON reference renderers compile, as does the
+full Linux ARM command-capture core/runner with the pruned dependencies. The
+existing synthetic fixture command with `--check` completes successfully.
+It still reports its existing polygon-sampling and approximate mask-half-blend
+picture differences; this is harness validation, not a new accuracy claim.
+The renderer polygon/presentation/held-frame regression passes with ASan/UBSan.
+Frontend host checks and developer-control/parser/transport/updater tests pass
+with sanitizers (including all seven Python client tests). Those mocked
+"old/new" tests use localhost; they do not contact either console.
+
+**600-frame six-game draw-hash comparisons: not run. Old 3DS A/B/A: not run.**
+Both were conditional on an executable change, and the stronger full-3DSX and
+allocated-ELF identity checks pass. No Old or New 3DS connection, install,
+input, state write or NTR change was made. RC2 was left untouched, so no
+restoration was needed. No new hardware performance numbers are claimed.
+
+Evidence in ignored `devtools/vendor-core/` includes `build.sh`, `mk.sh`,
+`compare-elf.py`, original patched-source archive/manifest, per-stage
+ELF/3DSX/CIA/maps/build logs/SHA256 lists/identity JSON, exact deletion lists,
+Git-tree size snapshots, source/notice/oracle audit, host/developer/sanitizer
+logs and host reference fixture output. None of the test output is committed.
+
+## Deliberately retained
+
+- Both gpu_unai implementations and gpu_pica/GPULib, the interpreter fallback,
+  ARM dynarec/GTE code, sound and CD threads, HLE/real BIOS handling, cheats,
+  PPF, PBP/compressed image support, and all CHD codecs used by the build.
+- libretro frontend/shared declarations and VFS/threading helpers: PSX3D is a
+  libretro host even though it does not use RetroArch. Removing these would
+  remove shipped features or require an implementation change.
+- Included lightrec/NEON declarations and unused conditional branches inside
+  shared implementation files. They are harmless declarations/inactive paths;
+  stripping them would extend this cleanup into source refactoring.
+- Legacy conditional Makefile branches and the two `ctr` insertion markers.
+  Existing ARM simulator preparation tools depend on that structure. Only the
+  historical revision generation changed; broad Makefile rewriting was not
+  needed to remove dead source and would add avoidable build risk. Unsupported
+  legacy platform targets are not offered as working builds of this fork.
+- Standalone licence/AUTHORS notices, upstream historical credit documents and
+  14 portable renderer files used as independent host-only test oracles.
+
+Commits are local on `t3/vendor-core`; no push, tag or release was performed.

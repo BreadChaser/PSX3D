@@ -167,10 +167,10 @@ No claim is made that the hardware performance goal is already satisfied.
 
 ## Build and reproduction
 
-`git submodule update --init core && make patch`, then follow the root build
-instructions (`source devtools/env.sh && make -j16`, and `make cia` with the
-specified bannertool/makerom paths). Both 3DSX and CIA build. Patch 0002 was
-regenerated using `devtools/mk.sh`'s exact diff command and reverse-apply checked.
+Current builds use the committed core directly: `source devtools/env.sh &&
+make -j16`, then `make cia` with the specified bannertool/makerom paths.
+There is no patch setup/regeneration step. At the original report commit,
+both 3DSX and CIA built and the old patch series passed reverse checking.
 The existing upstream executable-stack linker warning remains. Final artifact SHA256:
 
 * 3DSX: `7867633ff1fec435038a7fa7f3292ef25639f431b6c92a1b4c57adb2f4561d29`

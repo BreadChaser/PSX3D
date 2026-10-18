@@ -189,14 +189,10 @@ files and states were not modified. `sotn` is the fight; the old evidence's
 Private `check-final.py`, build scripts, options, SDK and runner binaries preserve
 exact commands. Never copy the old host-title state over `sim/states/sotn.st0`.
 
-Initialize/patch the worktree as in `docs/gpu-rtt.md`. Regenerate patch 0002 with
-`devtools/mk.sh`'s exact `git -C core -c diff.mnemonicPrefix=false -c
-diff.noprefix=false diff -- Makefile Makefile.libretro frontend/libretro.c
-libpcsxcore plugins` command **in this worktree**. Its ignored new core files
-must be intent-to-add so that diff includes them. The global mk.sh hardcodes the
-main checkout and must not be run unmodified from this worktree.
-Reverse-apply check passes. Build with `source /home/tony/Development/PS1_3ds/devtools/env.sh`,
-`make -j16`, then `make cia` with the documented bannertool/makerom paths.
+Build the current committed core with
+`source /home/tony/Development/PS1_3ds/devtools/env.sh`, `make -j16`, then
+`make cia` with the documented bannertool/makerom paths. No submodule or patch
+regeneration is needed. The original report's patch reverse check passed.
 3DSX and CIA pass; the existing executable-stack linker warning remains.
 Artifact hashes are in private `artifacts/SHA256SUMS`.
 

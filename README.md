@@ -1,8 +1,8 @@
 # PSX3D
 
 PSX3D is a standalone PlayStation emulator for Nintendo 3DS by **BreadChaser**,
-built around our modified fork of PCSX-ReARMed. It runs without RetroArch. This project is a work
-in progress.
+built around our modified fork of PCSX-ReARMed. It runs without RetroArch.
+This project is a work in progress.
 
 **The first PS1 emulator for the 3DS that draws on the 3DS GPU.** On an Old 3DS
 it runs games up to twice as fast as the PCSX-ReARMed software renderer used by
