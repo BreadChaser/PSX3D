@@ -260,6 +260,9 @@ static bool encode_shot(int client)
 	img.width = 400;
 	img.height = height;
 	img.format = PNG_FORMAT_RGB;
+	// Remote diagnostics are lossless intermediate captures. Avoid spending
+	// seconds compressing on Old 3DS while its main core is saturated.
+	img.flags |= PNG_IMAGE_FLAG_FAST;
 	png_alloc_size_t bytes = 0;
 	void *png = NULL;
 	bool ok = png_image_write_to_memory(&img, NULL, &bytes, 0, pixels, 0, NULL);

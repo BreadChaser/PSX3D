@@ -486,7 +486,6 @@ static void draw_game(float eye_dx)
 // One GPU frame per shown frame. The hardware renderer draws into it
 // while the core runs, opening it lazily for required draws/uploads.
 // video_present uses that same frame; idle retained pictures open none.
-static bool gpu_frame;
 
 void video_gpu_frame_begin(void)
 {
