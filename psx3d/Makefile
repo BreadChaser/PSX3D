@@ -34,8 +34,8 @@ include $(DEVKITARM)/3ds_rules
 TARGET		:=	PSX3D
 ICON		:=	meta/icon.png
 APP_TITLE	:=	PSX3D
-APP_DESCRIPTION	:=	PS1 emulator (PCSX-ReARMed based)
-APP_AUTHOR	:=	PSX3D team
+APP_DESCRIPTION	:=	PS1 emulator for 3DS
+APP_AUTHOR	:=	BreadChaser
 COREDIR		:=	$(TOPDIR)/../core
 CORELIB		:=	$(COREDIR)/pcsx_rearmed_libretro_ctr.a
 BUILD		:=	build

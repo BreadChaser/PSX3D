@@ -38,7 +38,7 @@ VERSION    ?= $(shell sed -n 's/.*PSX3D_VERSION *"\([0-9]*\)\.\([0-9]*\)\.\([0-9
 
 cia: app
 	$(BANNERTOOL) makebanner -i psx3d/meta/banner.png -a psx3d/meta/banner.wav -o psx3d/build/banner.bnr
-	$(BANNERTOOL) makesmdh -s "PSX3D" -l "PSX3D - PS1 emulator (PCSX-ReARMed)" -p "PSX3D" \
+	$(BANNERTOOL) makesmdh -s "PSX3D" -l "PSX3D - PS1 emulator for 3DS" -p "BreadChaser" \
 		-i psx3d/meta/icon.png -o psx3d/build/icon.icn
 	$(MAKEROM) -f cia -o psx3d/PSX3D.cia -elf psx3d/PSX3D.elf -rsf psx3d/meta/app.rsf \
 		-icon psx3d/build/icon.icn -banner psx3d/build/banner.bnr -target t -ver $(VERSION)
