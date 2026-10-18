@@ -14,3 +14,9 @@ The original GPL licence, AUTHORS, dependency licences and copyright notices
 are retained. The historical core version strings are fixed to their original
 values so this housekeeping does not change the executable. See
 [the vendoring report](../docs/vendor-core.md) for pruning and identity evidence.
+
+Non-3DS frontend/platform source, other CPU implementations, and upstream
+CI, packaging and tests have been removed. Shared frontend glue still compiled
+by the libretro host and headers included by it are retained. The build targets
+are supported for 3DS only; inactive legacy Makefile branches remain to keep
+the established simulator setup compatible.

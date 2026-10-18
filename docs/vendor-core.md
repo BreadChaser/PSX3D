@@ -51,3 +51,12 @@ remains 3076. The complete 3DSX is identical too.
 
 Pruning stages and final size measurements are recorded here after each clean
 build and identity check. No simulator or console result is claimed yet.
+
+### Stage 1: unused platforms and CPU implementations
+
+Removed 97 files: Android JNI, Maemo/Miyoo and other non-3DS frontend assets
+and glue, AArch64/NEON GTE and AArch64 dynarec sources, unused debugger/socket
+sources, upstream CI/configure/packaging/test tools. Retained the libretro
+export list/version script and shared frontend source/headers used by 3DS.
+Clean dual-renderer CIA build passes. All allocated ELF sections and the
+complete 3DSX remain identical to the vendored baseline.
