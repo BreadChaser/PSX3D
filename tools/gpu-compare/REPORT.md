@@ -23,21 +23,21 @@ Some Crash snapshots repeat while the character is idle. Frames 1–2 can still
 show only the restored image, which is why they are not the diagnostic samples.
 Capture uses the checked-in options derived from the provided simulator preset,
 with reference dithering enabled. The runner found no BIOS files and selected
-built-in HLE. Trace hashes and configuration are in [manifest.json](evidence/manifest.json).
+built-in HLE. Trace hashes and configuration are in manifest.json.
 
 Each checked-in comparison contains **reference | PICA model | absolute RGB
 difference amplified 3×**. Individual reference/PICA/diff PNGs are also generated
 under `/tmp/correct-sim/{baseline,polygon-phase,stp-mask}/<state>/`. The checked-in
-[gallery](gallery.html) compares the original and final images at frame 60.
+gallery compares the original and final images at frame 60.
 
 ## Commits
 
 | Commit | Result | Evidence |
 |---|---|---|
-| `85423f1` | Reproducible capture/replay and rasterizing fake citro3d | [baseline images](evidence/before/) |
-| `7d03c47` | Align polygon interpolation to the PS1 integer pixel sampling position, through a half-pixel translation on PICA; keep rectangles/uploads unchanged | [before](evidence/before/o3auto-0060.png), [after](evidence/polygon-phase/o3auto-0060.png), [high-frequency probe before](evidence/polygon-phase/fixture-before.png), [after](evidence/polygon-phase/fixture-phase.png) |
-| `89392c5` | Reject fully transparent additive texels before they erase a destination mask bit | [checker before](evidence/additive-mask/before.png), [after](evidence/additive-mask/after.png) |
-| `250bae5` | Write texture STP into the framebuffer mask; preserve E6 force/check semantics and ordering between mask-checking primitives | [Silent Hill before](evidence/polygon-phase/sh-0060.png), [after](evidence/stp-mask/sh-0060.png), [checker before](evidence/stp-mask/fixture-transparent-add-mask-before.png), [after](evidence/stp-mask/fixture-transparent-add-mask-after.png) |
+| `85423f1` | Reproducible capture/replay and rasterizing fake citro3d | baseline images |
+| `7d03c47` | Align polygon interpolation to the PS1 integer pixel sampling position, through a half-pixel translation on PICA; keep rectangles/uploads unchanged | before, after, high-frequency probe before, after |
+| `89392c5` | Reject fully transparent additive texels before they erase a destination mask bit | checker before, after |
+| `250bae5` | Write texture STP into the framebuffer mask; preserve E6 force/check semantics and ordering between mask-checking primitives | Silent Hill before, after, checker before, after |
 
 Each renderer fix includes a regenerated `patches/0002`. New core files must be
 visible to `git diff` (`git -C core add -N ...`) before regenerating. The existing
@@ -55,14 +55,14 @@ does not certify visual correctness.
 
 | State / game | MAE before → after | Large-error pixels before → after | Final image |
 |---|---:|---:|---|
-| `o3auto` / Crash | 6.39 → 4.37 | 8.63% → 4.59% | [image](evidence/stp-mask/o3auto-0060.png) |
-| `sh` / Silent Hill | 8.25 → 4.67 | 11.84% → 0.52% | [image](evidence/stp-mask/sh-0060.png) |
-| `r4` / Ridge Racer Type 4 | 6.68 → 4.95 | 6.67% → 2.85% | [image](evidence/stp-mask/r4-0060.png) |
-| `ctr` / CTR | 8.37 → 6.76 | 12.46% → 9.32% | [image](evidence/stp-mask/ctr-0060.png) |
-| `gt2` / Gran Turismo 2 | 8.70 → 7.29 | 12.67% → 9.14% | [image](evidence/stp-mask/gt2-0060.png) |
+| `o3auto` / Crash | 6.39 → 4.37 | 8.63% → 4.59% | image |
+| `sh` / Silent Hill | 8.25 → 4.67 | 11.84% → 0.52% | image |
+| `r4` / Ridge Racer Type 4 | 6.68 → 4.95 | 6.67% → 2.85% | image |
+| `ctr` / CTR | 8.37 → 6.76 | 12.46% → 9.32% | image |
+| `gt2` / Gran Turismo 2 | 8.70 → 7.29 | 12.67% → 9.14% | image |
 
-All three sample frames per game are in [baseline](evidence/before/),
-[polygon fix](evidence/polygon-phase/) and [final](evidence/stp-mask/).
+All three sample frames per game are in baseline,
+polygon fix and final.
 Their `metrics.json` files retain unrounded values. These are **model images**;
 they cannot verify PICA hardware precision, cache coherence or clipping quirks.
 In particular, many pixels still differ by a small amount, and CTR/GT2 retain
@@ -79,7 +79,7 @@ Line numbers refer to the final patched `core/plugins/gpu_pica/gpu_pica.c`.
 | Missing STP → destination mask | Silent Hill's bright rectangular character halo disappears | `apply_state` formerly wrote alpha only from E6 force; now opaque batches emit STP directly and `flush` adds a GPU mask pass when RGB blending consumes alpha |
 | Transparent additive texels erasing masks | Synthetic checker turns green through transparent holes before the fix | `apply_state`, `BL_ADD` alpha test; fixed |
 | Mask force on additive opaque texels, plus mask ordering | Synthetic forced-add and two-overlapping-texture probes | New mask pass and `use_state` boundary when E6 check is on; fixed in tested cases |
-| Half/quarter blend while E6 mask-check is enabled | [explicit remaining failure](evidence/remaining/mask-half-blend.png): reference blends red over blue, PICA replaces it | Existing destination-alpha shortcut in `apply_state`'s `d->mask & 2` block treats these modes like solid drawing; still approximate |
+| Half/quarter blend while E6 mask-check is enabled | explicit remaining failure: reference blends red over blue, PICA replaces it | Existing destination-alpha shortcut in `apply_state`'s `d->mask & 2` block treats these modes like solid drawing; still approximate |
 | Dithering and 5-bit quantization | Fine stipple/banding remains in all games; all five traces request polygon dithering | `renderer_set_config` ignores dithering; no ordered-dither stage in `apply_state`; fake GPU rounds RGBA5551, which is also a model precision assumption |
 | Wrong texture depth / CLUT selection | Crash exercises 4/8-bit; other game traces exercise 4-bit. Colours/layout broadly agree; no independent wrong-CLUT class was established | `texture_for`, `decode_rect`, `texel_rgba`; not changed. Synthetic probes exercise 15-bit textures |
 | Texture window | R4 has 7,083 textured commands with a window enabled over this trace | `decode_rect` implements the bit-mask window; no gross window failure established. P.E.Op.S.'s general window emulation has its own limits |
@@ -90,7 +90,7 @@ Line numbers refer to the final patched `core/plugins/gpu_pica/gpu_pica.c`.
 | 15/24-bit and interlace | All 300 game frames are 15-bit scanout; no movie or interlace transition covered | `pica_picture` routes RGB24 to CPU; `renderer_set_interlace` is a no-op. No claim of 24-bit/interlace correctness from this run |
 | VRAM copy / readback | Replay handles CPU uploads and PICA texture readbacks. Capture records gpulib's copy result as an upload | `readback_part` and `push_to_target`, plus gpulib copy handling. GPU-side copies remain a performance feature; this trace boundary does not independently validate original copy commands |
 
-Exact feature counts are in [coverage.json](evidence/coverage.json), reproducible
+Exact feature counts are in coverage.json, reproducible
 with `inspect_trace.py`. Blend modes 0/1/2 are exercised by the game set; mode 3
 (quarter-add) is covered by a synthetic probe only. No input was injected, so
 these are checks of the supplied scenes, not full-game compatibility tests.
@@ -121,7 +121,7 @@ the STP fix (not per rendered/game frame, and not milliseconds):
 | CTR | 22.7 | 31.8 | 9.1 |
 | GT2 | 132.4 | 197.0 | 64.6 |
 
-Source data: [draw-calls.json](evidence/stp-mask/draw-calls.json). Prior project
+Source data: draw-calls.json. Prior project
 measurements put a draw submission near 20 µs on Old 3DS; that makes SH/GT2
 worth benchmarking first, but multiplying that historic number is **not** a
 measured slowdown. Compare this branch with `89392c5` at the same state and

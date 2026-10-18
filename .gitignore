@@ -8,3 +8,8 @@ psx3d/romfs/gfx/
 
 # Local release verification logs (small durable results live in docs/)
 /release-validation/
+
+# Test output (screenshots, galleries, measurements) stays in devtools/, never in the repo
+/tools/*/evidence/
+/tools/*/results/
+/tools/**/*gallery*.html

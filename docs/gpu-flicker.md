@@ -41,8 +41,6 @@ changes in all 600 five-game replay images** compared with the offset-only fix.
 
 Images are **P.E.Op.S. reference | 9b4dc04 PICA | fixed PICA**:
 
-![Alternating right-edge terrain loss](../tools/gpu-compare/evidence/flicker/o3auto-0059.png)
-![Other framebuffer, already correct geometry](../tools/gpu-compare/evidence/flicker/o3auto-0060.png)
 
 The same bug also drops **screen-wide** quads: during level entry, `0x2a` at
 packet word 728 in host-frame interval 327 contains raw
@@ -52,17 +50,15 @@ rejects both triangles with width 1536. The missing fade affects both screen
 edges, visible at frame 330. A cold-boot title fade fails similarly at frame
 1440, without loading any state.
 
-![Level entry, including the missing full-screen fade](../tools/gpu-compare/evidence/flicker/level-entry-0330.png)
-![Cold-boot title fade](../tools/gpu-compare/evidence/flicker/boot-1440.png)
 
 Full primitive coordinates, area, record byte offsets and packet offsets are in
-[o3auto](../tools/gpu-compare/evidence/flicker/o3auto-primitives.json),
-[level entry](../tools/gpu-compare/evidence/flicker/level-entry-primitives.json),
-and [cold boot](../tools/gpu-compare/evidence/flicker/boot-primitives.json).
+o3auto,
+level entry,
+and cold boot.
 The parser is [inspect-polygons.py](../tools/gpu-compare/inspect-polygons.py).
 Trace frame markers describe current scanout; a drawing interval can populate
 the opposite framebuffer for a later marker. They are not primitive timestamps.
-An [interactive image comparison](../tools/gpu-compare/evidence/flicker/gallery.html)
+An interactive image comparison
 switches between the three diagnostic scenes.
 
 **Left-edge limit:** the stationary and moving `o3auto` traces did not reproduce
@@ -143,8 +139,8 @@ Additional exact-stream A/B replays used:
 
 Those runs verify full reference VRAM every 60 frames and replay all commands;
 the image sampling interval is 30. Trace hashes/counts and exact image comparison
-counts are in [manifest.json](../tools/gpu-compare/evidence/flicker/manifest.json)
-and [metrics.json](../tools/gpu-compare/evidence/flicker/metrics.json).
+counts are in manifest.json
+and metrics.json.
 
 Draw hashes, 600 frames, `o3hw_off.ini`, with `PICA_SIM_HASH`:
 

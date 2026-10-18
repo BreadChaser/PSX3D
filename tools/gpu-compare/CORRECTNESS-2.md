@@ -13,7 +13,7 @@ Decode as `tex5 << 3` instead. Raw textures still retain their original five-bit
 colours. The PICA `2 / 255` modulation approximates PS1 `1 / 128`, so boundary
 values may still differ by one level; this is not a claim of exact arithmetic.
 
-The new [fixture](evidence/correctness-2/modulation/texture-colours.png) checks
+The new fixture checks
 4/8/15-bit textures, raw mode, 0x40 modulation, CLUT selection and a same-address
 CLUT upload after an entry has been cached. All pixels match P.E.Op.S. exactly.
 In particular, white × 0x40 must be 15/31, not 16/31. Existing mask regressions
@@ -46,7 +46,7 @@ Do not tune the renderer's palettes to match the reference's bias.
 
 Full game comparisons and the GPU dither implementation are reported below as
 verification completes. Modulation-only metrics against the unchanged original
-reference are in [metrics.json](evidence/correctness-2/modulation/metrics.json).
+reference are in metrics.json.
 
 ## GPU ordered dithering
 
@@ -92,8 +92,8 @@ Split flipped sprites after `u + 1` / `v + 1` texels, then continue at 255,
 just as forward spans continue at zero. Covers X, Y and combined flips,
 repeated wraps over a full page, and clipping. No work is added per texel.
 Extra vertices/draw submissions occur only on sprites that previously sampled
-outside their texture region. [Before](evidence/correctness-2/sprite-wrap/before.png)
-and [after](evidence/correctness-2/sprite-wrap/after.png).
+outside their texture region. Before
+and after.
 
 P.E.Op.S. segfaults on this fixture's flipped negative span, so the image's
 reference explicitly uses direct modulo addressing of the known synthetic
@@ -111,46 +111,46 @@ comparisons, not hardware measurements. Frames are host frames after state load.
 
 | Game | Frame | Before MAE / large % | After MAE / large % | Image |
 |---|---:|---:|---:|---|
-| o3auto | 10 | 8.777 / 10.747 | 9.893 / 10.979 | [before](evidence/correctness-2/baseline/o3auto-0010.png), [after](evidence/correctness-2/dither-final/o3auto-0010.png) |
-| o3auto | 30 | 8.777 / 10.747 | 9.893 / 10.979 | [before](evidence/correctness-2/baseline/o3auto-0030.png), [after](evidence/correctness-2/dither-final/o3auto-0030.png) |
-| o3auto | 60 | 4.372 / 4.588 | 5.393 / 4.692 | [before](evidence/correctness-2/baseline/o3auto-0060.png), [after](evidence/correctness-2/dither-final/o3auto-0060.png) |
-| sh | 10 | 4.662 / 0.516 | 7.055 / 5.762 | [before](evidence/correctness-2/baseline/sh-0010.png), [after](evidence/correctness-2/dither-final/sh-0010.png) |
-| sh | 30 | 4.672 / 0.502 | 7.068 / 5.716 | [before](evidence/correctness-2/baseline/sh-0030.png), [after](evidence/correctness-2/dither-final/sh-0030.png) |
-| sh | 60 | 4.672 / 0.523 | 7.071 / 5.721 | [before](evidence/correctness-2/baseline/sh-0060.png), [after](evidence/correctness-2/dither-final/sh-0060.png) |
-| r4 | 10 | 5.489 / 3.439 | 4.546 / 3.211 | [before](evidence/correctness-2/baseline/r4-0010.png), [after](evidence/correctness-2/dither-final/r4-0010.png) |
-| r4 | 30 | 5.406 / 3.267 | 4.598 / 3.113 | [before](evidence/correctness-2/baseline/r4-0030.png), [after](evidence/correctness-2/dither-final/r4-0030.png) |
-| r4 | 60 | 4.947 / 2.854 | 4.269 / 2.725 | [before](evidence/correctness-2/baseline/r4-0060.png), [after](evidence/correctness-2/dither-final/r4-0060.png) |
-| ctr | 10 | 6.622 / 8.892 | 7.405 / 9.733 | [before](evidence/correctness-2/baseline/ctr-0010.png), [after](evidence/correctness-2/dither-final/ctr-0010.png) |
-| ctr | 30 | 6.890 / 9.112 | 7.693 / 10.032 | [before](evidence/correctness-2/baseline/ctr-0030.png), [after](evidence/correctness-2/dither-final/ctr-0030.png) |
-| ctr | 60 | 6.758 / 9.318 | 7.659 / 10.121 | [before](evidence/correctness-2/baseline/ctr-0060.png), [after](evidence/correctness-2/dither-final/ctr-0060.png) |
-| gt2 | 10 | 7.078 / 8.311 | 6.312 / 8.523 | [before](evidence/correctness-2/baseline/gt2-0010.png), [after](evidence/correctness-2/dither-final/gt2-0010.png) |
-| gt2 | 30 | 6.896 / 7.849 | 6.027 / 7.987 | [before](evidence/correctness-2/baseline/gt2-0030.png), [after](evidence/correctness-2/dither-final/gt2-0030.png) |
-| gt2 | 60 | 7.295 / 9.141 | 6.355 / 8.984 | [before](evidence/correctness-2/baseline/gt2-0060.png), [after](evidence/correctness-2/dither-final/gt2-0060.png) |
+| o3auto | 10 | 8.777 / 10.747 | 9.893 / 10.979 | before, after |
+| o3auto | 30 | 8.777 / 10.747 | 9.893 / 10.979 | before, after |
+| o3auto | 60 | 4.372 / 4.588 | 5.393 / 4.692 | before, after |
+| sh | 10 | 4.662 / 0.516 | 7.055 / 5.762 | before, after |
+| sh | 30 | 4.672 / 0.502 | 7.068 / 5.716 | before, after |
+| sh | 60 | 4.672 / 0.523 | 7.071 / 5.721 | before, after |
+| r4 | 10 | 5.489 / 3.439 | 4.546 / 3.211 | before, after |
+| r4 | 30 | 5.406 / 3.267 | 4.598 / 3.113 | before, after |
+| r4 | 60 | 4.947 / 2.854 | 4.269 / 2.725 | before, after |
+| ctr | 10 | 6.622 / 8.892 | 7.405 / 9.733 | before, after |
+| ctr | 30 | 6.890 / 9.112 | 7.693 / 10.032 | before, after |
+| ctr | 60 | 6.758 / 9.318 | 7.659 / 10.121 | before, after |
+| gt2 | 10 | 7.078 / 8.311 | 6.312 / 8.523 | before, after |
+| gt2 | 30 | 6.896 / 7.849 | 6.027 / 7.987 | before, after |
+| gt2 | 60 | 7.295 / 9.141 | 6.355 / 8.984 | before, after |
 
 ### Signed gpu_neon C oracle (corrected-model baseline → final)
 
 | Game | Frame | Before MAE / large % | After MAE / large % | Image |
 |---|---:|---:|---:|---|
-| o3auto | 10 | 9.276 / 10.038 | 7.638 / 9.261 | [before](evidence/correctness-2/neon-baseline/o3auto-0010.png), [after](evidence/correctness-2/final/o3auto-0010.png) |
-| o3auto | 30 | 9.276 / 10.038 | 7.638 / 9.261 | [before](evidence/correctness-2/neon-baseline/o3auto-0030.png), [after](evidence/correctness-2/final/o3auto-0030.png) |
-| o3auto | 60 | 5.136 / 3.997 | 3.345 / 3.121 | [before](evidence/correctness-2/neon-baseline/o3auto-0060.png), [after](evidence/correctness-2/final/o3auto-0060.png) |
-| sh | 10 | 4.159 / 0.579 | 1.724 / 0.039 | [before](evidence/correctness-2/neon-baseline/sh-0010.png), [after](evidence/correctness-2/final/sh-0010.png) |
-| sh | 30 | 4.165 / 0.587 | 1.727 / 0.031 | [before](evidence/correctness-2/neon-baseline/sh-0030.png), [after](evidence/correctness-2/final/sh-0030.png) |
-| sh | 60 | 4.169 / 0.578 | 1.740 / 0.036 | [before](evidence/correctness-2/neon-baseline/sh-0060.png), [after](evidence/correctness-2/final/sh-0060.png) |
-| r4 | 10 | 4.951 / 3.605 | 3.235 / 2.995 | [before](evidence/correctness-2/neon-baseline/r4-0010.png), [after](evidence/correctness-2/final/r4-0010.png) |
-| r4 | 30 | 4.908 / 3.578 | 3.194 / 2.967 | [before](evidence/correctness-2/neon-baseline/r4-0030.png), [after](evidence/correctness-2/final/r4-0030.png) |
-| r4 | 60 | 4.723 / 3.348 | 3.074 / 2.857 | [before](evidence/correctness-2/neon-baseline/r4-0060.png), [after](evidence/correctness-2/final/r4-0060.png) |
-| ctr | 10 | 7.124 / 8.618 | 4.583 / 5.578 | [before](evidence/correctness-2/neon-baseline/ctr-0010.png), [after](evidence/correctness-2/final/ctr-0010.png) |
-| ctr | 30 | 7.254 / 8.281 | 4.670 / 5.537 | [before](evidence/correctness-2/neon-baseline/ctr-0030.png), [after](evidence/correctness-2/final/ctr-0030.png) |
-| ctr | 60 | 7.120 / 8.478 | 4.599 / 5.552 | [before](evidence/correctness-2/neon-baseline/ctr-0060.png), [after](evidence/correctness-2/final/ctr-0060.png) |
-| gt2 | 10 | 7.718 / 8.943 | 5.762 / 8.466 | [before](evidence/correctness-2/neon-baseline/gt2-0010.png), [after](evidence/correctness-2/final/gt2-0010.png) |
-| gt2 | 30 | 8.473 / 10.901 | 6.577 / 10.383 | [before](evidence/correctness-2/neon-baseline/gt2-0030.png), [after](evidence/correctness-2/final/gt2-0030.png) |
-| gt2 | 60 | 7.822 / 11.573 | 6.191 / 10.740 | [before](evidence/correctness-2/neon-baseline/gt2-0060.png), [after](evidence/correctness-2/final/gt2-0060.png) |
+| o3auto | 10 | 9.276 / 10.038 | 7.638 / 9.261 | before, after |
+| o3auto | 30 | 9.276 / 10.038 | 7.638 / 9.261 | before, after |
+| o3auto | 60 | 5.136 / 3.997 | 3.345 / 3.121 | before, after |
+| sh | 10 | 4.159 / 0.579 | 1.724 / 0.039 | before, after |
+| sh | 30 | 4.165 / 0.587 | 1.727 / 0.031 | before, after |
+| sh | 60 | 4.169 / 0.578 | 1.740 / 0.036 | before, after |
+| r4 | 10 | 4.951 / 3.605 | 3.235 / 2.995 | before, after |
+| r4 | 30 | 4.908 / 3.578 | 3.194 / 2.967 | before, after |
+| r4 | 60 | 4.723 / 3.348 | 3.074 / 2.857 | before, after |
+| ctr | 10 | 7.124 / 8.618 | 4.583 / 5.578 | before, after |
+| ctr | 30 | 7.254 / 8.281 | 4.670 / 5.537 | before, after |
+| ctr | 60 | 7.120 / 8.478 | 4.599 / 5.552 | before, after |
+| gt2 | 10 | 7.718 / 8.943 | 5.762 / 8.466 | before, after |
+| gt2 | 30 | 8.473 / 10.901 | 6.577 / 10.383 | before, after |
+| gt2 | 60 | 7.822 / 11.573 | 6.191 / 10.740 | before, after |
 
 The historical comparison includes the harness quantization correction. To
-isolate it, use [corrected-model baseline](evidence/correctness-2/model-baseline/metrics.json),
-then [modulation only](evidence/correctness-2/modulation/metrics.json), then
-[final against P.E.Op.S.](evidence/correctness-2/dither-final/metrics.json).
+isolate it, use corrected-model baseline,
+then modulation only, then
+final against P.E.Op.S..
 The dither and final sprite versions produce identical pixels in these traces.
 The final build improves large-error scores against gpu_neon; GT2
 still has substantial clipping/texture errors, and its MAE also reflects blend
@@ -207,7 +207,7 @@ and batch boundaries change when eligible/ineligible polygons alternate. The
 model quantization change is not hashed because rasterization is outside the
 core draw hash. Sprite-wrap produces no hash change on these five traces.
 Exact trace SHA-256, draw counts and available hashes are in
-[manifest.json](evidence/correctness-2/manifest.json).
+manifest.json.
 
 ### Dither state cache
 
@@ -240,7 +240,7 @@ is still unmeasured.
 - `source /home/tony/Development/PS1_3ds/devtools/env.sh; make -j8 cia ...`
   succeeds, including the shader, 3DSX and CIA. Files are `psx3d/PSX3D.3dsx`,
   `psx3d/PSX3D.cia`, and `psx3d/PSX3D.elf`; exact sizes and SHA-256 are in
-  [builds.json](evidence/correctness-2/builds.json). No install performed.
+  builds.json. No install performed.
 - Fresh upstream archive + all repository patches reproduces every one of the
   23 modified core files byte-for-byte; reverse checks and `git diff --check`
   pass. Python compilation and shell syntax checks pass.
@@ -258,7 +258,7 @@ proprietary traces. The updated comparer emits selected PPMs only and checks
 write errors, after a shared tmpfs quota was reached during one comparison;
 affected images were regenerated and final metrics use complete images.
 
-[Interactive off/on gallery](correctness-2-gallery.html) shows each game's frame
+Interactive off/on gallery shows each game's frame
 60 against the signed oracle. Both off/on renders use the corrected modulation;
 this isolates dither's visual change from texture conversion. The table uses
 the corrected-model original renderer as the before baseline. Matrix pattern

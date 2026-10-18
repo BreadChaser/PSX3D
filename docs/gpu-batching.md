@@ -114,7 +114,7 @@ ARMv6 builds. `cbench.sh` measures 300→600 host frames. Instructions and cycle
 are millions per host frame. The estimate is instructions + 70×I misses +
 70×D-read misses + 4×store misses, matching `cprof.py`; it omits real citro3d
 submission and is sensitive to layout. Precise counters are in
-[measurements.json](../tools/gpu-profile/evidence/measurements.json).
+measurements.json.
 
 | Game | Instructions before → after | Modeled cycles before → after | Instruction change |
 |---|---:|---:|---:|
