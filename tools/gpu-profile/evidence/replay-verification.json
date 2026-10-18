@@ -1,0 +1,42 @@
+{
+  "sh": {
+    "base -> after": {
+      "pixel_differences": [],
+      "vram_differences": []
+    },
+    "correct-base -> correct-batch": {
+      "pixel_differences": [],
+      "vram_differences": []
+    }
+  },
+  "o3auto": {
+    "base -> after": {
+      "pixel_differences": [],
+      "vram_differences": []
+    },
+    "correct-base -> correct-batch": {
+      "pixel_differences": [],
+      "vram_differences": []
+    }
+  },
+  "ctr": {
+    "base -> after": {
+      "pixel_differences": [],
+      "vram_differences": []
+    },
+    "correct-base -> correct-batch": {
+      "pixel_differences": [],
+      "vram_differences": []
+    }
+  },
+  "gt2": {
+    "base -> after": {
+      "pixel_differences": [],
+      "vram_differences": []
+    },
+    "correct-base -> correct-batch": {
+      "pixel_differences": [],
+      "vram_differences": []
+    }
+  }
+}

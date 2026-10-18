@@ -103,6 +103,17 @@ int main(int argc,char **argv)
               fprintf(stderr,"frame %d draw calls %u dither setups %u\n",*(int*)data,sim_c3d_draws-previous,sim_dither_setups-previous_setups);
               previous_setups=sim_dither_setups;
               previous=sim_c3d_draws; }
+            if(getenv("GPU_HASH_VRAM")) {
+                // Include offscreen pixels and mask bits: a scanout RGB PNG
+                // alone cannot detect reordering that corrupts later masks.
+                unsigned long long hash=1469598103934665603ull;
+                for(int y=0;y<512;y++)for(int x=0;x<1024;x++) {
+                    u16 pixel=sim_target_pixel(x,y);
+                    hash=(hash^(pixel&255))*1099511628211ull;
+                    hash=(hash^(pixel>>8))*1099511628211ull;
+                }
+                fprintf(stderr,"frame %d VRAM hash %016llx\n",*(int*)data,hash);
+            }
             pica_frame_ended(); pica_frame_started();
 #endif
             break;

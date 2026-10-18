@@ -124,3 +124,30 @@ with pending batches. Traces from capture do not contain it.
 The new sprite-wrap fixture uses explicitly labeled independent modulo
 addressing because P.E.Op.S. crashes on a flipped negative span. No game data,
 traces or full VRAM dumps are added to the repository.
+
+## Batching validation
+
+The imported `REPORT.md` and `evidence/` describe the **reference-harness branch**;
+copying these tools does not apply its three renderer correctness fixes.
+The batching implementation/results are in [gpu-batching.md](../../docs/gpu-batching.md).
+
+Set `GPU_HASH_VRAM=1` when replaying to log a per-frame hash of all 1024×512
+RGBA5551 pixels, including offscreen data and mask bits. Compare baseline and
+candidate at the same correctness level. `batching.py` adds disjoint/overlapping
+additive quads, queue-capacity pressure, area/mask/upload barriers and vertex
+buffer rollover:
+
+```sh
+python batching.py --baseline /path/to/replay-before --candidate /path/to/replay-after \
+  --output /path/to/batch-fixtures
+```
+
+`stp-integration.patch` is a **test-only optional integration** of the reference
+branch's three fixes onto this batching implementation, preserving `9b4dc04`'s
+submission/double-buffer/cache-flush changes. Apply it to a private copy of the
+patched core with `git -C copy apply /absolute/path/to/stp-integration.patch`.
+It is not part of patch 0002. Rebuild native replayers against that copy, then
+run `fixtures.py --check`. Keep the existing known half-mask/quarter-rounding
+limitations visible. The integration updates `batch_semi` when deferred effects
+are emitted, not while they sit in CPU staging, and preserves untextured alpha
+and dummy-texel tags on the direct additive path.

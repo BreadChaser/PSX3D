@@ -946,10 +946,10 @@ index 76f76afe..0e684ace 100644
    sem_post(&t.sem_done);
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 00000000..c3201056
+index 00000000..11d3f456
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,2166 @@
+@@ -0,0 +1,2256 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -1150,6 +1150,18 @@ index 00000000..c3201056
 +static drawstate cur, sent;
 +static bool sent_valid;
 +static bool batch_semi;   // any primitive in this batch actually enables blending
++// Additive effects may wait behind later, disjoint solid/half primitives.
++// Cached staging avoids reading back the write-only linear vertex buffer.
++#define ADD_PRIMS 32
++#define ADD_VERTS (ADD_PRIMS * 6)
++static struct {
++	pvtx verts[ADD_VERTS];
++	s16 bounds[ADD_PRIMS][4];
++	tcache *tex[ADD_PRIMS];
++	int n, nv;
++	u32 area_gen;
++	drawstate state;
++} addq;
 +static C3D_Tex tex_alias[2];   // a rebind under a new address clears the GPU texture cache
 +static int alias_i;
 +
@@ -1430,6 +1442,7 @@ index 00000000..c3201056
 +	base_dirty = state_dirty = true;
 +	sent_valid = false;
 +	vpos = vstart = sent_vpos = vclean = 0;
++	addq.n = addq.nv = 0;
 +	frame_seq = seq;
 +	if (!pica_async || !pica_frame_pending || !pica_frame_pending()) synced_seq = seq;
 +	if (vbuf_base) {
@@ -2048,7 +2061,7 @@ index 00000000..c3201056
 +	state_dirty = false;
 +}
 +
-+static void flush(void)
++static void flush_current(void)
 +{
 +	if (vpos == vstart || !ready)
 +		return;
@@ -2140,12 +2153,13 @@ index 00000000..c3201056
 +static inline void use_state(int at, int blend, int texmode, int pass, bool dither)
 +{
 +	u8 mask = ps.mask & 3;
-+	// A later primitive checking the mask must see the previous primitive's
-+	// STP pass, even when both otherwise share a batch.
++	// Mask-check primitives must observe the preceding STP write.
 +	if ((mask & 2) && vpos != vstart)
 +		flush();
-+	if (at == cur.atlas && blend == cur.blend && texmode == cur.texmode && pass == cur.pass &&
-+		mask == cur.mask && dither == cur.dither && ps.area_gen == cur_area_gen && !atlas[at].rebind)
++	// The four adjacent mode bytes include dither; mask is separate.
++	u32 mode, want = blend | (texmode << 8) | (pass << 16) | ((u32)dither << 24);
++	memcpy(&mode, &cur.blend, sizeof(mode));
++	if (at == cur.atlas && mode == want && mask == cur.mask && ps.area_gen == cur_area_gen && !atlas[at].rebind)
 +		return;
 +	st_why[at != cur.atlas ? 0 : (blend != cur.blend || texmode != cur.texmode || pass != cur.pass) ? 1 :
 +		ps.area_gen != cur_area_gen ? 2 : 3]++;
@@ -2187,6 +2201,75 @@ index 00000000..c3201056
 +	pvtx *v = vbuf + vpos;
 +	vpos += n;
 +	return v;
++}
++
++// Every externally visible flush is an ordering/lifetime barrier, including
++// readbacks, atlas reuse, uploads, frame end and command-list splits.
++static void flush(void)
++{
++	flush_current();
++	if (!addq.n)
++		return;
++	int n = addq.n, nv = addq.nv;
++	addq.n = addq.nv = 0;   // alloc_verts may synchronize and call flush again
++	drawstate save = cur;
++	u32 area = cur_area_gen;
++	cur = addq.state;
++	cur_area_gen = addq.area_gen;
++	state_dirty = true;
++	pvtx *o = alloc_verts(nv);
++	if (o) {
++		batch_semi = true;
++		memcpy(o, addq.verts, nv * sizeof(pvtx));
++		for (int i = 0; i < n; i++)
++			addq.tex[i]->used_seq = seq + 1;
++		flush_current();
++	}
++	cur = save;
++	cur_area_gen = area;
++	state_dirty = true;
++}
++
++static bool add_overlap(int x0, int y0, int x1, int y1)
++{
++	for (int i = 0; i < addq.n; i++) {
++		const s16 *b = addq.bounds[i];
++		// Inclusive edges conservatively cover rasterization/sample rounding.
++		if (x0 <= b[2] && x1 >= b[0] && y0 <= b[3] && y1 >= b[1])
++			return true;
++	}
++	return false;
++}
++
++// Keep the common opaque/half path small; only effects and primitives
++// that might pass queued effects need the overlap/state work below.
++static noinline pvtx *effect_verts(int blend, tcache *tex, int nv,
++	int bx0, int by0, int bx1, int by1, bool dither)
++{
++	bool defer = blend == BL_ADD && !(ps.mask & 3) && !(pica_debug & 65536);
++	if (addq.n && (ps.mask || ps.area_gen != addq.area_gen || dither != addq.state.dither ||
++		addq.n == ADD_PRIMS || (!defer && add_overlap(bx0, by0, bx1, by1))))
++		flush();
++	pvtx *o;
++	if (defer && cur.blend != BL_ADD) {
++		if (!addq.n) {
++			addq.state = (drawstate){ .atlas = 0, .blend = BL_ADD, .texmode = TX_MOD, .dither = dither,
++				.sc = { ps.dx1, ps.dy1, ps.dx2, ps.dy2 } };
++			addq.area_gen = ps.area_gen;
++		}
++		s16 *b = addq.bounds[addq.n];
++		b[0] = bx0; b[1] = by0; b[2] = bx1; b[3] = by1;
++		addq.tex[addq.n++] = tex;
++		o = addq.verts + addq.nv;
++		addq.nv += nv;
++	} else {
++		use_state(0, blend == BL_ADD ? BL_ADD : BL_HALF, TX_MOD, 0, dither);
++		o = alloc_verts(nv);
++		if (!o)
++			return NULL;
++		batch_semi |= blend != BL_OPAQUE;
++	}
++	return o;
 +}
 +
 +// ------------------------------------------------------------------ primitives
@@ -2276,6 +2359,7 @@ index 00000000..c3201056
 +		v = clipped;
 +		ntri = n;
 +	}
++	if (addq.n) flush();
 +	{
 +		int lx = 0x7fff, hx = -0x8000, ly = 0x7fff, hy = -0x8000;
 +		for (int i = 0; i < ntri * 3; i++) {
@@ -2389,10 +2473,10 @@ index 00000000..c3201056
 +		ps.texpage = (ps.texpage & ~0x9ff) | (page & 0x9ff);
 +	int blend = blend_of(cmd);
 +	// fast path, nearly every polygon: inside the drawing area, smaller than
-+	// the PS1's size limit (so no triangle of it is dropped), solid or
-+	// half-transparent. Finished vertices go straight to the buffer.
++	// the PS1's size limit (so no triangle of it is dropped), solid, half-transparent
++	// or additive. Finished vertices go straight to the buffer.
 +	if (bx0 < ps.dx1 || bx1 > ps.dx2 || by0 < ps.dy1 || by1 > ps.dy2 || bx1 - bx0 > 1023 || by1 - by0 > 511 ||
-+		blend > BL_HALF || !ready || (pica_debug & 4096)) {
++		blend > BL_ADD || !ready || (pica_debug & 4096)) {
 +		for (int k = 0; k < n; k++)
 +			v[k].rgba |= 0xff000000;
 +		draw_poly_slow(v, n, quad, textured, page, clut, cmd);
@@ -2401,21 +2485,27 @@ index 00000000..c3201056
 +	tcache *tex = textured ? texture_for(page, clut, u0, u1, v0, v1) : plain;
 +	mark_drawn(bx0, by0, bx1, by1);
 +	// see emit_tris: alpha 255 solid / 128 half; raw textures colour 0x80
-+	u32 a = blend == BL_OPAQUE ? 0xff000000 : textured ? 0x80000000 : 0x40000000;
++	u32 a = blend == BL_OPAQUE ? 0xff000000 : blend == BL_HALF ?
++		(textured ? 0x80000000 : 0x40000000) : (textured ? 0xff000000 : 0);
 +	u32 rawcol = (textured && (cmd & 1)) ? 0x808080 : 0;
 +	int du = tex->ax - tex->rx, dv = tex->ay - tex->ry;
-+	use_state(0, BL_HALF, TX_MOD, 0, polygon_dither(cmd));
-+	pvtx *o = alloc_verts(quad ? 6 : 3);
++	pvtx *o;
++	if (blend == BL_ADD || addq.n)
++		o = effect_verts(blend, tex, quad ? 6 : 3, bx0, by0, bx1, by1, polygon_dither(cmd));
++	else {
++		use_state(0, BL_HALF, TX_MOD, 0, polygon_dither(cmd));
++		o = alloc_verts(quad ? 6 : 3);
++		if (o) batch_semi |= blend != BL_OPAQUE;
++	}
 +	if (!o)
 +		return;
-+	batch_semi |= blend != BL_OPAQUE;
 +	// finished vertices as three words each, built in cache and stored once
 +	// (never read back from the buffer: the Old 3DS cache fills on reads only).
 +	// Exact target edges need the same quarter-pixel clamp as to_gpu:
 +	// PICA cannot represent screen x=1024 or y=512 reliably.
 +	u32 q[4][3];
 +	if (!textured)
-+		du = plain->ax + 8, dv = plain->ay + 8;
++		du = plain->ax + (blend == BL_ADD ? 24 : 8), dv = plain->ay + 8;
 +	for (int k = 0; k < n; k++) {
 +		int u = textured ? v[k].u + du : du, vv = textured ? v[k].v + dv : dv;
 +		int gx = v[k].x * 4 + 2, gy = v[k].y * 4 + 2;

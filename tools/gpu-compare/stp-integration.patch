@@ -1,0 +1,263 @@
+--- a/plugins/gpu_pica/gpu_pica.c
++++ b/plugins/gpu_pica/gpu_pica.c
+@@ -204,6 +204,7 @@
+ 	u32 area_gen;
+ 	drawstate state;
+ } addq;
++static bool batch_semi;   // any primitive in this batch actually enables blending
+ static C3D_Tex tex_alias[2];   // a rebind under a new address clears the GPU texture cache
+ static int alias_i;
+ 
+@@ -488,6 +489,7 @@
+ 		vbank = pica_async ? (vbank ^ 1) : 0;
+ 		vbuf = vbuf_base + vbank * vlimit;
+ 	}
++	batch_semi = false;
+ 	stage_y = 0;
+ 	if (npend) {
+ 		prect p[16];
+@@ -1009,21 +1011,21 @@
+ 				C3D_TexEnvSrc(env, C3D_Alpha, GPU_TEXTURE0, 0, 0);
+ 				C3D_TexEnvFunc(env, C3D_Alpha, GPU_REPLACE);
+ 			}
+-			if (d->blend == BL_ADD) {
++			if (d->blend == BL_ADD || (d->blend == BL_OPAQUE && !(d->mask & 1))) {
+ 				// blend factor (1 - a) * 2: semi-transparent texels 1, opaque 0
+ 				C3D_TexEnvOpAlpha(env, GPU_TEVOP_A_ONE_MINUS_SRC_ALPHA, 0, 0);
+ 				C3D_TexEnvScale(env, C3D_Alpha, GPU_TEVSCALE_2);
+ 			}
+ 		}
+ 
+-		// blending and the alpha test. The target's alpha bit is the PS1
+-		// mask bit: 1 where drawn with E6 mask-set on (any texel that passes
+-		// has combiner alpha >= 128), else 0
+-		GPU_BLENDFACTOR MASK_SA = (d->mask & 1) ? GPU_ONE : GPU_ZERO;
++		// The target alpha is the PS1 mask bit (E6 force OR texture STP).
++		// Opaque batches write it directly. Semi-transparent batches need
++		// alpha for RGB blending first, then flush writes the final mask.
++		GPU_BLENDFACTOR MASK_SA = ((d->mask & 1) || d->blend == BL_OPAQUE) ? GPU_ONE : GPU_ZERO;
+ 		switch (d->blend) {
+ 		case BL_OPAQUE:
+ 			C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, MASK_SA, GPU_ZERO);
+-			C3D_AlphaTest(tx, GPU_GREATER, 0);
++			C3D_AlphaTest(tx, (d->mask & 1) ? GPU_GREATER : GPU_LESS, (d->mask & 1) ? 0 : 255);
+ 			break;
+ 		case BL_HALF:
+ 			if (tx) {   // a = 0.5 for semi-transparent texels, 1 for opaque ones
+@@ -1040,7 +1042,9 @@
+ 				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_SRC_ALPHA, MASK_SA, GPU_ZERO);
+ 			else
+ 				C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ONE, MASK_SA, GPU_ZERO);
+-			C3D_AlphaTest(false, GPU_ALWAYS, 0);
++			// The inverted alpha is 255 only for transparent texels. They
++			// contribute no RGB, but must not clear the destination mask bit.
++			C3D_AlphaTest(tx, GPU_LESS, 255);
+ 			break;
+ 		case BL_SUB:
+ 		case BL_QUARTER:
+@@ -1091,6 +1095,13 @@
+ 		return;
+ 	}
+ 	n_flush++;
++	// Opaque primitives can write RGB and the STP mask in one draw. Only
++	// batches containing semi-transparent commands need a separate mask pass.
++	int original_blend = cur.blend;
++	if (cur.blend == BL_HALF && !batch_semi)
++		cur.blend = BL_OPAQUE;
++	if (!sent_valid || sent.blend != cur.blend)
++		state_dirty = true;
+ #ifdef PICA_TIMERS
+ 	u64 t0 = svcGetSystemTick();
+ #endif
+@@ -1101,6 +1112,34 @@
+ #endif
+ 	if (!(pica_debug & 1024))   // debug: no GPU drawing (CPU cost alone)
+ 		C3D_DrawArrays(GPU_TRIANGLES, vstart, vpos - vstart);
++	// gldbg=32768: skip this pass for a hardware submission-cost comparison.
++	if (!(pica_debug & (1024 | 32768)) && cur.blend != BL_OPAQUE && (cur.blend < BL_SUB || cur.pass == 1) &&
++		!(cur.blend == BL_HALF && (cur.mask & 1))) {
++		// RGB blending needs alpha 1 for opaque texels and 1/2 for STP.
++		// VRAM's mask bit instead needs 0 for opaque and 1 for STP. Write
++		// it separately on the GPU, preserving RGB and skipping colour 0.
++		C3D_TexEnv *env = C3D_GetTexEnv(0);
++		C3D_TexEnvInit(env);
++		C3D_TexEnvSrc(env, C3D_Both, GPU_TEXTURE0, 0, 0);
++		C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
++		if (!(cur.mask & 1)) {
++			if (cur.blend != BL_HALF) {
++				// Other untextured draws use vertex alpha 0 as a tag:
++				// their dummy half-alpha texel is not a PS1 STP texel.
++				C3D_TexEnvSrc(env, C3D_Alpha, GPU_TEXTURE0, GPU_PRIMARY_COLOR, 0);
++				C3D_TexEnvFunc(env, C3D_Alpha, GPU_MODULATE);
++			}
++			C3D_TexEnvOpAlpha(env, GPU_TEVOP_A_ONE_MINUS_SRC_ALPHA, 0, 0);
++			C3D_TexEnvScale(env, C3D_Alpha, GPU_TEVSCALE_2);
++			C3D_AlphaTest(true, GPU_LESS, 255);
++		} else
++			C3D_AlphaTest(true, GPU_GREATER, 0);
++		C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ZERO, GPU_ONE,
++			GPU_ONE, (cur.mask & 2) ? GPU_ONE : GPU_ZERO);
++		C3D_DrawArrays(GPU_TRIANGLES, vstart, vpos - vstart);
++		sent_valid = false;
++		state_dirty = true;
++	}
+ #ifdef PICA_SIM_HASH
+ 	{   // simulator: what was drawn, to compare builds
+ 		// the state only when it changes: how draws are grouped doesn't count
+@@ -1122,6 +1161,8 @@
+ 		C3D_FrameSplit(0);
+ 	seq++;
+ 	vstart = vpos;
++	cur.blend = original_blend;
++	batch_semi = false;
+ 	st_batches++;
+ }
+ 
+@@ -1131,6 +1172,10 @@
+ static inline void use_state(int at, int blend, int texmode, int pass)
+ {
+ 	u8 mask = ps.mask & 3;
++	// A later primitive checking the mask must see the previous primitive's
++	// STP pass, even when both otherwise share a batch.
++	if ((mask & 2) && vpos != vstart)
++		flush();
+ 	// The four byte-sized mode fields form one key (3DS is little endian).
+ 	// Most primitives keep it: one word comparison avoids four byte loads.
+ 	u32 mode, want = blend | (texmode << 8) | (pass << 16) | ((u32)mask << 24);
+@@ -1194,6 +1239,7 @@
+ 	state_dirty = true;
+ 	pvtx *o = alloc_verts(nv);
+ 	if (o) {
++		batch_semi = true;
+ 		memcpy(o, addq.verts, nv * sizeof(pvtx));
+ 		for (int i = 0; i < n; i++)
+ 			addq.tex[i]->used_seq = seq + 1;
+@@ -1239,6 +1285,7 @@
+ 	} else {
+ 		use_state(0, blend == BL_ADD ? BL_ADD : BL_HALF, TX_MOD, 0);
+ 		o = alloc_verts(nv);
++		batch_semi |= blend != BL_OPAQUE;
+ 		if (!o)
+ 			return NULL;
+ 	}
+@@ -1302,8 +1349,9 @@
+ 	return n - 2;
+ }
+ 
+-static void noinline emit_tris(const pvtx *v, int ntri, int blend, int texmode, tcache *tex)
+-{
++static void noinline emit_tris(const pvtx *v, int ntri, int blend, int texmode, tcache *tex, bool polygon)
++{
++	bool semi = blend != BL_OPAQUE;
+ 	if (!ready || (pica_debug & 4096))   // debug 4096: primitives decoded, not drawn
+ 		return;
+ 	// anything reaching outside the drawing area is cut to it here
+@@ -1361,7 +1409,9 @@
+ 		col_or |= 0xff000000;
+ 	} else if (blend == BL_HALF) {
+ 		col_and &= 0x00ffffff;
+-		col_or |= 0x80000000;
++		col_or |= untex ? 0x40000000 : 0x80000000;
++	} else if (untex) {
++		col_and &= 0x00ffffff;   // mask pass: plain texel has no STP
+ 	}
+ 	// finish the vertices here (in cache) and write them out once: reading
+ 	// back from the vertex buffer missed the cache every time (the Old
+@@ -1370,11 +1420,19 @@
+ 	pvtx fin[2 * 3 * 7];
+ 	memcpy(fin, v, nv * sizeof(pvtx));
+ 	to_gpu(fin, nv);
++	// PS1 polygons interpolate at integer pixel positions; PICA samples at
++	// pixel centres. Half a pixel of translation aligns those samples.
++	// Rectangles/uploads already map their pixel centres to texel centres.
++	if (polygon)
++		for (int i = 0; i < nv; i++) {
++			fin[i].x = fin[i].x < VRAM_W * 4 - 2 ? fin[i].x + 2 : VRAM_W * 4 - 1;
++			fin[i].y = fin[i].y < VRAM_H * 4 - 2 ? fin[i].y + 2 : VRAM_H * 4 - 1;
++		}
+ 	if (col_and != ~0u || col_or)
+ 		for (int i = 0; i < nv; i++)
+ 			fin[i].rgba = (fin[i].rgba & col_and) | col_or;
+ 	if (untex) {
+-		s16 pu = plain->ax + 24, pv = plain->ay + 8;   // the half-alpha texel: vertex alpha decides
++		s16 pu = plain->ax + (blend == BL_HALF ? 8 : 24), pv = plain->ay + 8;
+ 		for (int i = 0; i < nv; i++) {
+ 			fin[i].u = pu;
+ 			fin[i].v = pv;
+@@ -1387,6 +1445,7 @@
+ 		if (!o)
+ 			return;
+ 		memcpy(o, fin, nv * sizeof(pvtx));
++		batch_semi |= semi;
+ 	}
+ 	tex->used_seq = seq + 1;   // the batch it is in: seq + 1 once sent
+ 	st_prims++;
+@@ -1444,7 +1503,7 @@
+ 	tcache *tex = textured ? texture_for(page, clut, u0, u1, v0, v1) : plain;
+ 	mark_drawn(bx0, by0, bx1, by1);
+ 	// see emit_tris: alpha 255 solid / 128 half; raw textures colour 0x80
+-	u32 a = blend == BL_HALF ? 0x80000000 : 0xff000000;
++	u32 a = blend == BL_OPAQUE ? 0xff000000 : blend == BL_HALF ? (textured ? 0x80000000 : 0x40000000) : (textured ? 0xff000000 : 0);
+ 	u32 rawcol = (textured && (cmd & 1)) ? 0x808080 : 0;
+ 	int du = tex->ax - tex->rx, dv = tex->ay - tex->ry;
+ 	pvtx *o;
+@@ -1453,6 +1512,7 @@
+ 	else {
+ 		use_state(0, BL_HALF, TX_MOD, 0);
+ 		o = alloc_verts(quad ? 6 : 3);
++		batch_semi |= blend != BL_OPAQUE;
+ 	}
+ 	if (!o)
+ 		return;
+@@ -1461,10 +1521,13 @@
+ 	// Inside the drawing area x * 4 and y * 4 fit the target: no clamping.
+ 	u32 q[4][3];
+ 	if (!textured)
+-		du = plain->ax + 24, dv = plain->ay + 8;
++		du = plain->ax + (blend == BL_ADD ? 24 : 8), dv = plain->ay + 8;
+ 	for (int k = 0; k < n; k++) {
+ 		int u = textured ? v[k].u + du : du, vv = textured ? v[k].v + dv : dv;
+-		q[k][0] = (u32)(v[k].x * 4) | ((u32)(v[k].y * 4) << 16);
++		int gx = v[k].x * 4 + 2, gy = v[k].y * 4 + 2;
++		gx = gx < VRAM_W * 4 ? gx : VRAM_W * 4 - 1;
++		gy = gy < VRAM_H * 4 ? gy : VRAM_H * 4 - 1;
++		q[k][0] = (u32)gx | ((u32)gy << 16);
+ 		q[k][1] = (u32)(u & 0xffff) | ((u32)vv << 16);
+ 		q[k][2] = (rawcol ? rawcol : v[k].rgba) | a;
+ 	}
+@@ -1515,7 +1578,7 @@
+ 		}
+ 	}
+ 	int texmode = !textured ? TX_NONE : (cmd & 1) ? TX_RAW : TX_MOD;
+-	emit_tris(tri, ntri, blend_of(cmd), texmode, tex);
++	emit_tris(tri, ntri, blend_of(cmd), texmode, tex, true);
+ }
+ 
+ // one sprite (or a part of one) at x, y with page texels from u, v
+@@ -1553,7 +1616,7 @@
+ 		{ x, y, u0, v0, col }, { x + sw, y, u1, v0, col }, { x, y + sh, u0, v1, col },
+ 		{ x + sw, y, u1, v0, col }, { x + sw, y + sh, u1, v1, col }, { x, y + sh, u0, v1, col } };
+ 	int texmode = !textured ? TX_NONE : (cmd & 1) ? TX_RAW : TX_MOD;
+-	emit_tris(q, 2, blend_of(cmd), texmode, tex);
++	emit_tris(q, 2, blend_of(cmd), texmode, tex, false);
+ }
+ 
+ static void draw_rect(const u32 *w, u32 cmd)
+@@ -1593,7 +1656,7 @@
+ 	pvtx a2 = a, b2 = b;
+ 	a2.x += ox; a2.y += oy; b2.x += ox; b2.y += oy;
+ 	q[0] = a; q[1] = b; q[2] = a2; q[3] = b; q[4] = b2; q[5] = a2;
+-	emit_tris(q, 2, blend, TX_NONE, NULL);
++	emit_tris(q, 2, blend, TX_NONE, NULL, false);
+ }
+ 
+ // GP0 02: fill a VRAM rectangle (ignores the drawing area and mask)
+@@ -1617,7 +1680,7 @@
+ 	pvtx q[6] = {
+ 		{ x, y, 0, 0, col }, { x + fw, y, 0, 0, col }, { x, y + fh, 0, 0, col },
+ 		{ x + fw, y, 0, 0, col }, { x + fw, y + fh, 0, 0, col }, { x, y + fh, 0, 0, col } };
+-	emit_tris(q, 2, BL_OPAQUE, TX_NONE, NULL);
++	emit_tris(q, 2, BL_OPAQUE, TX_NONE, NULL, false);
+ 	ps.dx1 = save[0]; ps.dy1 = save[1]; ps.dx2 = save[2]; ps.dy2 = save[3];
+ 	ps.area_gen++;
+ 	ps.mask = save_mask;
