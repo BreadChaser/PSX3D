@@ -10,6 +10,13 @@ other 3DS PS1 emulators (Crash Bandicoot: 47.8 vs 22.8 FPS, Ridge Racer Type 4:
 53.7 vs 32.0), and it makes games like Crash Bandicoot playable at full game
 speed on the original 3DS.
 
+> **The GPU renderer is experimental and still has many issues.** Some games
+> show drawing errors, missing effects or flicker, and it is not yet as
+> accurate as the software renderer. The New 3DS uses the software renderer by
+> default. If a game looks wrong on the Old 3DS, switch it to **Software** in
+> the game's settings (Performance → Renderer), and please report it with the
+> game name and `log.txt`.
+
 <p align="center">
   <img src="docs/screenshots/library.png" alt="Old 3DS game library" width="300">
   <img src="docs/screenshots/menu.png" alt="In-game pause menu" width="300">
@@ -130,8 +137,9 @@ filename. Internet is needed only for initial downloads.
 
 ## Known issues
 
-- GPU rendering remains experimental and can differ from PlayStation output;
-  one mask-checking blend mode is approximate.
+- **The GPU renderer still has many issues:** drawing errors, missing effects
+  and flicker in some games; one mask-checking blend mode is approximate.
+  Use the Software renderer for games that look wrong.
 - Display centering and interlaced modes are not implemented.
 - Demanding 3D games run below full speed on Old 3DS.
 - Save-state thumbnails can be blank or stale, especially on Old 3DS.
