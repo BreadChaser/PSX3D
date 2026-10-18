@@ -177,7 +177,8 @@ manually before remote game changes; ordinary library/browser/game menu loops
 are serviced, but nested system keyboard/confirmation applets are not.
 
 `set` currently allows `frameskip=...`, `clock=...`, `o:frameskip_*=...`,
-`slider=N`, and `gldbg=N`. Renderer, thread and other options require a new `load`;
+`slider=N`, and `gldbg=N`. `set rtt=old|new` repeats the previous load cleanly.
+Renderer, thread and other options require a new `load`;
 unsafe live changes are rejected. Use `load` with the same game/state to compare
 those. Per-run `o:` values use the existing core option mechanism.
 
@@ -252,3 +253,21 @@ checks use no consoles. The existing frontend host suite and 3DSX/CIA builds are
 also required. Hardware acceptance remains: Old/New CIA launch, remote idle FPS
 cost, each renderer/state lifecycle, screenshots vs actual screens, transfer
 integrity, and successful self-update/relaunch.
+
+## Combined RTT hardware validation (2026-10-18)
+
+The `t3/fastloop-rtt` integration passed CIA launch, authenticated status, repeated
+SW/GPU game changes, 400x240 screenshots and self-update/relaunch on both consoles.
+Hardware exposed two updater/transport assumptions: immediate SOC close could
+reset framed replies, so replies now half-close and drain; FAT rename cannot
+replace an existing switches.txt, so updater switch consumption avoids unnecessary
+rewrites and uses backup/replace/rollback when needed. Direct game replacement
+also waits for the replacement game's load result instead of reporting the old
+game's teardown as a failure. Developer ASan/UBSan suites pass these corrections.
+
+The diagnostic version-bump update (0.3.1 to0.3.2) completed in26.4s on New and40.1s
+on Old, with changed session IDs and restored remote library mode. These are local
+test build versions, not a public release. Private measurements, exact artifacts,
+responses, PNGs and cycle timings are in the main checkout's ignored
+`devtools/fastloop/results.md`. Active low-bandwidth console NTR streams remained;
+host request/viewer processes were paused. No NTR-free overhead claim is made.
