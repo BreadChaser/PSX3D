@@ -1112,9 +1112,11 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			{
 				float gms; u64 gap;
 				video_take_gpu_stats(&gms, &gap);
+				u64 qw = video_take_pending_wait_ticks();
+				float heap_ms = video_take_heap_flush_ticks() / (float)present_count / CPU_TICKS_PER_MSEC;
 				if (log_linked() || sw_prof || sw_stats)
-					log_printf("  gpu %.2fms/frame, frame end to next begin %.2fms\n", gms / present_count,
-						gap / (float)present_count / CPU_TICKS_PER_MSEC);
+					log_printf("  gpu %.2fms/frame, frame end to next begin %.2fms, heap flush %.3fms, queue wait %.3fms\n", gms / present_count,
+						gap / (float)present_count / CPU_TICKS_PER_MSEC, heap_ms, qw / (float)present_count / CPU_TICKS_PER_MSEC);
 			}
 			char abuf[160];
 			audio_stats(abuf, sizeof(abuf));

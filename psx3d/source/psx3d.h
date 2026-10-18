@@ -90,6 +90,17 @@ static inline float ui_depth(float d) { return ui_eye * d * ui_parallax; }
 u64 video_take_wait_ticks(void);
 u64 video_take_xfer_ticks(void);
 void video_take_gpu_stats(float *gpu, u64 *gap);
+u64 video_take_heap_flush_ticks(void);
+void video_cache_targeted(bool enabled);
+u8 video_cache_command_list(const void *commands, u32 bytes, u8 flags);
+u8 video_cache_frame_end(u8 flags);
+extern bool sw_gpu_flush, sw_gpu_async;
+// Private extension implemented by our citro3d render queue.
+#define VIDEO_FRAME_OVERLAP BIT(7)
+void video_gpu_wait_previous(void);
+bool video_gpu_has_previous(void);
+u64 video_take_pending_wait_ticks(void);
+
 int video_probe_top(void);
 // core (patches/0002): real 3D renders each eye into its own VRAM
 void psx3d_set_strength(float px);

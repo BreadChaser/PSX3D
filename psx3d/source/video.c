@@ -125,6 +125,9 @@ bool video_init(void)
 	{
 		extern int pica_debug;
 		pica_debug = sw_gldbg;
+		pica_double_buffer = sw_gpu_async;
+		pica_wait_frame = video_gpu_wait_previous;
+		pica_frame_pending = video_gpu_has_previous;
 		pica_open_frame = video_gpu_frame_begin;   // when the core starts drawing
 	}
 #endif
@@ -395,13 +398,15 @@ void video_gpu_frame_begin(void)
 {
 	if (gpu_frame)
 		return;
+	video_cache_targeted(sw_gpu_flush && !in_menu_call);
 	u64 t0 = svcGetSystemTick();
-	C3D_FrameBegin(0);
+	C3D_FrameBegin(sw_gpu_async && !in_menu_call ? VIDEO_FRAME_OVERLAP : 0);
 	wait_ticks += svcGetSystemTick() - t0;
-	gpu_ms += C3D_GetDrawingTime();   // the frame we just waited for
+	if (!sw_gpu_async) gpu_ms += C3D_GetDrawingTime();   // the frame we just waited for
 	gap_ticks += t0 - frame_end_tick;
 	gpu_frame = true;
 #ifdef PSX3D_PICA
+	pica_async = sw_gpu_async && video_gpu_has_previous();
 	pica_frame_started();
 #endif
 }
@@ -422,6 +427,10 @@ void video_present(bool show_game, void (*draw_top)(void *),
 {
 	// no vsync wait here: emu.c paces frames; this only waits for the GPU
 	video_gpu_frame_begin();
+	// Citro2d reuses its own vertex/index buffers: finish the previous frame
+	// after emulation, before writing this frame's UI.
+	video_gpu_wait_previous();
+	if (sw_gpu_async) gpu_ms += C3D_GetDrawingTime();
 #ifdef PSX3D_PICA
 	C2D_Prepare();   // the hardware renderer changed the GPU state
 	// ...including some C2D_Prepare leaves alone: back to citro3d's defaults

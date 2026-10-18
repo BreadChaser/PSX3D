@@ -118,6 +118,8 @@ char sw_game[64];       // test: start the first library game whose title contai
 int sw_vramdump;         // test: dump PS1 VRAM this many frames after the game starts
 int sw_pmu0 = -1, sw_pmu1 = -1;   // test: ARM11 performance counter events (pmu=AA,BB, hex)
 int sw_state = -1;       // test: load this save state slot when the game starts (state0, state=N)
+bool sw_gpu_async = true;
+bool sw_gpu_flush = true;
 bool sw_aa;              // test: Old 3DS: gameplay supersampled too
 bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 
@@ -152,6 +154,10 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "nosound")) sw_nosound = true;
 		else if (!strcmp(a, "noirrst")) sw_noirrst = true;
 		else if (!strcmp(a, "noaa")) sw_noaa = true;
+		else if (!strcmp(a, "gpuasync")) sw_gpu_async = true;
+		else if (!strcmp(a, "nogpuasync")) sw_gpu_async = false;
+		else if (!strcmp(a, "gpuflush")) sw_gpu_flush = true;
+		else if (!strcmp(a, "nogpuflush")) sw_gpu_flush = false;
 		else if (!strcmp(a, "aa")) sw_aa = true;
 		else if (!strcmp(a, "nolcd")) sw_nolcd = true;
 		else if (!strcmp(a, "nocovers")) sw_nocovers = true;

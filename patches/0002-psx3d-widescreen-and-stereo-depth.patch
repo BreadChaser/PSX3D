@@ -946,10 +946,10 @@ index 76f76af..0e684ac 100644
    sem_post(&t.sem_done);
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 0000000..3394a3d
+index 0000000..582839d
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,1963 @@
+@@ -0,0 +1,1997 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -1040,8 +1040,10 @@ index 0000000..3394a3d
 +static bool disp_used;
 +static int disp_x, disp_y, disp_w, disp_h;
 +static int stage_y;                   // stage rows used by uploads the GPU hasn't run yet
-+static pvtx *vbuf;
-+static int vpos, vstart;
++static pvtx *vbuf, *vbuf_base;
++static int vlimit = MAX_VERTS, vbank;
++static u32 frame_seq;
++static int vpos, vstart, vclean;
 +static int sent_vpos;   // vertex buffer position at the last hand-off to the GPU
 +static bool ready, frame_open;
 +static bool base_dirty = true, state_dirty = true;
@@ -1156,6 +1158,9 @@ index 0000000..3394a3d
 +// finish). Called when the first drawing command of a frame arrives, so the
 +// GPU finishes the last frame while the game's own code runs.
 +void (*pica_open_frame)(void);
++bool pica_async, pica_double_buffer;
++void (*pica_wait_frame)(void);
++bool (*pica_frame_pending)(void);
 +static u64 t_state, t_draw, t_tex, t_list, t_svc;
 +static unsigned n_list, n_flush;   // diagnostics: ticks in state setup, draw calls, textures
 +static unsigned st_why[5], st_evict_lg[NSIZES];   // batch ends: atlas, blend/mode, area, rebind, other
@@ -1414,8 +1419,14 @@ index 0000000..3394a3d
 +	frame_open = true;
 +	base_dirty = state_dirty = true;
 +	sent_valid = false;
-+	vpos = vstart = sent_vpos = 0;
-+	synced_seq = seq;
++	vpos = vstart = sent_vpos = vclean = 0;
++	frame_seq = seq;
++	if (!pica_async || !pica_frame_pending || !pica_frame_pending()) synced_seq = seq;
++	if (vbuf_base) {
++		vlimit = pica_double_buffer ? MAX_VERTS / 2 : MAX_VERTS;
++		vbank = pica_async ? (vbank ^ 1) : 0;
++		vbuf = vbuf_base + vbank * vlimit;
++	}
 +	stage_y = 0;
 +	if (npend) {
 +		prect p[16];
@@ -1440,6 +1451,7 @@ index 0000000..3394a3d
 +	C3D_FrameEnd(0);
 +	C3D_FrameBegin(0);
 +	st_syncs++;
++	pica_async = false;   // FrameBegin(0) just retired all submitted work
 +	pica_frame_started();
 +}
 +
@@ -1501,6 +1513,16 @@ index 0000000..3394a3d
 +#else
 +	svcStoreProcessDataCache(CUR_PROCESS_HANDLE, (u32)p, n);
 +#endif
++}
++
++// Vertices are append-only between GPU synchronizations. Flush the newly
++// written suffix once per submission, rather than inspecting every draw.
++void pica_flush_vertices(void)
++{
++	if (vpos > vclean) {
++		flush_range(vbuf + vclean, (vpos - vclean) * sizeof(pvtx));
++		vclean = vpos;
++	}
 +}
 +
 +static void decode_rect(tcache *c, int u0, int u1, int v0, int v1)
@@ -1661,6 +1683,17 @@ index 0000000..3394a3d
 +		}
 +}
 +
++static void texture_idle(tcache *c)
++{
++	if (c->used_seq <= synced_seq) return;
++	if (pica_async && c->used_seq <= frame_seq && pica_wait_frame) {
++		pica_wait_frame();
++		synced_seq = frame_seq;
++	} else {
++		gpu_sync();
++	}
++}
++
 +// forget an entry and free its cells (the caller syncs if queued draws use it)
 +static void drop_entry(tcache *c)
 +{
@@ -1677,8 +1710,7 @@ index 0000000..3394a3d
 +{
 +	st_evict++;
 +	st_evict_lg[c->lg]++;
-+	if (c->used_seq > synced_seq)   // queued draws still read it
-+		gpu_sync();
++	texture_idle(c);
 +	drop_entry(c);
 +}
 +
@@ -1764,8 +1796,7 @@ index 0000000..3394a3d
 +				break;
 +	}
 +	if (c && !cache_valid(c)) {
-+		if (c->used_seq > synced_seq)   // queued draws still read the old texels
-+			gpu_sync();
++		texture_idle(c);
 +		c->tiles = 0;
 +		c->stamp = c->checked = gen_clock;
 +		st_inval++;
@@ -1777,8 +1808,7 @@ index 0000000..3394a3d
 +			int nu0 = u0 < c->rx ? u0 : c->rx, nu1 = u1 > c->rx + size - 1 ? u1 : c->rx + size - 1;
 +			int nv0 = v0 < c->ry ? v0 : c->ry, nv1 = v1 > c->ry + size - 1 ? v1 : c->ry + size - 1;
 +			u0 = nu0; u1 = nu1; v0 = nv0; v1 = nv1;
-+			if (c->used_seq > synced_seq)
-+				gpu_sync();
++			texture_idle(c);
 +			drop_entry(c);
 +			c = NULL;
 +		}
@@ -2058,8 +2088,8 @@ index 0000000..3394a3d
 +
 +static unsigned st_splits;
 +
-+// hand what is queued to the GPU now, so it draws while emulation goes on
-+// (otherwise the whole frame's drawing waited for the frame to end)
++// Split command lists into bounded pieces; the frontend submits them at
++// FrameEnd, after flushing the vertices and textures they read.
 +static noinline void send_early(void)
 +{
 +	flush();
@@ -2074,9 +2104,9 @@ index 0000000..3394a3d
 +{
 +	if (vpos - sent_vpos >= SEND_VERTS)
 +		send_early();
-+	if (vpos + n > MAX_VERTS) {
++	if (vpos + n > vlimit) {
 +		gpu_sync();   // the GPU has used everything: start the buffer over
-+		if (vpos + n > MAX_VERTS)
++		if (vpos + n > vlimit)
 +			return NULL;
 +	}
 +	pvtx *v = vbuf + vpos;
@@ -2507,6 +2537,10 @@ index 0000000..3394a3d
 +	// uploads stack up in the stage; the GPU must run them before it is reused
 +	if (stage_y + h > STAGE_H)
 +		gpu_sync();
++	if (pica_async && pica_frame_pending && pica_frame_pending() && pica_wait_frame) {
++		pica_wait_frame();
++		synced_seq = frame_seq;
++	}
 +	int sy = stage_y;
 +	stage_y += h;
 +	u16 *dst = stage_tex.data;
@@ -2522,7 +2556,7 @@ index 0000000..3394a3d
 +		GSPGPU_FlushDataCache(dst + tr0 * (STAGE_W / 8) * 64, (tr1 - tr0 + 1) * (STAGE_W / 8) * 64 * 2);
 +	}
 +	flush();
-+	if (vpos + 6 > MAX_VERTS)
++	if (vpos + 6 > vlimit)
 +		gpu_sync();
 +	if (base_dirty)
 +		apply_base();
@@ -2724,10 +2758,10 @@ index 0000000..3394a3d
 +	if (stage_tex.data)
 +		C3D_TexDelete(&stage_tex);
 +	if (vbuf)
-+		linearFree(vbuf);
++		linearFree(vbuf_base);
 +	memset(&atlas[0].tex, 0, sizeof(atlas[0].tex));
 +	memset(&stage_tex, 0, sizeof(stage_tex));
-+	vbuf = NULL;
++	vbuf = vbuf_base = NULL;
 +}
 +
 +// the big buffers only exist while a game runs (the library needs the memory)
@@ -2742,7 +2776,7 @@ index 0000000..3394a3d
 +		goto fail;
 +	disp_used = false;
 +	C3D_TexSetFilter(&stage_tex, GPU_NEAREST, GPU_NEAREST);
-+	vbuf = linearAlloc(MAX_VERTS * sizeof(pvtx));
++	vbuf = vbuf_base = linearAlloc(MAX_VERTS * sizeof(pvtx));
 +	if (!vbuf)
 +		goto fail;
 +	// the atlas, and each entry's fixed place in it
@@ -2915,10 +2949,10 @@ index 0000000..3394a3d
 +}
 diff --git a/plugins/gpu_pica/gpu_pica.h b/plugins/gpu_pica/gpu_pica.h
 new file mode 100644
-index 0000000..043e3b6
+index 0000000..2b8b07c
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.h
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,23 @@
 +/* gpu_pica: PS1 GPU on the 3DS GPU. Frontend interface (PSX3D). */
 +#ifndef GPU_PICA_H
 +#define GPU_PICA_H
@@ -2929,6 +2963,7 @@ index 0000000..043e3b6
 +bool pica_game_begin(bool small);
 +void pica_game_end(void);
 +void pica_exit(void);
++void pica_flush_vertices(void);
 +void pica_frame_started(void);   // a GPU frame is open: drawing can go in
 +void pica_frame_ended(void);
 +void pica_state_lost(void);      // someone else drew with citro3d/citro2d
@@ -2936,6 +2971,9 @@ index 0000000..043e3b6
 +enum { PICA_PIC_NONE, PICA_PIC_GPU, PICA_PIC_CPU };
 +int pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h);
 +void pica_stats(char *buf, int n);
++extern bool pica_async, pica_double_buffer;
++extern void (*pica_wait_frame)(void);
++extern bool (*pica_frame_pending)(void);
 +extern void (*pica_open_frame)(void);   // opens a GPU frame when drawing starts
 +#endif
 diff --git a/plugins/gpu_unai/gpu_command.h b/plugins/gpu_unai/gpu_command.h
