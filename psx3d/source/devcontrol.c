@@ -537,7 +537,9 @@ void dev_game_ended(bool ok)
 		return;
 	running = false;
 	current_title[0] = 0;
-	if (command_loading) {
+	// A direct load/set first tears down the previous game. Its completion
+	// reply belongs to the next game, whose request is still pending here.
+	if (command_loading && !load_pending) {
 		error_reply(last_error[0] ? last_error : "game failed to load");
 		command_loading = false;
 	}

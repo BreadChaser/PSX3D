@@ -165,8 +165,10 @@ int main(void)
 	command("set rtt=old", true);
 	assert(dev_transition());
 	dev_game_ended(true);
+	assert(!strstr(response, "false") && command_loading);
 	assert(dev_next_game(path, save, title) && (sw_gldbg & 262144) && sw_state == 2);
 	dev_game_started(title, true);
+	assert(strstr(response, "true") && !command_loading);
 	command("set rtt=new", true);
 	dev_game_ended(true);
 	assert(dev_next_game(path, save, title) && !(sw_gldbg & 262144));
