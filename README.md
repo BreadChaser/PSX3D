@@ -4,6 +4,12 @@ PSX3D is a standalone PlayStation emulator for Nintendo 3DS by **BreadChaser**,
 built around PCSX-ReARMed. It runs without RetroArch. This project is a work
 in progress.
 
+**The first PS1 emulator for the 3DS that draws on the 3DS GPU.** On an Old 3DS
+it runs games up to twice as fast as the PCSX-ReARMed software renderer used by
+other 3DS PS1 emulators (Crash Bandicoot: 47.8 vs 22.8 FPS, Ridge Racer Type 4:
+53.7 vs 32.0), and it makes games like Crash Bandicoot playable at full game
+speed on the original 3DS.
+
 <p align="center">
   <img src="docs/screenshots/library.png" alt="Old 3DS game library" width="300">
   <img src="docs/screenshots/menu.png" alt="In-game pause menu" width="300">
