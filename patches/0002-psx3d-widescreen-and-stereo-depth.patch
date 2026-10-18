@@ -1007,10 +1007,10 @@ index 76f76afe..0e684ace 100644
    sem_post(&t.sem_done);
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 00000000..5001c35a
+index 00000000..d05dcd60
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,2737 @@
+@@ -0,0 +1,3118 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -1073,6 +1073,7 @@ index 00000000..5001c35a
 +
 +typedef struct tcache {
 +	bool valid;
++	bool gpu_tiles;
 +	u8 depth;          // 0 4-bit, 1 8-bit, 2 15-bit
 +	u8 lg;             // size = 32 << lg
 +	u8 rx, ry;         // the square's origin in page texels
@@ -1110,7 +1111,7 @@ index 00000000..5001c35a
 +enum thread_op {
 +  TH_SETTLE_RECT, TH_SETTLE_VRAM, TH_DROP_FILLS, TH_READ_RECT, TH_READ_ALL,
 +  TH_DUMP, TH_SYNCE, TH_UPDATE, TH_FLUSH, TH_FLIP, TH_STATS, TH_PROBE,
-+  TH_FRAME_START, TH_FRAME_END, TH_PREPARE_PRESENT
++  TH_FRAME_START, TH_FRAME_END, TH_PREPARE_PRESENT, TH_COPY
 +};
 +struct thread_request { enum thread_op op; int x, y, w, h; void *data; };
 +static void thread_execute(void *data);
@@ -1134,7 +1135,7 @@ index 00000000..5001c35a
 +static shaderProgram_s prog;
 +static int u_proj, u_texscale;
 +static C3D_Tex vram_tex;              // the PS1 VRAM render target
-+static C3D_RenderTarget *target;
++static C3D_RenderTarget *target, *atlas_target;
 +static C3D_Tex dither_tex;            // repeated PS1 4x4 signed offsets (8x8 hardware minimum)
 +static int applied_dither = -1;     // independent of stage 0 / STP mask pass
 +static unsigned dither_config = 1;   // 0 off, 1 E1-controlled, 2 force
@@ -1225,6 +1226,21 @@ index 00000000..5001c35a
 +// every frame, so the blocks must be small)
 +static u32 vram_gen[32][16];
 +static u32 gen_clock = 1;
++// 8x8 is the native PICA tile. Keep palette rows and framebuffer edges
++// independent; the old 64x16 tracker remains available for hardware A/B.
++#define RTT_OLD 262144
++extern int pica_debug;
++static u32 fine_gen[64][128], fine_draw_gen[64][128];
++// CPU palette uploads are often adjacent rows in the same native tile.
++// Keep their row versions independent from conservative GPU tile bounds.
++static u32 cpu_row_gen[512];
++static u32 fine_drawn[64][4], fine_snapshot[64][4];
++static unsigned st_gpu_tiles, st_gpu_copies;
++static bool gpu_readable;
++static int known_fx0 = 1, known_fx1, known_fy0, known_fy1;
++static unsigned st_read_pixels, st_read_bytes;
++static inline bool rtt_old(void) { return (pica_debug & RTT_OLD) != 0; }
++
 +
 +// PS1 drawing state (GP0 E1-E6)
 +static struct {
@@ -1286,6 +1302,7 @@ index 00000000..5001c35a
 +static unsigned st_batches, st_prims, st_decodes, st_uploads, st_syncs, st_evict, st_inval, st_keys;
 +
 +static void flush(void);
++static bool decode_gpu(tcache *c, u64 need);
 +static void push_to_target(int x, int y, int w, int h);
 +
 +// ------------------------------------------------------------------ helpers
@@ -1295,11 +1312,27 @@ index 00000000..5001c35a
 +
 +static inline int sext11(u32 v) { return ((s32)(v << 21)) >> 21; }
 +
++static void mark_fine(int x, int y, int w, int h, bool drawn)
++{
++	for (int row=0; row<h; row++) cpu_row_gen[(y+row)&511]=gen_clock;
++	for (int yy = 0; yy < h; ) {
++		int py = (y + yy) & 511, by = py >> 3;
++		for (int xx = 0; xx < w; ) {
++			int px = (x + xx) & 1023, bx = px >> 3;
++			fine_gen[by][bx] = gen_clock;
++			if (drawn) fine_drawn[by][bx >> 5] |= 1u << (bx & 31);
++			xx += 8 - (px & 7);
++		}
++		yy += 8 - (py & 7);
++	}
++}
++
 +static void mark_vram(int x, int y, int w, int h)
 +{
 +	if (w <= 0 || h <= 0)
 +		return;
 +	gen_clock++;
++	if (!rtt_old()) mark_fine(x, y, w, h, false);
 +	int bx0 = (x & 1023) >> 6, bx1 = ((x + w - 1) & 1023) >> 6;
 +	int by0 = (y & 511) >> 4, by1 = ((y + h - 1) & 511) >> 4;
 +	if (h >= 512) { by0 = 0; by1 = 31; }
@@ -1437,7 +1470,7 @@ index 00000000..5001c35a
 +static unsigned st_readbacks;
 +
 +// the GPU is about to draw into pixels x0..x1, y0..y1 (inclusive)
-+static inline void mark_drawn(int x0, int y0, int x1, int y1)
++static noinline void mark_drawn_slow(int x0, int y0, int x1, int y1)
 +{
 +	if (x0 < 0) x0 = 0;
 +	if (y0 < 0) y0 = 0;
@@ -1445,6 +1478,39 @@ index 00000000..5001c35a
 +	if (y1 > VRAM_H - 1) y1 = VRAM_H - 1;
 +	if (x1 < x0 || y1 < y0)
 +		return;
++	if (!rtt_old()) {
++		gpu_readable = false;
++		int bx0 = x0 >> 3, bx1 = x1 >> 3, by0 = y0 >> 3, by1 = y1 >> 3;
++		if (bx0 >= known_fx0 && bx1 <= known_fx1 && by0 >= known_fy0 && by1 <= known_fy1) return;
++		// Keep the largest covered rectangle, rather than replacing a
++		// framebuffer-sized hit with each tiny sprite outside it.
++		if (known_fx0 > known_fx1 || (bx1-bx0+1)*(by1-by0+1) >
++			(known_fx1-known_fx0+1)*(known_fy1-known_fy0+1)) {
++			known_fx0=bx0; known_fx1=bx1; known_fy0=by0; known_fy1=by1;
++		}
++		// A CPU-decoded texture has read back (and cleared) its source
++		// tiles. Writes to tiles still dirty cannot invalidate a CPU decode.
++		u32 stamp = gen_clock + 1;
++		bool changed = false;
++		for (int by = by0; by <= by1; by++) {
++			for (int word = bx0 >> 5; word <= (bx1 >> 5); word++) {
++				int lo = word == (bx0 >> 5) ? (bx0 & 31) : 0;
++				int hi = word == (bx1 >> 5) ? (bx1 & 31) : 31;
++				u32 mask = (~0u << lo) & (~0u >> (31-hi));
++				u32 add = mask & (~fine_drawn[by][word] | fine_snapshot[by][word]);
++				if (!add) continue;
++				fine_snapshot[by][word] &= ~mask;
++				fine_drawn[by][word] |= mask;
++				changed |= add != 0;
++				for (; add; add &= add-1) {
++					int bx=word*32+__builtin_ctz(add);
++					fine_gen[by][bx] = fine_draw_gen[by][bx] = stamp;
++				}
++			}
++		}
++		if (changed) gen_clock = stamp;
++		return;
++	}
 +	int bx0 = x0 >> 6, bx1 = x1 >> 6, by0 = y0 >> 4, by1 = y1 >> 4;
 +	// most primitives land where the previous ones did
 +	if (bx0 >= known_bx0 && bx1 <= known_bx1 && by0 >= known_by0 && by1 <= known_by1)
@@ -1464,6 +1530,18 @@ index 00000000..5001c35a
 +	}
 +}
 +
++// The common covered-rectangle case stays in the primitive hot path. Tile
++// bit/version bookkeeping is called only when the bounds grow or move.
++static inline void mark_drawn(int x0, int y0, int x1, int y1)
++{
++	if (!rtt_old()) {
++		gpu_readable=false;
++		if ((x0>>3)>=known_fx0 && (x1>>3)<=known_fx1 &&
++			(y0>>3)>=known_fy0 && (y1>>3)<=known_fy1) return;
++	}
++	mark_drawn_slow(x0,y0,x1,y1);
++}
++
 +static void gpu_sync(void);
 +
 +// wait until the GPU has run everything queued
@@ -1479,11 +1557,80 @@ index 00000000..5001c35a
 +	}
 +}
 +
++// Host-only dependency log. Recording does not change synchronization or
++// cache policy, so the baseline can be classified before enabling RTT.
++#ifdef PSX3D_SIM
++static void trace_rtt(const tcache *c, const char *kind, int x, int y, int w, int h)
++{
++	static FILE *log;
++	static bool checked;
++	if (!checked) {
++		checked = true;
++		if (getenv("PICA_RTT_TRACE")) log = fopen(getenv("PICA_RTT_TRACE"), "w");
++	}
++	if (!log) return;
++	unsigned blocks = 0;
++	for (int yy = y & ~15; yy < y + h; yy += 16)
++		for (int xx = x & ~63; xx < x + w; xx += 64)
++			blocks += !!(drawn[(yy >> 4) & 31] & (1u << ((xx >> 6) & 15)));
++	fprintf(log, "%s %u %u %u %u %d %d %d %d %u %u %d %d %d %d\n",
++		kind, c->depth, c->page, c->clut, c->win, x, y, w, h,
++		blocks, gen_clock, gpu.screen.src_x, gpu.screen.src_y, gpu.screen.w, gpu.screen.h);
++}
++#else
++#define trace_rtt(c, kind, x, y, w, h) ((void)0)
++#endif
++
++static void readback_fine(int x, int y, int w, int h)
++{
++	int x0 = x >> 3, x1 = (x + w - 1) >> 3;
++	int y0 = y >> 3, y1 = (y + h - 1) >> 3;
++	bool any = false;
++	for (int by = y0; by <= y1; by++)
++		for (int bx = x0; bx <= x1; bx++)
++			any |= !!(fine_drawn[by][bx >> 5] & (1u << (bx & 31)));
++	if (!any) return;
++	// Fills precede newer GPU work. Settle before reading back, then never
++	// let a deferred old fill overwrite the pixels just made CPU-visible.
++	if (nfills) settle_fills(x0 * 8, y0 * 8, (x1-x0+1)*8, (y1-y0+1)*8);
++	if (!gpu_readable) { gpu_idle(); gpu_readable = true; }
++	const u16 *src = vram_tex.data;
++	for (int by = y0; by <= y1; by++) {
++		int invalidated_until = x0-1;
++		for (int bx = x0; bx <= x1; bx++) {
++			u32 bit = 1u << (bx & 31);
++			if (!(fine_drawn[by][bx >> 5] & bit)) continue;
++			// Coalesce adjacent dirty native tiles into one cache IPC.
++			if (bx > invalidated_until) {
++				int end=bx+1;
++				while (end<=x1 && (fine_drawn[by][end>>5] & (1u<<(end&31)))) end++;
++				int ty = (pica_debug & 16384) ? 63 - by : by;
++				GSPGPU_InvalidateDataCache(src + tiled(bx*8, ty*8, VRAM_W), (end-bx)*128);
++				st_read_bytes += (end-bx)*128;
++				invalidated_until=end-1;
++			}
++			for (int r = 0; r < 8; r++) {
++				int py = by*8+r;
++				u16 *dst = gpu.vram + py*VRAM_W + bx*8;
++				for (int c = 0; c < 8; c++) {
++					u16 p = src[tiled(bx*8+c, (pica_debug & 16384) ? VRAM_H-1-py : py, VRAM_W)];
++					dst[c] = (p >> 11) | (((p >> 6) & 31) << 5) | (((p >> 1) & 31) << 10) | ((p & 1) << 15);
++				}
++			}
++			st_read_pixels += 64;
++			fine_drawn[by][bx >> 5] &= ~bit;
++		}
++	}
++	known_fx0 = 1; known_fx1 = 0;
++	st_readbacks++;
++}
++
 +// copy the drawn blocks within this rectangle (no wrapping) to software VRAM
 +static void readback_part(int x, int y, int w, int h)
 +{
 +	if (w <= 0 || h <= 0 || !ready)
 +		return;
++	if (!rtt_old()) { readback_fine(x, y, w, h); return; }
 +	int bx0 = x >> 6, bx1 = (x + w - 1) >> 6, by0 = y >> 4, by1 = (y + h - 1) >> 4;
 +	u16 m = (u16)(((2u << bx1) - 1) & ~((1u << bx0) - 1));
 +	bool any = false;
@@ -1497,7 +1644,11 @@ index 00000000..5001c35a
 +		settle_fills(bx0 * 64, by0 * 16, (bx1 - bx0 + 1) * 64, (by1 - by0 + 1) * 16);
 +	gpu_idle();
 +	const u16 *src = vram_tex.data;
++#ifdef PSX3D_SIM
++	unsigned changed=0, pixels=0;
++#endif
 +	GSPGPU_InvalidateDataCache(src, VRAM_W * VRAM_H * 2);
++	st_read_bytes += VRAM_W * VRAM_H * 2;
 +	for (int by = by0; by <= by1; by++) {
 +		u16 bits = drawn[by] & m;
 +		if (!bits)
@@ -1505,6 +1656,7 @@ index 00000000..5001c35a
 +		for (int bx = bx0; bx <= bx1; bx++) {
 +			if (!(bits & (1u << bx)))
 +				continue;
++			st_read_pixels += 1024;
 +			for (int r = 0; r < 16; r++) {
 +				int py = by * 16 + r;
 +				u16 *dst = gpu.vram + py * VRAM_W + bx * 64;
@@ -1513,7 +1665,11 @@ index 00000000..5001c35a
 +					// display samples VRAM row y at t = 1 - y / 512)
 +					u16 p = src[tiled(bx * 64 + c, (pica_debug & 16384) ? VRAM_H - 1 - py : py, VRAM_W)];
 +					// RGBA5551 -> PS1 15-bit, the alpha bit is the mask bit
-+					dst[c] = (p >> 11) | (((p >> 6) & 31) << 5) | (((p >> 1) & 31) << 10) | ((p & 1) << 15);
++					u16 value = (p >> 11) | (((p >> 6) & 31) << 5) | (((p >> 1) & 31) << 10) | ((p & 1) << 15);
++#ifdef PSX3D_SIM
++					changed += value != dst[c]; pixels++;
++#endif
++					dst[c] = value;
 +				}
 +			}
 +		}
@@ -1521,6 +1677,10 @@ index 00000000..5001c35a
 +	}
 +	known_bx0 = 1; known_bx1 = 0;   // forget the shortcut
 +	st_readbacks++;
++#ifdef PSX3D_SIM
++	if (getenv("PICA_RTT_TRACE"))
++		fprintf(stderr,"RTT readback %d %d %d %d pixels %u changed %u\n",x,y,w,h,pixels,changed);
++#endif
 +}
 +
 +// copy GPU drawing in this VRAM rectangle (wrapping at the edges) to software VRAM
@@ -1562,6 +1722,7 @@ index 00000000..5001c35a
 +static void pica_frame_started_local(void)
 +{
 +	frame_open = true;
++	gpu_readable = false;
 +	base_dirty = state_dirty = true;
 +	sent_valid = false;
 +	vpos = vstart = sent_vpos = vclean = 0;
@@ -1637,8 +1798,59 @@ index 00000000..5001c35a
 +	return true;
 +}
 +
++static u32 fine_stamp(int x, int y, int w, int h)
++{
++	u32 stamp = 0;
++	for (int yy = y & ~7; yy < y + h; yy += 8)
++		for (int xx = x & ~7; xx < x + w; xx += 8) {
++			u32 g = fine_gen[(yy >> 3) & 63][(xx >> 3) & 127];
++			if (g > stamp) stamp = g;
++		}
++	return stamp;
++}
++
++
++static u32 palette_stamp(int x, int y, int w)
++{
++	u32 stamp=0, cpu_tiles=0;
++	for (int xx=x; xx<x+w; xx+=8) {
++		int bx=(xx>>3)&127;
++		u32 g=fine_draw_gen[y>>3][bx];
++		if (g>stamp) stamp=g;
++		if (fine_gen[y>>3][bx]>cpu_tiles) cpu_tiles=fine_gen[y>>3][bx];
++	}
++	// Both row and tile must have changed for a CPU write to matter.
++	// Taking their minimum can conservatively over-invalidate, never miss
++	// an intersecting write, without a large per-pixel generation map.
++	u32 cpu=cpu_row_gen[y]<cpu_tiles ? cpu_row_gen[y] : cpu_tiles;
++	return cpu>stamp ? cpu : stamp;
++}
++
++static bool cache_valid_fine(tcache *c)
++{
++	if (c->checked == gen_clock) return true;
++	u64 old = c->tiles;
++	if (c->depth < 2 && palette_stamp((c->clut & 63)*16, (c->clut >> 6)&511, c->depth ? 256 : 16) > c->stamp)
++		c->tiles = 0;
++	else {
++		int px = (c->page & 15)*64, py = (c->page >> 4)*256, sh = 2-c->depth;
++		if (c->win) {
++			if (fine_stamp(px, py, 256 >> sh, 256) > c->stamp) c->tiles = 0;
++		} else {
++			for (u64 bits = c->tiles; bits; bits &= bits-1) {
++				int t = __builtin_ctzll(bits);
++				if (fine_stamp(px + ((c->rx+(t&7)*32) >> sh), py+c->ry+(t>>3)*32, 32 >> sh, 32) > c->stamp)
++					c->tiles &= ~(1ull << t);
++			}
++		}
++	}
++	c->stamp = c->checked = gen_clock;
++	return c->tiles == old;
++}
++
 +static bool cache_valid(tcache *c)
 +{
++	if (!rtt_old()) return cache_valid_fine(c);
 +	// gldbg=131072: baseline renderer CPU paths.
 +	if (pica_debug & 131072) { return cache_valid_reference(c); }
 +	if (c->checked == gen_clock)   // nothing written since the last check
@@ -1732,9 +1944,12 @@ index 00000000..5001c35a
 +			vh = (s1 - s0 + 1) * 32;
 +		}
 +		int cx = (c->clut & 0x3f) * 16, cy = (c->clut >> 6) & 511, cw = c->depth == 0 ? 16 : 256;
++		trace_rtt(c, "tex", vx, vy, vw, vh);
 +		pica_readback_rect_local(vx, vy, vw, vh);
-+		if (c->depth < 2)
++		if (c->depth < 2) {
++			trace_rtt(c, "clut", cx, cy, cw, 1);
 +			pica_readback_rect_local(cx, cy, cw, 1);
++		}
 +		// (settling the whole page wrote CTR's screen clears out every frame)
 +		if (nfills) {
 +			settle_fills(vx, vy, vw, vh);
@@ -1846,6 +2061,7 @@ index 00000000..5001c35a
 +	need &= ~c->tiles;
 +	if (!need)
 +		return;
++	if (!rtt_old() && c->depth == 2 && !c->win && decode_gpu(c, need)) return;
 +	u32 *dst = atlas[0].tex.data;
 +	int aw = atlas[0].w, ah = atlas[0].h;
 +	const u16 *vram = gpu.vram;
@@ -1864,9 +2080,12 @@ index 00000000..5001c35a
 +			vh = (s1 - s0 + 1) * 32;
 +		}
 +		int cx = (c->clut & 0x3f) * 16, cy = (c->clut >> 6) & 511, cw = c->depth == 0 ? 16 : 256;
++		trace_rtt(c, "tex", vx, vy, vw, vh);
 +		pica_readback_rect_local(vx, vy, vw, vh);
-+		if (c->depth < 2)
++		if (c->depth < 2) {
++			trace_rtt(c, "clut", cx, cy, cw, 1);
 +			pica_readback_rect_local(cx, cy, cw, 1);
++		}
 +		// (settling the whole page wrote CTR's screen clears out every frame)
 +		if (nfills) {
 +			settle_fills(vx, vy, vw, vh);
@@ -2107,8 +2326,8 @@ index 00000000..5001c35a
 +				break;
 +	}
 +	if (c && !cache_valid(c)) {
-+		texture_idle(c);
-+		c->tiles = 0;
++		if (!(c->gpu_tiles && !rtt_old() && atlas_target && frame_open)) texture_idle(c);
++		if (rtt_old()) c->tiles = 0;
 +		c->stamp = c->checked = gen_clock;
 +		st_inval++;
 +	}
@@ -2127,6 +2346,7 @@ index 00000000..5001c35a
 +	if (!c) {
 +		int rx, ry, lg = square_for(u0, u1, v0, v1, &rx, &ry);
 +		c = take_square(lg);
++		c->gpu_tiles = false;
 +		c->depth = depth;
 +		c->page = pg;
 +		c->clut = cl;
@@ -2561,6 +2781,107 @@ index 00000000..5001c35a
 +	return o;
 +}
 +
++// Decode native RGB5A1 into the shared RGBA8 atlas in GPU order. Sampling
++// a separate target avoids framebuffer feedback, including self-overlap.
++// Three byte-quantized TEV stages recover RGB5 then multiply by eight,
++// exactly matching texel_rgba instead of retaining hardware bit replication.
++static bool decode_gpu(tcache *c, u64 need)
++{
++	if (!atlas_target || !frame_open) return false;
++	if (!c->gpu_tiles) {
++		bool dirty = false;
++		int px = (c->page & 15)*64, py=(c->page >> 4)*256;
++		for (u64 bits=need; bits && !dirty; bits &= bits-1) {
++			int t=__builtin_ctzll(bits), x=px+c->rx+(t&7)*32, y=py+c->ry+(t>>3)*32;
++			for (int yy=y; yy<y+32; yy+=8)
++				for (int xx=x; xx<x+32; xx+=8)
++					dirty |= !!(fine_drawn[(yy>>3)&63][((xx>>3)&127)>>5] & (1u<<((xx>>3)&31)));
++		}
++		if (!dirty) return false;
++	}
++	int count = __builtin_popcountll(need)*6;
++	flush();
++	pvtx *v = alloc_verts(count);
++	if (!v) return false;
++	int first = (int)(v-vbuf), n = 0;
++	int px = (c->page & 15)*64, py = (c->page >> 4)*256;
++	// A page crossing VRAM's right edge is split by 32-texel tiles (the
++	// page origin and each tile are 64/32 aligned).
++	for (u64 bits=need; bits; bits &= bits-1) {
++		int tile = __builtin_ctzll(bits), lu=(tile&7)*32, lv=(tile>>3)*32;
++		int x=c->ax+lu, y=c->ay+lv;
++		int u=(px+c->rx+lu)&1023, t=VRAM_H-(py+c->ry+lv);
++		pvtx q[6] = {
++			{ x*4,y*4,u,t,~0u }, { (x+32)*4,y*4,u+32,t,~0u }, { x*4,(y+32)*4,u,t-32,~0u },
++			{ (x+32)*4,y*4,u+32,t,~0u }, { (x+32)*4,(y+32)*4,u+32,t-32,~0u }, { x*4,(y+32)*4,u,t-32,~0u } };
++		// Keep the far target edge inside PICA's 1024-pixel limit,
++		// as the ordinary VRAM drawing path does in to_gpu().
++		for (int i=0;i<6;i++) {
++			if (q[i].x>4095) q[i].x=4095;
++			if (q[i].y>4095) q[i].y=4095;
++		}
++		memcpy(v+n,q,sizeof(q)); n+=6;
++		// A subsequent write must advance versions even while CPU VRAM
++		// remains dirty: GPU snapshots do not clear CPU readback debt.
++		for (int yy=py+c->ry+lv; yy<py+c->ry+lv+32; yy+=8)
++			for (int xx=u; xx<u+32; xx+=8)
++				fine_snapshot[(yy>>3)&63][xx>>8] |= 1u << ((xx>>3)&31);
++	}
++	known_fx0=1; known_fx1=0;
++	if (base_dirty) apply_base();
++	C3D_FrameSplit(0);
++	st_splits++;
++	C3D_FrameDrawOn(atlas_target);
++	C3D_SetViewport(0,0,1024,1024);
++	C3D_SetScissor(GPU_SCISSOR_DISABLE,0,0,1024,1024);
++	C3D_FVUnifSet(GPU_VERTEX_SHADER,u_proj+0,0.5f/1024,0,0,-1);
++	C3D_FVUnifSet(GPU_VERTEX_SHADER,u_proj+1,0,0.5f/1024,0,-1);
++	C3D_FVUnifSet(GPU_VERTEX_SHADER,u_texscale,1.f/VRAM_W,1.f/VRAM_H,0,0);
++	C3D_TexBind(0,&vram_tex);
++	clear_tex_cache();
++	for (int i=0; i<6; i++) C3D_TexEnvInit(C3D_GetTexEnv(i));
++	C3D_TexEnv *e=C3D_GetTexEnv(0);
++	C3D_TexEnvSrc(e,C3D_RGB,GPU_TEXTURE0,GPU_CONSTANT,0);
++	C3D_TexEnvFunc(e,C3D_RGB,GPU_MODULATE);
++	C3D_TexEnvColor(e,0x001f1f1f);
++	C3D_TexEnvSrc(e,C3D_Alpha,GPU_TEXTURE0,GPU_TEXTURE0,0);
++	C3D_TexEnvOpAlpha(e,GPU_TEVOP_A_SRC_R,GPU_TEVOP_A_SRC_G,0);
++	C3D_TexEnvFunc(e,C3D_Alpha,GPU_ADD);
++	C3D_TexEnvScale(e,C3D_Alpha,GPU_TEVSCALE_4);
++	e=C3D_GetTexEnv(1);
++	C3D_TexEnvScale(e,C3D_RGB,GPU_TEVSCALE_4);
++	C3D_TexEnvSrc(e,C3D_Alpha,GPU_PREVIOUS,GPU_TEXTURE0,0);
++	C3D_TexEnvOpAlpha(e,GPU_TEVOP_A_SRC_ALPHA,GPU_TEVOP_A_SRC_B,0);
++	C3D_TexEnvFunc(e,C3D_Alpha,GPU_ADD);
++	C3D_TexEnvScale(e,C3D_Alpha,GPU_TEVSCALE_4);
++	e=C3D_GetTexEnv(2);
++	C3D_TexEnvScale(e,C3D_RGB,GPU_TEVSCALE_2);
++	C3D_TexEnvScale(e,C3D_Alpha,GPU_TEVSCALE_4);
++	e=C3D_GetTexEnv(3);
++	C3D_TexEnvScale(e,C3D_Alpha,GPU_TEVSCALE_4);
++	C3D_AlphaTest(false,GPU_ALWAYS,0);
++	C3D_AlphaBlend(GPU_BLEND_ADD,GPU_BLEND_ADD,GPU_ONE,GPU_ZERO,GPU_ONE,GPU_ZERO);
++	C3D_DrawArrays(GPU_TRIANGLES,first,n);
++	// The second pass writes only STP texels' alpha (128), including
++	// black+STP. Zero without STP remains transparent from the first pass.
++	for (int i=0; i<4; i++) C3D_TexEnvInit(C3D_GetTexEnv(i));
++	e=C3D_GetTexEnv(0);
++	C3D_TexEnvSrc(e,C3D_Both,GPU_TEXTURE0,GPU_CONSTANT,0);
++	C3D_TexEnvFunc(e,C3D_Alpha,GPU_MODULATE);
++	C3D_TexEnvColor(e,0x80000000);
++	C3D_AlphaTest(true,GPU_GREATER,0);
++	C3D_AlphaBlend(GPU_BLEND_ADD,GPU_BLEND_ADD,GPU_ZERO,GPU_ONE,GPU_ONE,GPU_ZERO);
++	C3D_DrawArrays(GPU_TRIANGLES,first,n);
++	vstart=vpos; seq++;
++	st_gpu_tiles += n/6;
++	c->tiles |= need; c->gpu_tiles=true;
++	base_dirty=state_dirty=true; sent_valid=false;
++	apply_base();
++	clear_tex_cache();
++	atlas[0].rebind=true;
++	return true;
++}
++
 +// ------------------------------------------------------------------ primitives
 +
 +static int blend_of(u32 cmd)
@@ -2654,6 +2975,11 @@ index 00000000..5001c35a
 +		for (int i = 0; i < ntri * 3; i++) {
 +			lx = v[i].x < lx ? v[i].x : lx; hx = v[i].x > hx ? v[i].x : hx;
 +			ly = v[i].y < ly ? v[i].y : ly; hy = v[i].y > hy ? v[i].y : hy;
++		}
++		if (!rtt_old()) {
++			if (!polygon) { hx--; hy--; }
++			if (hx >= ps.dx2) hx = ps.dx2-1;
++			if (hy >= ps.dy2) hy = ps.dy2-1;
 +		}
 +		mark_drawn(lx, ly, hx, hy);
 +	}
@@ -2770,7 +3096,8 @@ index 00000000..5001c35a
 +		return;
 +	}
 +	tcache *tex = textured ? texture_for(page, clut, u0, u1, v0, v1) : plain;
-+	mark_drawn(bx0, by0, bx1, by1);
++	mark_drawn(bx0, by0, !rtt_old() && bx1 >= ps.dx2 ? ps.dx2-1 : bx1,
++		!rtt_old() && by1 >= ps.dy2 ? ps.dy2-1 : by1);
 +	// see emit_tris: alpha 255 solid / 128 half; raw textures colour 0x80
 +	u32 a = blend == BL_OPAQUE ? 0xff000000 : blend == BL_HALF ?
 +		(textured ? 0x80000000 : 0x40000000) : (textured ? 0xff000000 : 0);
@@ -2979,6 +3306,46 @@ index 00000000..5001c35a
 +	}
 +}
 +
++struct copy_request { int sx, sy, dx, dy, w, h; unsigned mask; int result; };
++static void copy_on_thread(void *data)
++{
++	struct copy_request *r=data;
++	int sx=r->sx, sy=r->sy, dx=r->dx, dy=r->dy, w=r->w, h=r->h;
++	r->result=0;
++	// Native tile copies preserve every RGB and mask bit. Partial tiles,
++	// wrapping, overlap and E6 mask operations use the CPU fallback.
++	if (!ready || rtt_old() || r->mask || ((sx|sy|dx|dy|w|h)&7) ||
++		sx+w>VRAM_W || dx+w>VRAM_W || sy+h>VRAM_H || dy+h>VRAM_H ||
++		(sx<dx+w && dx<sx+w && sy<dy+h && dy<sy+h)) return;
++	if (!frame_open && pica_open_frame) pica_open_frame();
++	if (!frame_open) return;
++	flush();
++	C3D_FrameSplit(0);
++	st_splits++;
++	// A native 8-row band is w*16 bytes; GX line/gap fields use
++	// 16-byte units. One strided transfer avoids consuming a GX queue
++	// entry for every band of a tall rectangle.
++	u32 dim=GX_BUFFER_DIM(w,VRAM_W-w);
++	GX_TextureCopy((u32*)((u16*)vram_tex.data+tiled(sx,sy,VRAM_W)),dim,
++		(u32*)((u16*)vram_tex.data+tiled(dx,dy,VRAM_W)),dim,w*h*2,8);
++	// The CPU copy is deferred until someone actually reads the destination.
++	// Mark only complete native tiles; the source was never read by the CPU.
++	mark_vram(dx,dy,w,h);
++	known_fx0=1; known_fx1=0;
++	mark_drawn(dx,dy,dx+w-1,dy+h-1);
++	clear_tex_cache();
++	base_dirty=state_dirty=true; sent_valid=false;
++	st_gpu_copies++;
++	r->result=1;
++}
++
++int pica_vram_copy(int sx, int sy, int dx, int dy, int w, int h, unsigned mask)
++{
++	struct copy_request r={sx,sy,dx,dy,w,h,mask,0};
++	if (!thread_request(TH_COPY,0,0,0,0,&r)) copy_on_thread(&r);
++	return r.result;
++}
++
 +// ------------------------------------------------------------------ CPU uploads -> render target
 +
 +// the CPU wrote a VRAM rectangle (upload, copy, state load): put it into
@@ -3015,8 +3382,11 @@ index 00000000..5001c35a
 +					y + h - py < STAGE_H ? y + h - py : STAGE_H);
 +		return;
 +	}
-+	// uploads stack up in the stage; the GPU must run them before it is reused
-+	if (stage_y + h > STAGE_H)
++	// Flush first: emitting deferred effects or running out of vertices
++	// can synchronize and reset stage_y. Reserve the upload only after
++	// those barriers, so a later upload cannot overwrite its pending data.
++	flush();
++	if (vpos + 6 > vlimit || stage_y + h > STAGE_H)
 +		gpu_sync();
 +	if (pica_async && pica_frame_pending && pica_frame_pending() && pica_wait_frame) {
 +		pica_wait_frame();
@@ -3036,9 +3406,6 @@ index 00000000..5001c35a
 +		int tr0 = (STAGE_H - 1 - (sy + h - 1)) >> 3, tr1 = (STAGE_H - 1 - sy) >> 3;
 +		GSPGPU_FlushDataCache(dst + tr0 * (STAGE_W / 8) * 64, (tr1 - tr0 + 1) * (STAGE_W / 8) * 64 * 2);
 +	}
-+	flush();
-+	if (vpos + 6 > vlimit)
-+		gpu_sync();
 +	if (base_dirty)
 +		apply_base();
 +	// copied 1:1, unblended, over everything
@@ -3075,6 +3442,7 @@ index 00000000..5001c35a
 +
 +static void push_to_target(int x, int y, int w, int h)
 +{
++	gpu_readable = false;
 +	// gldbg=131072: baseline renderer CPU paths.
 +	if (pica_debug & 131072) { push_to_target_reference(x, y, w, h); return; }
 +	if (!ready || w <= 0 || h <= 0)
@@ -3107,8 +3475,11 @@ index 00000000..5001c35a
 +					y + h - py < STAGE_H ? y + h - py : STAGE_H);
 +		return;
 +	}
-+	// uploads stack up in the stage; the GPU must run them before it is reused
-+	if (stage_y + h > STAGE_H)
++	// Flush first: emitting deferred effects or running out of vertices
++	// can synchronize and reset stage_y. Reserve the upload only after
++	// those barriers, so a later upload cannot overwrite its pending data.
++	flush();
++	if (vpos + 6 > vlimit || stage_y + h > STAGE_H)
 +		gpu_sync();
 +	if (pica_async && pica_frame_pending && pica_frame_pending() && pica_wait_frame) {
 +		pica_wait_frame();
@@ -3139,9 +3510,6 @@ index 00000000..5001c35a
 +		int tr0 = (STAGE_H - 1 - (sy + h - 1)) >> 3, tr1 = (STAGE_H - 1 - sy) >> 3;
 +		GSPGPU_FlushDataCache(dst + tr0 * (STAGE_W / 8) * 64, (tr1 - tr0 + 1) * (STAGE_W / 8) * 64 * 2);
 +	}
-+	flush();
-+	if (vpos + 6 > vlimit)
-+		gpu_sync();
 +	if (base_dirty)
 +		apply_base();
 +	// copied 1:1, unblended, over everything
@@ -3182,6 +3550,13 @@ index 00000000..5001c35a
 +{
 +	nfills = npend = 0;
 +	memset(drawn, 0, sizeof(drawn));
++	memset(fine_drawn, 0, sizeof(fine_drawn));
++	memset(fine_snapshot, 0, sizeof(fine_snapshot));
++	memset(fine_gen, 0, sizeof(fine_gen));
++	memset(fine_draw_gen, 0, sizeof(fine_draw_gen));
++	memset(cpu_row_gen, 0, sizeof(cpu_row_gen));
++	known_fx0 = 1; known_fx1 = 0;
++	known_bx0 = 1; known_bx1 = 0;
 +	have_last = false;
 +}
 +
@@ -3364,6 +3739,8 @@ index 00000000..5001c35a
 +	if (disp_tex.data)
 +		C3D_TexDelete(&disp_tex);
 +	memset(&disp_tex, 0, sizeof(disp_tex));
++	if (atlas_target) C3D_RenderTargetDelete(atlas_target);
++	atlas_target = NULL;
 +	if (atlas[0].tex.data)
 +		C3D_TexDelete(&atlas[0].tex);
 +	if (stage_tex.data)
@@ -3403,6 +3780,8 @@ index 00000000..5001c35a
 +	atlas[0].h = 1024;
 +	if (!C3D_TexInit(&atlas[0].tex, atlas[0].w, atlas[0].h, GPU_RGBA8))
 +		goto fail;
++	atlas_target = C3D_RenderTargetCreateFromTex(&atlas[0].tex, GPU_TEXFACE_2D, 0, -1);
++	// Allocation failure retains the precise CPU fallback.
 +	C3D_TexSetFilter(&atlas[0].tex, GPU_NEAREST, GPU_NEAREST);
 +	C3D_TexSetWrap(&atlas[0].tex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
 +	if (!C3D_TexInit(&dither_tex, 8, 8, GPU_RGBA8))
@@ -3583,9 +3962,10 @@ index 00000000..5001c35a
 +	memset(st_evict_lg, 0, sizeof(st_evict_lg));
 +	t_state = t_draw = t_tex = 0;
 +	buf += k; n -= k;
-+	snprintf(buf, n, "%u batches %u prims %u tile decodes (%u evictions %u invalidations) %u uploads %u syncs %u readbacks %u splits, %uK GPU memory free; area %d,%d-%d,%d off %d,%d disp %d,%d %dx%d",
-+		st_batches, st_prims, st_decodes, st_evict, st_inval, st_uploads, st_syncs, st_readbacks, st_splits, (unsigned)(linearSpaceFree() / 1024),
++	snprintf(buf, n, "%u batches %u prims %u tile decodes (%u evictions %u invalidations) %u uploads %u syncs %u readbacks %u splits, rb %u pixels %uK cache gpu tiles %u copies %u; %uK GPU memory free; area %d,%d-%d,%d off %d,%d disp %d,%d %dx%d",
++		st_batches, st_prims, st_decodes, st_evict, st_inval, st_uploads, st_syncs, st_readbacks, st_splits, st_read_pixels, st_read_bytes/1024, st_gpu_tiles, st_gpu_copies, (unsigned)(linearSpaceFree() / 1024),
 +		ps.dx1, ps.dy1, ps.dx2, ps.dy2, ps.ox, ps.oy, gpu.screen.src_x, gpu.screen.src_y, gpu.screen.w, gpu.screen.h);
++	st_read_pixels = st_read_bytes = st_gpu_tiles = st_gpu_copies = 0;
 +	st_batches = st_prims = st_decodes = st_uploads = st_syncs = st_evict = st_inval = st_readbacks = st_splits = 0;
 +}
 +
@@ -3651,6 +4031,7 @@ index 00000000..5001c35a
 +  case TH_FLUSH: renderer_flush_queues_local(); break;
 +  case TH_FLIP: pica_flip_local(); break;
 +  case TH_PREPARE_PRESENT: pica_prepare_present_local(); break;
++  case TH_COPY: copy_on_thread(r->data); break;
 +  case TH_STATS: pica_stats_local(r->data, r->x); break;
 +  case TH_PROBE: pica_probe_local(r->data, r->x); break;
 +  case TH_FRAME_START: pica_frame_started_local(); break;
@@ -3750,10 +4131,10 @@ index 00000000..5001c35a
 +}
 diff --git a/plugins/gpu_pica/gpu_pica.h b/plugins/gpu_pica/gpu_pica.h
 new file mode 100644
-index 00000000..c9dadacb
+index 00000000..ec3667b8
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.h
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,27 @@
 +/* gpu_pica: PS1 GPU on the 3DS GPU. Frontend interface (PSX3D). */
 +#ifndef GPU_PICA_H
 +#define GPU_PICA_H
@@ -3779,6 +4160,8 @@ index 00000000..c9dadacb
 +extern bool (*pica_frame_pending)(void);
 +extern void (*pica_open_frame)(void);   // opens a GPU frame when drawing starts
 +#endif
++
++int pica_vram_copy(int sx, int sy, int dx, int dy, int w, int h, unsigned mask);
 diff --git a/plugins/gpu_pica/gpu_pica_thread.h b/plugins/gpu_pica/gpu_pica_thread.h
 new file mode 100644
 index 00000000..54392eb2
@@ -4573,7 +4956,7 @@ index 4b9b57e6..c2d56b87 100644
    ex_regs[1] |= gpu_unai.GPU_GP1 & 0x1ff;
  
 diff --git a/plugins/gpulib/gpu.c b/plugins/gpulib/gpu.c
-index f04e3a55..0445a8dc 100644
+index f04e3a55..92bc8907 100644
 --- a/plugins/gpulib/gpu.c
 +++ b/plugins/gpulib/gpu.c
 @@ -1,3 +1,4 @@
@@ -4591,7 +4974,7 @@ index f04e3a55..0445a8dc 100644
  #include <stdio.h>
  #include <stdlib.h>
  #include <string.h>
-@@ -32,6 +36,31 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+@@ -32,6 +36,32 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
      int *cycles_sum, int *cycles_last);
  static noinline void finish_vram_transfer(struct psx_gpu *gpu, int is_read, int is_async);
  
@@ -4604,6 +4987,7 @@ index f04e3a55..0445a8dc 100644
 +// ...and what the GPU drew is copied back before VRAM is read here
 +void pica_readback_rect(int x, int y, int w, int h);
 +void pica_readback_all(void);
++int pica_vram_copy(int sx, int sy, int dx, int dy, int w, int h, unsigned mask);
 +#ifdef GPU_DUAL
 +// Software owns the shared VRAM directly; PICA's deferred work is inactive.
 +#define pica_settle_rect(x,y,w,h) do { if (psx3d_renderer_is_pica()) pica_settle_rect(x,y,w,h); } while (0)
@@ -4623,7 +5007,7 @@ index f04e3a55..0445a8dc 100644
  static void sync_renderer(struct psx_gpu *gpu)
  {
    if (gpu_async_enabled(gpu))
-@@ -582,6 +611,9 @@ static noinline void start_vram_transfer(struct psx_gpu *gpu, uint32_t pos_word,
+@@ -582,6 +612,9 @@ static noinline void start_vram_transfer(struct psx_gpu *gpu, uint32_t pos_word,
    gpu->dma.offset = 0;
    gpu->dma.is_read = is_read;
    gpu->dma_start = gpu->dma;
@@ -4633,7 +5017,7 @@ index f04e3a55..0445a8dc 100644
  
    // postponed until the actual transfer
    //sync_renderer(gpu);
-@@ -686,6 +718,8 @@ int do_vram_copy(uint16_t *vram, const uint32_t *ex_regs, const uint32_t *params
+@@ -686,6 +719,8 @@ int do_vram_copy(uint16_t *vram, const uint32_t *ex_regs, const uint32_t *params
    }
  
    renderer_update_caches(dx, dy, w, h, 0);
@@ -4642,7 +5026,7 @@ index f04e3a55..0445a8dc 100644
    return 4;
  }
  
-@@ -824,8 +858,20 @@ breakloop:
+@@ -824,8 +859,20 @@ breakloop:
    return pos;
  }
  
@@ -4663,7 +5047,7 @@ index f04e3a55..0445a8dc 100644
  {
    int cmd, pos;
    uint32_t old_e3 = gpu->ex_regs[3];
-@@ -869,12 +915,17 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+@@ -869,12 +916,31 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
          cmd = -1; // incomplete cmd, can't consume yet
          break;
        }
@@ -4674,6 +5058,20 @@ index f04e3a55..0445a8dc 100644
        *cycles_last = 0;
 -      if (do_vram_copy_pre(gpu, data + pos, cycles_last))
 +      if (do_vram_copy_pre(gpu, data + pos, cycles_last)) {
++#ifdef PSX3D_SIM
++        void trace_vram_copy(const uint32_t *) __attribute__((weak));
++        if (trace_vram_copy) trace_vram_copy(data+pos);
++#endif
++#ifdef GPU_PICA
++        if (psx3d_renderer_is_pica() && !psx3d_vram2 && pica_vram_copy(
++          LE32TOH(data[pos+1])&1023, (LE32TOH(data[pos+1])>>16)&511,
++          LE32TOH(data[pos+2])&1023, (LE32TOH(data[pos+2])>>16)&511,
++          ((LE32TOH(data[pos+3])-1)&1023)+1, (((LE32TOH(data[pos+3])>>16)-1)&511)+1,
++          gpu->ex_regs[6]&3)) {
++          pos += 4;
++          continue;
++        }
++#endif
 +        pica_settle_vram();
 +        // the source may hold GPU drawing (copies of drawn content)
 +        pica_readback_rect(LE32TOH(data[pos + 1]) & 0x3ff, (LE32TOH(data[pos + 1]) >> 16) & 0x1ff,
@@ -4683,7 +5081,7 @@ index f04e3a55..0445a8dc 100644
        pos += 4;
        continue;
      case 0x00:
-@@ -886,17 +937,24 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+@@ -886,17 +952,24 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
        continue;
      }
  
@@ -4709,7 +5107,7 @@ index f04e3a55..0445a8dc 100644
      }
  
      if (cmd == -1)
-@@ -954,9 +1012,27 @@ void GPUwriteData(uint32_t data)
+@@ -954,9 +1027,27 @@ void GPUwriteData(uint32_t data)
    }
  }
  
@@ -4737,7 +5135,7 @@ index f04e3a55..0445a8dc 100644
    uint32_t addr, *list, ld_addr;
    int len, left, count, ld_count = 32;
    int cpu_cycles_sum = 0;
-@@ -993,6 +1069,25 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
+@@ -993,6 +1084,25 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
        continue;
      }
  
@@ -4763,7 +5161,7 @@ index f04e3a55..0445a8dc 100644
      if (len) {
        left = do_cmd_buffer(&gpu, list + 1, len, &cpu_cycles_sum, &cpu_cycles_last);
        if (left) {
-@@ -1019,6 +1114,8 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
+@@ -1019,6 +1129,8 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
      }
    }
  
@@ -4772,7 +5170,7 @@ index f04e3a55..0445a8dc 100644
    sync_ecmds_status_bits(&gpu);
  
    //printf(" -> %d %d\n", cpu_cycles_sum, cpu_cycles_last);
-@@ -1085,6 +1182,10 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+@@ -1085,6 +1197,10 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
    int i;
  
    switch (type) {
@@ -4783,7 +5181,7 @@ index f04e3a55..0445a8dc 100644
      case 1: // save
        if (gpu.cmd_len > 0) {
          flush_cmd_buffer(&gpu);
-@@ -1092,12 +1193,15 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+@@ -1092,12 +1208,15 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
        }
  
        sync_renderer(&gpu);
@@ -4799,7 +5197,7 @@ index f04e3a55..0445a8dc 100644
        //memcpy(gpu.regs, freeze->ulControl, sizeof(gpu.regs));
        memcpy(gpu.ex_regs, freeze->ulControl + 0xe0, sizeof(gpu.ex_regs));
        gpu.status = freeze->ulStatus;
-@@ -1105,7 +1209,9 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+@@ -1105,7 +1224,9 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
        for (i = 8; i > 1; i--)
          GPUwriteStatus((i << 24) | freeze->ulControl[i]);
        renderer_sync_ecmds(gpu.ex_regs);
@@ -4810,7 +5208,7 @@ index f04e3a55..0445a8dc 100644
        gpu_async_sync_ecmds(&gpu);
        break;
    }
-@@ -1263,7 +1369,22 @@ void GPUrearmedCallbacks(const struct rearmed_cbs *cbs)
+@@ -1263,7 +1384,22 @@ void GPUrearmedCallbacks(const struct rearmed_cbs *cbs)
    renderer_set_config(cbs);
    vout_set_config(cbs);
  

@@ -155,6 +155,8 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "renderer=gpu")) sw_renderer = 0;
 		else if (!strcmp(a, "state0")) sw_state = 0;
 		else if (!strncmp(a, "state=", 6)) sw_state = atoi(a + 6);
+		else if (!strcmp(a, "rtt=old")) sw_gldbg |= 262144;
+		else if (!strcmp(a, "rtt=new")) sw_gldbg &= ~262144;
 		else if (!strncmp(a, "gldbg=", 6)) sw_gldbg = atoi(a + 6);
 		else if (!strncmp(a, "vramdump=", 9)) sw_vramdump = atoi(a + 9);
 		else if (!strncmp(a, "pmu=", 4)) sscanf(a + 4, "%x,%x", (unsigned *)&sw_pmu0, (unsigned *)&sw_pmu1);
