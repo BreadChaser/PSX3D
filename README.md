@@ -78,8 +78,10 @@ branch is aimed at that: the dynarec, the GTE, sound mixing, and moving sound
 and disc reading to the second CPU core. The near-term goal is full game speed
 with frameskip on an Old 3DS.
 
-Known gaps in the GPU renderer: no dithering, no display centering, and Silent
-Hill's mask-bit effects are not drawn yet.
+The GPU renderer is not accurate yet: many games, Crash Bandicoot included,
+still have serious drawing errors, and the speeds above were measured with
+those errors present. Also missing: dithering, display centering, and Silent
+Hill's mask-bit effects.
 
 ## Installation
 
