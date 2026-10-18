@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <errno.h>
 #include "psx3d.h"
 
 #define DIR_ PSX3D_DIR "/games"
@@ -100,4 +101,25 @@ void gamecfg_end(void)
 {
 	game[0] = 0;
 	nkv = 0;
+}
+
+void gamecfg_unset(const char *key)
+{
+	for (int i = 0; i < nkv; i++)
+		if (!strcmp(kv[i].key, key)) {
+			memmove(&kv[i], &kv[i+1], (nkv-i-1) * sizeof(kv[0]));
+			nkv--;
+			save();
+			return;
+		}
+}
+
+bool gamecfg_reset(void)
+{
+	char path[PATH_LEN];
+	if (!game[0]) return false;
+	path_of(path, sizeof(path));
+	if (remove(path) && errno != ENOENT) return false;
+	nkv = 0;
+	return true;
 }

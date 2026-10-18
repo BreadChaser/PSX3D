@@ -1,0 +1,44 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='640' height='480' viewBox='0 0 320 240'><rect width='320' height='240' fill='black'/>
+<rect x='0' y='0' width='320' height='240' fill='#060918'/>
+<text x='10' y='18.5' font-family='Michroma' font-size='15' transform='translate(10 0) scale(1 1) translate(-10 0)' fill='#ebeeff' text-anchor='start'>CONTROLS</text>
+<text x='310' y='19.5' font-family='DejaVu Sans' font-size='12.6' transform='translate(310 0) scale(1 1) translate(-310 0)' fill='#6e78a0' text-anchor='end'>this game</text>
+<rect x='10' y='26' width='16' height='2' fill='#e61e3c'/>
+<rect x='28' y='26' width='16' height='2' fill='#facd14'/>
+<rect x='46' y='26' width='16' height='2' fill='#1ebe78'/>
+<rect x='64' y='26' width='16' height='2' fill='#286ee6'/>
+<rect x='-2' y='134' width='324' height='28' fill='#3c5ac8'/>
+<defs><linearGradient id='g1' gradientUnits='userSpaceOnUse' x1='0' y1='136' x2='0' y2='160'><stop stop-color='#283a82'/><stop offset='1' stop-color='#283a82'/></linearGradient></defs>
+<rect x='0' y='136' width='320' height='24' fill='url(#g1)'/>
+<rect x='0' y='136' width='3' height='24' fill='#2b3360'/>
+<text x='12' y='57.4762' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>START</text>
+<defs><linearGradient id='g2' gradientUnits='userSpaceOnUse' x1='0' y1='49.1762' x2='0' y2='55.7762'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 265.145 49.1762 L 265.145 55.7762 L 273.845 52.4762 Z' shape-rendering='crispEdges' fill='url(#g2)'/>
+<path opacity='1' d='M 265.145 49.1762 L 265.145 55.7762' stroke='#9aa5c8' stroke-width='1.09091'/>
+<circle cx='265.145' cy='49.1762' r='0.545455' fill='#9aa5c8'/>
+<circle cx='265.145' cy='55.7762' r='0.545455' fill='#9aa5c8'/>
+<path opacity='1' d='M 265.145 55.7762 L 273.845 52.4762' stroke='#9aa5c8' stroke-width='1.09091'/>
+<circle cx='265.145' cy='55.7762' r='0.545455' fill='#9aa5c8'/>
+<circle cx='273.845' cy='52.4762' r='0.545455' fill='#9aa5c8'/>
+<path opacity='1' d='M 273.845 52.4762 L 265.145 49.1762' stroke='#9aa5c8' stroke-width='1.09091'/>
+<circle cx='273.845' cy='52.4762' r='0.545455' fill='#9aa5c8'/>
+<circle cx='265.145' cy='49.1762' r='0.545455' fill='#9aa5c8'/>
+<text x='312' y='56.2262' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Start</text>
+<text x='12' y='81.5819' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>SELECT</text>
+<rect x='256.154' y='74.3319' width='8.64' height='4.5' fill='#9aa5c8'/>
+<rect x='255.074' y='75.4119' width='10.8' height='2.34' fill='#9aa5c8'/>
+<circle cx='256.154' cy='75.4119' r='1.08' fill='#9aa5c8'/>
+<circle cx='264.794' cy='75.4119' r='1.08' fill='#9aa5c8'/>
+<circle cx='256.154' cy='77.7519' r='1.08' fill='#9aa5c8'/>
+<circle cx='264.794' cy='77.7519' r='1.08' fill='#9aa5c8'/>
+<text x='312' y='80.3319' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Select</text>
+<text x='12' y='105.247' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Touch top left</text>
+<text x='312' y='103.997' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>L2</text>
+<text x='12' y='128.725' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Touch top right</text>
+<text x='312' y='127.475' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>R2</text>
+<text x='20' y='151.627' font-family='DejaVu Sans' font-size='15' transform='translate(20 0) scale(1 1) translate(-20 0)' fill='#ffffff' text-anchor='start'>Touch bottom left</text>
+<text x='312' y='150.377' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Hide</text>
+<text x='12' y='176.543' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Touch bottom right</text>
+<text x='312' y='175.293' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Hide</text>
+<text x='12' y='201.02' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Touch right stick</text>
+<text x='312' y='199.77' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Hide</text>
+</svg>

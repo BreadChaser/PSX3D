@@ -1,0 +1,46 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='640' height='480' viewBox='0 0 320 240'><rect width='320' height='240' fill='black'/>
+<rect x='20' y='0' width='280' height='240' fill='#060918'/>
+<text x='32' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(32 0) scale(1 1) translate(-32 0)' fill='#ebeeff' text-anchor='start'>M</text>
+<text x='42.6609' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(42.6609 0) scale(1 1) translate(-42.6609 0)' fill='#ebeeff' text-anchor='start'>E</text>
+<text x='51.5' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(51.5 0) scale(1 1) translate(-51.5 0)' fill='#ebeeff' text-anchor='start'>N</text>
+<text x='60.9464' y='22' font-family='DejaVu Sans' font-size='11' transform='translate(60.9464 0) scale(1 1) translate(-60.9464 0)' fill='#ebeeff' text-anchor='start'>U</text>
+<rect x='32' y='27' width='9' height='2' fill='#d0313b'/>
+<rect x='32' y='220' width='14' height='2' fill='#d0313b'/>
+<rect x='43' y='27' width='9' height='2' fill='#e8b21c'/>
+<rect x='48' y='220' width='14' height='2' fill='#e8b21c'/>
+<rect x='54' y='27' width='9' height='2' fill='#2fa36b'/>
+<rect x='64' y='220' width='14' height='2' fill='#2fa36b'/>
+<rect x='65' y='27' width='9' height='2' fill='#2f6fc4'/>
+<rect x='80' y='220' width='14' height='2' fill='#2f6fc4'/>
+<text x='30.7999' y='214' font-family='Michroma' font-size='16' transform='translate(30.7999 0) scale(0.782664 1) translate(-30.7999 0)' fill='#2b3360' text-anchor='start'>P</text>
+<text x='42.9769' y='214' font-family='Michroma' font-size='16' transform='translate(42.9769 0) scale(0.782664 1) translate(-42.9769 0)' fill='#2b3360' text-anchor='start'>S</text>
+<text x='56.0734' y='214' font-family='Michroma' font-size='16' transform='translate(56.0734 0) scale(0.782664 1) translate(-56.0734 0)' fill='#2b3360' text-anchor='start'>X</text>
+<text x='69.3787' y='214' font-family='Michroma' font-size='16' transform='translate(69.3787 0) scale(0.782664 1) translate(-69.3787 0)' fill='#2b3360' text-anchor='start'>3</text>
+<text x='81.2882' y='214' font-family='Michroma' font-size='16' transform='translate(81.2882 0) scale(0.782664 1) translate(-81.2882 0)' fill='#2b3360' text-anchor='start'>D</text>
+<rect x='104' y='24' width='93' height='93' fill='#1f2a5a'/>
+<rect x='105' y='25' width='91' height='91' fill='#0c1230'/>
+<rect x='104' y='24' width='93' height='3' fill='#b05ade'/>
+<rect x='104' y='24' width='3' height='93' fill='#b05ade'/>
+<text x='142.062' y='75.05' font-family='DejaVu Sans' font-size='13' transform='translate(142.062 0) scale(1 1) translate(-142.062 0)' fill='#c8cff0' text-anchor='start'>L</text>
+<text x='151.293' y='75.05' font-family='DejaVu Sans' font-size='13' transform='translate(151.293 0) scale(1 1) translate(-151.293 0)' fill='#c8cff0' text-anchor='start'>2</text>
+<rect x='203' y='24' width='93' height='93' fill='#1f2a5a'/>
+<rect x='204' y='25' width='91' height='91' fill='#0c1230'/>
+<rect x='203' y='24' width='93' height='3' fill='#b05ade'/>
+<rect x='293' y='24' width='3' height='93' fill='#b05ade'/>
+<text x='239.982' y='75.05' font-family='DejaVu Sans' font-size='13' transform='translate(239.982 0) scale(1 1) translate(-239.982 0)' fill='#c8cff0' text-anchor='start'>R</text>
+<text x='251.373' y='75.05' font-family='DejaVu Sans' font-size='13' transform='translate(251.373 0) scale(1 1) translate(-251.373 0)' fill='#c8cff0' text-anchor='start'>2</text>
+<rect x='104' y='123' width='192' height='93' fill='#1f2a5a'/>
+<rect x='105' y='124' width='190' height='91' fill='#0c1230'/>
+<rect x='104' y='213' width='192' height='3' fill='#2fa36b'/>
+<rect x='104' y='123' width='3' height='93' fill='#2fa36b'/>
+<rect x='293' y='123' width='3' height='93' fill='#2fa36b'/>
+<path opacity='1' d='M 200 160.14 L 189.6 178.86' stroke='#2fa36b' stroke-width='1.89091'/>
+<circle cx='200' cy='160.14' r='0.945455' fill='#2fa36b'/>
+<circle cx='189.6' cy='178.86' r='0.945455' fill='#2fa36b'/>
+<path opacity='1' d='M 189.6 178.86 L 210.4 178.86' stroke='#2fa36b' stroke-width='1.89091'/>
+<circle cx='189.6' cy='178.86' r='0.945455' fill='#2fa36b'/>
+<circle cx='210.4' cy='178.86' r='0.945455' fill='#2fa36b'/>
+<path opacity='1' d='M 210.4 178.86 L 200 160.14' stroke='#2fa36b' stroke-width='1.89091'/>
+<circle cx='210.4' cy='178.86' r='0.945455' fill='#2fa36b'/>
+<circle cx='200' cy='160.14' r='0.945455' fill='#2fa36b'/>
+</svg>

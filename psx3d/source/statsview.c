@@ -138,9 +138,7 @@ void statsview_cycle(void)
 
 bool statsview_touch(void)
 {
-	if (!g_cfg.show_fps || !(hidKeysDown() & KEY_TOUCH)) return false;
-	touchPosition t; hidTouchRead(&t);
-	if (t.py < 218) return false;
+	if (!input_stats_touched()) return false;
 	statsview_cycle();
 	return true;
 }

@@ -443,9 +443,9 @@ void video_gpu_frame_begin(void)
 {
 	if (gpu_frame)
 		return;
-	video_cache_targeted(sw_gpu_flush && !in_menu_call);
+	video_cache_targeted(renderer_is_gpu() && sw_gpu_flush && !in_menu_call);
 	u64 t0 = svcGetSystemTick();
-	C3D_FrameBegin(sw_gpu_async && !in_menu_call ? VIDEO_FRAME_OVERLAP : 0);
+	C3D_FrameBegin(renderer_is_gpu() && sw_gpu_async && !in_menu_call ? VIDEO_FRAME_OVERLAP : 0);
 	wait_ticks += svcGetSystemTick() - t0;
 	if (!sw_gpu_async) gpu_ms += C3D_GetDrawingTime();   // the frame we just waited for
 	gap_ticks += t0 - frame_end_tick;
@@ -540,7 +540,7 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	bool real = show_game && stereo && g_cfg.stereo == 2 && have_frame && right_ok;
 
 	// gameplay at 1x on Old 3DS, menus supersampled
-	bool plain = plain_ok && show_game && !in_menu_call;
+	bool plain = renderer_is_gpu() && plain_ok && show_game && !in_menu_call;
 	if (plain != plain_now) {
 		top_set_plain(top, GFX_LEFT, plain);
 		top_set_plain(top_r, GFX_RIGHT, plain);

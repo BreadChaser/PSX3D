@@ -53,6 +53,181 @@ void ui_text_ex(C2D_Font font, float x, float y, float size, u32 color, u32 flag
 	C2D_DrawText(&text, C2D_WithColor | flags, x, y, 0.7f, size, size, color);
 }
 
+// The same title font, colours and rule for Controls, Settings and the game menu.
+void ui_menu_header(const char *title, const char *right)
+{
+	ui_text_ex(libui_font(), 10, 6, 0.5f, C2D_Color32(235,238,255,255), 0, title);
+	if (right)
+		ui_text_ex(NULL, 310, 9, 0.42f, C2D_Color32(110,120,160,255), C2D_AlignRight, right);
+	const unsigned colors[] = { 0xe61e3c, 0xfacd14, 0x1ebe78, 0x286ee6 };
+	for (int i=0; i<4; i++)
+		C2D_DrawRectSolid(10+i*18, 26, 0.2f, 16, 2,
+			C2D_Color32(colors[i]>>16, colors[i]>>8, colors[i], 255));
+}
+
+// Pixel-sized ASCII labels with explicit baseline/tracking. A positive width
+// fits the glyph ink bounds exactly (the bottom-screen brand is 62 pixels wide).
+// A negative width is a maximum: shrink long labels uniformly, never enlarge.
+void ui_text_pixels(C2D_Font font, float x, float baseline, float pixels, float spacing,
+	float width, u32 color, u32 align, const char *s)
+{
+	C2D_Text glyphs[32];
+	size_t n = strlen(s);
+	if (!n || n > 32) return;
+	// Citro2D normalizes every font to a 30px cell, including the title font.
+	float sy = pixels / 30;
+	float metrics = 30.0f / C2D_FontGetInfo(font)->tglp->cellHeight;
+	float advances[32], total = spacing * (n-1);
+	float first_left = 0, last_right = 0;
+	for (size_t i = 0; i < n; i++) {
+		char ch[] = { s[i], 0 };
+		if (!C2D_TextFontParse(&glyphs[i], font, textbuf, ch)) return;
+		C2D_TextGetDimensions(&glyphs[i], sy, sy, &advances[i], NULL);
+		charWidthInfo_s *cw = C2D_FontGetCharWidthInfo(font, C2D_FontGlyphIndexFromCodePoint(font, s[i]));
+		if (i == 0) first_left = cw->left*metrics*sy;
+		if (i == n-1) last_right = (cw->left + cw->glyphWidth)*metrics*sy;
+		total += advances[i];
+	}
+	if (width != 0) total += last_right - advances[n-1] - first_left;
+	float fit = total > 0 ? (width > 0 ? width/total : width < 0 ? fminf(1, -width/total) : 1) : 1;
+	total *= fit;
+	if (align == C2D_AlignCenter) x -= total/2;
+	else if (align == C2D_AlignRight) x -= total;
+	if (width != 0) x -= first_left*fit;
+	for (size_t i = 0; i < n; i++) {
+		C2D_DrawText(&glyphs[i], C2D_WithColor | C2D_AtBaseline,
+			x, baseline, 0.7f, sy*fit, width < 0 ? sy*fit : sy, color);
+		x += (advances[i] + spacing)*fit;
+	}
+}
+
+// Locate the actual ink of the six shoulder/stick labels, once per app run.
+// Font cell height includes blank padding, so centring the cell/baseline leaves
+// text visibly off-centre beside vector symbols. System sheets use tiled A4/A8.
+static unsigned font_texel(int x, int y, int width)
+{
+	unsigned morton = (x&1) | ((y&1)<<1) | ((x&2)<<1) |
+		((y&2)<<2) | ((x&4)<<2) | ((y&4)<<3);
+	return ((y/8)*(width/8)+x/8)*64 + morton;
+}
+
+void ui_button_text(float x, float y, float pixels, float spacing, u32 color, int id)
+{
+	static bool ready[6];
+	static float midline[6];
+	int slot = id-RETRO_DEVICE_ID_JOYPAD_L;
+	if (slot < 0 || slot >= 6) return;
+	const char *s = input_ps1_name(id);
+	if (!ready[slot]) {
+		const TGLP_s *g = C2D_FontGetInfo(NULL)->tglp;
+		int top = g->cellHeight, bottom = -1;
+		if (g->sheetFmt == GPU_A4 || g->sheetFmt == GPU_A8) {
+			for (const char *p=s; *p; p++) {
+				int index = C2D_FontGlyphIndexFromCodePoint(NULL, *p);
+				int per_sheet = g->nRows*g->nLines, local = index%per_sheet;
+				const u8 *sheet = g->sheetData+(index/per_sheet)*g->sheetSize;
+				int ox = (local%g->nRows)*(g->cellWidth+1)+1;
+				int oy = (local/g->nRows)*(g->cellHeight+1)+1;
+				int width = C2D_FontGetCharWidthInfo(NULL, index)->glyphWidth;
+				for (int row=0; row<g->cellHeight; row++)
+					for (int col=0; col<width; col++) {
+						unsigned pos = font_texel(ox+col, oy+row, g->sheetWidth);
+						unsigned alpha = g->sheetFmt == GPU_A8 ? sheet[pos] : (sheet[pos/2] >> (4*(pos&1))) & 15;
+						if (alpha) { if (row<top) top=row; if (row>bottom) bottom=row; }
+					}
+			}
+		}
+		midline[slot] = bottom >= top ? ((top+bottom+1)*0.5f-g->baselinePos)*30/g->cellHeight : -11;
+		ready[slot] = true;
+	}
+	ui_text_pixels(NULL, x, y-midline[slot]*pixels/30, pixels, spacing, -68,
+		color, C2D_AlignCenter, s);
+}
+
+// Controller/action marks are geometry, independent of the installed fonts.
+// Coordinates are centred; size is the full height of the square face symbols.
+static void symbol_line(float x, float y, float x2, float y2, float stroke, u32 c)
+{
+	C2D_DrawLine(x, y, c, x2, y2, c, stroke, 0.70f);
+	C2D_DrawCircleSolid(x, y, 0.70f, stroke/2, c);
+	C2D_DrawCircleSolid(x2, y2, 0.70f, stroke/2, c);
+}
+
+// Shared action palette: touch accents and symbols, Controls highlights/icons.
+u32 ui_input_color(int id)
+{
+	unsigned hex = 0x9aa5c8; // soft lavender / grey-blue for other actions
+	switch (id) {
+	// These four PlayStation hues belong only to their face buttons.
+	case RETRO_DEVICE_ID_JOYPAD_X: hex = 0x2fa36b; break;
+	case RETRO_DEVICE_ID_JOYPAD_A: hex = 0xd0313b; break;
+	case RETRO_DEVICE_ID_JOYPAD_B: hex = 0x2f6fc4; break;
+	case RETRO_DEVICE_ID_JOYPAD_Y: hex = 0xd77fb5; break;
+	// Library-inspired synthwave hues, separate from the PS1 face palette.
+	case RETRO_DEVICE_ID_JOYPAD_L: case RETRO_DEVICE_ID_JOYPAD_R:
+	case RETRO_DEVICE_ID_JOYPAD_L2: case RETRO_DEVICE_ID_JOYPAD_R2: hex = 0xb05ade; break;
+	case RETRO_DEVICE_ID_JOYPAD_L3: case RETRO_DEVICE_ID_JOYPAD_R3: hex = 0x45bfd0; break;
+	case INPUT_BIND_HIDE: hex = 0x2b3360; break;
+	}
+	return C2D_Color32(hex>>16, hex>>8, hex, 255);
+}
+
+bool ui_input_symbol(int id, float x, float y, float size, u32 color)
+{
+	float r = size/2, stroke = size/11;
+	color = (ui_input_color(id) & 0xffffff) | (color & 0xff000000);
+	if (id == RETRO_DEVICE_ID_JOYPAD_X) {
+		symbol_line(x, y-r*0.9f, x-r, y+r*0.9f, stroke, color);
+		symbol_line(x-r, y+r*0.9f, x+r, y+r*0.9f, stroke, color);
+		symbol_line(x+r, y+r*0.9f, x, y-r*0.9f, stroke, color);
+	} else if (id == RETRO_DEVICE_ID_JOYPAD_A) {
+		// Outline without painting over the button's pressed gradient.
+		for (int j = 0; j < 32; j++) {
+			float a = j*(2*(float)M_PI/32), b = (j+1)*(2*(float)M_PI/32);
+			C2D_DrawLine(x+r*cosf(a), y+r*sinf(a), color,
+				x+r*cosf(b), y+r*sinf(b), color, stroke, 0.70f);
+		}
+	} else if (id == RETRO_DEVICE_ID_JOYPAD_B) {
+		symbol_line(x-r*0.8f, y-r*0.8f, x+r*0.8f, y+r*0.8f, stroke, color);
+		symbol_line(x+r*0.8f, y-r*0.8f, x-r*0.8f, y+r*0.8f, stroke, color);
+	} else if (id == RETRO_DEVICE_ID_JOYPAD_Y) {
+		symbol_line(x-r*0.85f, y-r*0.85f, x+r*0.85f, y-r*0.85f, stroke, color);
+		symbol_line(x+r*0.85f, y-r*0.85f, x+r*0.85f, y+r*0.85f, stroke, color);
+		symbol_line(x+r*0.85f, y+r*0.85f, x-r*0.85f, y+r*0.85f, stroke, color);
+		symbol_line(x-r*0.85f, y+r*0.85f, x-r*0.85f, y-r*0.85f, stroke, color);
+	} else if (id >= RETRO_DEVICE_ID_JOYPAD_UP && id <= RETRO_DEVICE_ID_JOYPAD_RIGHT) {
+		float dx = id == RETRO_DEVICE_ID_JOYPAD_LEFT ? -1 : id == RETRO_DEVICE_ID_JOYPAD_RIGHT ? 1 : 0;
+		float dy = id == RETRO_DEVICE_ID_JOYPAD_UP ? -1 : id == RETRO_DEVICE_ID_JOYPAD_DOWN ? 1 : 0;
+		C2D_DrawTriangle(x+dx*r*0.825f, y+dy*r*0.825f, color,
+			x-dx*r*0.825f-dy*r*0.8f, y-dy*r*0.825f+dx*r*0.8f, color,
+			x-dx*r*0.825f+dy*r*0.8f, y-dy*r*0.825f-dx*r*0.8f, color, 0.70f);
+	} else if (id == INPUT_FF_TOGGLE || id == INPUT_FF_HOLD || id == INPUT_REWIND_HOLD) {
+		float dir = id == INPUT_REWIND_HOLD ? -1 : 1;
+		for (int j = 0; j < 2; j++) {
+			float cx = x + (j ? 0.5f : -0.5f)*r;
+			C2D_DrawTriangle(cx+dir*r*0.45f, y, color,
+				cx-dir*r*0.45f, y-r*0.65f, color,
+				cx-dir*r*0.45f, y+r*0.65f, color, 0.70f);
+		}
+	} else if (id == RETRO_DEVICE_ID_JOYPAD_START) {
+		// Rounded triangular PS1 START button.
+		float ax=x-r*0.725f, bx=x+r*0.725f, h=r*0.55f;
+		C2D_DrawTriangle(ax, y-h, color, ax, y+h, color, bx, y, color, 0.70f);
+		symbol_line(ax, y-h, ax, y+h, stroke, color);
+		symbol_line(ax, y+h, bx, y, stroke, color);
+		symbol_line(bx, y, ax, y-h, stroke, color);
+	} else if (id == RETRO_DEVICE_ID_JOYPAD_SELECT) {
+		// Flat rounded SELECT pill, with quarter-circle corners.
+		float w=r*1.8f, h=r*0.75f, cr=r*0.18f;
+		C2D_DrawRectSolid(x-w/2+cr, y-h/2, 0.70f, w-2*cr, h, color);
+		C2D_DrawRectSolid(x-w/2, y-h/2+cr, 0.70f, w, h-2*cr, color);
+		for (int i=0; i<4; i++)
+			C2D_DrawCircleSolid(x+(i&1 ? 1 : -1)*(w/2-cr),
+				y+(i&2 ? 1 : -1)*(h/2-cr), 0.70f, cr, color);
+	} else return false;
+	return true;
+}
+
 // ---------------------------------------------------------------- floaty list
 // A list where nothing jumps: the highlight glides between rows on a spring,
 // the selected row drifts out to the right, every row bobs a little, and
@@ -110,6 +285,7 @@ int flist_row_at(const flist_t *f, float y0, float row_h, float py)
 void flist_draw(const flist_t *f, int n, int sel, float x, float y0, float w, float row_h, int rows,
 	const char *(*label)(int, void *), const char *(*value)(int, void *), void *ud, u32 accent)
 {
+	if (value == input_control_value) accent = input_control_color(sel);
 	// highlight: soft glow, gradient bar, accent edge
 	float hy = y0 + (f->hl - f->scroll) * row_h;
 	if (hy > y0 - row_h && hy < y0 + rows * row_h) {
@@ -138,6 +314,16 @@ void flist_draw(const flist_t *f, int n, int sel, float x, float y0, float w, fl
 		ui_text_ex(NULL, tx, ry + (row_h - 15) / 2 + bob, 0.5f, col, 0, s);
 		if (value) {
 			const char *v = value(i, ud);
+			if (value == input_control_value && input_control_slot(i) >= 0) {
+				int id = input_map_get(input_control_slot(i));
+				if (id >= INPUT_FF_TOGGLE && !((id == INPUT_REWIND_HOLD) ? game_capabilities().rewind : game_capabilities().fast_forward)) id = -1;
+				C2D_Text measure;
+				float vw=0;
+				C2D_TextFontParse(&measure, NULL, textbuf, v);
+				C2D_TextGetDimensions(&measure, 0.45f, 0.45f, &vw, NULL);
+				ui_input_symbol(id, x+w-8-vw-14, ry+row_h/2+bob, 12,
+					C2D_Color32(130, 160, 230, a));
+			}
 			if (v && v[0])
 				ui_text_ex(NULL, x + w - 8, ry + (row_h - 15) / 2 + bob, 0.45f,
 					C2D_Color32(130, 160, 230, a), C2D_AlignRight, v);
@@ -178,15 +364,19 @@ void ui_help_panel(float y0, const char *title, const char *impact, const char *
 
 // help for PSX3D's own settings, by name
 static const char *const own_help[][3] = {
+	{ "Renderer", "GPU is experimental", "Software is the default on both consoles. GPU can draw games incorrectly. Close and reopen the game to apply a change. In-game choices are saved for this game; global choices apply to other games unless a curated profile overrides them." },
 	{ "Screen", "Widescreen can be slower", "4:3 is the original picture. Stretch fills the screen. Widescreen makes 3D games draw a wider view (uses the game's own widescreen code when there is one). Remembered per game." },
 	{ "Screen (default)", "Widescreen can be slower", "The screen mode for games you haven't set one for. 4:3 is the original picture, stretch fills the screen, widescreen draws a wider view in 3D games." },
 	{ "3D", "No speed effect", "screen depth puts the game picture slightly behind the screen when the 3D slider is up." },
 	{ "3D resolution", "Half is faster in 3D games", "Draws 3D scenes with every other line copied, while text, menus and 2D stay sharp. Worth it on Old 3DS; New 3DS doesn't need it." },
 	{ "Smooth audio when slow", "Slower, lower sound when needed", "Keeps sound flowing when a game runs slowly. Music and voices slow down with it. At full speed, sound plays normally." },
 	{ "Smoothing", "No speed effect", "Smooths the picture when it's scaled up to the 3DS screen. Off gives sharp pixels." },
-	{ "Show FPS", "No speed effect", "Shows the frame rate on the bottom screen while playing." },
-	{ "Controls", "No speed effect", "Choose which PS1 button each 3DS button presses, for this game." },
-	{ "Rewind", "Costs a little, New 3DS only", "Hold SELECT + L to go back in time. Saves a snapshot 6 times a second; turn it on for games where you want it." },
+	{ "Show FPS", "No speed effect", "Off, FPS or Detailed. FPS shares the touch layout; Detailed replaces it with performance stats and a MENU button. Tap the stats footer to cycle views. Physical controls remain active." },
+	{ "Controls", NULL, "Map physical and touch buttons to controls or none. Available actions follow the game preset. Configure hotkey pairs or turn them off. Hide removes a touch slot; binding an empty slot shows it." },
+	{ "Reset to defaults", NULL, "Restore all global settings and physical/touch controls to this console's defaults. Per-game overrides, saves and library folders are kept. Asks for confirmation." },
+	{ "Reset to global defaults", NULL, "Remove this game's settings and control overrides. Inherit global settings and its preset again. Saves and cheats are kept. Asks for confirmation." },
+	{ "Stick-click buttons", NULL, "Place the New 3DS touch L3/R3 buttons on the Right or Left. MENU and the brand move to the opposite side. Global setting; applies to every game." },
+	{ "Rewind", NULL, "Enable for this game, then hold a mapped Rewind button or its hotkey. The default hotkey is SELECT+L. Captures six times per second; requires free memory." },
 	{ "Continue where I left off", "No speed effect", "Saves when you leave a game and offers to continue from there next time." },
 	{ "Core options", NULL, "Settings of the emulator itself: accuracy, speed hacks, BIOS and more. Each one explains itself." },
 	{ "Menu sounds", "No speed effect", NULL },
@@ -197,7 +387,40 @@ void ui_help_for(float y0, const char *name)
 {
 	for (size_t i = 0; i < sizeof(own_help) / sizeof(own_help[0]); i++)
 		if (!strcmp(own_help[i][0], name)) {
-			ui_help_panel(y0, name, own_help[i][1], own_help[i][2]);
+			ui_help_panel(y0, name, own_help[i][1], !strcmp(name,"Controls") ? input_controls_help() : own_help[i][2]);
 			return;
 		}
+}
+
+// Destructive settings actions require a fresh A press. B always cancels.
+typedef struct { const char *title, *message; } confirm_t;
+static void confirm_draw(void *ud)
+{
+	confirm_t *c = ud;
+	ui_rect(0, 0, 320, 240, C2D_Color32(6, 9, 24, 255));
+	ui_text_ex(libui_font(), 12, 12, 0.48f, C2D_Color32(235, 238, 255, 255), 0, c->title);
+	const u32 cols[] = { 0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28 };
+	for (int i = 0; i < 4; i++) ui_rect(12+i*18, 34, 16, 2, cols[i]);
+	C2D_Text t;
+	if (C2D_TextParse(&t, textbuf, c->message))
+		C2D_DrawText(&t, C2D_WithColor | C2D_WordWrap, 16.0f, 62.0f, 0.7f, 0.5f, 0.5f,
+			C2D_Color32(170, 185, 220, 255), 288.0f);
+	ui_text_ex(NULL, 160, 183, 0.5f, C2D_Color32(235, 238, 255, 255), C2D_AlignCenter, "A  Reset to defaults");
+	ui_text_ex(NULL, 160, 213, 0.45f, C2D_Color32(130, 150, 190, 255), C2D_AlignCenter, "B  Cancel");
+}
+
+bool ui_confirm(const char *title, const char *message, bool show_game)
+{
+	confirm_t c = { title, message };
+	bool released = false;
+	while (aptMainLoop()) {
+		input_poll();
+		u32 held = input_keys_held(), k = input_keys_down();
+		if (released && (k & KEY_B)) return false;
+		if (released && (k & KEY_A)) return true;
+		if (!(held & (KEY_A | KEY_B | KEY_TOUCH))) released = true;
+		ui_begin();
+		video_present_vsync(show_game, NULL, confirm_draw, &c);
+	}
+	return false;
 }

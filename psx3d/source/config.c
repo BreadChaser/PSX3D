@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include "psx3d.h"
 
 #define MAX_OVERRIDES 128
@@ -19,6 +20,8 @@ static bool in_game;
 void config_set_ws_native(bool on);
 static int default_screen;
 static int default_renderer;
+static int default_maps[INPUT_REMAP_N], default_touch_stick;
+static int default_hotkeys[INPUT_HOTKEY_N];
 #define WS_KEY "pcsx_rearmed_psx3d_widescreen"
 
 // Defaults tuned for the 3DS that differ from the core's own defaults.
@@ -28,6 +31,15 @@ static const char *const tuned_defaults[][2] = {
 	// stream from the SD card (Old 3DS turns the CD thread off, see options.c)
 	{ "pcsx_rearmed_cd_readahead", "256" },
 };
+
+static void clear_overrides(void)
+{
+	for (int i = 0; i < novr; i++) {
+		free(ovr[i].key);
+		free(ovr[i].value);
+	}
+	novr = 0;
+}
 
 static void set_defaults(void)
 {
@@ -43,6 +55,8 @@ static void set_defaults(void)
 	g_cfg.audio_stretch = 50; // both models: only used when sound runs low
 	g_cfg.half3d = !g_new3ds;
 	g_cfg.renderer = 1;   // software is the release default on both models
+	g_cfg.touch_stick = -1;
+	input_map_reset();
 	for (size_t i = 0; i < sizeof(tuned_defaults) / sizeof(tuned_defaults[0]); i++)
 		if (tuned_defaults[i][0])
 			config_set_core_override(tuned_defaults[i][0], tuned_defaults[i][1]);
@@ -63,10 +77,20 @@ void config_load(void)
 	char line[PATH_LEN + 64];
 	FILE *f;
 
+	clear_overrides();
 	set_defaults();
 	f = fopen(PSX3D_CONFIG, "r");
 	if (!f)
 		return;
+	bool slot_format = false;
+	while (fgets(line, sizeof(line), f)) {
+		char *eq = strchr(line, '=');
+		if (!eq) continue;
+		*eq = 0;
+		if (!strcmp(trim(line), "touch_slots") && !strcmp(trim(eq + 1), "1"))
+			slot_format = true;
+	}
+	rewind(f);
 	while (fgets(line, sizeof(line), f)) {
 		char *l = trim(line), *eq = strchr(l, '=');
 		if (*l == '#' || *l == ';' || !eq)
@@ -76,6 +100,22 @@ void config_load(void)
 
 		if (strncmp(k, "core.", 5) == 0)
 			config_set_core_override(k + 5, v);
+		else if (strncmp(k, "map_", 4) == 0) {
+			for (int i = 0; i < INPUT_REMAP_N; i++)
+				if (!strcmp(k + 4, input_map_key_name(i))) {
+					int binding = atoi(v);
+					if (!slot_format && i >= INPUT_PHYSICAL_N && binding == input_map_factory(i))
+						binding = INPUT_BIND_PRESET;
+					input_map_set(i, binding);
+				}
+		} else if (strcmp(k, "hotkey_ff") == 0)
+			input_hotkey_load(0, v);
+		else if (strcmp(k, "hotkey_rewind") == 0)
+			input_hotkey_load(1, v);
+		else if (strcmp(k, "touch_stick") == 0)
+			g_cfg.touch_stick = !slot_format && atoi(v)==1 ? -1 : atoi(v);
+		else if (strcmp(k, "touch_click_left") == 0)
+			g_cfg.touch_click_left = atoi(v) == 1;
 		else if (strcmp(k, "last_dir") == 0)
 			snprintf(g_cfg.last_dir, sizeof(g_cfg.last_dir), "%s", v);
 		else if (strcmp(k, "last_title") == 0)
@@ -111,6 +151,7 @@ void config_load(void)
 
 	}
 	fclose(f);
+	if(g_cfg.touch_stick < -1 || g_cfg.touch_stick > 1) g_cfg.touch_stick = -1;
 	if (g_cfg.stereo == 2 && !g_cfg.debug)
 		g_cfg.stereo = 1;
 	g_cfg.bottom_off = 1;   // experimental real 3D needs debug=1
@@ -124,7 +165,7 @@ void config_save(void)
 	FILE *f = fopen(PSX3D_CONFIG, "w");
 	if (!f)
 		return;
-	fprintf(f, "# PSX3D settings\n");
+	fprintf(f, "# PSX3D settings\ntouch_slots=1\n");
 	fprintf(f, "last_dir=%s\n", g_cfg.last_dir);
 	if (g_cfg.games_dir[0])
 		fprintf(f, "games_dir=%s\n", g_cfg.games_dir);
@@ -140,6 +181,13 @@ void config_save(void)
 	fprintf(f, "half3d=%d\n", g_cfg.half3d);
 	fprintf(f, "renderer=%s\n", (in_game ? default_renderer : g_cfg.renderer) ? "sw" : "gpu");
 	fprintf(f, "audio_stretch=%d\n", g_cfg.audio_stretch);
+	fprintf(f, "touch_stick=%d\n", in_game ? default_touch_stick : g_cfg.touch_stick);
+	fprintf(f, "touch_click_left=%d\n", g_cfg.touch_click_left);
+	for (int i = 0; i < INPUT_HOTKEY_N; i++)
+		fprintf(f, "%s=%s\n", input_hotkey_key_name(i),
+			input_hotkey_combo_name(in_game ? default_hotkeys[i] : input_hotkey_get(i)));
+	for (int i = 0; i < INPUT_REMAP_N; i++)
+		fprintf(f, "map_%s=%d\n", input_map_key_name(i), in_game ? default_maps[i] : input_map_raw(i));
 	if (g_cfg.debug)
 		fprintf(f, "debug=1\n");
 	for (int i = 0; i < novr; i++) {
@@ -179,6 +227,23 @@ void config_set_core_override(const char *key, const char *value)
 		ovr[novr].value = strdup(value);
 		novr++;
 	}
+}
+
+// Reset settings while keeping the library location and selection. Core option
+// lookup supplies the console-specific defaults in options.c once overrides go.
+void config_reset_defaults(void)
+{
+	if (in_game) return; // global reset is offered in the library
+	psx3d_config old = g_cfg;
+	clear_overrides();
+	set_defaults();
+	strcpy(g_cfg.last_dir, old.last_dir);
+	strcpy(g_cfg.games_dir, old.games_dir);
+	strcpy(g_cfg.last_title, old.last_title);
+	config_set_screen_mode(0);
+	config_sync_stereo();
+	options_mark_updated();
+	config_save();
 }
 
 // Widescreen hack: the GTE squeezes 3D geometry horizontally by 4:3 / 5:3 =
@@ -277,11 +342,24 @@ void config_game_begin(const char *game)
 	snprintf(cur_game, sizeof(cur_game), "%s", game);
 	default_screen = config_screen_mode();
 	default_renderer = g_cfg.renderer;
+	for (int i = 0; i < INPUT_REMAP_N; i++) default_maps[i] = input_map_raw(i);
+	default_touch_stick = g_cfg.touch_stick;
+	for (int i = 0; i < INPUT_HOTKEY_N; i++) default_hotkeys[i] = input_hotkey_get(i);
 	in_game = true;
 	gamecfg_load(game);
-	const char *renderer = gamecfg_get("renderer");
-	if (renderer && (!strcmp(renderer, "gpu") || !strcmp(renderer, "sw")))
-		g_cfg.renderer = !strcmp(renderer, "sw");
+	for (int i = 0; i < INPUT_HOTKEY_N; i++) {
+		const char *name = gamecfg_get(input_hotkey_key_name(i));
+		if (name) input_hotkey_load(i, name);
+	}
+	for (int i = 0; i < INPUT_REMAP_N; i++) {
+		char key[32];
+		snprintf(key, sizeof(key), "map_%s", input_map_key_name(i));
+		input_map_set(i, gamecfg_int(key, default_maps[i]));
+	}
+	g_cfg.touch_stick = gamecfg_int("touch_stick", default_touch_stick);
+	if(g_cfg.touch_stick < -1 || g_cfg.touch_stick > 1) g_cfg.touch_stick = -1;
+	input_touch_begin();
+	g_cfg.renderer = config_game_renderer();
 	int mode = gamecfg_int("screen", -1);
 	if (mode < 0)
 		mode = game_screen_get(game);   // 0.1.1 kept it in games.ini
@@ -296,6 +374,19 @@ void config_game_set_screen(int mode)
 	config_set_screen_mode(mode);
 	if (in_game)
 		gamecfg_set_int("screen", mode);
+}
+
+// Resolve once before starting a renderer. Disc identification happens during
+// load, so emu.c repeats initialization once if its curated profile changes it.
+// Never switch the running renderer on a disc-change callback.
+int config_game_renderer(void)
+{
+ const char *v = in_game ? gamecfg_get("renderer") : NULL;
+ if (v && (!strcmp(v, "sw") || !strcmp(v, "gpu"))) return !strcmp(v, "sw");
+ int preset = in_game ? game_capabilities().renderer : PRESET_RENDERER_DEFAULT;
+ if (preset == PRESET_RENDERER_SOFTWARE) return 1;
+ if (preset == PRESET_RENDERER_GPU) return 0;
+ return in_game ? default_renderer : g_cfg.renderer;
 }
 
 // Like screen mode, the in-game choice belongs to this game. The active
@@ -316,8 +407,81 @@ void config_game_end(void)
 	in_game = false;
 	g_cfg.renderer = default_renderer;
 	gamecfg_end();
-	input_map_reset();   // per-game controls end with the game
+	input_touch_begin();
+	for (int i = 0; i < INPUT_REMAP_N; i++) input_map_set(i, default_maps[i]);
+	for (int i = 0; i < INPUT_HOTKEY_N; i++) input_hotkey_set(i, default_hotkeys[i]);
+	g_cfg.touch_stick = default_touch_stick;
+	input_touch_reset();
 	config_set_ws_native(false);
 	if (config_screen_mode() != default_screen)
 		config_set_screen_mode(default_screen);
+}
+
+// Store only differences, so untouched controls continue to inherit globals.
+void config_controls_save(void)
+{
+	if (!in_game) { config_save(); return; }
+	gamecfg_unset("touch_controls"); // replaced by independent slot bindings
+	gamecfg_unset("map_TOUCH_SELECT"); // obsolete: SELECT is a physical button
+	for (int i = 0; i < INPUT_HOTKEY_N; i++) {
+		const char *key = input_hotkey_key_name(i);
+		if (input_hotkey_get(i) == default_hotkeys[i]) gamecfg_unset(key);
+		else gamecfg_set(key, input_hotkey_combo_name(input_hotkey_get(i)));
+	}
+	for (int i = 0; i < INPUT_REMAP_N; i++) {
+		char key[32];
+		snprintf(key, sizeof(key), "map_%s", input_map_key_name(i));
+		if (input_map_raw(i) == default_maps[i]) gamecfg_unset(key);
+		else gamecfg_set_int(key, input_map_raw(i));
+	}
+	if (g_cfg.touch_stick == default_touch_stick) gamecfg_unset("touch_stick");
+	else gamecfg_set_int("touch_stick", g_cfg.touch_stick);
+}
+
+void config_controls_defaults(void)
+{
+	if (in_game) {
+		for (int i = 0; i < INPUT_REMAP_N; i++) input_map_set(i, default_maps[i]);
+		for (int i = 0; i < INPUT_HOTKEY_N; i++) input_hotkey_set(i, default_hotkeys[i]);
+		g_cfg.touch_stick = default_touch_stick;
+	} else {
+		input_map_reset();
+		g_cfg.touch_stick = -1;
+		g_cfg.touch_click_left = 0;
+	}
+	config_controls_save();
+	input_touch_reset();
+}
+
+// Remove the pre-0.2 screen entry too, otherwise it would reappear next launch.
+static bool forget_legacy_screen(void)
+{
+	FILE *in = fopen(GAMES_INI, "r");
+	if (!in) return errno == ENOENT;
+	FILE *out = fopen(GAMES_INI ".tmp", "w");
+	if (!out) { fclose(in); return false; }
+	char line[PATH_LEN + 16];
+	bool ok = true;
+	while (fgets(line, sizeof(line), in)) {
+		char copy[sizeof(line)];
+		strcpy(copy, line);
+		char *eq = strrchr(copy, '=');
+		if (eq) *eq = 0;
+		if ((!eq || strcmp(trim(copy), cur_game)) && fputs(line, out) < 0) ok = false;
+	}
+	if (ferror(in)) ok = false;
+	fclose(in);
+	if (fclose(out)) ok = false;
+	if (ok && rename(GAMES_INI ".tmp", GAMES_INI) == 0) return true;
+	remove(GAMES_INI ".tmp");
+	return false;
+}
+
+bool config_game_reset(void)
+{
+	if (!in_game || !forget_legacy_screen() || !gamecfg_reset()) return false;
+	config_set_screen_mode(default_screen);
+	g_cfg.renderer = config_game_renderer();
+	config_controls_defaults();
+	return true;
 }

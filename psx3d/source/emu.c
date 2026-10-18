@@ -35,6 +35,7 @@ static void core_log(enum retro_log_level level, const char *fmt, ...)
 	va_start(ap, fmt);
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
+	input_touch_disc_log(buf);
 	// some core messages repeat every frame; writing those to the SD card
 	// costs real time, so only log a message once until it changes
 	if (strcmp(buf, last) == 0) {
@@ -173,13 +174,15 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
 	video_frame(data, w, h, pitch);
 }
 
+static bool audio_muted;
+
 static void audio_sample_cb(int16_t l, int16_t r)
 {
+	if (audio_muted || input_fast_forward()) return;
 	int16_t s[2] = { l, r };
 	audio_write(s, 1);
 }
 
-static bool audio_muted;
 static int speed_icon;     // 1 fast-forward, -1 rewind, 0 normal: shown top right
 
 // ▶▶ or ◀◀ in the top right corner while fast-forward or rewind is held
@@ -209,7 +212,7 @@ static void game_draw_top(void *ud)
 
 static size_t audio_batch_cb(const int16_t *data, size_t frames)
 {
-	if (audio_muted)
+	if (audio_muted || input_fast_forward())
 		return frames;
 	return audio_write(data, frames);
 }
@@ -369,8 +372,8 @@ static void state_load(void)
 // ---------------------------------------------------------------- menu
 
 enum { M_RESUME, M_SAVE, M_LOAD, M_DISC, M_CHEATS, M_SETTINGS, M_RESET, M_EXIT,
-       M_SCREEN, M_3D, M_RES3D, M_SMOOTH, M_FPS, M_CONTROLS, M_REWIND, M_AUTOSAVE, M_AUDIO, M_CORE, M_RECORD, M_TONE, M_COUNT };
-#define M_FIRST_SETTING M_SCREEN
+       M_RENDERER, M_SCREEN, M_3D, M_RES3D, M_SMOOTH, M_FPS, M_CONTROLS, M_CLICK_SIDE, M_REWIND, M_AUTOSAVE, M_AUDIO, M_CORE, M_DEFAULTS, M_RECORD, M_TONE, M_COUNT };
+#define M_FIRST_SETTING M_RENDERER
 
 // items on the main page or the settings page; the debug ones only with
 // debug=1 in config.ini, the disc swap only for multi-disc games
@@ -380,6 +383,8 @@ static int menu_items(int *items, bool settings)
 	for (int i = settings ? M_FIRST_SETTING : 0; i < (settings ? M_COUNT : M_FIRST_SETTING); i++) {
 		if ((i == M_RECORD || i == M_TONE) && !g_cfg.debug)
 			continue;
+		if (i == M_REWIND && !game_capabilities().rewind) continue;
+		if (i == M_CLICK_SIDE && !g_new3ds) continue;
 		if (i == M_DISC && !(have_disk && disk.get_num_images() > 1))
 			continue;
 		items[n++] = i;
@@ -423,6 +428,8 @@ static void menu_draw_top(void *ud)
 	menu_t *m = ud;
 	if (m && m->core_page)
 		ui_help_panel(152, NULL, options_impact(m->core_sel), options_info(m->core_sel));
+	else if (m && m->ctl_page)
+		ui_help_panel(152, "Controls", NULL, input_controls_help());
 	else if (m && m->settings && !m->ctl_page && !m->cheat_page && m->sel < m->nitems)
 		ui_help_for(152, menu_names[m->items[m->sel]]);
 }
@@ -430,10 +437,11 @@ static void menu_draw_top(void *ud)
 static const char *const menu_names[M_COUNT] = {
 	[M_RESUME] = "Resume", [M_SAVE] = "Save state", [M_LOAD] = "Load state", [M_DISC] = "Swap disc", [M_CHEATS] = "Cheats",
 	[M_SETTINGS] = "Settings", [M_RESET] = "Reset game", [M_EXIT] = "Exit to library",
-	[M_SCREEN] = "Screen", [M_3D] = "3D", [M_RES3D] = "3D resolution", [M_SMOOTH] = "Smoothing",
+	[M_RENDERER] = "Renderer", [M_SCREEN] = "Screen", [M_3D] = "3D", [M_RES3D] = "3D resolution", [M_SMOOTH] = "Smoothing",
 	[M_FPS] = "Show FPS", [M_CONTROLS] = "Controls", [M_REWIND] = "Rewind",
+	[M_CLICK_SIDE] = "Stick-click buttons",
 	[M_AUTOSAVE] = "Continue where I left off", [M_CORE] = "Core options", [M_RECORD] = "Debug: record audio",
-	[M_TONE] = "Debug: test tone", [M_AUDIO] = "Smooth audio when slow",
+	[M_AUDIO] = "Smooth audio when slow", [M_TONE] = "Debug: test tone", [M_DEFAULTS] = "Reset to global defaults",
 };
 
 static const char *menu_label(int i, void *ud)
@@ -466,15 +474,6 @@ static const char *core_value(int i, void *ud)
 
 #define MENU_Y0 40
 
-static void menu_header(const char *title, const char *right)
-{
-	ui_text_ex(libui_font(), 10, 6, 0.5f, C2D_Color32(235, 238, 255, 255), 0, title);
-	if (right)
-		ui_text_ex(NULL, 310, 9, 0.42f, C2D_Color32(110, 120, 160, 255), C2D_AlignRight, right);
-	for (int i = 0; i < 4; i++)
-		C2D_DrawRectSolid(10 + i * 18, 26, 0.2f, 16, 2, menu_accent_cols[i]);
-}
-
 static const char *cheat_label(int i, void *ud)
 {
 	(void)ud;
@@ -498,39 +497,6 @@ static void sync_widescreen(void)
 	config_set_ws_native(want && native);
 }
 
-static const char *ctl_label(int i, void *ud)
-{
-	(void)ud;
-	return input_map_key_name(i);
-}
-
-static const char *ctl_value(int i, void *ud)
-{
-	(void)ud;
-	return input_ps1_name(input_map_get(i));
-}
-
-static void controls_save(void)
-{
-	for (int i = 0; i < INPUT_REMAP_N; i++) {
-		char key[16];
-		snprintf(key, sizeof(key), "map_%s", input_map_key_name(i));
-		gamecfg_set_int(key, input_map_get(i));
-	}
-}
-
-static void controls_load(void)
-{
-	input_map_reset();
-	for (int i = 0; i < INPUT_REMAP_N; i++) {
-		char key[16];
-		snprintf(key, sizeof(key), "map_%s", input_map_key_name(i));
-		const char *v = gamecfg_get(key);
-		if (v)
-			input_map_set(i, atoi(v));
-	}
-}
-
 static void menu_draw_bottom(void *ud)
 {
 	menu_t *m = ud;
@@ -538,9 +504,9 @@ static void menu_draw_bottom(void *ud)
 	u32 hint = C2D_Color32(110, 120, 160, 255);
 
 	if (m->ctl_page) {
-		menu_header("CONTROLS", "this game");
-		flist_draw(&m->ctl_fl, INPUT_REMAP_N, m->ctl_sel, 0, MENU_Y0, 320, MENU_ROW_H, CORE_ROWS,
-			ctl_label, ctl_value, m, menu_accent_cols[m->ctl_sel & 3]);
+		ui_menu_header("CONTROLS", "this game");
+		flist_draw(&m->ctl_fl, input_controls_count(), m->ctl_sel, 0, MENU_Y0, 320, MENU_ROW_H, CORE_ROWS,
+			input_control_label, input_control_value, m, menu_accent_cols[m->ctl_sel & 3]);
 		ui_text_ex(NULL, 160, 222, 0.42f, hint, C2D_AlignCenter, "Left/Right change    X reset    B back");
 		return;
 	}
@@ -548,7 +514,7 @@ static void menu_draw_bottom(void *ud)
 	if (m->cheat_page) {
 		char n[24];
 		snprintf(n, sizeof(n), "%d", cheats_count());
-		menu_header("CHEATS", n);
+		ui_menu_header("CHEATS", n);
 		flist_draw(&m->cheat_fl, cheats_count(), m->cheat_sel, 0, MENU_Y0, 320, MENU_ROW_H, CORE_ROWS,
 			cheat_label, cheat_value, m, menu_accent_cols[m->cheat_sel & 3]);
 		if (!cheats_count())
@@ -559,7 +525,7 @@ static void menu_draw_bottom(void *ud)
 	}
 
 	if (m->core_page) {
-		menu_header("CORE OPTIONS", NULL);
+		ui_menu_header("CORE OPTIONS", NULL);
 		flist_draw(&m->core_fl, options_count(), m->core_sel, 0, MENU_Y0, 320, MENU_ROW_H, CORE_ROWS,
 			core_label, core_value, m, menu_accent_cols[m->core_sel & 3]);
 		ui_text_ex(NULL, 160, 222, 0.42f, hint, C2D_AlignCenter, "Left/Right change    B back");
@@ -575,20 +541,24 @@ static void menu_draw_bottom(void *ud)
 	snprintf(m->val[M_3D], 48, "%s", s3d_names[g_cfg.stereo]);
 	snprintf(m->val[M_SMOOTH], 48, "%s", g_cfg.smooth ? "on" : "off");
 	snprintf(m->val[M_FPS], 48, "%s", g_cfg.show_fps == 2 ? "Detailed" : g_cfg.show_fps ? "FPS" : "Off");
+	snprintf(m->val[M_RENDERER], 48, "%s", g_cfg.renderer ? "Software" : "GPU (experimental)");
 	snprintf(m->val[M_AUDIO], 48, "%s", g_cfg.audio_stretch ? "on" : "off");
 	snprintf(m->val[M_RES3D], 48, "%s", g_cfg.half3d ? "half (faster)" : "full");
-	snprintf(m->val[M_REWIND], 48, "%s", gamecfg_int("rewind", 0) ? (rewind_active() ? "on" : "on (unavailable)") : "off");
+	snprintf(m->val[M_REWIND], 48, "%s",
+		gamecfg_int("rewind", 0) ? (rewind_active() ? "on" : "on (unavailable)") : "off");
+	snprintf(m->val[M_CLICK_SIDE], 48, "%s", g_cfg.touch_click_left ? "Left" : "Right");
 	snprintf(m->val[M_AUTOSAVE], 48, "%s", g_cfg.autosave ? "on" : "off");
-	int changed = 0;
+	int changed = !g_new3ds && g_cfg.touch_stick != -1;
 	for (int i = 0; i < INPUT_REMAP_N; i++)
 		changed += !input_map_is_default(i);
+	for (int i = 0; i < INPUT_HOTKEY_N; i++) changed += !input_hotkey_is_default(i);
 	snprintf(m->val[M_CONTROLS], 48, "%s", changed ? "custom" : "default");
 
 	m->nitems = menu_items(m->items, m->settings);
 	char clock[16];
 	time_t now = time(NULL);
 	strftime(clock, sizeof(clock), "%H:%M", gmtime(&now));
-	menu_header(m->settings ? "SETTINGS" : "MENU", clock);
+	ui_menu_header(m->settings ? "SETTINGS" : "MENU", clock);
 	flist_draw(&m->fl, m->nitems, m->sel, 0, MENU_Y0, 320, MENU_ROW_H, MENU_ROWS, menu_label, menu_value, m,
 		menu_accent_cols[m->sel & 3]);
 	ui_text_ex(NULL, 160, 222, 0.42f, hint, C2D_AlignCenter,
@@ -605,9 +575,13 @@ static void menu_open_page(menu_t *m, bool settings)
 	m->fl.init = false;
 }
 
+static bool game_menu_open;
+
 // returns false when the user wants to leave the game
 static bool menu_run(void)
 {
+	game_menu_open = true;
+	input_gameplay(false);
 	bottom_backlight(true);
 	static menu_t m;   // keep the core options scroll position between visits
 	m.core_page = false;
@@ -647,11 +621,13 @@ static bool menu_run(void)
 				m.ctl_page = false;
 				sfx_play(SFX_BACK);
 			}
-			if (k & KEY_DOWN) { m.ctl_sel = (m.ctl_sel + 1) % INPUT_REMAP_N; sfx_play(SFX_MOVE); }
-			if (k & KEY_UP) { m.ctl_sel = (m.ctl_sel - 1 + INPUT_REMAP_N) % INPUT_REMAP_N; sfx_play(SFX_MOVE); }
-			if (k & (KEY_RIGHT | KEY_A)) { input_map_cycle(m.ctl_sel, 1); controls_save(); sfx_play(SFX_MOVE); }
-			if (k & KEY_LEFT) { input_map_cycle(m.ctl_sel, -1); controls_save(); sfx_play(SFX_MOVE); }
-			if (k & KEY_X) { input_map_reset(); controls_save(); sfx_play(SFX_SELECT); }
+			if (k & KEY_DOWN) { m.ctl_sel = (m.ctl_sel + 1) % input_controls_count(); sfx_play(SFX_MOVE); }
+			if (k & KEY_UP) { m.ctl_sel = (m.ctl_sel - 1 + input_controls_count()) % input_controls_count(); sfx_play(SFX_MOVE); }
+			if (k & (KEY_RIGHT | KEY_A)) { input_control_cycle(m.ctl_sel, 1); config_controls_save(); sfx_play(SFX_MOVE); }
+			if (k & KEY_LEFT) { input_control_cycle(m.ctl_sel, -1); config_controls_save(); sfx_play(SFX_MOVE); }
+			if ((k & KEY_X) && ui_confirm("RESET CONTROLS?", "Use global controls for this game?", true)) {
+				config_controls_defaults(); sfx_play(SFX_SELECT);
+			}
 		} else if (m.cheat_page) {
 			int n = cheats_count();
 			if (k & KEY_B) {
@@ -736,15 +712,21 @@ static bool menu_run(void)
 						sfx_play(SFX_SELECT);
 					}
 					break;
+				case M_CLICK_SIDE:
+					g_cfg.touch_click_left ^= 1;
+					input_touch_reset();
+					break;
 				case M_REWIND: {
+					if (!game_capabilities().rewind) break;
 					bool on = !gamecfg_int("rewind", 0);
 					gamecfg_set_int("rewind", on);
 					if (on && !rewind_start())
-						osd("Rewind needs a New 3DS and free memory");
+						osd("Rewind is unavailable: not enough free memory");
 					if (!on)
 						rewind_stop();
 				} break;
 				case M_AUTOSAVE: g_cfg.autosave ^= 1; break;
+				case M_RENDERER: config_set_renderer(!g_cfg.renderer); break;
 				case M_AUDIO: g_cfg.audio_stretch = g_cfg.audio_stretch ? 0 : 50; break;
 				case M_CHEATS:
 					if (k & KEY_A) {
@@ -787,6 +769,14 @@ static bool menu_run(void)
 						goto resume;
 					}
 					break;
+				case M_DEFAULTS:
+					if ((k & KEY_A) && ui_confirm("RESET THIS GAME?", "Remove this game's settings and control overrides?", true)) {
+						if (config_game_reset()) {
+							rewind_stop(); sync_widescreen();
+							osd("Game settings reset to global defaults");
+						} else osd("Could not remove game settings");
+					}
+					break;
 				case M_RESET: if (k & KEY_A) { retro_reset(); rewind_reset(); goto resume; } break;
 				case M_EXIT:
 					if (k & KEY_A) {
@@ -799,7 +789,7 @@ static bool menu_run(void)
 		}
 
 		if (m.ctl_page)
-			flist_update(&m.ctl_fl, m.ctl_sel, INPUT_REMAP_N, CORE_ROWS);
+			flist_update(&m.ctl_fl, m.ctl_sel, input_controls_count(), CORE_ROWS);
 		else if (m.cheat_page)
 			flist_update(&m.cheat_fl, m.cheat_sel, cheats_count(), CORE_ROWS);
 		else if (m.core_page)
@@ -814,9 +804,12 @@ static bool menu_run(void)
 	return false;
 
 resume:
+	game_menu_open = false;
+	input_gameplay(true);
 	sfx_play(SFX_BACK);
 	config_save();
 	game_frames = 0;   // dim again a moment after resuming
+	input_touch_reset();
 	audio_pause(false);
 	return true;
 }
@@ -831,7 +824,10 @@ static void game_draw_bottom(void *ud)
 	u32 white = C2D_Color32(230, 230, 240, 255);
 	C2D_DrawRectSolid(0, 0, 0.05f, 320, 240, C2D_Color32(0, 0, 0, 255));   // in game it's always black
 
-	if (touch_buttons_active())
+	if (g_cfg.show_fps == 2) {
+		ui_rect(125, 184, 70, 30, C2D_Color32(28, 30, 42, 255));
+		ui_text(142, 191, .45f, white, "MENU");
+	} else if (touch_buttons_active())
 		touch_buttons_draw();
 	statsview_draw();
 	if (osd_frames > 0) {
@@ -843,8 +839,8 @@ static void game_draw_bottom(void *ud)
 			"No sound available");
 }
 
-// In game the bottom screen goes fully dark (backlight off): it only shows
-// the FPS counter. Touch still works, so tapping it opens the menu.
+// Without a touch panel or FPS counter the bottom backlight can turn off.
+// Touch still works, so tapping it opens the menu.
 static bool bottom_dark;
 
 static void bottom_backlight(bool on)
@@ -912,10 +908,14 @@ static void game_apt(APT_HookType hook, void *param)
 		pmu_stop();
 	else if ((hook == APTHOOK_ONRESTORE || hook == APTHOOK_ONWAKEUP) && sw_pmu0 >= 0)
 		pmu_start(sw_pmu0, sw_pmu1 >= 0 ? sw_pmu1 : 0);
-	if (hook == APTHOOK_ONSUSPEND)
+	if (hook == APTHOOK_ONSUSPEND) {
+		input_gameplay(false);
 		bottom_backlight(true);
-	else if (hook == APTHOOK_ONRESTORE)
+	} else if (hook == APTHOOK_ONRESTORE) {
 		game_frames = 0;
+		input_touch_reset();
+		input_gameplay(!game_menu_open);
+	}
 }
 
 bool emu_run_game(const char *path, const char *save_name, const char *title)
@@ -930,11 +930,12 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	else
 		set_game_name(path);
 	snprintf(game_title, sizeof(game_title), "%s", title ? title : game_name);
+	game_frames = 0;
 	have_disk = false;
 	memset(&disk, 0, sizeof(disk));
 	log_printf("loading %s\n", path);
 	config_game_begin(game_name);   // before loading: the core reads the widescreen option at load
-	bool software = sw_renderer >= 0 ? sw_renderer : g_cfg.renderer;
+	bool software = sw_renderer >= 0 ? sw_renderer : config_game_renderer();
 	log_printf("renderer: %s (applied at game start)\n", software ? "Software" : "GPU");
 	if (!video_game_begin(software)) {
 		log_printf("renderer initialization failed\n");
@@ -953,6 +954,32 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		video_game_end();
 		return false;
 	}
+	// CheckCdrom identifies the serial after GPU_init. Apply its profile
+	// before any emulated frame; at most one reload, never on disc swaps.
+	int profiled = sw_renderer >= 0 ? sw_renderer : config_game_renderer();
+	if (profiled != software) {
+		retro_unload_game();
+		retro_deinit();
+		core_initialized = false;
+		video_game_end();
+		software = profiled;
+		g_cfg.renderer = profiled;
+		if (!video_game_begin(software)) {
+			config_game_end();
+			return false;
+		}
+		config_sync_stereo();
+		retro_init();
+		core_initialized = true;
+		if (!retro_load_game(&info)) {
+			retro_deinit();
+			core_initialized = false;
+			video_game_end();
+			config_game_end();
+			return false;
+		}
+		log_printf("renderer: %s (curated disc profile)\n", software ? "Software" : "GPU");
+	}
 	// DualShock: starts in digital mode, games switch it to analog themselves,
 	// and analog-only games (Ape Escape) need it plugged in
 	retro_set_controller_port_device(0, RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_ANALOG, 1));
@@ -965,14 +992,14 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 	sync_widescreen();
 	psx3d_set_half3d(g_cfg.half3d);
 	psx3d_prof_on = sw_prof;
-	controls_load();
+
 	{
 		char prefix[PATH_LEN];
 		make_path(prefix, sizeof(prefix), PSX3D_STATE_DIR, "");
 		if (g_cfg.autosave && sw_state < 0 && states_resume_prompt(prefix) && state_load_from(STATE_AUTO))
 			osd("Continuing where you left off");
 	}
-	if (gamecfg_int("rewind", 0))
+	if (game_capabilities().rewind && gamecfg_int("rewind", 0))
 		rewind_start();
 	if (sw_state >= 0) {
 		state_slot = sw_state;
@@ -984,12 +1011,16 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		pmu_start(sw_pmu0, sw_pmu1 >= 0 ? sw_pmu1 : 0);
 	statsview_begin(game_title);
 	fps_t0 = osGetTime();
+	game_menu_open = false;
+	input_gameplay(true);
 	u64 t_run = 0, t_present = 0, t_run_max = 0;
 	int acap_frames = 0;
 	u64 next_deadline = svcGetSystemTick();
 	aptHookCookie apt_cookie;
 	aptHook(&apt_cookie, game_apt, NULL);
 	while (aptMainLoop()) {
+		// A disc swap may revoke a capability. Free its history at a safe point.
+		if (!game_capabilities().rewind && rewind_active()) rewind_stop();
 		// Pace by the clock, not by vsync: a heavy frame (Silent Hill
 		// alternates ~4ms and ~17ms ones) can borrow time from the next light
 		// one instead of always missing a refresh. The GPU still flips the
@@ -998,7 +1029,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		u64 now_t = svcGetSystemTick();
 		bool late = now_t > next_deadline + frame_ticks / 8;   // last frame overran its slot
 		late_frames += late;
-		if (now_t < next_deadline)
+		if (!input_fast_forward() && now_t < next_deadline)
 			svcSleepThread((next_deadline - now_t) * 1000000000ULL / SYSCLOCK_ARM11);
 		else if (now_t > next_deadline + 3 * frame_ticks)
 			next_deadline = now_t;   // far behind (loading, menu): don't race to catch up
@@ -1012,8 +1043,6 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		}
 		u64 t0 = svcGetSystemTick();
 		static bool rewind_hint;
-		if (input_rewind() && input_fast_forward())
-			input_fast_forward_off();   // rewinding ends fast-forward
 		speed_icon = input_rewind() && rewind_active() ? -1 : input_fast_forward() ? 1 : 0;
 		if (input_rewind() && rewind_active()) {
 			// step back about 6 times a second of game time, shown at 20/s
@@ -1029,7 +1058,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			audio_muted = false;
 		} else {
 			if (input_rewind() && !rewind_hint) {
-				osd("Rewind is off for this game (Settings)");
+				osd("Enable Rewind in Settings first");
 				rewind_hint = true;
 			}
 			if (!input_rewind())
@@ -1043,11 +1072,12 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 				statsview_frame();
 				rewind_capture();
 			}
-			audio_muted = false;
+			audio_muted = ff;
 			pmu_begin();
 			retro_run();
 			pmu_end();
 			statsview_frame();
+			audio_muted = false;
 			rewind_capture();
 			if (sw_acap && ++acap_frames == 60)   // same emulated frame every run
 				audio_hash_start(44100 * 10);
@@ -1082,7 +1112,8 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 		// touch the bottom screen to open the menu
 		if (statsview_touch()) {
 			bottom_backlight(true);
-		} else if (menu_touched()) {
+		}
+		if (menu_touched()) {
 			if (!menu_run())
 				break;
 			fps_t0 = osGetTime();
@@ -1095,10 +1126,20 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 
 		ui_begin();
 		t1 = svcGetSystemTick();
-		video_present(true, speed_icon ? game_draw_top : NULL, statsview_redraw(osd_frames) ? game_draw_bottom : NULL, NULL);
+		// A bottom render target is retained when omitted from video_present.
+		// Repaint only on interaction/overlay changes; menus invalidate it.
+				bool touch_changed = input_touch_changed();
+		bool stats_changed = statsview_redraw(osd_frames);
+		bool repaint = game_frames < 2 || stats_changed || touch_changed;
+		video_present(true, speed_icon ? game_draw_top : NULL, repaint ? game_draw_bottom : NULL, NULL);
 		t_present += svcGetSystemTick() - t1;
 
-		if (++game_frames >= 120 && g_cfg.bottom_off && !touch_buttons_active() && !g_cfg.show_fps)
+		++game_frames;
+		// Auto can change on disc identification, including a disc swap after
+		// the old idle timeout. Always wake for controls, not just on frame 120.
+		if (touch_buttons_active() || g_cfg.show_fps)
+			bottom_backlight(true);
+		else if (game_frames >= 120 && g_cfg.bottom_off)
 			bottom_backlight(false);
 
 		if (++srm_counter >= SRM_CHECK_FRAMES) {
@@ -1194,6 +1235,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 
 	aptUnhook(&apt_cookie);
 	input_fast_forward_off();
+	input_gameplay(false);
 	options_fast_forward(false);
 	pmu_stop();
 	log_printf("game: leaving\n");

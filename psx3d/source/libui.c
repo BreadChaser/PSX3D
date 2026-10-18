@@ -431,14 +431,14 @@ static void clamp_list(void)
 // Global settings, reachable from the library with X (the defaults for every
 // game; a game's own screen mode, controls and rewind live in its menu).
 
-enum { S_SCREEN, S_3D, S_RES3D, S_SMOOTH, S_FPS, S_AUTOSAVE, S_AUDIO, S_SOUNDS, S_MUSIC, S_CORE, S_COUNT };
+enum { S_RENDERER, S_SCREEN, S_3D, S_RES3D, S_SMOOTH, S_FPS, S_AUTOSAVE, S_AUDIO, S_SOUNDS, S_MUSIC, S_CONTROLS, S_CLICK_SIDE, S_CORE, S_DEFAULTS, S_COUNT };
 static const char *const s_names[S_COUNT] = {
-	"Screen (default)", "3D", "3D resolution", "Smoothing", "Show FPS", "Continue where I left off",
-	"Smooth audio when slow", "Menu sounds", "Library music", "Core options",
+	"Renderer", "Screen (default)", "3D", "3D resolution", "Smoothing", "Show FPS", "Continue where I left off",
+	"Smooth audio when slow", "Menu sounds", "Library music", "Controls", "Stick-click buttons", "Core options", "Reset to defaults",
 };
 static const u32 s_cols[4] = { 0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28 };
 
-typedef struct { int sel, core_sel; bool core; flist_t fl, core_fl; } settings_t;
+typedef struct { int sel, core_sel, ctl_sel; bool core, controls; flist_t fl, core_fl, ctl_fl; } settings_t;
 
 static const char *s_label(int i, void *ud) { (void)ud; return s_names[i]; }
 
@@ -448,15 +448,17 @@ static const char *s_value(int i, void *ud)
 	static const char *const screens[] = { "4:3", "stretch", "widescreen" };
 	static const char *const s3d[] = { "off", "screen depth", "real (exp.)" };
 	switch (i) {
+	case S_RENDERER: return g_cfg.renderer ? "Software" : "GPU (experimental)";
 	case S_SCREEN: return screens[config_screen_mode()];
 	case S_3D: return s3d[g_cfg.stereo];
 	case S_RES3D: return g_cfg.half3d ? "half (faster)" : "full";
 	case S_SMOOTH: return g_cfg.smooth ? "on" : "off";
-	case S_FPS: return g_cfg.show_fps ? "on" : "off";
+	case S_FPS: return (const char *const[]){"Off", "FPS", "Detailed"}[g_cfg.show_fps];
 	case S_AUTOSAVE: return g_cfg.autosave ? "on" : "off";
 	case S_AUDIO: return g_cfg.audio_stretch ? "on" : "off";
 	case S_SOUNDS: return g_cfg.sounds ? "on" : "off";
 	case S_MUSIC: return g_cfg.music ? "on" : "off";
+	case S_CLICK_SIDE: return g_cfg.touch_click_left ? "Left" : "Right";
 	}
 	return NULL;
 }
@@ -480,17 +482,18 @@ static const char *sc_value(int i, void *ud)
 static void settings_bottom(void *ud)
 {
 	settings_t *st = ud;
-	u32 white = C2D_Color32(235, 238, 255, 255), hint = C2D_Color32(110, 120, 160, 255);
+	u32 hint = C2D_Color32(110, 120, 160, 255);
 	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
-	text(title_font, 10, 6, 0.5f, white, 0, st->core ? "CORE OPTIONS" : "SETTINGS");
-	for (int i = 0; i < 4; i++)
-		C2D_DrawRectSolid(10 + i * 18, 26, 0.2f, 16, 2, s_cols[i]);
-	if (st->core)
+	ui_menu_header(st->core ? "CORE OPTIONS" : st->controls ? "CONTROLS" : "SETTINGS", NULL);
+	if (st->controls)
+		flist_draw(&st->ctl_fl, input_controls_count(), st->ctl_sel, 0, 40, 320, 24, 7,
+			input_control_label, input_control_value, st, s_cols[st->ctl_sel & 3]);
+	else if (st->core)
 		flist_draw(&st->core_fl, options_count(), st->core_sel, 0, 40, 320, 24, 7, sc_label, sc_value, st,
 			s_cols[st->core_sel & 3]);
 	else
 		flist_draw(&st->fl, S_COUNT, st->sel, 0, 40, 320, 24, 7, s_label, s_value, st, s_cols[st->sel & 3]);
-	ui_text_ex(NULL, 160, 222, 0.42f, hint, C2D_AlignCenter, "Left/Right change    B back");
+	ui_text_ex(NULL, 160, 222, 0.42f, hint, C2D_AlignCenter, st->controls ? "Left/Right change    X reset    B back" : "Left/Right change    B back");
 }
 
 static void settings_top(void *ud)
@@ -499,6 +502,8 @@ static void settings_top(void *ud)
 	draw_top(NULL);
 	if (st->core)
 		ui_help_panel(150, NULL, options_impact(st->core_sel), options_info(st->core_sel));
+	else if (st->controls)
+		ui_help_panel(150, "Global controls", NULL, input_controls_help());
 	else
 		ui_help_for(150, s_names[st->sel]);
 }
@@ -506,13 +511,22 @@ static void settings_top(void *ud)
 static void settings_run(void)
 {
 	static settings_t st;
-	st.core = false;
+	st.core = st.controls = false;
 	st.fl.init = false;
 	sfx_play(SFX_SELECT);
 	while (aptMainLoop()) {
 		input_poll();
 		u32 k = input_keys_down();
-		if (st.core) {
+		if (st.controls) {
+			if (k & KEY_B) { st.controls = false; sfx_play(SFX_BACK); }
+			if (k & KEY_DOWN) st.ctl_sel = (st.ctl_sel + 1) % input_controls_count();
+			if (k & KEY_UP) st.ctl_sel = (st.ctl_sel - 1 + input_controls_count()) % input_controls_count();
+			if (k & (KEY_RIGHT | KEY_A)) { input_control_cycle(st.ctl_sel, 1); config_controls_save(); }
+			if (k & KEY_LEFT) { input_control_cycle(st.ctl_sel, -1); config_controls_save(); }
+			if ((k & KEY_X) && ui_confirm("RESET CONTROLS?", "Restore all physical and touch controls to defaults?", false))
+				config_controls_defaults();
+			flist_update(&st.ctl_fl, st.ctl_sel, input_controls_count(), 7);
+		} else if (st.core) {
 			int n = options_count();
 			if (k & KEY_B) { st.core = false; sfx_play(SFX_BACK); }
 			if (n) {
@@ -530,6 +544,7 @@ static void settings_run(void)
 			if (dir) {
 				sfx_play(SFX_MOVE);
 				switch (st.sel) {
+				case S_RENDERER: config_set_renderer(!g_cfg.renderer); break;
 				case S_SCREEN: config_set_screen_mode((config_screen_mode() + dir + 3) % 3); break;
 				case S_3D: {
 					int modes = g_cfg.debug ? 3 : 2;
@@ -538,7 +553,7 @@ static void settings_run(void)
 				} break;
 				case S_RES3D: g_cfg.half3d ^= 1; break;
 				case S_SMOOTH: g_cfg.smooth ^= 1; break;
-				case S_FPS: g_cfg.show_fps ^= 1; break;
+				case S_FPS: g_cfg.show_fps = (g_cfg.show_fps + dir + 3) % 3; break;
 				case S_AUTOSAVE: g_cfg.autosave ^= 1; break;
 				case S_AUDIO: g_cfg.audio_stretch = g_cfg.audio_stretch ? 0 : 50; break;
 				case S_SOUNDS: g_cfg.sounds ^= 1; break;
@@ -546,6 +561,19 @@ static void settings_run(void)
 					g_cfg.music ^= 1;
 					music_play(false);
 					music_play(true);
+					break;
+				case S_CONTROLS:
+					if (k & KEY_A) { st.controls = true; st.ctl_fl.init = false; }
+					break;
+				case S_CLICK_SIDE:
+					g_cfg.touch_click_left ^= 1;
+					input_touch_reset();
+					break;
+				case S_DEFAULTS:
+					if ((k & KEY_A) && ui_confirm("RESET ALL SETTINGS?", "Restore this console's defaults and all control mappings? Game overrides are kept.", false)) {
+						config_reset_defaults();
+						music_play(false); music_play(true);
+					}
 					break;
 				case S_CORE:
 					if (k & KEY_A) { st.core = true; st.core_fl.init = false; }

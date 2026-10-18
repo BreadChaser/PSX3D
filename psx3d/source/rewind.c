@@ -98,8 +98,16 @@ static void free_all(void)
 bool rewind_start(void)
 {
 	rewind_stop();
+	if (!game_capabilities().rewind) return false;
 	size_t size = retro_serialize_size();
-	if (!size || !g_new3ds)
+	if (!g_new3ds) {
+		// Two states plus worst-case delta scratch = 4*4.25 = 17 MiB,
+		// before history. A 4 MiB history exceeds the Old 3DS's entire
+		// ~18.7 MiB heap, and compression would share the emulation CPU.
+		log_printf("rewind: New 3DS required; workspace %u KiB before history\n", (unsigned)((4*size+64)/1024));
+		return false;
+	}
+	if (!size)
 		return false;
 	words = (size + 3) / 4;
 	cur = calloc(words, 4);

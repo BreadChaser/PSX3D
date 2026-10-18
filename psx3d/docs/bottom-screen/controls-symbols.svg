@@ -1,0 +1,96 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='640' height='480' viewBox='0 0 320 240'><rect width='320' height='240' fill='black'/>
+<rect x='0' y='0' width='320' height='240' fill='#060918'/>
+<text x='10' y='18.5' font-family='Michroma' font-size='15' transform='translate(10 0) scale(1 1) translate(-10 0)' fill='#ebeeff' text-anchor='start'>CONTROLS</text>
+<text x='310' y='19.5' font-family='DejaVu Sans' font-size='12.6' transform='translate(310 0) scale(1 1) translate(-310 0)' fill='#6e78a0' text-anchor='end'>this game</text>
+<rect x='10' y='26' width='16' height='2' fill='#e61e3c'/>
+<rect x='28' y='26' width='16' height='2' fill='#facd14'/>
+<rect x='46' y='26' width='16' height='2' fill='#1ebe78'/>
+<rect x='64' y='26' width='16' height='2' fill='#286ee6'/>
+<rect x='-2' y='110' width='324' height='28' fill='#3c5ac8'/>
+<defs><linearGradient id='g38' gradientUnits='userSpaceOnUse' x1='0' y1='112' x2='0' y2='136'><stop stop-color='#283a82'/><stop offset='1' stop-color='#283a82'/></linearGradient></defs>
+<rect x='0' y='112' width='320' height='24' fill='url(#g38)'/>
+<rect x='0' y='112' width='3' height='24' fill='#2f6fc4'/>
+<text x='12' y='57.5819' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>SELECT</text>
+<rect x='256.154' y='50.3319' width='8.64' height='4.5' fill='#9aa5c8'/>
+<rect x='255.074' y='51.4119' width='10.8' height='2.34' fill='#9aa5c8'/>
+<circle cx='256.154' cy='51.4119' r='1.08' fill='#9aa5c8'/>
+<circle cx='264.794' cy='51.4119' r='1.08' fill='#9aa5c8'/>
+<circle cx='256.154' cy='53.7519' r='1.08' fill='#9aa5c8'/>
+<circle cx='264.794' cy='53.7519' r='1.08' fill='#9aa5c8'/>
+<text x='312' y='56.3319' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Select</text>
+<text x='12' y='81.2473' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Touch top left</text>
+<path opacity='1' d='M 249.217 70.8473 L 243.217 81.6473' stroke='#2fa36b' stroke-width='1.09091'/>
+<circle cx='249.217' cy='70.8473' r='0.545455' fill='#2fa36b'/>
+<circle cx='243.217' cy='81.6473' r='0.545455' fill='#2fa36b'/>
+<path opacity='1' d='M 243.217 81.6473 L 255.217 81.6473' stroke='#2fa36b' stroke-width='1.09091'/>
+<circle cx='243.217' cy='81.6473' r='0.545455' fill='#2fa36b'/>
+<circle cx='255.217' cy='81.6473' r='0.545455' fill='#2fa36b'/>
+<path opacity='1' d='M 255.217 81.6473 L 249.217 70.8473' stroke='#2fa36b' stroke-width='1.09091'/>
+<circle cx='255.217' cy='81.6473' r='0.545455' fill='#2fa36b'/>
+<circle cx='249.217' cy='70.8473' r='0.545455' fill='#2fa36b'/>
+<text x='312' y='79.9973' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Triangle</text>
+<text x='12' y='104.725' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Touch top right</text>
+<path opacity='1' d='M 269.491 99.7255 L 269.375 100.896' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 269.375 100.896 L 269.034 102.022' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 269.034 102.022 L 268.479 103.059' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 268.479 103.059 L 267.733 103.968' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 267.733 103.968 L 266.824 104.714' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 266.824 104.714 L 265.787 105.269' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 265.787 105.269 L 264.661 105.61' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 264.661 105.61 L 263.491 105.725' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 263.491 105.725 L 262.32 105.61' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 262.32 105.61 L 261.195 105.269' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 261.195 105.269 L 260.157 104.714' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 260.157 104.714 L 259.248 103.968' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 259.248 103.968 L 258.502 103.059' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 258.502 103.059 L 257.947 102.022' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 257.947 102.022 L 257.606 100.896' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 257.606 100.896 L 257.491 99.7255' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 257.491 99.7255 L 257.606 98.5549' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 257.606 98.5549 L 257.947 97.4294' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 257.947 97.4294 L 258.502 96.3921' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 258.502 96.3921 L 259.248 95.4828' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 259.248 95.4828 L 260.157 94.7367' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 260.157 94.7367 L 261.195 94.1822' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 261.195 94.1822 L 262.32 93.8408' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 262.32 93.8408 L 263.491 93.7255' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 263.491 93.7255 L 264.661 93.8408' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 264.661 93.8408 L 265.787 94.1822' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 265.787 94.1822 L 266.824 94.7367' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 266.824 94.7367 L 267.733 95.4828' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 267.733 95.4828 L 268.479 96.3921' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 268.479 96.3921 L 269.034 97.4294' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 269.034 97.4294 L 269.375 98.5549' stroke='#d0313b' stroke-width='1.09091'/>
+<path opacity='1' d='M 269.375 98.5549 L 269.491 99.7255' stroke='#d0313b' stroke-width='1.09091'/>
+<text x='312' y='103.475' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Circle</text>
+<text x='20' y='127.627' font-family='DejaVu Sans' font-size='15' transform='translate(20 0) scale(1 1) translate(-20 0)' fill='#ffffff' text-anchor='start'>Touch bottom left</text>
+<path opacity='1' d='M 257.945 117.827 L 267.545 127.427' stroke='#2f6fc4' stroke-width='1.09091'/>
+<circle cx='257.945' cy='117.827' r='0.545455' fill='#2f6fc4'/>
+<circle cx='267.545' cy='127.427' r='0.545455' fill='#2f6fc4'/>
+<path opacity='1' d='M 267.545 117.827 L 257.945 127.427' stroke='#2f6fc4' stroke-width='1.09091'/>
+<circle cx='267.545' cy='117.827' r='0.545455' fill='#2f6fc4'/>
+<circle cx='257.945' cy='127.427' r='0.545455' fill='#2f6fc4'/>
+<text x='312' y='126.377' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Cross</text>
+<text x='12' y='152.543' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Touch bottom right</text>
+<path opacity='1' d='M 249.362 142.443 L 259.562 142.443' stroke='#d77fb5' stroke-width='1.09091'/>
+<circle cx='249.362' cy='142.443' r='0.545455' fill='#d77fb5'/>
+<circle cx='259.562' cy='142.443' r='0.545455' fill='#d77fb5'/>
+<path opacity='1' d='M 259.562 142.443 L 259.562 152.643' stroke='#d77fb5' stroke-width='1.09091'/>
+<circle cx='259.562' cy='142.443' r='0.545455' fill='#d77fb5'/>
+<circle cx='259.562' cy='152.643' r='0.545455' fill='#d77fb5'/>
+<path opacity='1' d='M 259.562 152.643 L 249.362 152.643' stroke='#d77fb5' stroke-width='1.09091'/>
+<circle cx='259.562' cy='152.643' r='0.545455' fill='#d77fb5'/>
+<circle cx='249.362' cy='152.643' r='0.545455' fill='#d77fb5'/>
+<path opacity='1' d='M 249.362 152.643 L 249.362 142.443' stroke='#d77fb5' stroke-width='1.09091'/>
+<circle cx='249.362' cy='152.643' r='0.545455' fill='#d77fb5'/>
+<circle cx='249.362' cy='142.443' r='0.545455' fill='#d77fb5'/>
+<text x='312' y='151.293' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Square</text>
+<text x='12' y='177.02' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Touch side 1</text>
+<defs><linearGradient id='g39' gradientUnits='userSpaceOnUse' x1='0' y1='168.12' x2='0' y2='175.92'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 197.167 172.02 L 191.767 168.12 L 191.767 175.92 Z' shape-rendering='crispEdges' fill='url(#g39)'/>
+<defs><linearGradient id='g40' gradientUnits='userSpaceOnUse' x1='0' y1='168.12' x2='0' y2='175.92'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 203.167 172.02 L 197.767 168.12 L 197.767 175.92 Z' shape-rendering='crispEdges' fill='url(#g40)'/>
+<text x='312' y='175.77' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Fast fwd (toggle)</text>
+<text x='12' y='201.482' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Touch right stick</text>
+<text x='312' y='200.232' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Right stick</text>
+</svg>

@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include "libretro.h"
 
-#define PSX3D_VERSION  "0.2.0"
+#define PSX3D_VERSION  "0.3.0"
 #define PSX3D_DIR      "sdmc:/3ds/PSX3D"
 #define PSX3D_BIOS_DIR PSX3D_DIR "/bios"
 #define PSX3D_SAVE_DIR PSX3D_DIR "/saves"
@@ -40,6 +40,8 @@ typedef struct {
 	int  bottom_off;   // backlight off on the bottom screen while playing
 	int  autosave;     // save on exit, offer to continue next time
 	int  audio_stretch; // maximum slowdown in percent, 0 disables (0..50)
+	int  touch_stick;  // Old 3DS virtual right stick
+	int  touch_click_left; // global New 3DS stick-click side: 0 right, 1 left
 	int  half3d;       // draw 3D polygons at half vertical resolution (Old 3DS default)
 	int  renderer;     // 0 = GPU, 1 = software; applied when a game starts
 } psx3d_config;
@@ -47,11 +49,16 @@ typedef struct {
 extern psx3d_config g_cfg;
 void config_load(void);
 void config_save(void);
+void config_reset_defaults(void);
+bool config_game_reset(void);
+void config_controls_save(void);
+void config_controls_defaults(void);
 const char *config_core_override(const char *key);
 bool config_widescreen(void);
 int config_screen_mode(void);
 void config_set_screen_mode(int mode);
 void config_set_renderer(int software);
+int config_game_renderer(void);
 void config_game_begin(const char *game);
 void config_game_set_screen(int mode);
 void config_game_end(void);
@@ -150,6 +157,8 @@ void rewind_reset(void);
 // gamecfg.c - per-game settings (sdmc:/3ds/PSX3D/games/<game>.ini)
 void gamecfg_load(const char *game);
 void gamecfg_end(void);
+bool gamecfg_reset(void);
+void gamecfg_unset(const char *key);
 const char *gamecfg_get(const char *key);
 int gamecfg_int(const char *key, int def);
 void gamecfg_set(const char *key, const char *value);
@@ -204,18 +213,68 @@ u32 input_keys_down(void);
 u32 input_keys_held(void);
 bool touch_buttons_active(void);
 bool menu_touched(void);
+bool input_stats_touched(void);
 bool input_fast_forward(void);
 void input_fast_forward_off(void);
 bool input_rewind(void);
-#define INPUT_REMAP_N 10
+#define INPUT_PHYSICAL_N 10
+#define INPUT_REMAP_N 16
+#define INPUT_TOUCH_N (INPUT_REMAP_N - INPUT_PHYSICAL_N)
+int input_controls_count(void);
+int input_control_slot(int row);
+const char *input_controls_help(void);
+enum { INPUT_BIND_PRESET = -2, INPUT_BIND_HIDE = -1 };
+enum { INPUT_FF_TOGGLE = 16, INPUT_FF_HOLD, INPUT_REWIND_HOLD };
+#define INPUT_HOTKEY_N 2
+int input_hotkey_get(int i);
+bool input_hotkey_is_default(int i);
+void input_hotkey_set(int i, int combo);
+void input_hotkey_load(int i, const char *name);
+const char *input_hotkey_key_name(int i);
+const char *input_hotkey_combo_name(int combo);
+void input_gameplay(bool enabled);
 const char *input_map_key_name(int i);
 const char *input_ps1_name(int id);
 int input_map_get(int i);
+int input_map_raw(int i);
+int input_map_factory(int i);
+int input_stick_binding(void);
+void input_stick_set(int binding);
 bool input_map_is_default(int i);
 void input_map_set(int i, int id);
 void input_map_cycle(int i, int dir);
 void input_map_reset(void);
 void touch_buttons_draw(void);
+enum { TOUCH_CONTROLS_AUTO, TOUCH_CONTROLS_ON, TOUCH_CONTROLS_OFF };
+void input_touch_begin(void);
+void input_touch_disc_log(const char *message);
+void input_touch_reset(void);
+bool input_touch_changed(void);
+const char *input_control_label(int i, void *ud);
+const char *input_control_value(int i, void *ud);
+u32 input_control_color(int row);
+void input_control_cycle(int i, int dir);
+
+// presets.c: curated per-console serial profiles. Boolean/policy fields use
+// -1 to inherit the uncurated console defaults. Renderer is future metadata.
+enum { PRESET_RENDERER_INHERIT = -1, PRESET_RENDERER_DEFAULT,
+       PRESET_RENDERER_SOFTWARE, PRESET_RENDERER_GPU };
+typedef struct {
+	int fast_forward, rewind, touch_controls;
+	int needs_l2r2, needs_l3r3, needs_right_stick;
+	int renderer;
+	int touch_bindings[INPUT_TOUCH_N]; // -2 inherits needs_* shorthand; -1 hides.
+	// Add future renderer/frameskip/clock parameters with explicit inheritance.
+} game_preset_options_t;
+typedef struct {
+	const char *serial;
+	game_preset_options_t old3ds, new3ds;
+} game_preset_t;
+// Variadic initializer allows designated fields and comma-separated values.
+#define GAME_PRESET_SAME(disc, ...) { .serial = disc, .old3ds = __VA_ARGS__, .new3ds = __VA_ARGS__ }
+game_preset_options_t game_capabilities(void);
+void game_presets_reset(void);
+void game_presets_disc_log(const char *message);
 
 // ui.c - text drawing on the bottom screen
 void ui_init(void);
@@ -223,7 +282,14 @@ void ui_exit(void);
 void ui_text(float x, float y, float size, u32 color, const char *fmt, ...);
 void ui_rect(float x, float y, float w, float h, u32 color);
 void ui_begin(void);
+bool ui_confirm(const char *title, const char *message, bool show_game);
 void ui_text_ex(C2D_Font font, float x, float y, float size, u32 color, u32 flags, const char *s);
+void ui_text_pixels(C2D_Font font, float x, float baseline, float pixels, float spacing,
+	float width, u32 color, u32 align, const char *s);
+bool ui_input_symbol(int id, float x, float y, float size, u32 color);
+u32 ui_input_color(int id);
+void ui_menu_header(const char *title, const char *right);
+void ui_button_text(float x, float y, float pixels, float spacing, u32 color, int id);
 
 #define FLIST_MAX 2048
 typedef struct {

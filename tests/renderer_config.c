@@ -5,11 +5,25 @@
 #include <stdlib.h>
 #include <string.h>
 
-bool g_new3ds, sw_o3ds, sw_nosputhread, sw_nogputhread, sw_noskip, sw_fs1;
+bool g_new3ds, sw_o3ds, sw_nosputhread, sw_nogputhread, sw_noskip, sw_fs1, sw_fs3;
 int g_syscore_pct;
 char sw_cdra[8], sw_clock[8], sw_opt[8][48];
 void log_printf(const char *fmt, ...) { (void)fmt; }
-void input_map_reset(void) {}
+static int maps[INPUT_REMAP_N], hotkeys[INPUT_HOTKEY_N];
+static int preset_renderer;
+void input_map_reset(void) { memset(maps, 0, sizeof(maps)); }
+int input_map_raw(int i) { return maps[i]; }
+int input_map_factory(int i) { return 0; }
+void input_map_set(int i,int v) { maps[i]=v; }
+const char *input_map_key_name(int i) { static char key[16]; snprintf(key,sizeof(key),"test%d",i); return key; }
+int input_hotkey_get(int i) { return hotkeys[i]; }
+void input_hotkey_set(int i,int v) { hotkeys[i]=v; }
+void input_hotkey_load(int i,const char *v) { hotkeys[i]=atoi(v); }
+const char *input_hotkey_key_name(int i) { return i ? "hotkey_rewind" : "hotkey_ff"; }
+const char *input_hotkey_combo_name(int i) { return "off"; }
+void input_touch_begin(void) {}
+void input_touch_reset(void) {}
+game_preset_options_t game_capabilities(void) { return (game_preset_options_t){.renderer=preset_renderer}; }
 bool renderer_is_gpu(void) { return false; }
 
 static void file(const char *path, const char *text)
@@ -98,5 +112,26 @@ int main(void)
 	g_new3ds = false;
 	assert(!strcmp(options_get("pcsx_rearmed_gpu_thread_rendering"), "disabled"));
 	sw_opt[0][0] = 0;
+	// Presets are resolved after disc identification, before emulation starts.
+	g_new3ds = true;
+	preset_renderer = PRESET_RENDERER_DEFAULT;
+	config_game_begin("curated");
+	assert(config_game_renderer() == 1);
+	preset_renderer = PRESET_RENDERER_GPU;
+	assert(config_game_renderer() == 0);
+	config_set_renderer(1);
+	assert(config_game_renderer() == 1); // explicit per-game wins
+	assert(config_game_reset());
+	assert(config_game_renderer() == 0 && g_cfg.renderer == 0);
+	config_game_end();
+	assert(g_cfg.renderer == 1); // curated choice never leaks to global
+	config_set_renderer(0);
+	preset_renderer = PRESET_RENDERER_SOFTWARE;
+	config_game_begin("curated");
+	assert(config_game_renderer() == 1);
+	config_game_end();
+	assert(g_cfg.renderer == 0);
+	config_reset_defaults();
+	assert(g_cfg.renderer == 1);
 	puts("renderer config: software defaults on both models, normal visibility, cycling, persistence, per-game override and global restoration passed");
 }

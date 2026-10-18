@@ -1,0 +1,11 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='640' height='480' viewBox='0 0 320 240'><rect width='320' height='240' fill='black'/>
+<rect x='0' y='0' width='320' height='240' fill='#060918'/>
+<text x='12' y='24' font-family='Michroma' font-size='14.4' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#ebeeff' text-anchor='start'>RESET THIS GAME?</text>
+<rect x='12' y='34' width='16' height='2' fill='#e61e3c'/>
+<rect x='30' y='34' width='16' height='2' fill='#facd14'/>
+<rect x='48' y='34' width='16' height='2' fill='#1ebe78'/>
+<rect x='66' y='34' width='16' height='2' fill='#286ee6'/>
+<text x='16' y='74.5' font-family='DejaVu Sans' font-size='15' transform='translate(16 0) scale(1 1) translate(-16 0)' fill='#aab9dc' text-anchor='start'>Remove this game's settings and<tspan x='16' dy='19'>control</tspan> overrides?</text>
+<text x='160' y='195.5' font-family='DejaVu Sans' font-size='15' transform='translate(160 0) scale(1 1) translate(-160 0)' fill='#ebeeff' text-anchor='middle'>A Reset to defaults</text>
+<text x='160' y='224.25' font-family='DejaVu Sans' font-size='13.5' transform='translate(160 0) scale(1 1) translate(-160 0)' fill='#8296be' text-anchor='middle'>B Cancel</text>
+</svg>

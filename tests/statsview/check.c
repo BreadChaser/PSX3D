@@ -36,7 +36,7 @@ static void C2D_TextParse(C2D_Text *t, C2D_TextBuf b, const char *s) { snprintf(
 static void C2D_TextOptimize(C2D_Text *t) {}
 static void C2D_DrawText(C2D_Text *t, int flags, float x, float y, float z, float sx, float sy, u32 color) {}
 static void ui_rect(float x,float y,float w,float h,u32 c) {}
-static u32 hidKeysDown(void) { return keys; }
+static bool input_stats_touched(void) { return g_cfg.show_fps && keys && touch.py >= 218; }
 static u32 hidKeysHeld(void) { return keys; }
 static void hidTouchRead(touchPosition *t) { *t=touch; }
 #include "../../psx3d/source/statsview.c"
