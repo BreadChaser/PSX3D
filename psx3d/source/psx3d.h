@@ -41,8 +41,8 @@ typedef struct {
 	int  autosave;     // save on exit, offer to continue next time
 	int  audio_stretch; // maximum slowdown in percent, 0 disables (0..50)
 	int  touch_stick;  // Old 3DS virtual right stick
-	int  touch_click_left; // global New 3DS stick-click side: 0 right, 1 left
-	int  half3d;       // draw 3D polygons at half vertical resolution (Old 3DS default)
+	int  touch_click_left; // global New 3DS bottom-screen layout: 0 right, 1 left
+	int  half3d;       // Software-only half-height 3D polygons (Old 3DS default)
 	int  renderer;     // 0 = GPU, 1 = software; applied when a game starts
 } psx3d_config;
 
@@ -62,6 +62,7 @@ int config_game_renderer(void);
 void config_game_begin(const char *game);
 void config_game_set_screen(int mode);
 void config_game_end(void);
+bool config_in_game(void);
 void config_set_ws_native(bool on);
 void config_set_widescreen(bool on);
 void config_set_core_override(const char *key, const char *value);
@@ -78,6 +79,7 @@ const char *options_impact(int i);
 void options_fast_forward(bool on);
 const char *options_key(int i);
 const char *options_desc(int i);
+const char *options_value(int i);
 const char *options_cycle(int i, int dir);
 
 // video.c

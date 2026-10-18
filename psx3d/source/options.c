@@ -89,10 +89,30 @@ static const char *locked_value(const char *key)
 	return NULL;
 }
 
+static bool option_is(const char *key, const char *value)
+{
+	const char *v = options_get(key);
+	return v && !strcmp(v, value);
+}
+
 static bool is_hidden(const char *key)
 {
-	if (!strcmp(key, RENDERER_KEY))
-		return false;
+	// Renderer already lives on the Performance page. The 3D switches are
+	// owned by the frontend, never exposed as duplicate raw core options.
+	if (!strcmp(key, RENDERER_KEY) || !strcmp(key, "pcsx_rearmed_psx3d_stereo") ||
+	    !strcmp(key, "pcsx_rearmed_psx3d_widescreen")) return true;
+	bool software = config_in_game() ? !renderer_is_gpu() : g_cfg.renderer;
+	if (!software && !strncmp(key, "pcsx_rearmed_gpu_unai_", sizeof("pcsx_rearmed_gpu_unai_") - 1)) return true;
+	if (!software && !strncmp(key, "pcsx_rearmed_screen_centering", sizeof("pcsx_rearmed_screen_centering") - 1)) return true;
+	if (!strcmp(key, "pcsx_rearmed_display_info") && !g_cfg.debug) return true;
+	if (!strcmp(key, "pcsx_rearmed_frameskip_threshold") &&
+	    !option_is("pcsx_rearmed_frameskip_type", "auto_threshold")) return true;
+	if (!strcmp(key, "pcsx_rearmed_frameskip_interval") &&
+	    option_is("pcsx_rearmed_frameskip_type", "disabled")) return true;
+	if ((!strcmp(key, "pcsx_rearmed_screen_centering_x") ||
+	     !strcmp(key, "pcsx_rearmed_screen_centering_y") ||
+	     !strcmp(key, "pcsx_rearmed_screen_centering_h_adj")) &&
+	    !option_is("pcsx_rearmed_screen_centering", "manual")) return true;
 	if (locked_value(key))
 		return true;
 	for (size_t i = 0; i < sizeof(hidden_prefix) / sizeof(hidden_prefix[0]); i++)
@@ -148,15 +168,6 @@ void options_register(const struct retro_variable *vars)
 
 static void finish_register(void)
 {
-	if (nopts < MAX_OPTIONS) {
-		option_t *o = &opts[nopts++];
-		o->key = strdup(RENDERER_KEY);
-		o->desc = strdup("Renderer");
-		o->info = strdup("GPU is the default on Old 3DS; Software on New 3DS. GPU rendering is experimental and may draw games incorrectly. Changes take effect when you close and reopen the game. In-game changes are saved for this game. switches.txt renderer=sw|gpu overrides this choice.");
-		o->values[0] = strdup("Software");
-		o->values[1] = strdup("GPU (experimental)");
-		o->nvalues = 2;
-	}
 	nvisible = 0;
 	for (int i = 0; i < nopts; i++)
 		if (!is_hidden(opts[i].key))
@@ -204,6 +215,8 @@ void options_fast_forward(bool on)
 
 const char *options_get(const char *key)
 {
+	if (!g_new3ds && !strcmp(key, "pcsx_rearmed_psx3d_stereo"))
+		return "disabled";
 	if (!strcmp(key, "pcsx_rearmed_gpu_thread_rendering") && (!g_new3ds || sw_nogputhread))
 		return "disabled";
 	if (!strcmp(key, RENDERER_KEY))
@@ -274,9 +287,75 @@ bool options_take_updated(void)
 
 void options_mark_updated(void) { updated = true; }
 // the menu only sees the visible options
-int options_count(void) { return nvisible; }
+int options_count(void)
+{
+	// Only menu code calls this; rebuild when renderer or parent choices change.
+	nvisible = 0;
+	for (int i = 0; i < nopts; i++)
+		if (!is_hidden(opts[i].key)) visible[nvisible++] = i;
+	return nvisible;
+}
 const char *options_key(int i) { return opts[visible[i]].key; }
-const char *options_desc(int i) { return opts[visible[i]].desc; }
+static const char *const player_names[][2] = {
+	{ "pcsx_rearmed_region", "Game region" }, { "pcsx_rearmed_bios", "BIOS" },
+	{ "pcsx_rearmed_memcard1", "Memory card 1" }, { "pcsx_rearmed_memcard2", "Memory card 2" },
+	{ "pcsx_rearmed_cd_readahead", "Read disc ahead" }, { "pcsx_rearmed_psxclock", "Game CPU speed" },
+	{ "pcsx_rearmed_dithering", "PS1 colour shading" },
+	{ "pcsx_rearmed_frameskip_type", "Skip frames when slow" },
+	{ "pcsx_rearmed_frameskip_threshold", "Start skipping below" },
+	{ "pcsx_rearmed_frameskip_interval", "Frames to skip at most" },
+	{ "pcsx_rearmed_display_info", "Debug: core messages" },
+	{ "pcsx_rearmed_alt_flip", "Picture timing" },
+	{ "pcsx_rearmed_gpu_slow_llists", "Careful drawing order" },
+	{ "pcsx_rearmed_screen_centering", "Picture position" },
+	{ "pcsx_rearmed_screen_centering_x", "Move picture sideways" },
+	{ "pcsx_rearmed_screen_centering_y", "Move picture up or down" },
+	{ "pcsx_rearmed_screen_centering_h_adj", "Adjust picture height" },
+	{ "pcsx_rearmed_gpu_unai_old_renderer", "Older software drawing" },
+	{ "pcsx_rearmed_gpu_unai_blending", "Transparency effects" },
+	{ "pcsx_rearmed_gpu_unai_lighting", "Lighting effects" },
+	{ "pcsx_rearmed_gpu_unai_fast_lighting", "Faster lighting" },
+	{ "pcsx_rearmed_spu_reverb", "Sound echo" },
+	{ "pcsx_rearmed_nocdaudio", "Disc music" }, { "pcsx_rearmed_noxadecoding", "Disc voices and effects" },
+	{ "pcsx_rearmed_analog_axis_modifier", "Stick response" },
+	{ "pcsx_rearmed_analog_combo", "Analog mode shortcut" },
+	{ "pcsx_rearmed_icache_emulation", "Accurate CPU cache" },
+	{ "pcsx_rearmed_exception_emulation", "Accurate CPU errors" },
+	{ "pcsx_rearmed_cd_turbo", "Faster disc loading" },
+	{ "pcsx_rearmed_nocompathacks", "Disable automatic game fixes" },
+	{ "pcsx_rearmed_nolddelay", "Simplify CPU loads" },
+	{ "pcsx_rearmed_nosmccheck", "Skip code safety checks" },
+	{ "pcsx_rearmed_gteregsunneeded", "Faster 3D calculations" },
+	{ "pcsx_rearmed_nogteflags", "Simpler 3D clipping" },
+	{ "pcsx_rearmed_nostalls", "Simpler CPU timing" },
+};
+const char *options_desc(int i)
+{
+	const option_t *o = &opts[visible[i]];
+	for (size_t j = 0; j < sizeof(player_names) / sizeof(player_names[0]); j++)
+		if (!strcmp(o->key, player_names[j][0])) return player_names[j][1];
+	return o->desc;
+}
+
+// Player-facing labels only; options_get still returns the original core value.
+const char *options_value(int i)
+{
+	const char *v = options_get(options_key(i));
+	static const char *const labels[][2] = {
+		{ "enabled", "On" }, { "disabled", "Off" }, { "auto", "Auto" },
+		{ "auto_threshold", "Audio limit" }, { "fixed_interval", "Always" },
+		{ "manual", "Manual" }, { "game", "Game-controlled" },
+		{ "borderless", "No borders" }, { "force", "Always" },
+		{ "early", "Early" }, { "late", "Late" },
+		{ "hle", "Built-in" }, { "libretro", "Game save" }, { "serial", "Per disc" },
+		{ "shared", "Shared" }, { "none", "Off" },
+		{ "square", "Square" }, { "circle", "Round" },
+	};
+	if (!v) return "";
+	for (size_t j = 0; j < sizeof(labels) / sizeof(labels[0]); j++)
+		if (!strcmp(v, labels[j][0])) return labels[j][1];
+	return v;
+}
 
 // Step option i to the next/previous value and store it as an override.
 const char *options_cycle(int i, int dir)
@@ -303,28 +382,41 @@ const char *options_cycle(int i, int dir)
 // it's selected. PSX3D's own notes win over the core's text; the impact
 // line is ours (measured on 3DS where it says so).
 static const char *const notes[][3] = {
-	// key, impact, note (NULL = use the core's text)
-	{ "pcsx_rearmed_psxclock", "Lower = faster, but games run their logic slower", "How fast the emulated PS1 CPU runs. Lowering it saves a lot of 3DS CPU time (Crash on Old 3DS: 36 -> 44 FPS at 30%) but games that need the full CPU will slow down or stutter. auto picks per game." },
-	{ "pcsx_rearmed_frameskip_type", "Faster when the 3DS can't keep up", "Skips drawing some frames when the 3DS falls behind, so the game itself keeps full speed. auto skips only when needed." },
-	{ "pcsx_rearmed_frameskip_threshold", "Higher = skips sooner", NULL },
-	{ "pcsx_rearmed_frameskip_interval", "Higher = smoother speed, choppier picture", "The most frames that can be skipped in a row." },
-#ifdef PSX3D_PICA
-	{ "pcsx_rearmed_dithering", "PS1 colour shading", "Adds the PS1's fine colour pattern to shaded polygons. Off gives smoother-looking bands. enabled follows the game; force also enables it when the game turns it off." },
-#else
-	{ "pcsx_rearmed_dithering", "Slightly slower when on", "The PS1's colour dithering pattern. Off gives a cleaner picture and saves a little time." },
-#endif
-	{ "pcsx_rearmed_gpu_unai_fast_lighting", "Faster (small)", "A quicker way to shade textured polygons. Colours can be slightly off in some games." },
-	{ "pcsx_rearmed_gpu_unai_lighting", "Off is faster, but most 3D games look wrong", NULL },
-	{ "pcsx_rearmed_gpu_unai_blending", "Off is faster, but transparency breaks", NULL },
-	{ "pcsx_rearmed_spu_reverb", "Off saves CPU time", "The PS1 sound chip's echo effect. Off sounds drier but frees CPU time, mostly useful on Old 3DS." },
-	{ "pcsx_rearmed_nosmccheck", "Faster, but can crash games and break saves", NULL },
-	{ "pcsx_rearmed_gteregsunneeded", "Faster (small), may cause glitches", "Skips saving some 3D math results games rarely read back. Usually safe; rare graphics glitches." },
-	{ "pcsx_rearmed_nogteflags", "Faster (small), can cause graphics errors", "Skips the 3D math unit's overflow flags. A few games use them for clipping and draw wrong without them." },
-	{ "pcsx_rearmed_cd_turbo", "Faster loading, can crash games", NULL },
-	{ "pcsx_rearmed_cd_readahead", "Fewer loading stutters on New 3DS", "Reads ahead on the disc image on a spare core, so the game doesn't wait for the SD card." },
-	{ "pcsx_rearmed_icache_emulation", "Slightly slower when on", NULL },
-	{ "pcsx_rearmed_region", "No speed effect", NULL },
-	{ "pcsx_rearmed_bios", "No speed effect", "Which BIOS to use. A real BIOS in sdmc:/3ds/PSX3D/bios fixes some games that don't boot with the built-in one." },
+	{ "pcsx_rearmed_region", "Usually leave Auto", "Auto detects the disc's region. Choose a region manually only if a game starts with the wrong video timing." },
+	{ "pcsx_rearmed_bios", "Reopen the game to apply", "Auto uses an available PlayStation BIOS. The built-in BIOS needs no file, but some games need a real BIOS in the bios folder to boot correctly." },
+	{ "pcsx_rearmed_memcard1", "Reopen the game to apply", "Game save uses PSX3D's usual per-game save file. Per disc keeps a separate card for each disc; Shared uses one card across games. Off removes this card." },
+	{ "pcsx_rearmed_memcard2", "Reopen the game to apply", "Choose a separate card per disc, a card shared across games, or Off for an empty second memory-card slot." },
+	{ "pcsx_rearmed_psxclock", "Lower may slow the game itself", "How fast the game's PS1 CPU runs. Lower values may raise the frame count while slowing the game itself or causing glitches. Usually leave Auto." },
+	{ "pcsx_rearmed_frameskip_type", "A smoother sound, fewer pictures", "Skip drawing frames to keep game speed when the 3DS falls behind. Auto skips as needed; Audio limit uses the sound-buffer limit below; Always skips regularly." },
+	{ "pcsx_rearmed_frameskip_threshold", "Higher skips sooner", "For Audio limit mode: start skipping pictures when the sound buffer falls below this percentage." },
+	{ "pcsx_rearmed_frameskip_interval", "Higher can look choppier", "The most pictures to skip in a row. Always mode skips this many between displayed pictures." },
+	{ "pcsx_rearmed_dithering", "PS1 colour shading", "Adds the PS1's fine colour pattern to shaded polygons. On follows the game; Always also enables it when the game turns it off." },
+	{ "pcsx_rearmed_alt_flip", "Usually leave Auto", "Choose when to capture the game's picture. Try Early or Late only if a game shows incomplete pictures or flicker." },
+	{ "pcsx_rearmed_gpu_slow_llists", "May be slower", "Follow the game's drawing order more closely. Leave Auto unless a game needs this to draw correctly." },
+	{ "pcsx_rearmed_screen_centering", "Software renderer only", "Auto fixes uneven borders. Game-controlled follows the game's position. No borders crops the border. Manual enables the position adjustments below." },
+	{ "pcsx_rearmed_screen_centering_x", "Manual position only", "Move the game picture left or right." },
+	{ "pcsx_rearmed_screen_centering_y", "Manual position only", "Move the game picture up or down." },
+	{ "pcsx_rearmed_screen_centering_h_adj", "Manual position only", "Change the game picture's height." },
+	{ "pcsx_rearmed_gpu_unai_old_renderer", "Faster, less accurate", "Use the older software drawing code. May draw some games incorrectly." },
+	{ "pcsx_rearmed_gpu_unai_fast_lighting", "Faster, may alter colours", "Use a quicker way to light textured surfaces. Colours can be slightly wrong in some games." },
+	{ "pcsx_rearmed_gpu_unai_lighting", "Usually keep On", "Draw lighting and shading effects. Off may improve speed but makes many 3D games look wrong." },
+	{ "pcsx_rearmed_gpu_unai_blending", "Usually keep On", "Draw transparent effects such as water and shadows. Off may improve speed but breaks these effects." },
+	{ "pcsx_rearmed_spu_reverb", "Off can improve speed", "Play the PS1's echo effect. Off sounds drier and can help Old 3DS keep up." },
+	{ "pcsx_rearmed_nocdaudio", "Usually keep On", "Play music stored as audio tracks on the game disc." },
+	{ "pcsx_rearmed_noxadecoding", "Usually keep On", "Play compressed voices, music and effects stored on the game disc." },
+	{ "pcsx_rearmed_cd_readahead", "Can reduce loading pauses", "Read this many disc sectors ahead on a spare CPU core. Higher values use more memory. Old 3DS chooses this automatically." },
+	{ "pcsx_rearmed_analog_axis_modifier", "Changes stick response", "Choose the shape of the analog stick's movement range. Most games work best with Square." },
+	{ "pcsx_rearmed_analog_combo", "Controller shortcut", "Choose the PlayStation button combination that switches between digital and analog controls, or Off to disable the shortcut." },
+	{ "pcsx_rearmed_icache_emulation", "More accurate, may be slower", "Emulate the PS1 CPU's instruction cache. Some games need this to run correctly." },
+	{ "pcsx_rearmed_exception_emulation", "More accurate, may be slower", "Handle PS1 CPU errors more accurately. Some games need this to run correctly." },
+	{ "pcsx_rearmed_cd_turbo", "May break games", "Load data faster than a real PlayStation disc drive. Some games may crash or stop working." },
+	{ "pcsx_rearmed_nocompathacks", "Usually keep Off", "Turn off the emulator's automatic game fixes. Some games need those fixes to work, so normally leave this Off." },
+	{ "pcsx_rearmed_nolddelay", "May break games", "Simplify the timing of PS1 memory loads. Only useful for games modified to expect an older emulator." },
+	{ "pcsx_rearmed_nosmccheck", "May crash games or break saves", "Skip checks for games that change their own running code. May improve speed, but unsafe for games that need those checks." },
+	{ "pcsx_rearmed_gteregsunneeded", "Faster, may cause glitches", "Skip some 3D calculation results that games rarely use. Turn off if a game draws incorrectly." },
+	{ "pcsx_rearmed_nogteflags", "Faster, may cause glitches", "Simplify checks used when drawing 3D objects. Turn off if parts of a game disappear or draw incorrectly." },
+	{ "pcsx_rearmed_nostalls", "Faster, may break games", "Simplify PS1 CPU timing. Some games need the original timing to work correctly." },
+	{ "pcsx_rearmed_display_info", "Debug only", "Show extra messages from the emulator for troubleshooting." },
 };
 
 const char *options_info(int i)

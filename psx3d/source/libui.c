@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "psx3d.h"
+#include "settings_menu.h"
 
 #define ROWS 9
 #define ROW_H 24
@@ -431,34 +432,63 @@ static void clamp_list(void)
 // Global settings, reachable from the library with X (the defaults for every
 // game; a game's own screen mode, controls and rewind live in its menu).
 
-enum { S_RENDERER, S_SCREEN, S_3D, S_RES3D, S_SMOOTH, S_FPS, S_AUTOSAVE, S_AUDIO, S_SOUNDS, S_MUSIC, S_CONTROLS, S_CLICK_SIDE, S_CORE, S_DEFAULTS, S_COUNT };
+enum { S_DISPLAY, S_PERFORMANCE, S_CONTROL_GROUP, S_SOUND, S_GENERAL, S_ADVANCED,
+       S_SCREEN, S_SMOOTH, S_3D, S_RENDERER, S_RES3D, S_FPS, S_CONTROLS, S_CLICK_SIDE,
+       S_AUDIO, S_SOUNDS, S_MUSIC, S_AUTOSAVE, S_DEFAULTS, S_CORE, S_COUNT };
 static const char *const s_names[S_COUNT] = {
-	"Renderer", "Screen (default)", "3D", "3D resolution", "Smoothing", "Show FPS", "Continue where I left off",
-	"Smooth audio when slow", "Menu sounds", "Library music", "Controls", "Stick-click buttons", "Core options", "Reset to defaults",
+	"Display", "Performance", "Controls", "Sound", "General", "Advanced",
+	"Screen mode", "Smoothing", "3D", "Renderer", "Half-height 3D (faster)", "Show FPS",
+	"Controls...", "Bottom-screen buttons", "Smooth audio when slow", "Menu sounds", "Library music",
+	"Continue where I left off", "Reset to defaults", "Core options",
 };
+static const int s_pages[S_COUNT] = {
+	[S_SCREEN] = SETTINGS_DISPLAY, [S_SMOOTH] = SETTINGS_DISPLAY, [S_3D] = SETTINGS_DISPLAY,
+	[S_RENDERER] = SETTINGS_PERFORMANCE, [S_RES3D] = SETTINGS_PERFORMANCE, [S_FPS] = SETTINGS_PERFORMANCE,
+	[S_CONTROLS] = SETTINGS_CONTROLS, [S_CLICK_SIDE] = SETTINGS_CONTROLS,
+	[S_AUDIO] = SETTINGS_SOUND, [S_SOUNDS] = SETTINGS_SOUND, [S_MUSIC] = SETTINGS_SOUND,
+	[S_AUTOSAVE] = SETTINGS_GENERAL, [S_DEFAULTS] = SETTINGS_GENERAL, [S_CORE] = SETTINGS_ADVANCED,
+};
+
+static int settings_items(int *items, int page)
+{
+	int n = 0;
+	for (int i = 0; i < S_COUNT; i++) {
+		if (s_pages[i] != page) continue;
+		if ((i == S_3D || i == S_CLICK_SIDE) && !g_new3ds) continue;
+		if (i == S_RES3D && !g_cfg.renderer) continue;
+		items[n++] = i;
+	}
+	return n;
+}
 static const u32 s_cols[4] = { 0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28 };
 
-typedef struct { int sel, core_sel, ctl_sel; bool core, controls; flist_t fl, core_fl, ctl_fl; } settings_t;
+typedef struct {
+	int sel, page, group_sel, core_sel, ctl_sel;
+	int items[S_COUNT], nitems;
+	bool core, controls;
+	flist_t fl, core_fl, ctl_fl;
+} settings_t;
 
-static const char *s_label(int i, void *ud) { (void)ud; return s_names[i]; }
+static const char *s_label(int i, void *ud) { return s_names[((settings_t *)ud)->items[i]]; }
 
 static const char *s_value(int i, void *ud)
 {
-	(void)ud;
-	static const char *const screens[] = { "4:3", "stretch", "widescreen" };
-	static const char *const s3d[] = { "off", "screen depth", "real (exp.)" };
+	i = ((settings_t *)ud)->items[i];
+	if (i <= S_ADVANCED || i == S_CONTROLS || i == S_CORE) return ">";
+	static const char *const screens[] = { "4:3", "Stretch", "Widescreen" };
+	static const char *const s3d[] = { "Off", "Screen depth", "Full 3D (test)" };
 	switch (i) {
 	case S_RENDERER: return g_cfg.renderer ? "Software" : "GPU (experimental)";
 	case S_SCREEN: return screens[config_screen_mode()];
-	case S_3D: return s3d[g_cfg.stereo];
-	case S_RES3D: return g_cfg.half3d ? "half (faster)" : "full";
-	case S_SMOOTH: return g_cfg.smooth ? "on" : "off";
+	case S_3D: return s3d[g_cfg.stereo == 2 && !g_cfg.renderer ? 1 : g_cfg.stereo];
+	case S_RES3D: return g_cfg.half3d ? "On" : "Off";
+	case S_SMOOTH: return g_cfg.smooth ? "On" : "Off";
 	case S_FPS: return (const char *const[]){"Off", "FPS", "Detailed"}[g_cfg.show_fps];
-	case S_AUTOSAVE: return g_cfg.autosave ? "on" : "off";
-	case S_AUDIO: return g_cfg.audio_stretch ? "on" : "off";
-	case S_SOUNDS: return g_cfg.sounds ? "on" : "off";
-	case S_MUSIC: return g_cfg.music ? "on" : "off";
-	case S_CLICK_SIDE: return g_cfg.touch_click_left ? "Left" : "Right";
+	case S_AUTOSAVE: return g_cfg.autosave ? "On" : "Off";
+	case S_AUDIO: return g_cfg.audio_stretch ? "On" : "Off";
+	case S_SOUNDS: return g_cfg.sounds ? "On" : "Off";
+	case S_MUSIC: return g_cfg.music ? "On" : "Off";
+	case S_CLICK_SIDE: return g_cfg.touch_click_left ? "Left side" : "Right side";
 	}
 	return NULL;
 }
@@ -466,17 +496,13 @@ static const char *s_value(int i, void *ud)
 static const char *sc_label(int i, void *ud)
 {
 	(void)ud;
-	static char b[48];
-	snprintf(b, sizeof(b), "%.30s", options_desc(i));
-	return b;
+	return options_desc(i);
 }
 
 static const char *sc_value(int i, void *ud)
 {
 	(void)ud;
-	static char b[24];
-	snprintf(b, sizeof(b), "%.14s", options_get(options_key(i)));
-	return b;
+	return options_value(i);
 }
 
 static void settings_bottom(void *ud)
@@ -484,7 +510,7 @@ static void settings_bottom(void *ud)
 	settings_t *st = ud;
 	u32 hint = C2D_Color32(110, 120, 160, 255);
 	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
-	ui_menu_header(st->core ? "CORE OPTIONS" : st->controls ? "CONTROLS" : "SETTINGS", NULL);
+	ui_menu_header(st->core ? "Core options" : st->controls ? "Controls" : settings_page_names[st->page], "all games");
 	if (st->controls)
 		flist_draw(&st->ctl_fl, input_controls_count(), st->ctl_sel, 0, 40, 320, 24, 7,
 			input_control_label, input_control_value, st, s_cols[st->ctl_sel & 3]);
@@ -492,8 +518,8 @@ static void settings_bottom(void *ud)
 		flist_draw(&st->core_fl, options_count(), st->core_sel, 0, 40, 320, 24, 7, sc_label, sc_value, st,
 			s_cols[st->core_sel & 3]);
 	else
-		flist_draw(&st->fl, S_COUNT, st->sel, 0, 40, 320, 24, 7, s_label, s_value, st, s_cols[st->sel & 3]);
-	ui_text_ex(NULL, 160, 222, 0.42f, hint, C2D_AlignCenter, st->controls ? "Left/Right change    X reset    B back" : "Left/Right change    B back");
+		flist_draw(&st->fl, st->nitems, st->sel, 0, 40, 320, 24, 7, s_label, s_value, st, s_cols[st->sel & 3]);
+	ui_text_ex(NULL, 160, 222, 0.42f, hint, C2D_AlignCenter, st->controls ? "Left/Right change    X reset    B back" : st->page == SETTINGS_HOME ? "A open    B library" : "A select    Left/Right change    B back");
 }
 
 static void settings_top(void *ud)
@@ -505,13 +531,16 @@ static void settings_top(void *ud)
 	else if (st->controls)
 		ui_help_panel(150, "Global controls", NULL, input_controls_help());
 	else
-		ui_help_for(150, s_names[st->sel]);
+		ui_help_for(150, s_names[st->items[st->sel]]);
 }
 
 static void settings_run(void)
 {
 	static settings_t st;
 	st.core = st.controls = false;
+	st.page = SETTINGS_HOME;
+	st.sel = st.group_sel = 0;
+	st.nitems = settings_items(st.items, st.page);
 	st.fl.init = false;
 	sfx_play(SFX_SELECT);
 	while (aptMainLoop()) {
@@ -528,6 +557,7 @@ static void settings_run(void)
 			flist_update(&st.ctl_fl, st.ctl_sel, input_controls_count(), 7);
 		} else if (st.core) {
 			int n = options_count();
+			if (st.core_sel >= n) st.core_sel = n ? n - 1 : 0;
 			if (k & KEY_B) { st.core = false; sfx_play(SFX_BACK); }
 			if (n) {
 				if (k & KEY_DOWN) { st.core_sel = (st.core_sel + 1) % n; sfx_play(SFX_MOVE); }
@@ -535,19 +565,38 @@ static void settings_run(void)
 				if (k & (KEY_RIGHT | KEY_A)) { options_cycle(st.core_sel, 1); sfx_play(SFX_MOVE); }
 				if (k & KEY_LEFT) { options_cycle(st.core_sel, -1); sfx_play(SFX_MOVE); }
 			}
-			flist_update(&st.core_fl, st.core_sel, options_count(), 7);
+			n = options_count();
+			if (st.core_sel >= n) st.core_sel = n ? n - 1 : 0;
+			flist_update(&st.core_fl, st.core_sel, n, 7);
 		} else {
-			if (k & KEY_B) { sfx_play(SFX_BACK); break; }
-			if (k & KEY_DOWN) { st.sel = (st.sel + 1) % S_COUNT; sfx_play(SFX_MOVE); }
-			if (k & KEY_UP) { st.sel = (st.sel - 1 + S_COUNT) % S_COUNT; sfx_play(SFX_MOVE); }
+			if (k & KEY_B) {
+				sfx_play(SFX_BACK);
+				if (st.page == SETTINGS_HOME) break;
+				st.page = SETTINGS_HOME;
+				st.nitems = settings_items(st.items, st.page);
+				st.sel = st.group_sel;
+				st.fl.init = false;
+			}
+			if (k & KEY_DOWN) { st.sel = (st.sel + 1) % st.nitems; sfx_play(SFX_MOVE); }
+			if (k & KEY_UP) { st.sel = (st.sel - 1 + st.nitems) % st.nitems; sfx_play(SFX_MOVE); }
 			int dir = (k & KEY_RIGHT) ? 1 : (k & KEY_LEFT) ? -1 : (k & KEY_A) ? 1 : 0;
 			if (dir) {
 				sfx_play(SFX_MOVE);
-				switch (st.sel) {
+				switch (st.items[st.sel]) {
+				case S_DISPLAY: case S_PERFORMANCE: case S_CONTROL_GROUP:
+				case S_SOUND: case S_GENERAL: case S_ADVANCED:
+					if (k & KEY_A) {
+						st.group_sel = st.sel;
+						st.page = st.items[st.sel] + 1;
+						st.nitems = settings_items(st.items, st.page);
+						st.sel = 0;
+						st.fl.init = false;
+					}
+					break;
 				case S_RENDERER: config_set_renderer(!g_cfg.renderer); break;
 				case S_SCREEN: config_set_screen_mode((config_screen_mode() + dir + 3) % 3); break;
 				case S_3D: {
-					int modes = g_cfg.debug ? 3 : 2;
+					int modes = g_cfg.debug && g_cfg.renderer ? 3 : 2;
 					g_cfg.stereo = (g_cfg.stereo + dir + modes) % modes;
 					config_sync_stereo();
 				} break;
@@ -580,7 +629,10 @@ static void settings_run(void)
 					break;
 				}
 			}
-			flist_update(&st.fl, st.sel, S_COUNT, 7);
+			// Renderer changes can remove a row; rebuild before the next input.
+			st.nitems = settings_items(st.items, st.page);
+			if (st.sel >= st.nitems) st.sel = st.nitems - 1;
+			flist_update(&st.fl, st.sel, st.nitems, 7);
 		}
 		music_update();
 		clock_s += 1.0f / 60.0f;

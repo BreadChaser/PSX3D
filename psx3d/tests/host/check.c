@@ -25,7 +25,8 @@ size_t linearSpaceFree(void) { return 1024*1024; }
 
 bool g_new3ds, sw_o3ds, sw_nosputhread, sw_nogputhread, sw_noskip, sw_fs1, sw_fs3;
 char sw_cdra[8], sw_clock[8], sw_opt[8][48];
-bool renderer_is_gpu(void) { return false; }
+static bool host_gpu;
+bool renderer_is_gpu(void) { return host_gpu; }
 int g_syscore_pct, ui_eye;
 float ui_parallax;
 static u32 fake_held, fake_down;

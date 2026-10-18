@@ -347,9 +347,7 @@ void ui_help_panel(float y0, const char *title, const char *impact, const char *
 		y += 18;
 	}
 	if (impact) {
-		char b[96];
-		snprintf(b, sizeof(b), "Speed: %s", impact);
-		ui_text_ex(NULL, 24 + dx, y, 0.42f, C2D_Color32(250, 205, 20, 255), 0, b);
+		ui_text_ex(NULL, 24 + dx, y, 0.42f, C2D_Color32(250, 205, 20, 255), 0, impact);
 		y += 15;
 	}
 	if (text && text[0]) {
@@ -364,30 +362,44 @@ void ui_help_panel(float y0, const char *title, const char *impact, const char *
 
 // help for PSX3D's own settings, by name
 static const char *const own_help[][3] = {
-	{ "Renderer", "GPU is experimental", "GPU is the default on Old 3DS; Software on New 3DS. GPU can draw games incorrectly. Close and reopen the game to apply a change. In-game choices are saved for this game; global choices apply to other games unless a curated profile overrides them." },
-	{ "Screen", "Widescreen can be slower", "4:3 is the original picture. Stretch fills the screen. Widescreen makes 3D games draw a wider view (uses the game's own widescreen code when there is one). Remembered per game." },
-	{ "Screen (default)", "Widescreen can be slower", "The screen mode for games you haven't set one for. 4:3 is the original picture, stretch fills the screen, widescreen draws a wider view in 3D games." },
-	{ "3D", "No speed effect", "screen depth puts the game picture slightly behind the screen when the 3D slider is up." },
-	{ "3D resolution", "Half is faster in 3D games", "Draws 3D scenes with every other line copied, while text, menus and 2D stay sharp. Worth it on Old 3DS; New 3DS doesn't need it." },
-	{ "Smooth audio when slow", "Slower, lower sound when needed", "Keeps sound flowing when a game runs slowly. Music and voices slow down with it. At full speed, sound plays normally." },
-	{ "Smoothing", "No speed effect", "Smooths the picture when it's scaled up to the 3DS screen. Off gives sharp pixels." },
-	{ "Show FPS", "No speed effect", "Off, FPS or Detailed. FPS shares the touch layout; Detailed replaces it with performance stats and a MENU button. Tap the stats footer to cycle views. Physical controls remain active." },
-	{ "Controls", NULL, "Map physical and touch buttons to controls or none. Available actions follow the game preset. Configure hotkey pairs or turn them off. Hide removes a touch slot; binding an empty slot shows it." },
-	{ "Reset to defaults", NULL, "Restore all global settings and physical/touch controls to this console's defaults. Per-game overrides, saves and library folders are kept. Asks for confirmation." },
-	{ "Reset to global defaults", NULL, "Remove this game's settings and control overrides. Inherit global settings and its preset again. Saves and cheats are kept. Asks for confirmation." },
-	{ "Stick-click buttons", NULL, "Place the New 3DS touch L3/R3 buttons on the Right or Left. MENU and the brand move to the opposite side. Global setting; applies to every game." },
-	{ "Rewind", NULL, "Enable for this game, then hold a mapped Rewind button or its hotkey. The default hotkey is SELECT+L. Captures six times per second; requires free memory." },
-	{ "Continue where I left off", "No speed effect", "Saves when you leave a game and offers to continue from there next time." },
-	{ "Core options", NULL, "Settings of the emulator itself: accuracy, speed hacks, BIOS and more. Each one explains itself." },
-	{ "Menu sounds", "No speed effect", NULL },
-	{ "Library music", "No speed effect", NULL },
+	{ "Display", NULL, "Choose the shape and look of the game picture." },
+	{ "Performance", NULL, "Choose how games are drawn and show their frame rate." },
+	{ "Controls", NULL, "Change button mappings and the bottom-screen layout." },
+	{ "Sound", NULL, "Set game audio smoothing, menu sounds and library music." },
+	{ "General", NULL, "Choose whether to continue games automatically, or restore defaults." },
+	{ "Advanced", NULL, "Extra choices for games that need help to run correctly." },
+	{ "Renderer", "Reopen the game to apply", "Default for games without an override or preset. Old 3DS uses GPU (experimental); New 3DS uses Software. GPU may draw some games incorrectly." },
+	{ "Screen mode", "Widescreen may be slower", "4:3 keeps the original shape. Stretch fills the screen. Widescreen shows a wider 3D view. Saved per game during play; library choices set the default." },
+	{ "3D", "New 3DS only", "Screen depth puts the picture behind the screen when you raise the 3D slider. Software has a Full 3D test with debug=1. Affects every game." },
+	{ "Half-height 3D (faster)", "Software renderer only", "Draw fewer lines in 3D scenes to improve speed. Text, menus and 2D pictures stay sharp. This is separate from the 3D slider. Affects every game." },
+	{ "Smooth audio when slow", "Affects every game", "Keep audio flowing when a game runs slowly; music and voices slow down with it." },
+	{ "Smoothing", "Affects every game", "Soften enlarged pixels. Turn off for a sharper picture." },
+	{ "Show FPS", "Affects every game", "Off hides the frame rate. FPS shows it beside touch controls; Detailed shows speed measurements. Tap the bottom-screen footer to cycle views." },
+	{ "Controls...", NULL, "Change physical buttons, touch buttons and shortcuts. Choices follow the game's preset. Hide removes a touch button; mapping an empty slot shows it." },
+	{ "Reset to defaults", NULL, "Restore this console's global settings and button mappings. Game overrides, saves, cheats and library folders are kept. Asks for confirmation." },
+	{ "Bottom-screen buttons", "Affects every game", "Place New 3DS touch buttons on the Right side or Left side. Menu and the logo move to the opposite side." },
+	{ "Rewind", "This game only", "Save recent moments so you can hold your Rewind button or shortcut to go back. Needs free memory; available only when this console and the game's preset allow it." },
+	{ "Continue where I left off", "Affects every game", "Save your place when you leave a game and offer to continue next time." },
+	{ "Core options", "Affects every game", "BIOS, memory cards and extra picture, sound and compatibility choices. Use these if a game needs help to boot or play correctly." },
+	{ "Menu sounds", "Affects every game", "Play a sound when you move through menus or select an item." },
+	{ "Library music", "Library only", "Play background music while browsing your games." },
+	{ "Debug: record audio", NULL, "Record 30 seconds of game audio for troubleshooting." },
+	{ "Debug: test tone", NULL, "Play a steady tone to check audio output." },
 };
 
 void ui_help_for(float y0, const char *name)
 {
+	if (config_in_game() && !strcmp(name, "Renderer")) {
+		ui_help_panel(y0, name, "Reopen the game to apply", "Saved for this game. Software uses the CPU; GPU (experimental) uses the graphics chip and may draw some games incorrectly.");
+		return;
+	}
+	if (config_in_game() && !strcmp(name, "Reset to defaults")) {
+		ui_help_panel(y0, name, "This game only", "Remove this game's overrides and use its preset and library defaults again. Saves and cheats are kept. Shared settings are kept. Asks for confirmation.");
+		return;
+	}
 	for (size_t i = 0; i < sizeof(own_help) / sizeof(own_help[0]); i++)
 		if (!strcmp(own_help[i][0], name)) {
-			ui_help_panel(y0, name, own_help[i][1], !strcmp(name,"Controls") ? input_controls_help() : own_help[i][2]);
+			ui_help_panel(y0, name, own_help[i][1], !strcmp(name,"Controls...") ? input_controls_help() : own_help[i][2]);
 			return;
 		}
 }

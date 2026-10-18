@@ -7,6 +7,7 @@
 #include <stdarg.h>
 #include <time.h>
 #include "psx3d.h"
+#include "settings_menu.h"
 #include "statsview.h"
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
 
@@ -372,28 +373,40 @@ static void state_load(void)
 // ---------------------------------------------------------------- menu
 
 enum { M_RESUME, M_SAVE, M_LOAD, M_DISC, M_CHEATS, M_SETTINGS, M_RESET, M_EXIT,
-       M_RENDERER, M_SCREEN, M_3D, M_RES3D, M_SMOOTH, M_FPS, M_CONTROLS, M_CLICK_SIDE, M_REWIND, M_AUTOSAVE, M_AUDIO, M_CORE, M_DEFAULTS, M_RECORD, M_TONE, M_COUNT };
-#define M_FIRST_SETTING M_RENDERER
+       M_DISPLAY, M_PERFORMANCE, M_CONTROL_GROUP, M_SOUND, M_GENERAL, M_ADVANCED,
+       M_SCREEN, M_SMOOTH, M_3D, M_RENDERER, M_RES3D, M_FPS, M_REWIND,
+       M_CONTROLS, M_CLICK_SIDE, M_AUDIO, M_SOUNDS, M_MUSIC, M_AUTOSAVE,
+       M_DEFAULTS, M_RECORD, M_TONE, M_CORE, M_COUNT };
+static const int menu_pages[M_COUNT] = {
+	[M_SCREEN] = SETTINGS_DISPLAY, [M_SMOOTH] = SETTINGS_DISPLAY, [M_3D] = SETTINGS_DISPLAY,
+	[M_RENDERER] = SETTINGS_PERFORMANCE, [M_RES3D] = SETTINGS_PERFORMANCE,
+	[M_FPS] = SETTINGS_PERFORMANCE, [M_REWIND] = SETTINGS_PERFORMANCE,
+	[M_CONTROLS] = SETTINGS_CONTROLS, [M_CLICK_SIDE] = SETTINGS_CONTROLS,
+	[M_AUDIO] = SETTINGS_SOUND, [M_SOUNDS] = SETTINGS_SOUND, [M_MUSIC] = SETTINGS_SOUND,
+	[M_AUTOSAVE] = SETTINGS_GENERAL, [M_DEFAULTS] = SETTINGS_GENERAL,
+	[M_CORE] = SETTINGS_ADVANCED, [M_RECORD] = SETTINGS_ADVANCED, [M_TONE] = SETTINGS_ADVANCED,
+};
 
-// items on the main page or the settings page; the debug ones only with
-// debug=1 in config.ini, the disc swap only for multi-disc games
-static int menu_items(int *items, bool settings)
+// page -1 is the short pause menu; 0 is the six settings groups.
+static int menu_items(int *items, int page)
 {
 	int n = 0;
-	for (int i = settings ? M_FIRST_SETTING : 0; i < (settings ? M_COUNT : M_FIRST_SETTING); i++) {
-		if ((i == M_RECORD || i == M_TONE) && !g_cfg.debug)
-			continue;
+	for (int i = page < 0 ? 0 : M_DISPLAY; i < (page < 0 ? M_DISPLAY : M_COUNT); i++) {
+		if (page >= 0 && menu_pages[i] != page) continue;
+		if ((i == M_RECORD || i == M_TONE) && !g_cfg.debug) continue;
 		if (i == M_REWIND && !game_capabilities().rewind) continue;
-		if (i == M_CLICK_SIDE && !g_new3ds) continue;
-		if (i == M_DISC && !(have_disk && disk.get_num_images() > 1))
-			continue;
+		if (i == M_3D && !g_new3ds) continue;
+		if (i == M_CLICK_SIDE && (!g_new3ds || g_cfg.show_fps == 2 ||
+		    (!touch_buttons_active() && g_cfg.show_fps != 1))) continue;
+		if (i == M_RES3D && renderer_is_gpu()) continue;
+		if (i == M_DISC && !(have_disk && disk.get_num_images() > 1)) continue;
 		items[n++] = i;
 	}
 	return n;
 }
 
 typedef struct {
-	int sel, main_sel;
+	int sel, main_sel, group, group_sel;
 	bool settings;
 	bool core_page, cheat_page, ctl_page;
 	int ctl_sel;
@@ -437,11 +450,14 @@ static void menu_draw_top(void *ud)
 static const char *const menu_names[M_COUNT] = {
 	[M_RESUME] = "Resume", [M_SAVE] = "Save state", [M_LOAD] = "Load state", [M_DISC] = "Swap disc", [M_CHEATS] = "Cheats",
 	[M_SETTINGS] = "Settings", [M_RESET] = "Reset game", [M_EXIT] = "Exit to library",
-	[M_RENDERER] = "Renderer", [M_SCREEN] = "Screen", [M_3D] = "3D", [M_RES3D] = "3D resolution", [M_SMOOTH] = "Smoothing",
-	[M_FPS] = "Show FPS", [M_CONTROLS] = "Controls", [M_REWIND] = "Rewind",
-	[M_CLICK_SIDE] = "Stick-click buttons",
+	[M_DISPLAY] = "Display", [M_PERFORMANCE] = "Performance", [M_CONTROL_GROUP] = "Controls",
+	[M_SOUND] = "Sound", [M_GENERAL] = "General", [M_ADVANCED] = "Advanced",
+	[M_RENDERER] = "Renderer", [M_SCREEN] = "Screen mode", [M_3D] = "3D",
+	[M_RES3D] = "Half-height 3D (faster)", [M_SMOOTH] = "Smoothing",
+	[M_FPS] = "Show FPS", [M_CONTROLS] = "Controls...", [M_REWIND] = "Rewind",
+	[M_CLICK_SIDE] = "Bottom-screen buttons",
 	[M_AUTOSAVE] = "Continue where I left off", [M_CORE] = "Core options", [M_RECORD] = "Debug: record audio",
-	[M_AUDIO] = "Smooth audio when slow", [M_TONE] = "Debug: test tone", [M_DEFAULTS] = "Reset to global defaults",
+	[M_AUDIO] = "Smooth audio when slow", [M_SOUNDS] = "Menu sounds", [M_MUSIC] = "Library music", [M_TONE] = "Debug: test tone", [M_DEFAULTS] = "Reset to defaults",
 };
 
 static const char *menu_label(int i, void *ud)
@@ -453,23 +469,22 @@ static const char *menu_label(int i, void *ud)
 static const char *menu_value(int i, void *ud)
 {
 	menu_t *m = ud;
-	return m->val[m->items[i]];
+	int item = m->items[i];
+	if ((item >= M_DISPLAY && item <= M_ADVANCED) || item == M_CONTROLS || item == M_CORE || item == M_SETTINGS)
+		return ">";
+	return m->val[item];
 }
 
 static const char *core_label(int i, void *ud)
 {
 	(void)ud;
-	static char b[48];
-	snprintf(b, sizeof(b), "%.30s", options_desc(i));
-	return b;
+	return options_desc(i);
 }
 
 static const char *core_value(int i, void *ud)
 {
 	(void)ud;
-	static char b[24];
-	snprintf(b, sizeof(b), "%.14s", options_get(options_key(i)));
-	return b;
+	return options_value(i);
 }
 
 #define MENU_Y0 40
@@ -525,44 +540,47 @@ static void menu_draw_bottom(void *ud)
 	}
 
 	if (m->core_page) {
-		ui_menu_header("CORE OPTIONS", NULL);
+		ui_menu_header("Core options", "all games");
 		flist_draw(&m->core_fl, options_count(), m->core_sel, 0, MENU_Y0, 320, MENU_ROW_H, CORE_ROWS,
 			core_label, core_value, m, menu_accent_cols[m->core_sel & 3]);
 		ui_text_ex(NULL, 160, 222, 0.42f, hint, C2D_AlignCenter, "Left/Right change    B back");
 		return;
 	}
 
-	static const char *const s3d_names[] = { "off", "screen depth", "real (exp.)" };
-	static const char *const screen_names[] = { "4:3", "stretch", "widescreen" };
+	static const char *const s3d_names[] = { "Off", "Screen depth", "Full 3D (test)" };
+	static const char *const screen_names[] = { "4:3", "Stretch", "Widescreen" };
 	memset(m->val, 0, sizeof(m->val));
 	if (have_disk && disk.get_num_images)
 		snprintf(m->val[M_DISC], 48, "disc %u of %u", menu_disc + 1, disk.get_num_images());
 	snprintf(m->val[M_SCREEN], 48, "%s", screen_names[config_screen_mode()]);
-	snprintf(m->val[M_3D], 48, "%s", s3d_names[g_cfg.stereo]);
-	snprintf(m->val[M_SMOOTH], 48, "%s", g_cfg.smooth ? "on" : "off");
+	snprintf(m->val[M_3D], 48, "%s", s3d_names[g_cfg.stereo == 2 && renderer_is_gpu() ? 1 : g_cfg.stereo]);
+	snprintf(m->val[M_SMOOTH], 48, "%s", g_cfg.smooth ? "On" : "Off");
 	snprintf(m->val[M_FPS], 48, "%s", g_cfg.show_fps == 2 ? "Detailed" : g_cfg.show_fps ? "FPS" : "Off");
 	snprintf(m->val[M_RENDERER], 48, "%s", g_cfg.renderer ? "Software" : "GPU (experimental)");
-	snprintf(m->val[M_AUDIO], 48, "%s", g_cfg.audio_stretch ? "on" : "off");
-	snprintf(m->val[M_RES3D], 48, "%s", g_cfg.half3d ? "half (faster)" : "full");
+	snprintf(m->val[M_AUDIO], 48, "%s", g_cfg.audio_stretch ? "On" : "Off");
+	snprintf(m->val[M_SOUNDS], 48, "%s", g_cfg.sounds ? "On" : "Off");
+	snprintf(m->val[M_MUSIC], 48, "%s", g_cfg.music ? "On" : "Off");
+	snprintf(m->val[M_RES3D], 48, "%s", g_cfg.half3d ? "On" : "Off");
 	snprintf(m->val[M_REWIND], 48, "%s",
-		gamecfg_int("rewind", 0) ? (rewind_active() ? "on" : "on (unavailable)") : "off");
-	snprintf(m->val[M_CLICK_SIDE], 48, "%s", g_cfg.touch_click_left ? "Left" : "Right");
-	snprintf(m->val[M_AUTOSAVE], 48, "%s", g_cfg.autosave ? "on" : "off");
+		gamecfg_int("rewind", 0) ? (rewind_active() ? "On" : "On (unavailable)") : "Off");
+	snprintf(m->val[M_CLICK_SIDE], 48, "%s", g_cfg.touch_click_left ? "Left side" : "Right side");
+	snprintf(m->val[M_AUTOSAVE], 48, "%s", g_cfg.autosave ? "On" : "Off");
 	int changed = !g_new3ds && g_cfg.touch_stick != -1;
 	for (int i = 0; i < INPUT_REMAP_N; i++)
 		changed += !input_map_is_default(i);
 	for (int i = 0; i < INPUT_HOTKEY_N; i++) changed += !input_hotkey_is_default(i);
 	snprintf(m->val[M_CONTROLS], 48, "%s", changed ? "custom" : "default");
 
-	m->nitems = menu_items(m->items, m->settings);
+	m->nitems = menu_items(m->items, m->settings ? m->group : -1);
+	if (m->sel >= m->nitems) m->sel = m->nitems - 1;
 	char clock[16];
 	time_t now = time(NULL);
 	strftime(clock, sizeof(clock), "%H:%M", gmtime(&now));
-	ui_menu_header(m->settings ? "SETTINGS" : "MENU", clock);
+	ui_menu_header(m->settings ? settings_page_names[m->group] : "MENU", m->settings ? "in game" : clock);
 	flist_draw(&m->fl, m->nitems, m->sel, 0, MENU_Y0, 320, MENU_ROW_H, MENU_ROWS, menu_label, menu_value, m,
 		menu_accent_cols[m->sel & 3]);
 	ui_text_ex(NULL, 160, 222, 0.42f, hint, C2D_AlignCenter,
-		m->settings ? "Left/Right change    B back" : "A select    B resume");
+		m->settings ? m->group == SETTINGS_HOME ? "A open    B menu" : "A select    Left/Right change    B back" : "A select    B resume");
 }
 
 static void menu_open_page(menu_t *m, bool settings)
@@ -570,7 +588,9 @@ static void menu_open_page(menu_t *m, bool settings)
 	if (settings && !m->settings)
 		m->main_sel = m->sel;
 	m->settings = settings;
-	m->nitems = menu_items(m->items, settings);
+	m->group = SETTINGS_HOME;
+	m->group_sel = 0;
+	m->nitems = menu_items(m->items, settings ? m->group : -1);
 	m->sel = settings ? 0 : m->main_sel;
 	m->fl.init = false;
 }
@@ -647,6 +667,7 @@ static bool menu_run(void)
 			}
 		} else if (m.core_page) {
 			int n = options_count();
+			if (m.core_sel >= n) m.core_sel = n ? n - 1 : 0;
 			if (k & KEY_B) {
 				m.core_page = false;
 				sfx_play(SFX_BACK);
@@ -664,7 +685,12 @@ static bool menu_run(void)
 			if (k & KEY_B) {
 				if (!m.settings)
 					break;
-				menu_open_page(&m, false);
+				if (m.group != SETTINGS_HOME) {
+					m.group = SETTINGS_HOME;
+					m.nitems = menu_items(m.items, m.group);
+					m.sel = m.group_sel;
+					m.fl.init = false;
+				} else menu_open_page(&m, false);
 				sfx_play(SFX_BACK);
 			}
 			int dir = (k & KEY_RIGHT) ? 1 : (k & KEY_LEFT) ? -1 : (k & KEY_A) ? 1 : 0;
@@ -672,6 +698,17 @@ static bool menu_run(void)
 				sfx_play(SFX_MOVE);
 			if (dir) {
 				switch (m.items[m.sel]) {
+				case M_DISPLAY: case M_PERFORMANCE: case M_CONTROL_GROUP:
+				case M_SOUND: case M_GENERAL: case M_ADVANCED:
+					if (k & KEY_A) {
+						m.group_sel = m.sel;
+						m.group = m.items[m.sel] - M_DISPLAY + 1;
+						m.nitems = menu_items(m.items, m.group);
+						m.sel = 0;
+						m.fl.init = false;
+						sfx_play(SFX_SELECT);
+					}
+					break;
 				case M_RESUME: if (k & KEY_A) goto resume; break;
 				case M_SAVE:
 				case M_LOAD:
@@ -728,6 +765,8 @@ static bool menu_run(void)
 				case M_AUTOSAVE: g_cfg.autosave ^= 1; break;
 				case M_RENDERER: config_set_renderer(!g_cfg.renderer); break;
 				case M_AUDIO: g_cfg.audio_stretch = g_cfg.audio_stretch ? 0 : 50; break;
+				case M_SOUNDS: g_cfg.sounds ^= 1; break;
+				case M_MUSIC: g_cfg.music ^= 1; break;
 				case M_CHEATS:
 					if (k & KEY_A) {
 						m.cheat_page = true;
@@ -744,7 +783,7 @@ static bool menu_run(void)
 				case M_SCREEN: config_game_set_screen((config_screen_mode() + dir + 3) % 3); sync_widescreen(); break;
 				case M_3D: {
 					// "real" per-object 3D is experimental: debug builds only
-					int modes = g_cfg.debug ? 3 : 2;
+					int modes = g_cfg.debug && !renderer_is_gpu() ? 3 : 2;
 					g_cfg.stereo = (g_cfg.stereo + dir + modes) % modes;
 					config_sync_stereo();
 				} break;
@@ -792,10 +831,15 @@ static bool menu_run(void)
 			flist_update(&m.ctl_fl, m.ctl_sel, input_controls_count(), CORE_ROWS);
 		else if (m.cheat_page)
 			flist_update(&m.cheat_fl, m.cheat_sel, cheats_count(), CORE_ROWS);
-		else if (m.core_page)
-			flist_update(&m.core_fl, m.core_sel, options_count(), CORE_ROWS);
-		else
+		else if (m.core_page) {
+			int n = options_count();
+			if (m.core_sel >= n) m.core_sel = n ? n - 1 : 0;
+			flist_update(&m.core_fl, m.core_sel, n, CORE_ROWS);
+		} else {
+			m.nitems = menu_items(m.items, m.settings ? m.group : -1);
+			if (m.sel >= m.nitems) m.sel = m.nitems - 1;
 			flist_update(&m.fl, m.sel, m.nitems, MENU_ROWS);
+		}
 		ui_begin();
 		video_present_vsync(true, menu_draw_top, menu_draw_bottom, &m);
 	}

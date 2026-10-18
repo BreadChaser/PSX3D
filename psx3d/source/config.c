@@ -17,6 +17,7 @@ static int novr;
 // While a game runs its own screen mode is in effect; config.ini keeps the
 // default for games that don't have one (see config_game_begin).
 static bool in_game;
+bool config_in_game(void) { return in_game; }
 void config_set_ws_native(bool on);
 static int default_screen;
 static int default_renderer;
@@ -47,7 +48,7 @@ static void set_defaults(void)
 	strcpy(g_cfg.last_dir, "sdmc:/");
 	g_cfg.smooth = 1;
 	g_cfg.show_fps = 0;
-	g_cfg.stereo = 1;
+	g_cfg.stereo = g_new3ds ? 1 : 0;
 	g_cfg.sounds = 1;
 	g_cfg.music = 1;
 	g_cfg.bottom_off = 1;
@@ -147,7 +148,7 @@ void config_load(void)
 		else if (strcmp(k, "show_fps") == 0)
 			g_cfg.show_fps = atoi(v) >= 0 && atoi(v) <= 2 ? atoi(v) : 0;
 		else if (strcmp(k, "stereo") == 0)
-			g_cfg.stereo = atoi(v) % 3;
+			g_cfg.stereo = atoi(v) >= 0 && atoi(v) <= 2 ? atoi(v) : 0;
 
 	}
 	fclose(f);
@@ -268,6 +269,9 @@ static bool stereo_active;
 
 void config_sync_stereo(void)
 {
+	// Enforce the console limit for defaults, legacy files, resets and debug.
+	// video.c consumes this same field, so Old 3DS never draws a second eye.
+	if (!g_new3ds) g_cfg.stereo = 0;
 	config_set_core_override("pcsx_rearmed_psx3d_stereo",
 		g_cfg.stereo == 2 && stereo_active && !renderer_is_gpu() ? "enabled" : "disabled");
 	options_mark_updated();

@@ -46,19 +46,26 @@ int main(void)
 {
 	config_load();
 	assert(g_cfg.renderer == 0);
+	assert(g_cfg.stereo == 0);
 	assert(g_cfg.half3d == 1);   // Old 3DS software default survives
 	struct retro_variable vars[] = {
 		{ "example", "Example; first|second" }, { NULL, NULL }
 	};
 	options_register(vars);
-	assert(renderer_option() >= 0);
+	assert(renderer_option() == -1);
 
-	file(PSX3D_CONFIG, "debug=1\nrenderer=sw\n");
+	file(PSX3D_CONFIG, "debug=1\nstereo=2\ncore.pcsx_rearmed_psx3d_stereo=enabled\nhalf3d=1\ntouch_click_left=1\nrenderer=sw\n");
 	config_load();
 	options_register(vars);
+	assert(g_cfg.stereo == 0 && g_cfg.half3d == 1 && g_cfg.touch_click_left == 1);
+	config_set_stereo_active(true);
+	assert(!strcmp(options_get("pcsx_rearmed_psx3d_stereo"), "disabled"));
+	strcpy(sw_opt[0], "psx3d_stereo=enabled");
+	assert(!strcmp(options_get("pcsx_rearmed_psx3d_stereo"), "disabled"));
+	sw_opt[0][0] = 0;
 	int idx = renderer_option();
-	assert(idx >= 0);
-	assert(!strcmp(options_get(options_key(idx)), "Software"));
+	assert(idx == -1);
+	assert(g_cfg.renderer == 1);
 	config_save();
 	config_load();
 	assert(g_cfg.renderer == 1);
@@ -66,7 +73,7 @@ int main(void)
 	file(PSX3D_DIR "/games/test.ini", "screen=1\nrenderer=gpu\n");
 	config_game_begin("test");
 	assert(g_cfg.renderer == 0);
-	options_cycle(idx, 1);
+	config_set_renderer(1);
 	assert(g_cfg.renderer == 1);
 	assert(!strcmp(gamecfg_get("renderer"), "sw"));
 	config_set_renderer(0);
@@ -84,7 +91,7 @@ int main(void)
 
 	g_cfg.debug = 0;
 	options_register(vars);
-	assert(renderer_option() >= 0);
+	assert(renderer_option() == -1);
 	struct retro_core_option_definition defs[] = {
 		{ .key = "example", .desc = "Example",
 		  .values = {{ "first", NULL }, { "second", NULL }}, .default_value = "first" },
@@ -92,16 +99,22 @@ int main(void)
 	};
 	g_cfg.debug = 1;
 	options_register_v1(defs);
-	assert(renderer_option() >= 0);
-	assert(options_count() == 2);
+	assert(renderer_option() == -1);
+	assert(options_count() == 1);
 	options_register_v1(defs);
-	assert(options_count() == 2);
+	assert(options_count() == 1);
 	// New 3DS worker defaults on; switch/option controls it, while Old 3DS
 	// remains single-threaded even with an explicit enable override.
 	g_new3ds = true;
 	remove(PSX3D_CONFIG);
 	config_load();
-	assert(g_cfg.renderer == 1 && g_cfg.half3d == 0);
+	assert(g_cfg.renderer == 1 && g_cfg.half3d == 0 && g_cfg.stereo == 1);
+	file(PSX3D_CONFIG, "debug=1\nstereo=2\n");
+	config_load();
+	assert(g_cfg.stereo == 2);
+	config_save();
+	config_load();
+	assert(g_cfg.stereo == 2);
 	assert(!strcmp(options_get("pcsx_rearmed_gpu_thread_rendering"), "enabled"));
 	sw_nogputhread = true;
 	assert(!strcmp(options_get("pcsx_rearmed_gpu_thread_rendering"), "disabled"));
@@ -141,5 +154,5 @@ int main(void)
 	assert(config_game_renderer() == 1);
 	config_game_end();
 	assert(g_cfg.renderer == 0);
-	puts("renderer config: console defaults (Old GPU, New Software), normal visibility, cycling, persistence, per-game override and global restoration passed");
+	puts("renderer config: console defaults (Old GPU, New Software), single renderer control, Old stereo lock, persistence, per-game override and global restoration passed");
 }
