@@ -110,6 +110,15 @@ the first time a game is displayed and cached in `sdmc:/3ds/PSX3D/covers/`. An i
 connection is only required for the initial download. Custom art can be added as a PNG
 in the same folder using the matching file name.
 
+When a game runs slowly, **Smooth audio when slow** keeps sound flowing by
+slowing it down with the game, including its pitch. It is on by default on both
+3DS models and can be changed in the library or in-game Settings menu. At full
+speed it leaves sound unchanged apart from the usual small clock-drift correction.
+`audio_stretch=50` in `config.ini` allows up to 50% slowdown; `0` disables it,
+and values from 1 to 50 set a smaller limit. The menu's on setting selects 50.
+Long stalls and games running below half speed can still exhaust the queue;
+the pitch changes gradually, so allow several seconds to hear it settle.
+
 ## File locations
 
 | Path | Contents |

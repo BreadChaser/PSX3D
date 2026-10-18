@@ -431,10 +431,10 @@ static void clamp_list(void)
 // Global settings, reachable from the library with X (the defaults for every
 // game; a game's own screen mode, controls and rewind live in its menu).
 
-enum { S_SCREEN, S_3D, S_RES3D, S_SMOOTH, S_FPS, S_AUTOSAVE, S_SOUNDS, S_MUSIC, S_CORE, S_COUNT };
+enum { S_SCREEN, S_3D, S_RES3D, S_SMOOTH, S_FPS, S_AUTOSAVE, S_AUDIO, S_SOUNDS, S_MUSIC, S_CORE, S_COUNT };
 static const char *const s_names[S_COUNT] = {
 	"Screen (default)", "3D", "3D resolution", "Smoothing", "Show FPS", "Continue where I left off",
-	"Menu sounds", "Library music", "Core options",
+	"Smooth audio when slow", "Menu sounds", "Library music", "Core options",
 };
 static const u32 s_cols[4] = { 0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28 };
 
@@ -454,6 +454,7 @@ static const char *s_value(int i, void *ud)
 	case S_SMOOTH: return g_cfg.smooth ? "on" : "off";
 	case S_FPS: return g_cfg.show_fps ? "on" : "off";
 	case S_AUTOSAVE: return g_cfg.autosave ? "on" : "off";
+	case S_AUDIO: return g_cfg.audio_stretch ? "on" : "off";
 	case S_SOUNDS: return g_cfg.sounds ? "on" : "off";
 	case S_MUSIC: return g_cfg.music ? "on" : "off";
 	}
@@ -539,6 +540,7 @@ static void settings_run(void)
 				case S_SMOOTH: g_cfg.smooth ^= 1; break;
 				case S_FPS: g_cfg.show_fps ^= 1; break;
 				case S_AUTOSAVE: g_cfg.autosave ^= 1; break;
+				case S_AUDIO: g_cfg.audio_stretch = g_cfg.audio_stretch ? 0 : 50; break;
 				case S_SOUNDS: g_cfg.sounds ^= 1; break;
 				case S_MUSIC:
 					g_cfg.music ^= 1;

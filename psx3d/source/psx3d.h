@@ -38,6 +38,7 @@ typedef struct {
 	int  music;        // library music
 	int  bottom_off;   // backlight off on the bottom screen while playing
 	int  autosave;     // save on exit, offer to continue next time
+	int  audio_stretch; // maximum slowdown in percent, 0 disables (0..50)
 	int  half3d;       // draw 3D polygons at half vertical resolution (Old 3DS default)
 } psx3d_config;
 

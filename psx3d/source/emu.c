@@ -346,7 +346,7 @@ static void state_load(void)
 // ---------------------------------------------------------------- menu
 
 enum { M_RESUME, M_SAVE, M_LOAD, M_DISC, M_CHEATS, M_SETTINGS, M_RESET, M_EXIT,
-       M_SCREEN, M_3D, M_RES3D, M_SMOOTH, M_FPS, M_CONTROLS, M_REWIND, M_AUTOSAVE, M_CORE, M_RECORD, M_TONE, M_COUNT };
+       M_SCREEN, M_3D, M_RES3D, M_SMOOTH, M_FPS, M_CONTROLS, M_REWIND, M_AUTOSAVE, M_AUDIO, M_CORE, M_RECORD, M_TONE, M_COUNT };
 #define M_FIRST_SETTING M_SCREEN
 
 // items on the main page or the settings page; the debug ones only with
@@ -410,7 +410,7 @@ static const char *const menu_names[M_COUNT] = {
 	[M_SCREEN] = "Screen", [M_3D] = "3D", [M_RES3D] = "3D resolution", [M_SMOOTH] = "Smoothing",
 	[M_FPS] = "Show FPS", [M_CONTROLS] = "Controls", [M_REWIND] = "Rewind",
 	[M_AUTOSAVE] = "Continue where I left off", [M_CORE] = "Core options", [M_RECORD] = "Debug: record audio",
-	[M_TONE] = "Debug: test tone",
+	[M_TONE] = "Debug: test tone", [M_AUDIO] = "Smooth audio when slow",
 };
 
 static const char *menu_label(int i, void *ud)
@@ -551,6 +551,7 @@ static void menu_draw_bottom(void *ud)
 	snprintf(m->val[M_SCREEN], 48, "%s", screen_names[config_screen_mode()]);
 	snprintf(m->val[M_3D], 48, "%s", s3d_names[g_cfg.stereo]);
 	snprintf(m->val[M_SMOOTH], 48, "%s", g_cfg.smooth ? "on" : "off");
+	snprintf(m->val[M_AUDIO], 48, "%s", g_cfg.audio_stretch ? "on" : "off");
 	snprintf(m->val[M_FPS], 48, "%s", g_cfg.show_fps ? "on" : "off");
 	snprintf(m->val[M_RES3D], 48, "%s", g_cfg.half3d ? "half (faster)" : "full");
 	snprintf(m->val[M_REWIND], 48, "%s", gamecfg_int("rewind", 0) ? (rewind_active() ? "on" : "on (unavailable)") : "off");
@@ -721,6 +722,7 @@ static bool menu_run(void)
 						rewind_stop();
 				} break;
 				case M_AUTOSAVE: g_cfg.autosave ^= 1; break;
+				case M_AUDIO: g_cfg.audio_stretch = g_cfg.audio_stretch ? 0 : 50; break;
 				case M_CHEATS:
 					if (k & KEY_A) {
 						m.cheat_page = true;

@@ -6,18 +6,19 @@
 //
 // The PS1 runs at 59.94Hz and the 3DS screen at ~59.83Hz, so the amount of
 // queued audio slowly drifts. A 4-point Hermite resampler on the CPU speeds
-// playback up or down by at most 0.5% to keep the queue at its target; the
+// playback up or down by at most 0.5% to keep the queue at its target. When
+// emulation falls behind, optional frontend stretching slows sound further; the
 // DSP's own rate is never changed, because changing it makes the DSP click.
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include "psx3d.h"
+#include "audio_resample.h"
 
 #define NBUF         16
 #define BUF_FRAMES   512            // 11.6 ms each, 186 ms in total
 #define TARGET_QUEUE 3072           // ~70 ms of queued audio
-#define MAX_ADJUST   0.005
 
 static int16_t *bufmem;             // NBUF * BUF_FRAMES stereo frames, linear memory
 static ndspWaveBuf wb[NBUF];
@@ -28,8 +29,8 @@ static double base_rate;
 static double avg_queue;            // smoothed queue level for rate control
 
 // resampler state: last three input frames and the fractional read position
-static float rs_hist[3][2];
-static float rs_pos;
+static audio_resampler rs;
+static u64 stretch_tick;
 
 // debug capture: what the core produced vs what we handed to the DSP
 #define CAP_FRAMES (44100 * 30)
@@ -38,7 +39,6 @@ static u32 *cap_core, *cap_played, *cap_out;
 static ndspWaveBuf cap_out_wb;
 static u32 cap_core_n, cap_played_n;
 static bool capturing;
-
 // debug: replace the game's audio with a 440Hz tone to test playback alone
 static bool test_tone;
 static double tone_phase;
@@ -160,8 +160,8 @@ bool audio_init(double sample_rate)
 			log_printf("ndspInit failed (no sdmc:/3ds/dspfirm.cdc)\n");
 		base_rate = sample_rate;
 		avg_queue = TARGET_QUEUE;
-		memset(rs_hist, 0, sizeof(rs_hist));
-		rs_pos = 0;
+		memset(&rs, 0, sizeof(rs));
+		stretch_tick = 0;
 		use_csnd = active = csnd_start(sample_rate);
 		return active;
 	}
@@ -191,8 +191,8 @@ bool audio_init(double sample_rate)
 	cur = 0;
 	cur_fill = 0;
 	avg_queue = TARGET_QUEUE;
-	memset(rs_hist, 0, sizeof(rs_hist));
-	rs_pos = 0;
+	memset(&rs, 0, sizeof(rs));
+	stretch_tick = 0;
 	active = true;
 
 	// start with a cushion of silence so the first frames don't underrun
@@ -222,6 +222,9 @@ void audio_exit(void)
 
 void audio_pause(bool paused)
 {
+	stretch_tick = 0; // start a fresh supply estimate after a menu/suspend
+	rs.window_frames = 0;
+	rs.window_seconds = rs.deficit = rs.slow = 0;
 	if (!active)
 		return;
 	if (use_csnd) {
@@ -310,59 +313,6 @@ bool audio_test_tone_toggle(void)
 	return test_tone;
 }
 
-// Cubic (Hermite) resampler for the small rate corrections. Keeps the last
-// three input frames between calls so the output is continuous.
-static inline float hermite(float xm1, float x0, float x1, float x2, float t)
-{
-	float c1 = 0.5f * (x1 - xm1);
-	float c2 = xm1 - 2.5f * x0 + 2.0f * x1 - 0.5f * x2;
-	float c3 = 0.5f * (x2 - xm1) + 1.5f * (x0 - x1);
-	return ((c3 * t + c2) * t + c1) * t + x0;
-}
-
-static inline int16_t clamp16(float v)
-{
-	if (v > 32767.0f) return 32767;
-	if (v < -32768.0f) return -32768;
-	return (int16_t)lrintf(v);
-}
-
-static size_t resample(const int16_t *in, size_t frames, float step, int16_t *out, size_t max_out)
-{
-	static float src[(4096 + 3) * 2];
-	size_t len, n = 0;
-
-	if (frames > 4096)
-		frames = 4096;
-	len = frames + 3;
-	for (int i = 0; i < 3; i++) {
-		src[i * 2] = rs_hist[i][0];
-		src[i * 2 + 1] = rs_hist[i][1];
-	}
-	for (size_t i = 0; i < frames; i++) {
-		src[(i + 3) * 2] = in[i * 2];
-		src[(i + 3) * 2 + 1] = in[i * 2 + 1];
-	}
-	// interpolate between src[k+1] and src[k+2] with neighbours src[k], src[k+3]
-	while (n < max_out) {
-		int k = (int)rs_pos;
-		if ((size_t)k + 3 >= len)
-			break;
-		float t = rs_pos - k;
-		for (int c = 0; c < 2; c++)
-			out[n * 2 + c] = clamp16(hermite(src[k * 2 + c], src[(k + 1) * 2 + c],
-				src[(k + 2) * 2 + c], src[(k + 3) * 2 + c], t));
-		n++;
-		rs_pos += step;
-	}
-	rs_pos -= frames;
-	for (int i = 0; i < 3; i++) {
-		rs_hist[i][0] = src[(len - 3 + i) * 2];
-		rs_hist[i][1] = src[(len - 3 + i) * 2 + 1];
-	}
-	return n;
-}
-
 // append frames to the current buffer, submitting buffers as they fill up
 static void submit(const u32 *frames, size_t n)
 {
@@ -390,7 +340,15 @@ static void submit(const u32 *frames, size_t n)
 size_t audio_write(const int16_t *data, size_t frames)
 {
 	static int16_t tone_buf[4096 * 2];
-	static int16_t out[4096 * 2];
+	static int16_t out[AUDIO_OUT * 2];
+
+	// Capture the core output before test tones or frontend resampling.
+	if (capturing) {
+		for (size_t i = 0; i < frames && cap_core_n < CAP_FRAMES; i++)
+			cap_core[cap_core_n++] = ((const u32 *)data)[i];
+		if (cap_core_n >= CAP_FRAMES && cap_played_n >= CAP_FRAMES - 4096)
+			capture_finish();
+	}
 
 	if (!active)
 		return frames;
@@ -427,13 +385,6 @@ size_t audio_write(const int16_t *data, size_t frames)
 		last_t = t;
 	}
 
-	if (capturing) {
-		for (size_t i = 0; i < frames && cap_core_n < CAP_FRAMES; i++)
-			cap_core[cap_core_n++] = ((const u32 *)data)[i];
-		if (cap_core_n >= CAP_FRAMES && cap_played_n >= CAP_FRAMES - 4096)
-			capture_finish();
-	}
-
 	u32 q = queued_frames() + (use_csnd ? 0 : cur_fill);
 	st.calls++;
 	st.frames_in += frames;
@@ -444,14 +395,22 @@ size_t audio_write(const int16_t *data, size_t frames)
 
 	// steer by a slow average: the queue level saws by a frame of audio per write
 	avg_queue += ((double)q - avg_queue) * 0.02;
-	double err = (avg_queue - TARGET_QUEUE) / TARGET_QUEUE;
-	if (err > 1.0) err = 1.0;
-	if (err < -1.0) err = -1.0;
-	float step = (float)(1.0 + err * MAX_ADJUST);   // input frames per output frame
+	u64 tick = svcGetSystemTick();
+	float seconds = stretch_tick ? (tick - stretch_tick) / (float)SYSCLOCK_ARM11 : 0;
+	stretch_tick = tick;
+	float err = (float)((avg_queue - TARGET_QUEUE) / TARGET_QUEUE);
+	float step = audio_resample_step(&rs, err, g_cfg.audio_stretch, frames, (float)base_rate, seconds);
 	st.rate = (float)(base_rate * step);
 
-	size_t nout = resample((const int16_t *)data, frames, step, out, sizeof(out) / 4);
-	submit((const u32 *)out, nout);
+	// The core may deliver a large batch after a worker sync. Stretching a
+	// 4096-frame batch can exceed the old output buffer; consume it in chunks.
+	for (size_t at = 0; at < frames; ) {
+		size_t count = frames - at;
+		if (count > AUDIO_CHUNK) count = AUDIO_CHUNK;
+		size_t nout = audio_resample(&rs, data + at * 2, count, step, out);
+		submit((const u32 *)out, nout);
+		at += count;
+	}
 	return frames;
 }
 

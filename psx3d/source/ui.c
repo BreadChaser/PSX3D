@@ -182,6 +182,7 @@ static const char *const own_help[][3] = {
 	{ "Screen (default)", "Widescreen can be slower", "The screen mode for games you haven't set one for. 4:3 is the original picture, stretch fills the screen, widescreen draws a wider view in 3D games." },
 	{ "3D", "No speed effect", "screen depth puts the game picture slightly behind the screen when the 3D slider is up." },
 	{ "3D resolution", "Half is faster in 3D games", "Draws 3D scenes with every other line copied, while text, menus and 2D stay sharp. Worth it on Old 3DS; New 3DS doesn't need it." },
+	{ "Smooth audio when slow", "Slower, lower sound when needed", "Keeps sound flowing when a game runs slowly. Music and voices slow down with it. At full speed, sound plays normally." },
 	{ "Smoothing", "No speed effect", "Smooths the picture when it's scaled up to the 3DS screen. Off gives sharp pixels." },
 	{ "Show FPS", "No speed effect", "Shows the frame rate on the bottom screen while playing." },
 	{ "Controls", "No speed effect", "Choose which PS1 button each 3DS button presses, for this game." },
