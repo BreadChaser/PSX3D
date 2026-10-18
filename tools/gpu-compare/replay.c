@@ -7,6 +7,7 @@
 #ifdef PICA
 #include "citro3d.h"
 #include "plugins/gpu_pica/gpu_pica.h"
+extern int pica_debug;
 #endif
 struct psx_gpu gpu;
 unsigned sim_c3d_draws;
@@ -49,6 +50,7 @@ int main(int argc,char **argv)
     struct rearmed_cbs cbs={0}; cbs.dithering=1; renderer_set_config(&cbs);
 #ifdef PICA
     unsigned shader=0; assert(pica_init(&shader,4)); assert(pica_game_begin(true));
+    if(getenv("PICA_DEBUG"))pica_debug=atoi(getenv("PICA_DEBUG"));
     pica_frame_started();
 #endif
     uint32_t ex[8]={0}; int rect[5]={0}; unsigned header[2];
@@ -75,6 +77,9 @@ int main(int argc,char **argv)
         case 5:
             renderer_flush_queues(); ppm(argv[2],data);
 #ifdef PICA
+            { static unsigned previous;
+              fprintf(stderr,"frame %d draw calls %u\n",*(int*)data,sim_c3d_draws-previous);
+              previous=sim_c3d_draws; }
             pica_frame_ended(); pica_frame_started();
 #endif
             break;
@@ -92,5 +97,10 @@ int main(int argc,char **argv)
         }
         free(data);
     }
-    fclose(f); return 0;
+    fclose(f);
+#ifdef PICA
+    pica_frame_ended(); pica_exit();
+#endif
+    renderer_finish();
+    return 0;
 }

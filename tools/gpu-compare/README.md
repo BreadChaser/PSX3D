@@ -38,6 +38,21 @@ reports mean absolute channel error (0–255), differing pixel percentage, and
 pixels with an error greater than 24 in any channel. The latter is useful for
 separating large errors from dithering/quantization noise, not a pass threshold.
 
+Synthetic mask, blend and ordering probes can run without ROMs or states:
+
+```sh
+/tmp/correct-sim/venv/bin/python tools/gpu-compare/fixtures.py \
+    --check --output /tmp/correct-sim/fixtures
+python3 tools/gpu-compare/inspect_trace.py /tmp/correct-sim/sh.gputrace
+```
+
+`--check` verifies exact reference RGB for the mask cases with exact colour
+arithmetic and mask survival for quarter blending (whose colour rounding still
+differs by one 5-bit step). `known-mask-half-blend` deliberately documents a
+remaining failure and is not counted as a passing regression. The high-frequency
+polygon probe likewise visualizes residual PS1/PICA interpolation differences.
+See [REPORT.md](REPORT.md) for game images, fixes and benchmark priorities.
+
 Limits: the fake GPU models this shader's affine interpolation, nearest tiled
 texture lookup, TEV stage 0, alpha tests and blend factors. It does not emulate
 PICA precision, memory/cache races, command processor, shader execution or the
