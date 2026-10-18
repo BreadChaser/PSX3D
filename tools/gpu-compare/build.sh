@@ -11,6 +11,8 @@ if [[ ${REPLAY_ONLY:-0} != 1 ]]; then
 if [[ ! -d $build/core_capture ]]; then
     cp -a "$repo/core" "$build/core_capture"
     rm -f "$build/core_capture/.git"
+    # The host capture uses P.E.Op.S. as an oracle; it is not shipped in core/.
+    cp -a "$here/reference/plugins/dfxvideo" "$build/core_capture/plugins/"
     python3 - "$build/core_capture/Makefile.libretro" <<'PY'
 import sys
 p=sys.argv[1];s=open(p).read()
@@ -56,12 +58,19 @@ s=(pathlib.Path(sys.argv[1])/'core/plugins/gpulib/gpu.c').read_text()
 a=s.index('const unsigned char cmd_lengths[256]');b=s.index('};',a)+2
 (pathlib.Path(sys.argv[2])/'commands.h').write_text(s[a:b]+'\n')
 PY
+# Assemble portable reference sources with the current shared headers outside
+# the repository. Their original relative includes and copyright notices stay intact.
+mkdir -p "$build/reference/plugins"
+cp -a "$here/reference/plugins/dfxvideo" "$here/reference/plugins/gpu_neon" "$build/reference/plugins/"
+ln -sfn "$repo/core/include" "$build/reference/include"
+ln -sfn "$repo/core/frontend" "$build/reference/frontend"
+ln -sfn "$repo/core/plugins/gpulib" "$build/reference/plugins/gpulib"
 cc -O2 -g -fno-strict-aliasing -I "$repo/core" -I "$build" \
-    "$here/replay.c" "$repo/core/plugins/dfxvideo/gpulib_if.c" -lm -o "$build/replay-peops"
+    "$here/replay.c" "$build/reference/plugins/dfxvideo/gpulib_if.c" -lm -o "$build/replay-peops"
 cc -O2 -g -fno-strict-aliasing -DPSX3D_SIM -DPICA -DPICA_SIM_HASH -I "$repo/core" -I "$build" -I "$here" \
     "$here/replay.c" "$here/raster.c" "$repo/core/plugins/gpu_pica/gpu_pica.c" -lm -o "$build/replay-pica"
 # Independent signed-dither oracle; uses the portable C/vector path on x86.
 cc -O2 -g -fno-strict-aliasing -DGPU_COMPARE_ALT_REFERENCE -DTEXTURE_CACHE_4BPP -I "$repo/core" -I "$build" \
-    "$here/replay.c" "$repo/core/plugins/gpu_neon/psx_gpu_if.c" \
+    "$here/replay.c" "$build/reference/plugins/gpu_neon/psx_gpu_if.c" \
     "$repo/core/plugins/gpulib/prim.c" -lm -o "$build/replay-neon"
 echo "Built native replayers in $build"

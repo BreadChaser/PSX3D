@@ -20,3 +20,9 @@ CI, packaging and tests have been removed. Shared frontend glue still compiled
 by the libretro host and headers included by it are retained. The build targets
 are supported for 3DS only; inactive legacy Makefile branches remain to keep
 the established simulator setup compatible.
+
+Unused GLES, P.E.Op.S., NEON and null-SPU plugins, hardware audio drivers and
+unused CD plugin implementation were removed. The portable P.E.Op.S./NEON
+files still used as independent host test oracles live under
+`tools/gpu-compare/reference/`; they are never linked into PSX3D.
+`plugins/cdrcimg/cdrcimg.h` remains because shared frontend code includes it.

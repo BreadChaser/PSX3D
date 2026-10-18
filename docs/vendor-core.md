@@ -60,3 +60,16 @@ sources, upstream CI/configure/packaging/test tools. Retained the libretro
 export list/version script and shared frontend source/headers used by 3DS.
 Clean dual-renderer CIA build passes. All allocated ELF sections and the
 complete 3DSX remain identical to the vendored baseline.
+
+### Stage 2: unused plugins
+
+Removed the GLES/null-SPU plugins, unbuilt CD plugin implementation and
+non-3DS audio drivers/DSP code. Moved 14 unmodified portable P.E.Op.S./NEON
+oracle files into `tools/gpu-compare/reference/` and removed the remaining
+unused plugin code. Updated the host build script to assemble their original
+relative include layout outside the repository; oracle source bytes and
+copyright notices are unchanged. GPULib, gpu_unai (including its selectable
+old renderer) and gpu_pica are retained.
+
+Clean dual-renderer CIA build passes. All allocated ELF sections and the
+complete 3DSX remain identical to the vendored baseline.
