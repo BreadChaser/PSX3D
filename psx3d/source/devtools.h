@@ -4,6 +4,7 @@
 /* Explicit switches.txt opt-in only. No sockets/threads/probes when disabled. */
 extern bool dev_remote, dev_bench, dev_bench_home;
 extern char dev_token[96], dev_update_url[256];
+void dev_authorize(void);
 bool dev_enabled(void);
 bool dev_batch_active(void);
 void dev_interrupt(void);

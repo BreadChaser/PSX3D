@@ -28,7 +28,13 @@ static char batch_id[64] = "manual";
 static char session_id[32];
 static char command_result[128] = "idle";
 
-bool dev_enabled(void) { return dev_remote || dev_bench || dev_update_url[0]; }
+void dev_authorize(void)
+{
+	// Only the on-card remote + token pair grants network/install permission.
+	if (!dev_token[0]) dev_remote = false;
+	if (!dev_remote) dev_update_url[0] = 0;
+}
+bool dev_enabled(void) { return (dev_remote && dev_token[0]) || dev_bench; }
 bool dev_batch_active(void) { return batch_active; }
 static void finish_batch(bool ok);
 static void report_run(const char *outcome);
@@ -640,6 +646,7 @@ void dev_sample(const statsview_sample *s, const char *probe, int top_lum, doubl
 }
 void dev_init(void)
 {
+	dev_authorize();
 	if (!dev_enabled())
 		return;
 	boot_ms = osGetTime();

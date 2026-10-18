@@ -31,6 +31,8 @@ typedef struct {
 #define PATH_ASCII 1
 #define FS_OPEN_READ 1
 #define MEDIATYPE_SD 1
+bool dev_remote;
+char dev_token[96];
 static bool homebrew, fail_write, fail_finish;
 static u64 running_id = 0x000400000C3D3D00ULL, cia_id = 0x000400000C3D3D00ULL;
 static u32 offset;
@@ -183,6 +185,12 @@ int main(void)
 	mkdir(PSX3D_DIR, 0777);
 	memset(fixture, 'Z', sizeof(fixture));
 	char result[512], args[512];
+	assert(!dev_update("http://192.168.1.225/x", result, sizeof(result)));
+	assert(!starts && !am_inits);
+	dev_remote = true;
+	assert(!dev_update("http://192.168.1.225/x", result, sizeof(result)));
+	assert(!starts && !am_inits);
+	strcpy(dev_token, "test-token");
 	assert(!dev_update("https://192.168.1.225/x", result, sizeof(result)));
 	assert(!starts);
 	assert(!dev_update("http://8.8.8.8/x", result, sizeof(result)));

@@ -77,6 +77,10 @@ bool dev_update(const char *args, char *result, size_t capacity)
 	u8 *buffer = NULL;
 	char copy[1024], url[256] = "", expected_hash[65] = "", actual_hash[65];
 	u32 expected_size = 0, total = 0;
+	if (!dev_remote || !dev_token[0]) {
+		failure = "self-update requires remote and token in switches.txt";
+		goto done;
+	}
 	snprintf(copy, sizeof(copy), "%s", args);
 	char *save, *w = strtok_r(copy, " ", &save);
 	if (!w || strlen(w) >= sizeof(url))

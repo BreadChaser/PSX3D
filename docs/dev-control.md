@@ -1,7 +1,7 @@
 # Fast developer test loop
 
 This is an opt-in developer facility, built into both the 3DSX and CIA. With no
-`remote`, `bench`, or `update=` in `sdmc:/3ds/PSX3D/switches.txt`, it starts no
+`remote token=...` or `bench` in `sdmc:/3ds/PSX3D/switches.txt`, it starts no
 control worker, sockets, history allocation, screenshot jobs, or extra probes.
 There are no new menu entries. A `3dslink` argument cannot enable the server.
 
@@ -11,7 +11,7 @@ There are no new menu entries. A `3dslink` argument cannot enable the server.
    BIOS and benchmark states are already on SD. Old 3DS states normally use slot
    **2**, New 3DS slot **0**. Neither slot is written by a benchmark.
 2. Put `remote token=choose-a-private-token` in
-   `sdmc:/3ds/PSX3D/switches.txt`. A token is optional but recommended; it has
+   `sdmc:/3ds/PSX3D/switches.txt`. Both `remote` and a nonempty token are required; the token has
    at most 95 bytes and contains no whitespace. For the host tools, export
    `PSX3D_TOKEN=choose-a-private-token`. These are plain LAN credentials, not TLS.
 3. Start PSX3D once, from HOME for CIA updates. Leave it in the library. Both
@@ -192,7 +192,8 @@ way to disable it; normal users see no debug UI.
 ./psx3dctl.py old update http://192.168.1.225:8765/PSX3D.cia size=BYTES sha256=64_HEX_DIGITS
 ```
 
-`update=` in switches.txt is a secondary startup entry point. It accepts the URL
+`update=` in switches.txt is a secondary startup entry point, enabled only with
+`remote token=...` in that same file. It accepts the URL
 alone; use the control command/fastbench driver to supply size/SHA256. Updating
 requires the installed PSX3D CIA. A 3DSX session rejects it instead of updating
 some other running title. No update menu is shown to normal users.
@@ -213,9 +214,8 @@ After successful AM writes/finish, PSX3D completes the response, tears down the
 network/core/video normally and requests libctru's `aptSetChainloaderToSelf()`.
 No `svcBackdoor`, raw CP15 writes, reboot, or system-title operations are used.
 The on-card `update=` is consumed before installation to prevent a relaunch loop.
-No hardware installation/relaunch claim is made here: this path is build-checked
-and based on upstream behavior, and still needs a reserved console validation
-session. If AM or APT refuses it, the host reports failure or a relaunch timeout;
+Hardware self-update/relaunch passed on both consoles during the remote-loop
+acceptance session. If AM or APT refuses it, the host reports failure or a relaunch timeout;
 restart manually or install the archived CIA with FBI. An interrupted install
 has the same recovery considerations as any CIA replacement.
 

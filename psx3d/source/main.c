@@ -208,6 +208,7 @@ static void parse_switch_file(void)
 		parse_switches(2, argv);
 	}
 	fclose(f);
+	dev_authorize();
 }
 
 float slider_get(void)

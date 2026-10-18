@@ -14,11 +14,17 @@
 // Curated renderer example, enable ONLY after both accuracy and speed checks:
 // { .serial = "ABCD12345", .old3ds = INHERIT_OPTIONS,
 //   .new3ds = { -1, -1, -1, -1, -1, -1, PRESET_RENDERER_GPU, INHERIT_SLOTS } },
-// No release profiles enable GPU yet; DEFAULT inherits the global software default.
+// DEFAULT uses Old GPU / New Software unless overridden by the user.
 // Sources and regional coverage: docs/bottom-screen/README.md.
 // Confidence below describes L3/R3 use, not serial identity. All IDs checked
 // against PlayStation DataCenter. Add a source before extending this list.
+#define SOTN(disc) GAME_PRESET_SAME(disc, { -1, -1, -1, -1, -1, -1, PRESET_RENDERER_SOFTWARE, INHERIT_SLOTS })
 static const game_preset_t game_presets[] = {
+	// SotN: USA fight measured SW52.43 vs GPU12.84 FPS on Old 3DS.
+	// Regional identities: libretro-database metadat/redump/Sony - PlayStation.dat;
+	// conservative software default applies to all verified regional releases.
+	SOTN("SLUS00067"), SOTN("SLES00524"), SOTN("SCPS45196"),
+	SOTN("SLPM86023"), SOTN("SLPM86073"), SOTN("SLPM87328"),
 	// Ape Escape / Saru! Get You!: HIGH, stick clicks confirmed by the user,
 	// the US manual (crouch/crawl) and PSX DataCenter (L3 dive, R3 water net).
 	CLICKS("SCUS94423"), // US
@@ -41,6 +47,7 @@ static const game_preset_t game_presets[] = {
 	CLICKS("SCUS94453"),
 };
 
+#undef SOTN
 #undef CLICKS
 #undef INHERIT_OPTIONS
 #undef INHERIT_SLOTS

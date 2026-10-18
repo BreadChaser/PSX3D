@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include "libretro.h"
 
-#define PSX3D_VERSION  "0.3.2"
+#define PSX3D_VERSION  "0.3.0"
 #define PSX3D_DIR      "sdmc:/3ds/PSX3D"
 #define PSX3D_BIOS_DIR PSX3D_DIR "/bios"
 #define PSX3D_SAVE_DIR PSX3D_DIR "/saves"
@@ -258,7 +258,7 @@ u32 input_control_color(int row);
 void input_control_cycle(int i, int dir);
 
 // presets.c: curated per-console serial profiles. Boolean/policy fields use
-// -1 to inherit the uncurated console defaults. Renderer is future metadata.
+// -1 to inherit the uncurated console defaults. Renderer selects the per-console default.
 enum { PRESET_RENDERER_INHERIT = -1, PRESET_RENDERER_DEFAULT,
        PRESET_RENDERER_SOFTWARE, PRESET_RENDERER_GPU };
 typedef struct {

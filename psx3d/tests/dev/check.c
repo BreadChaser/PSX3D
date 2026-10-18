@@ -120,6 +120,14 @@ int main(void)
 	assert(!dev_tick(false));
 	dev_init();
 	assert(!init_calls); // disabled is inert
+	strcpy(dev_update_url, "http://192.168.1.225/x");
+	dev_remote = true;
+	dev_init();
+	assert(!init_calls && !dev_remote && !dev_update_url[0]);
+	strcpy(dev_token, "test-token");
+	strcpy(dev_update_url, "http://192.168.1.225/x");
+	dev_init();
+	assert(!init_calls && !dev_update_url[0]); // token alone grants nothing
 	dev_remote = true;
 	dev_init();
 	assert(init_calls == 1);

@@ -448,7 +448,14 @@ static void serial_config_checks(void)
  assert(contains(PSX3D_CONFIG,"touch_slots=1\n") && contains(PSX3D_CONFIG,"map_TOUCH_L2=-2\n"));
  for(size_t i=0;i<sizeof(game_presets)/sizeof(game_presets[0]);i++) {
   char msg[64]; snprintf(msg,sizeof(msg),"CD-ROM ID: %s\n",game_presets[i].serial);
-  input_touch_disc_log(msg); assert(!game_capabilities().fast_forward && input_map_raw(10)==-2);
+  input_touch_disc_log(msg);
+  assert(current_preset == &game_presets[i] && input_map_raw(10)==-2);
+  assert(game_capabilities().fast_forward == (game_presets[i].old3ds.fast_forward != 0));
+  if(game_presets[i].old3ds.renderer == PRESET_RENDERER_SOFTWARE) {
+   assert(game_capabilities().renderer == PRESET_RENDERER_SOFTWARE);
+   g_new3ds=true; assert(game_capabilities().renderer == PRESET_RENDERER_SOFTWARE);
+   g_new3ds=false;
+  }
  }
  input_touch_disc_log("CD-ROM ID: scus_944.23\n"); assert(current_preset);
  input_touch_disc_log("CD-ROM ID: SCUS944230\n"); assert(!current_preset);
