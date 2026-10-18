@@ -15,6 +15,12 @@ the other worker's build was present. End screenshots occur after sampling.
 Software uses Old half-height polygons; New/Old states differ. Host FPS is not
 unique images; sparse probes/screenshots cannot prove no flicker or broad accuracy.
 
+These 45 release runs completed by 08:54 UTC on 2026-10-18. BootNTR was loaded
+on Old 3DS afterward for separate performance experiments with loaded/streaming
+conditions. That later console condition does not change these historical release
+measurements. The original shared no-NTR marker was archived; it must not authorize new
+Old 3DS no-stream measurements. New 3DS retained its separate verified condition.
+
 ## Renderers, frameskip off
 
 | Game | Old GPU FPS | Old Software FPS | New Software FPS |
