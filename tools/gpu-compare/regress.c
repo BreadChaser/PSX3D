@@ -4,11 +4,14 @@
 #include "plugins/gpu_pica/gpu_pica.h"
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 struct psx_gpu gpu;
 unsigned sim_c3d_draws;
 static uint16_t vram[1024 * 512];
 void pica_flip(void);
+void pica_readback_rect(int x,int y,int w,int h);
+void pica_drop_fills(void);
 
 static u32 xy(int x, int y) { return (u16)x | ((u32)(u16)y << 16); }
 static void commands(u32 *p, int n)
@@ -94,6 +97,15 @@ int main(void)
     commands(wrapped_quad,5); pixel(1010,105,true);
 
     clear(); area(0,0,1024,512,0,0);
+    triangle(100,100,140,100,100,140);
+    // No texture feedback: fine bookkeeping stays disabled. An explicit
+    // read of GPU drawing enables it safely, and a state reset drops it.
+    char stats[2048];
+    pica_stats(stats,sizeof(stats)); assert(strstr(stats,"rtt old"));
+    pica_readback_rect(100,100,8,8);
+    pica_stats(stats,sizeof(stats)); assert(strstr(stats,"rtt new"));
+    pica_drop_fills();
+    pica_stats(stats,sizeof(stats)); assert(strstr(stats,"rtt old"));
     triangle(100,100,140,100,100,140);
     unsigned draws=sim_c3d_draws;
     pica_prepare_present();

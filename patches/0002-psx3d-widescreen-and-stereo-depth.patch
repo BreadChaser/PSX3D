@@ -1007,10 +1007,10 @@ index 76f76afe..0e684ace 100644
    sem_post(&t.sem_done);
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 00000000..76b991fe
+index 00000000..dc705618
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,3199 @@
+@@ -0,0 +1,3243 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -1229,6 +1229,8 @@ index 00000000..76b991fe
 +// 8x8 is the native PICA tile. Keep palette rows and framebuffer edges
 +// independent; the old 64x16 tracker remains available for hardware A/B.
 +#define RTT_OLD 262144
++#define RTT_FORCE_NEW 1048576
++static bool rtt_detected;
 +extern int pica_debug;
 +static u32 fine_gen[64][128], fine_draw_gen[64][128];
 +// CPU palette uploads are often adjacent rows in the same native tile.
@@ -1239,7 +1241,10 @@ index 00000000..76b991fe
 +static bool gpu_readable;
 +static int known_fx0 = 1, known_fx1, known_fy0, known_fy1;
 +static unsigned st_read_pixels, st_read_bytes;
-+static inline bool rtt_old(void) { return (pica_debug & RTT_OLD) != 0; }
++static inline bool rtt_old(void)
++{
++	return (pica_debug & RTT_OLD) || (!rtt_detected && !(pica_debug & RTT_FORCE_NEW));
++}
 +
 +
 +// PS1 drawing state (GP0 E1-E6)
@@ -1608,7 +1613,7 @@ index 00000000..76b991fe
 +			blocks += !!(drawn[(yy >> 4) & 31] & (1u << ((xx >> 6) & 15)));
 +	fprintf(log, "%s %u %u %u %u %d %d %d %d %u %u %d %d %d %d\n",
 +		kind, c->depth, c->page, c->clut, c->win, x, y, w, h,
-+		blocks, gen_clock, gpu.screen.src_x, gpu.screen.src_y, gpu.screen.w, gpu.screen.h);
++		blocks, gen_clock, gpu.screen.src_x, gpu.screen.src_y, gpu.screen.w, gpu.screen.h, rtt_old() ? "old" : "new");
 +}
 +#else
 +#define trace_rtt(c, kind, x, y, w, h) ((void)0)
@@ -1659,6 +1664,33 @@ index 00000000..76b991fe
 +}
 +
 +// copy the drawn blocks within this rectangle (no wrapping) to software VRAM
++// Enter fine tracking once a real consumer intersects old GPU drawing.
++// Drain readers before changing cache generations; expand the conservative
++// old debt into native tiles so the first feedback read cannot lose pixels.
++static void activate_rtt(void)
++{
++	if (!rtt_old() || (pica_debug & RTT_OLD)) return;
++	gpu_idle();
++	gen_clock++;
++	for (int y = 0; y < 64; y++) {
++		for (int x = 0; x < 128; x++) {
++			bool debt = drawn[y >> 1] & (1u << (x >> 3));
++			fine_gen[y][x] = gen_clock;
++			fine_draw_gen[y][x] = debt ? gen_clock : 0;
++			if (debt) fine_drawn[y][x >> 5] |= 1u << (x & 31);
++		}
++	}
++	for (int y = 0; y < 512; y++) cpu_row_gen[y] = gen_clock;
++	// Keep allocations and texels: a decode can be in progress. All entries
++	// revalidate against the seeded generations on their next lookup.
++	for (unsigned i = 0; i < sizeof(cache)/sizeof(cache[0]); i++)
++		cache[i].stamp = cache[i].checked = 0;
++	known_fx0 = 1; known_fx1 = 0;
++	have_last = false;
++	gpu_readable = false;
++	rtt_detected = true;
++}
++
 +static void readback_part(int x, int y, int w, int h)
 +{
 +	if (w <= 0 || h <= 0 || !ready)
@@ -1671,6 +1703,11 @@ index 00000000..76b991fe
 +		any |= (drawn[by] & m) != 0;
 +	if (!any)
 +		return;
++	if (!(pica_debug & RTT_OLD)) {
++		activate_rtt();
++		readback_fine(x, y, w, h);
++		return;
++	}
 +	// pending fills there are in the render target already; written to
 +	// software VRAM later they would cover newer drawing
 +	if (nfills)
@@ -2357,7 +2394,7 @@ index 00000000..76b991fe
 +// Several disjoint sprites may share a page/CLUT. Growing their union to
 +// 256x256 throws away decoded cells, wastes the atlas and waits for queued
 +// readers. Keep independent, tightly bounded squares for those regions.
-+static inline bool region_cache(void) { return !(pica_debug & (262144 | 524288)); }
++static inline bool region_cache(void) { return !rtt_old() && !(pica_debug & 524288); }
 +static inline bool covers(const tcache *c, int u0, int u1, int v0, int v1)
 +{
 +	int size = 32 << c->lg;
@@ -3381,6 +3418,12 @@ index 00000000..76b991fe
 +	struct copy_request *r=data;
 +	int sx=r->sx, sy=r->sy, dx=r->dx, dy=r->dy, w=r->w, h=r->h;
 +	r->result=0;
++	if (rtt_old() && !(pica_debug & RTT_OLD) && sx >= 0 && sy >= 0 &&
++		w > 0 && h > 0 && sx+w <= VRAM_W && sy+h <= VRAM_H) {
++		unsigned mask = ((2u << ((sx+w-1)>>6))-1) & ~((1u << (sx>>6))-1);
++		for (int y = sy>>4; y <= (sy+h-1)>>4; y++)
++			if (drawn[y] & mask) { activate_rtt(); break; }
++	}
 +	// Native tile copies preserve every RGB and mask bit. Partial tiles,
 +	// wrapping, overlap and E6 mask operations use the CPU fallback.
 +	if (!ready || rtt_old() || r->mask || ((sx|sy|dx|dy|w|h)&7) ||
@@ -3619,6 +3662,7 @@ index 00000000..76b991fe
 +// it; update_caches below will queue the upload for the next open GPU frame.
 +static void pica_drop_fills_local(void)
 +{
++	rtt_detected = false;
 +	nfills = npend = 0;
 +	memset(drawn, 0, sizeof(drawn));
 +	memset(fine_drawn, 0, sizeof(fine_drawn));
@@ -4043,9 +4087,9 @@ index 00000000..76b991fe
 +	st_prev_texture = st_prev_upload = 0;
 +	if (k < 0 || k >= n) return;
 +	buf += k; n -= k;
-+	snprintf(buf, n, "%u batches %u prims %u tile decodes (%u evictions %u invalidations) %u uploads %u syncs %u readbacks %u splits, rb %u pixels %uK cache gpu tiles %u copies %u; %uK GPU memory free; area %d,%d-%d,%d off %d,%d disp %d,%d %dx%d",
++	snprintf(buf, n, "%u batches %u prims %u tile decodes (%u evictions %u invalidations) %u uploads %u syncs %u readbacks %u splits, rb %u pixels %uK cache gpu tiles %u copies %u; %uK GPU memory free; area %d,%d-%d,%d off %d,%d disp %d,%d %dx%d rtt %s",
 +		st_batches, st_prims, st_decodes, st_evict, st_inval, st_uploads, st_syncs, st_readbacks, st_splits, st_read_pixels, st_read_bytes/1024, st_gpu_tiles, st_gpu_copies, (unsigned)(linearSpaceFree() / 1024),
-+		ps.dx1, ps.dy1, ps.dx2, ps.dy2, ps.ox, ps.oy, gpu.screen.src_x, gpu.screen.src_y, gpu.screen.w, gpu.screen.h);
++		ps.dx1, ps.dy1, ps.dx2, ps.dy2, ps.ox, ps.oy, gpu.screen.src_x, gpu.screen.src_y, gpu.screen.w, gpu.screen.h, rtt_old() ? "old" : "new");
 +	st_read_pixels = st_read_bytes = st_gpu_tiles = st_gpu_copies = 0;
 +	st_batches = st_prims = st_decodes = st_uploads = st_syncs = st_evict = st_inval = st_readbacks = st_splits = 0;
 +}

@@ -54,8 +54,9 @@ void debug_parse_switch(const char *word)
 		sw_state = atoi(word + 6);
 	if (!strcmp(word, "renderer=sw"))
 		sw_renderer = 1;
-	if (!strcmp(word, "rtt=old")) sw_gldbg |= 262144;
-	if (!strcmp(word, "rtt=new")) sw_gldbg &= ~262144;
+	if (!strcmp(word, "rtt=old")) sw_gldbg = (sw_gldbg | 262144) & ~1048576;
+	if (!strcmp(word, "rtt=new")) sw_gldbg = (sw_gldbg & ~262144) | 1048576;
+	if (!strcmp(word, "rtt=auto")) sw_gldbg &= ~(262144 | 1048576);
 	if (!strcmp(word, "rttcache=old")) sw_gldbg |= 524288;
 	if (!strcmp(word, "rttcache=new")) sw_gldbg &= ~524288;
 	if (!strcmp(word, "renderer=gpu"))
@@ -189,6 +190,7 @@ int main(void)
 	dev_game_ended(true);
 	assert(dev_next_game(path, save, title) && !(sw_gldbg & 262144));
 	dev_game_started(title, true);
+	assert(switches_set("rtt=auto") && !(sw_gldbg & (262144|1048576)));
 	assert(!switches_set("rtt=invalid"));
 	assert(switches_set("rttcache=old") && (sw_gldbg & 524288));
 	assert(switches_set("rttcache=new") && !(sw_gldbg & 524288));

@@ -111,11 +111,16 @@ Supported run switches include `renderer=sw|gpu`, `frameskip=off|auto|on`, `stat
 logging/profiling cost; omit them when using the live metrics alone. Subsystem
 startup switches (`nonet`, `nosound`, `csnd`, `noirrst`, `noaa`, `nolcd`, `nocovers`,
 `o3ds`, `minimal`) belong in switches.txt, rather than per-run commands. Unknown
-switches fail explicitly. `rtt=old|new` selects the RTT implementation for each clean load.
+switches fail explicitly. `rtt=auto|old|new` selects the RTT implementation for each clean load.
+The default `auto` starts with the original coarse tracker and single-square
+cache. A GPU-dirty texture/CLUT read, VRAM readback or source copy activates
+fine tracking and retained regions for the rest of that state/game session.
+The transition drains queued readers and conservatively seeds generations/debt.
+`rtt=old` forces the original path; `rtt=new` forces fine tracking from startup.
 `set rtt=old|new` repeats the last load with its original state/settings, then replies
 after the new game starts; it does not change cache mappings during a live game.
-`rttcache=old|new` selects round-one or retained-region caching on a clean
-`load`/batch; the default is `new`. Status includes `rttcache`, `rtt`, `free_heap` and `free_linear` (bytes) under `settings`.
+`rttcache=old|new` selects round-one or retained-region caching after activation on a clean
+`load`/batch; the default is `new`. Status includes build identity, `rttcache`, requested `rtt` policy, `free_heap` and `free_linear` (bytes) under `settings`.
 
 `sdmc:/3ds/PSX3D/bench/results.tsv` contains the exact request, status, number of
 samples, near-black samples, FPS, emulated game speed %, emulation/present/wait/

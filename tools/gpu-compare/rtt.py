@@ -115,17 +115,18 @@ def main():
         trace = a.output / (name+'.gputrace')
         generate(trace)
         hashes = []
-        for label, debug in [('old', '262144'), ('cache-off', '524288'), ('new', '0')]:
+        for label, debug in [('old', '262144'), ('cache-off', '524288'), ('forced-new', '1048576'), ('new', '0')]:
             dest = a.output/name/label
             dest.mkdir(parents=True, exist_ok=True)
             result = subprocess.run([a.replay,trace,dest], check=True, capture_output=True, text=True,
                 env=dict(os.environ,PICA_DEBUG=debug,GPU_HASH_VRAM='1',PICA_STATS='1',SIM_CHECK_STAGE_LIFETIME='1',SIM_CHECK_ATLAS_LIFETIME='1'))
             (dest/'replay.log').write_text(result.stderr)
             hashes.append(re.findall(r'VRAM hash (\w+)',result.stderr))
-        assert hashes[0] and hashes[0] == hashes[1] == hashes[2], (name, hashes)
+        assert hashes[0] and hashes[0] == hashes[1] == hashes[2] == hashes[3], (name, hashes)
         for picture in (a.output/name/'old').glob('*.ppm'):
             assert picture.read_bytes() == (a.output/name/'new'/picture.name).read_bytes()
             assert picture.read_bytes() == (a.output/name/'cache-off'/picture.name).read_bytes()
+            assert picture.read_bytes() == (a.output/name/'forced-new'/picture.name).read_bytes()
         print(name, 'scanout and complete VRAM match')
 
 

@@ -126,9 +126,9 @@ static void publish_status(void)
 	        running && !strcmp(opt("pcsx_rearmed_gpu_thread_rendering"), "enabled") ? "true" : "false",
 	        sw_nosputhread ? "true" : "false");
 	p += strlen(p);
-	p += sprintf(p, ",\"version\":\"%s\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
+	p += sprintf(p, ",\"version\":\"%s\",\"build\":\"release-v030-rttgate-1\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
 	sprintf(p, ",\"rtt\":\"%s\",\"free_heap\":%u,\"free_linear\":%u",
-	        sw_gldbg & 262144 ? "old" : "new", heap_free(), linear_free());
+	        sw_gldbg & 262144 ? "old" : sw_gldbg & 1048576 ? "new" : "auto", heap_free(), linear_free());
 	snprintf(json, sizeof(json),
 	         "{\"ok\":true,\"session\":\"%s\",\"console\":\"%s\",\"uptime_s\":%.1f,\"mode\":\"%s\","
 	         "\"game\":\"%s\",\"state\":%d,\"renderer\":\"%s\",\"settings\":{%s},\"error\":\"%s\","
@@ -345,7 +345,7 @@ bool dev_tick(bool playing)
 			else if (!*args || !load_request(args))
 				error_reply("load requires a game or path (max 675 bytes)");
 			// load reply is sent only once loading + initial state have completed.
-		} else if (!strcmp(command, "set") && (!strcmp(args, "rtt=old") || !strcmp(args, "rtt=new"))) {
+		} else if (!strcmp(command, "set") && (!strcmp(args, "rtt=old") || !strcmp(args, "rtt=new") || !strcmp(args, "rtt=auto"))) {
 			// RTT maps/cache generations cannot change in a live renderer. Repeat
 			// the last explicit load, retaining its state/settings, at a clean boundary.
 			if (batch_active || !playing)
