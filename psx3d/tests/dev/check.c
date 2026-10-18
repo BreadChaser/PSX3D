@@ -56,6 +56,8 @@ void debug_parse_switch(const char *word)
 		sw_renderer = 1;
 	if (!strcmp(word, "rtt=old")) sw_gldbg |= 262144;
 	if (!strcmp(word, "rtt=new")) sw_gldbg &= ~262144;
+	if (!strcmp(word, "rttcache=old")) sw_gldbg |= 524288;
+	if (!strcmp(word, "rttcache=new")) sw_gldbg &= ~524288;
 	if (!strcmp(word, "renderer=gpu"))
 		sw_renderer = 0;
 }
@@ -182,6 +184,9 @@ int main(void)
 	assert(dev_next_game(path, save, title) && !(sw_gldbg & 262144));
 	dev_game_started(title, true);
 	assert(!switches_set("rtt=invalid"));
+	assert(switches_set("rttcache=old") && (sw_gldbg & 524288));
+	assert(switches_set("rttcache=new") && !(sw_gldbg & 524288));
+	assert(!switches_set("rttcache=invalid"));
 	command("set renderer=gpu", true);
 	assert(strstr(response, "false"));
 	command("savestate 9oops", true);

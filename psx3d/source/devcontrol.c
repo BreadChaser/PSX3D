@@ -126,7 +126,7 @@ static void publish_status(void)
 	        running && !strcmp(opt("pcsx_rearmed_gpu_thread_rendering"), "enabled") ? "true" : "false",
 	        sw_nosputhread ? "true" : "false");
 	p += strlen(p);
-	p += sprintf(p, ",\"version\":\"%s\"", PSX3D_VERSION);
+	p += sprintf(p, ",\"version\":\"%s\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
 	sprintf(p, ",\"rtt\":\"%s\",\"free_heap\":%u,\"free_linear\":%u",
 	        sw_gldbg & 262144 ? "old" : "new", heap_free(), linear_free());
 	snprintf(json, sizeof(json),

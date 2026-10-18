@@ -114,7 +114,8 @@ startup switches (`nonet`, `nosound`, `csnd`, `noirrst`, `noaa`, `nolcd`, `nocov
 switches fail explicitly. `rtt=old|new` selects the RTT implementation for each clean load.
 `set rtt=old|new` repeats the last load with its original state/settings, then replies
 after the new game starts; it does not change cache mappings during a live game.
-Status includes `rtt`, `free_heap` and `free_linear` (bytes) under `settings`.
+`rttcache=old|new` selects round-one or retained-region caching on a clean
+`load`/batch; the default is `new`. Status includes `rttcache`, `rtt`, `free_heap` and `free_linear` (bytes) under `settings`.
 
 `sdmc:/3ds/PSX3D/bench/results.tsv` contains the exact request, status, number of
 samples, near-black samples, FPS, emulated game speed %, emulation/present/wait/
