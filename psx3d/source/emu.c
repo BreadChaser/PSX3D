@@ -1054,6 +1054,7 @@ bool emu_run_game(const char *path, const char *save_name, const char *title)
 			if (ff)
 				next_deadline = svcGetSystemTick();
 		}
+		pica_thread_sync();   // before menus, UI buffers, stereo and stats touch renderer/frontend state
 		{
 			// real 3D only costs anything while the slider is up; a little
 			// hysteresis so a slider resting near 0 doesn't toggle it

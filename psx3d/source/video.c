@@ -285,6 +285,7 @@ void video_frame(const void *data, unsigned width, unsigned height, size_t pitch
 // thumbnail. Each output pixel averages 2x2 samples of its source area.
 bool video_snapshot(u16 *out, int w, int h)
 {
+	pica_thread_sync();
 	if (!have_frame)
 		return false;
 	const u16 *src = fbs[fb_cur ^ 1];   // fb_cur is the one being drawn next
@@ -412,8 +413,10 @@ void video_gpu_frame_begin(void)
 }
 
 // wait until the GPU has finished everything queued (before freeing memory it reads)
+static void idle_on_gpu_thread(void *data) { (void)data; video_gpu_idle(); }
 void video_gpu_idle(void)
 {
+	if (pica_thread_call && pica_thread_call(idle_on_gpu_thread, NULL)) return;
 	if (gpu_frame)
 		return;   // inside a frame: nothing has been sent yet
 	C3D_FrameBegin(0);   // waits for the previous frame
@@ -422,9 +425,24 @@ void video_gpu_idle(void)
 	C3D_FrameEnd(0);
 }
 
+struct present_request {
+	bool show_game;
+	void (*draw_top)(void *), (*draw_bottom)(void *);
+	void *ud;
+};
+static void present_on_gpu_thread(void *data)
+{
+	struct present_request *r = data;
+	video_present(r->show_game, r->draw_top, r->draw_bottom, r->ud);
+}
+
 void video_present(bool show_game, void (*draw_top)(void *),
 	void (*draw_bottom)(void *), void *ud)
 {
+	if (pica_thread_call) {
+		struct present_request r = { show_game, draw_top, draw_bottom, ud };
+		if (pica_thread_call(present_on_gpu_thread, &r)) return;
+	}
 	// no vsync wait here: emu.c paces frames; this only waits for the GPU
 	video_gpu_frame_begin();
 	// Citro2d reuses its own vertex/index buffers: finish the previous frame

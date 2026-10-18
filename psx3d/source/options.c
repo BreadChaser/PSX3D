@@ -192,6 +192,8 @@ void options_fast_forward(bool on)
 
 const char *options_get(const char *key)
 {
+	if (!strcmp(key, "pcsx_rearmed_gpu_thread_rendering") && (!g_new3ds || sw_nogputhread))
+		return "disabled";
 	const char *ov = locked_value(key);
 	option_t *o = find(key);
 

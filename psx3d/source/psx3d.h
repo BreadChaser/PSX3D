@@ -94,7 +94,7 @@ u64 video_take_heap_flush_ticks(void);
 void video_cache_targeted(bool enabled);
 u8 video_cache_command_list(const void *commands, u32 bytes, u8 flags);
 u8 video_cache_frame_end(u8 flags);
-extern bool sw_gpu_flush, sw_gpu_async;
+extern bool sw_gpu_flush, sw_gpu_async, sw_nogputhread;
 // Private extension implemented by our citro3d render queue.
 #define VIDEO_FRAME_OVERLAP BIT(7)
 void video_gpu_wait_previous(void);

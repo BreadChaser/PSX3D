@@ -118,6 +118,7 @@ char sw_game[64];       // test: start the first library game whose title contai
 int sw_vramdump;         // test: dump PS1 VRAM this many frames after the game starts
 int sw_pmu0 = -1, sw_pmu1 = -1;   // test: ARM11 performance counter events (pmu=AA,BB, hex)
 int sw_state = -1;       // test: load this save state slot when the game starts (state0, state=N)
+bool sw_nogputhread;
 bool sw_gpu_async = true;
 bool sw_gpu_flush = true;
 bool sw_aa;              // test: Old 3DS: gameplay supersampled too
@@ -137,6 +138,8 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "o3ds")) sw_o3ds = true;
 		else if (!strcmp(a, "fs1")) sw_fs1 = true;
 		else if (!strcmp(a, "noskip")) sw_noskip = true;
+		else if (!strcmp(a, "nogputhread")) sw_nogputhread = true;
+		else if (!strcmp(a, "gputhread")) sw_nogputhread = false;
 		else if (!strcmp(a, "nosputhread")) sw_nosputhread = true;
 		else if (!strcmp(a, "acap")) sw_acap = true;
 		else if (!strcmp(a, "state0")) sw_state = 0;

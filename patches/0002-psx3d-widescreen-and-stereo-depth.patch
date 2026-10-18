@@ -18,7 +18,7 @@ index d6379148..1f210654 100644
  CFLAGS += -DGPU_UNAI
  CFLAGS += -DUSE_GPULIB=1
 diff --git a/Makefile.libretro b/Makefile.libretro
-index cd53109e..ffc58ecc 100644
+index cd53109e..66bbf6c1 100644
 --- a/Makefile.libretro
 +++ b/Makefile.libretro
 @@ -362,6 +362,9 @@ else ifeq ($(platform), ctr)
@@ -31,7 +31,7 @@ index cd53109e..ffc58ecc 100644
  	CFLAGS += -Ifrontend/3ds -I$(CTRULIB)/include
  	CFLAGS += -Werror=implicit-function-declaration
  	CFLAGS += -Wno-format
-@@ -374,7 +377,12 @@ else ifeq ($(platform), ctr)
+@@ -374,7 +377,10 @@ else ifeq ($(platform), ctr)
  	OBJS += deps/arm-mem/memset-v6l.o
  	OBJS += frontend/3ds/utils.o
  
@@ -39,9 +39,7 @@ index cd53109e..ffc58ecc 100644
 +	# PSX3D: CTR_GPU=pica builds the 3DS GPU renderer (plugins/gpu_pica)
 +	CTR_GPU ?= unai
 +	BUILTIN_GPU = $(CTR_GPU)
-+	ifneq ($(CTR_GPU),unai)
-+	USE_ASYNC_GPU = 0   # GPU calls stay on the main thread
-+	endif
++
  	DYNAREC = ari64
  	ARCH = arm
  	PARTIAL_LINKING = 1
@@ -185,6 +183,21 @@ index a7baf6f6..686dd47c 100644
  gte_handler *gteGetHandler(u32 code);
  gte_handler *gteGetHandler_nf(u32 code);
  
+diff --git a/libpcsxcore/misc.c b/libpcsxcore/misc.c
+index 1072f04a..881d1b5d 100644
+--- a/libpcsxcore/misc.c
++++ b/libpcsxcore/misc.c
+@@ -961,6 +961,10 @@ int LoadState(const char *file) {
+ 	GPU_freeze(0, &u.gpu_hdr, &vram);
+ 	assert(vram);
+ 	SaveFuncs.read(f, vram, 1024*512*2);
++#ifdef GPU_PICA
++	// PICA must decode/upload the restored bytes, not the previous state.
++	GPU_freeze(2, &u.gpu_hdr, &vram);
++#endif
+ 	gpuSyncPluginSR();
+ 
+ 	// spu
 diff --git a/libpcsxcore/new_dynarec/assem_arm.c b/libpcsxcore/new_dynarec/assem_arm.c
 index 67196027..daf899f4 100644
 --- a/libpcsxcore/new_dynarec/assem_arm.c
@@ -946,10 +959,10 @@ index 76f76afe..0e684ace 100644
    sem_post(&t.sem_done);
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 00000000..11d3f456
+index 00000000..582b9945
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,2256 @@
+@@ -0,0 +1,2448 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -975,6 +988,7 @@ index 00000000..11d3f456
 +#include <stdlib.h>
 +#include <string.h>
 +#include "../gpulib/gpu.h"
++#include "gpu_pica_thread.h"
 +#include "../gpulib/gpu_timing.h"
 +#include "gpu_pica.h"
 +#include "../../frontend/plugin_lib.h"
@@ -1026,6 +1040,45 @@ index 00000000..11d3f456
 +	u16 slot;          // its place in active[lg]
 +	struct tcache *next;   // hash chain
 +} tcache;
++
++static void pica_settle_rect_local(int x, int y, int w, int h);
++static void pica_settle_vram_local(void);
++static void pica_readback_rect_local(int x, int y, int w, int h);
++static void pica_readback_all_local(void);
++static void pica_dump_vram_local(const char *path);
++static void pica_frame_started_local(void);
++static void pica_frame_ended_local(void);
++static void pica_drop_fills_local(void);
++static void renderer_sync_ecmds_local(uint32_t *ecmds);
++static void renderer_update_caches_local(int x, int y, int w, int h, int state_changed);
++static void renderer_flush_queues_local(void);
++static void pica_flip_local(void);
++static void pica_prepare_present_local(void);
++static void pica_stats_local(char *buf, int n);
++static void pica_probe_local(char *buf, int n);
++// The command-list loop has no thread check. Only CPU-visible boundaries
++// and frontend inspection use these synchronous owner-thread requests.
++int (*pica_thread_call)(void (*call)(void *), void *data);
++enum thread_op {
++  TH_SETTLE_RECT, TH_SETTLE_VRAM, TH_DROP_FILLS, TH_READ_RECT, TH_READ_ALL,
++  TH_DUMP, TH_SYNCE, TH_UPDATE, TH_FLUSH, TH_FLIP, TH_STATS, TH_PROBE,
++  TH_FRAME_START, TH_FRAME_END, TH_PREPARE_PRESENT
++};
++struct thread_request { enum thread_op op; int x, y, w, h; void *data; };
++static void thread_execute(void *data);
++static inline int thread_request(enum thread_op op, int x, int y, int w, int h, void *data)
++{
++  if (!pica_thread_call)
++    return 0;
++  struct thread_request req = { op, x, y, w, h, data };
++  return pica_thread_call(thread_execute, &req);
++}
++static void thread_noop(void *data) { (void)data; }
++void pica_thread_sync(void)
++{
++  if (pica_thread_call)
++    pica_thread_call(thread_noop, NULL);
++}
 +
 +// ------------------------------------------------------------------ state
 +
@@ -1291,20 +1344,20 @@ index 00000000..11d3f456
 +
 +// gpulib reads or writes software VRAM itself (transfers, copies, saving
 +// a state): the fills there have to be written first
-+void pica_settle_rect(int x, int y, int w, int h)
++static void pica_settle_rect_local(int x, int y, int w, int h)
 +{
 +	if (nfills)
 +		settle_fills(x, y, w, h);
 +}
 +
-+void pica_settle_vram(void)
++static void pica_settle_vram_local(void)
 +{
 +	for (int i = 0; i < nfills; i++)
 +		apply_fill(&fills[i]);
 +	nfills = 0;
 +}
 +
-+void pica_drop_fills(void) { nfills = 0; }   // a loaded state replaced VRAM
++static void pica_drop_fills_local(void);   // a loaded state replaced VRAM (defined below)
 +
 +// ------------------------------------------------------------------ GPU-drawn VRAM
 +// What the GPU draws lands only in its render target. These 64x16 blocks
@@ -1404,7 +1457,7 @@ index 00000000..11d3f456
 +}
 +
 +// copy GPU drawing in this VRAM rectangle (wrapping at the edges) to software VRAM
-+void pica_readback_rect(int x, int y, int w, int h)
++static void pica_readback_rect_local(int x, int y, int w, int h)
 +{
 +	x &= VRAM_W - 1;
 +	y &= VRAM_H - 1;
@@ -1417,13 +1470,16 @@ index 00000000..11d3f456
 +	if (w1 < w && h1 < h) readback_part(0, 0, w - w1, h - h1);
 +}
 +
-+void pica_readback_all(void) { readback_part(0, 0, VRAM_W, VRAM_H); }
++static void pica_readback_all_local(void)
++{
++	readback_part(0, 0, VRAM_W, VRAM_H);
++}
 +
 +// test: all of VRAM, GPU drawing included, to a file (compared against the
 +// software renderer's VRAM in the PC simulator)
-+void pica_dump_vram(const char *path)
++static void pica_dump_vram_local(const char *path)
 +{
-+	pica_readback_all();
++	pica_readback_all_local();
 +	for (int i = 0; i < nfills; i++)
 +		apply_fill(&fills[i]);
 +	nfills = 0;
@@ -1436,7 +1492,7 @@ index 00000000..11d3f456
 +
 +// ------------------------------------------------------------------ GPU frame / sync
 +
-+void pica_frame_started(void)
++static void pica_frame_started_local(void)
 +{
 +	frame_open = true;
 +	base_dirty = state_dirty = true;
@@ -1462,7 +1518,10 @@ index 00000000..11d3f456
 +	}
 +}
 +
-+void pica_frame_ended(void) { frame_open = false; }
++static void pica_frame_ended_local(void)
++{
++	frame_open = false;
++}
 +void pica_state_lost(void) { base_dirty = state_dirty = true; sent_valid = false; }
 +
 +// let the GPU run everything queued and wait, so memory it was going to
@@ -1476,7 +1535,7 @@ index 00000000..11d3f456
 +	C3D_FrameBegin(0);
 +	st_syncs++;
 +	pica_async = false;   // FrameBegin(0) just retired all submitted work
-+	pica_frame_started();
++	pica_frame_started_local();
 +}
 +
 +// ------------------------------------------------------------------ texture cache
@@ -1577,9 +1636,9 @@ index 00000000..11d3f456
 +			vh = (s1 - s0 + 1) * 32;
 +		}
 +		int cx = (c->clut & 0x3f) * 16, cy = (c->clut >> 6) & 511, cw = c->depth == 0 ? 16 : 256;
-+		pica_readback_rect(vx, vy, vw, vh);
++		pica_readback_rect_local(vx, vy, vw, vh);
 +		if (c->depth < 2)
-+			pica_readback_rect(cx, cy, cw, 1);
++			pica_readback_rect_local(cx, cy, cw, 1);
 +		// (settling the whole page wrote CTR's screen clears out every frame)
 +		if (nfills) {
 +			settle_fills(vx, vy, vw, vh);
@@ -2786,10 +2845,19 @@ index 00000000..11d3f456
 +	st_uploads++;
 +}
 +
++// A state replaces CPU VRAM. Old deferred fills/readbacks must never overwrite
++// it; update_caches below will queue the upload for the next open GPU frame.
++static void pica_drop_fills_local(void)
++{
++	nfills = npend = 0;
++	memset(drawn, 0, sizeof(drawn));
++	have_last = false;
++}
 +// ------------------------------------------------------------------ gpulib renderer interface
 +
 +int renderer_init(void)
 +{
++	pica_drop_fills_local();
 +	memset(&ps, 0, sizeof(ps));
 +	ps.dx2 = VRAM_W;
 +	ps.dy2 = VRAM_H;
@@ -2806,15 +2874,18 @@ index 00000000..11d3f456
 +	// gets the new option and use_state splits the batch when necessary.
 +	dither_config = config->dithering;
 +}
-+void renderer_flush_queues(void) { flush(); }
++static void renderer_flush_queues_local(void)
++{
++	flush();
++}
 +
-+void renderer_sync_ecmds(uint32_t *ecmds)
++static void renderer_sync_ecmds_local(uint32_t *ecmds)
 +{
 +	for (int i = 1; i <= 6; i++)
 +		set_ex(ecmds[i]);
 +}
 +
-+void renderer_update_caches(int x, int y, int w, int h, int state_changed)
++static void renderer_update_caches_local(int x, int y, int w, int h, int state_changed)
 +{
 +	if (state_changed)
 +		disp_used = false;
@@ -3055,6 +3126,8 @@ index 00000000..11d3f456
 +{
 +	ready = false;
 +	have_last = false;
++	frame_open = false;
++	pica_drop_fills_local();
 +	free_game_buffers();
 +}
 +
@@ -3072,7 +3145,7 @@ index 00000000..11d3f456
 +
 +// gpulib, at the flip of a frame that was drawn (vout_update). With
 +// frameskip, the shown area is copied so skipped frames keep showing it.
-+void pica_flip(void)
++static void pica_flip_local(void)
 +{
 +	disp_used = ready && frame_open && gpu.frameskip.set && !(gpu.status & PSX_GPU_STATUS_RGB24)
 +		&& gpu.screen.w > 0 && gpu.screen.h > 0;
@@ -3099,7 +3172,7 @@ index 00000000..11d3f456
 +
 +// Finish PS1 work before the frontend prepares Citro2D or binds its target.
 +// pica_picture is deliberately a query: both stereo eyes can call it safely.
-+void pica_prepare_present(void)
++static void pica_prepare_present_local(void)
 +{
 +	flush();
 +	clear_tex_cache();
@@ -3111,8 +3184,22 @@ index 00000000..11d3f456
 +static unsigned st_pic[3];   // frames shown per PICA_PIC_* result
 +static int pic_x, pic_y, pic_w, pic_h;   // the last area shown
 +static C3D_Tex *pic_tex;
++struct picture_request {
++	C3D_Tex **tex;
++	float *l, *t, *r, *b, *w, *h;
++	int result;
++};
++static void picture_on_thread(void *data)
++{
++	struct picture_request *p = data;
++	p->result = pica_picture(p->tex, p->l, p->t, p->r, p->b, p->w, p->h);
++}
 +int pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h)
 +{
++	if (pica_thread_call) {
++		struct picture_request p = { tex, l, t, r, b, w, h, PICA_PIC_NONE };
++		if (pica_thread_call(picture_on_thread, &p)) return p.result;
++	}
 +	if (!ready || (gpu.status & PSX_GPU_STATUS_RGB24)) {
 +		st_pic[PICA_PIC_CPU]++;
 +		return PICA_PIC_CPU;
@@ -3140,7 +3227,7 @@ index 00000000..11d3f456
 +	return PICA_PIC_GPU;
 +}
 +
-+void pica_stats(char *buf, int n)
++static void pica_stats_local(char *buf, int n)
 +{
 +	if (!t_svc) {   // what one timer read costs
 +		u64 a = svcGetSystemTick();
@@ -3167,7 +3254,7 @@ index 00000000..11d3f456
 +
 +// test (stats): what was shown in the last second, and how bright the shown
 +// area of the render target is now (8x8 samples, 0-31; no GPU sync)
-+void pica_probe(char *buf, int n)
++static void pica_probe_local(char *buf, int n)
 +{
 +	int lum = -1;
 +	if (ready && pic_tex && pic_tex->data && pic_w > 0 && pic_h > 0) {
@@ -3193,12 +3280,14 @@ index 00000000..11d3f456
 +// ------------------------------------------------------------------ PSX3D stereo hooks
 +// (part of the software renderer; nothing to do here yet)
 +
++#ifndef GPU_DUAL
 +uint16_t *psx3d_vram2;
 +volatile uint32_t psx3d_ov_seq;
 +void psx3d_stereo_set(int on) { (void)on; }
 +void psx3d_set_strength(float px) { (void)px; }
 +void psx3d_set_half3d(int on) { (void)on; }
 +void psx3d_depth_frame(void) {}
++void psx3d_depth_cmd(const uint32_t *list, uint32_t cmd) { (void)list; (void)cmd; }
 +const void *psx3d_depth_get(void) { return NULL; }
 +const uint16_t *psx3d_right_get(int *x, int *y, int *w, int *h, int *rgb24) { (void)x; (void)y; (void)w; (void)h; (void)rgb24; return NULL; }
 +const uint16_t *psx3d_overlay_get(int *x, int *y, int *w, int *h, const uint32_t **rows) { (void)x; (void)y; (void)w; (void)h; (void)rows; return NULL; }
@@ -3206,16 +3295,133 @@ index 00000000..11d3f456
 +{
 +	*zc = 0; *n3d = *n2d = *dmin = *dmax = *zmin = *zmax = 0;
 +}
++#endif
++
++// All requests are synchronous; buffers and strings can live on the caller's
++// stack. No frontend callback runs concurrently with emulation.
++static void thread_execute(void *data)
++{
++  struct thread_request *r = data;
++  switch (r->op) {
++  case TH_SETTLE_RECT: pica_settle_rect_local(r->x, r->y, r->w, r->h); break;
++  case TH_SETTLE_VRAM: pica_settle_vram_local(); break;
++  case TH_DROP_FILLS: pica_drop_fills_local(); break;
++  case TH_READ_RECT: pica_readback_rect_local(r->x, r->y, r->w, r->h); break;
++  case TH_READ_ALL: pica_readback_all_local(); break;
++  case TH_DUMP: pica_dump_vram_local(r->data); break;
++  case TH_SYNCE: renderer_sync_ecmds_local(r->data); break;
++  case TH_UPDATE: renderer_update_caches_local(r->x, r->y, r->w, r->h, 0); break;
++  case TH_FLUSH: renderer_flush_queues_local(); break;
++  case TH_FLIP: pica_flip_local(); break;
++  case TH_PREPARE_PRESENT: pica_prepare_present_local(); break;
++  case TH_STATS: pica_stats_local(r->data, r->x); break;
++  case TH_PROBE: pica_probe_local(r->data, r->x); break;
++  case TH_FRAME_START: pica_frame_started_local(); break;
++  case TH_FRAME_END: pica_frame_ended_local(); break;
++  }
++}
++
++// External boundaries only. Internal calls above stay direct on both models.
++void pica_settle_rect(int x, int y, int w, int h)
++{
++	if (thread_request(TH_SETTLE_RECT, x, y, w, h, NULL)) return;
++	pica_settle_rect_local(x, y, w, h);
++}
++
++void pica_settle_vram(void)
++{
++	if (thread_request(TH_SETTLE_VRAM, 0, 0, 0, 0, NULL)) return;
++	pica_settle_vram_local();
++}
++
++void pica_readback_rect(int x, int y, int w, int h)
++{
++	if (thread_request(TH_READ_RECT, x, y, w, h, NULL)) return;
++	pica_readback_rect_local(x, y, w, h);
++}
++
++void pica_readback_all(void)
++{
++	if (thread_request(TH_READ_ALL, 0, 0, 0, 0, NULL)) return;
++	pica_readback_all_local();
++}
++
++void pica_dump_vram(const char *path)
++{
++	if (thread_request(TH_DUMP, 0, 0, 0, 0, (void *)path)) return;
++	pica_dump_vram_local(path);
++}
++
++void pica_frame_started(void)
++{
++	if (thread_request(TH_FRAME_START, 0, 0, 0, 0, NULL)) return;
++	pica_frame_started_local();
++}
++
++void pica_frame_ended(void)
++{
++	if (thread_request(TH_FRAME_END, 0, 0, 0, 0, NULL)) return;
++	pica_frame_ended_local();
++}
++
++void pica_drop_fills(void)
++{
++	if (thread_request(TH_DROP_FILLS, 0, 0, 0, 0, NULL)) return;
++	pica_drop_fills_local();
++}
++
++void renderer_sync_ecmds(uint32_t *ecmds)
++{
++	if (thread_request(TH_SYNCE, 0, 0, 0, 0, ecmds)) return;
++	renderer_sync_ecmds_local(ecmds);
++}
++
++void renderer_update_caches(int x, int y, int w, int h, int state_changed)
++{
++	if (thread_request(TH_UPDATE, x, y, w, h, NULL)) return;
++	renderer_update_caches_local(x, y, w, h, state_changed);
++}
++
++void renderer_flush_queues(void)
++{
++	if (thread_request(TH_FLUSH, 0, 0, 0, 0, NULL)) return;
++	renderer_flush_queues_local();
++}
++
++void pica_flip(void)
++{
++	if (thread_request(TH_FLIP, 0, 0, 0, 0, NULL)) return;
++	pica_flip_local();
++}
++
++void pica_stats(char *buf, int n)
++{
++	if (thread_request(TH_STATS, n, 0, 0, 0, buf)) return;
++	pica_stats_local(buf, n);
++}
++
++void pica_probe(char *buf, int n)
++{
++	if (thread_request(TH_PROBE, n, 0, 0, 0, buf)) return;
++	pica_probe_local(buf, n);
++}
++
++void pica_prepare_present(void)
++{
++	if (thread_request(TH_PREPARE_PRESENT, 0, 0, 0, 0, NULL)) return;
++	pica_prepare_present_local();
++}
 diff --git a/plugins/gpu_pica/gpu_pica.h b/plugins/gpu_pica/gpu_pica.h
 new file mode 100644
-index 00000000..13258f79
+index 00000000..c9dadacb
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.h
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,25 @@
 +/* gpu_pica: PS1 GPU on the 3DS GPU. Frontend interface (PSX3D). */
 +#ifndef GPU_PICA_H
 +#define GPU_PICA_H
 +#include <stdbool.h>
++#include "gpu_pica_thread.h"
 +#include <citro3d.h>
 +bool pica_init(const void *shbin, unsigned size);   // the frontend's compiled pica.v.pica
 +// buffers for a game, including a 1 MB GPU-owned held scanout texture
@@ -3235,6 +3441,22 @@ index 00000000..13258f79
 +extern void (*pica_wait_frame)(void);
 +extern bool (*pica_frame_pending)(void);
 +extern void (*pica_open_frame)(void);   // opens a GPU frame when drawing starts
++#endif
+diff --git a/plugins/gpu_pica/gpu_pica_thread.h b/plugins/gpu_pica/gpu_pica_thread.h
+new file mode 100644
+index 00000000..54392eb2
+--- /dev/null
++++ b/plugins/gpu_pica/gpu_pica_thread.h
+@@ -0,0 +1,10 @@
++/* PICA's CPU owner. No citro3d types: usable by gpulib and host runners. */
++#ifndef GPU_PICA_THREAD_H
++#define GPU_PICA_THREAD_H
++
++// NULL on Old 3DS and when disabled/creation failed. Returns 1 after executing
++// on the GPU worker, 0 when the caller should execute locally (already owner).
++extern int (*pica_thread_call)(void (*call)(void *), void *data);
++void pica_thread_sync(void);
++
 +#endif
 diff --git a/plugins/gpu_unai/gpu_command.h b/plugins/gpu_unai/gpu_command.h
 index adede2b5..199882b3 100644
@@ -3973,7 +4195,7 @@ index 4b9b57e6..a7f0c13a 100644
    ex_regs[1] |= gpu_unai.GPU_GP1 & 0x1ff;
  
 diff --git a/plugins/gpulib/gpu.c b/plugins/gpulib/gpu.c
-index f04e3a55..ed8df462 100644
+index f04e3a55..53efc8ad 100644
 --- a/plugins/gpulib/gpu.c
 +++ b/plugins/gpulib/gpu.c
 @@ -1,3 +1,4 @@
@@ -3981,7 +4203,17 @@ index f04e3a55..ed8df462 100644
  /*
   * (C) Gražvydas "notaz" Ignotas, 2011-2012
   *
-@@ -32,6 +33,23 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+@@ -8,6 +9,9 @@
+  * See the COPYING file in the top-level directory.
+  */
+ 
++#ifdef _3DS
++#include <3ds.h>
++#endif
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -32,6 +36,23 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
      int *cycles_sum, int *cycles_last);
  static noinline void finish_vram_transfer(struct psx_gpu *gpu, int is_read, int is_async);
  
@@ -4005,7 +4237,7 @@ index f04e3a55..ed8df462 100644
  static void sync_renderer(struct psx_gpu *gpu)
  {
    if (gpu_async_enabled(gpu))
-@@ -582,6 +600,9 @@ static noinline void start_vram_transfer(struct psx_gpu *gpu, uint32_t pos_word,
+@@ -582,6 +603,9 @@ static noinline void start_vram_transfer(struct psx_gpu *gpu, uint32_t pos_word,
    gpu->dma.offset = 0;
    gpu->dma.is_read = is_read;
    gpu->dma_start = gpu->dma;
@@ -4015,7 +4247,7 @@ index f04e3a55..ed8df462 100644
  
    // postponed until the actual transfer
    //sync_renderer(gpu);
-@@ -686,6 +707,8 @@ int do_vram_copy(uint16_t *vram, const uint32_t *ex_regs, const uint32_t *params
+@@ -686,6 +710,8 @@ int do_vram_copy(uint16_t *vram, const uint32_t *ex_regs, const uint32_t *params
    }
  
    renderer_update_caches(dx, dy, w, h, 0);
@@ -4024,7 +4256,7 @@ index f04e3a55..ed8df462 100644
    return 4;
  }
  
-@@ -824,8 +847,20 @@ breakloop:
+@@ -824,8 +850,20 @@ breakloop:
    return pos;
  }
  
@@ -4045,7 +4277,12 @@ index f04e3a55..ed8df462 100644
  {
    int cmd, pos;
    uint32_t old_e3 = gpu->ex_regs[3];
-@@ -873,8 +908,13 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+@@ -869,12 +907,17 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+         cmd = -1; // incomplete cmd, can't consume yet
+         break;
+       }
+-      if (gpu_async_enabled(gpu))
++      if (gpu_async_enabled(gpu) && !psx3d_renderer_is_pica())
          break;
        *cycles_sum += *cycles_last;
        *cycles_last = 0;
@@ -4060,7 +4297,7 @@ index f04e3a55..ed8df462 100644
        pos += 4;
        continue;
      case 0x00:
-@@ -886,17 +926,24 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+@@ -886,17 +929,24 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
        continue;
      }
  
@@ -4086,7 +4323,7 @@ index f04e3a55..ed8df462 100644
      }
  
      if (cmd == -1)
-@@ -954,9 +1001,27 @@ void GPUwriteData(uint32_t data)
+@@ -954,9 +1004,27 @@ void GPUwriteData(uint32_t data)
    }
  }
  
@@ -4114,7 +4351,7 @@ index f04e3a55..ed8df462 100644
    uint32_t addr, *list, ld_addr;
    int len, left, count, ld_count = 32;
    int cpu_cycles_sum = 0;
-@@ -993,6 +1058,23 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
+@@ -993,6 +1061,23 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
        continue;
      }
  
@@ -4138,7 +4375,7 @@ index f04e3a55..ed8df462 100644
      if (len) {
        left = do_cmd_buffer(&gpu, list + 1, len, &cpu_cycles_sum, &cpu_cycles_last);
        if (left) {
-@@ -1019,6 +1101,8 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
+@@ -1019,6 +1104,8 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
      }
    }
  
@@ -4147,7 +4384,18 @@ index f04e3a55..ed8df462 100644
    sync_ecmds_status_bits(&gpu);
  
    //printf(" -> %d %d\n", cpu_cycles_sum, cpu_cycles_last);
-@@ -1092,12 +1176,15 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+@@ -1085,6 +1172,10 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+   int i;
+ 
+   switch (type) {
++    case 2: // PSX3D: state VRAM has now been restored by LoadState
++      if (psx3d_renderer_is_pica() && gpu_async_enabled(&gpu))
++        renderer_update_caches(0, 0, 1024, 512, 0);
++      break;
+     case 1: // save
+       if (gpu.cmd_len > 0) {
+         flush_cmd_buffer(&gpu);
+@@ -1092,12 +1183,15 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
        }
  
        sync_renderer(&gpu);
@@ -4163,8 +4411,43 @@ index f04e3a55..ed8df462 100644
        //memcpy(gpu.regs, freeze->ulControl, sizeof(gpu.regs));
        memcpy(gpu.ex_regs, freeze->ulControl + 0xe0, sizeof(gpu.ex_regs));
        gpu.status = freeze->ulStatus;
+@@ -1105,7 +1199,9 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+       for (i = 8; i > 1; i--)
+         GPUwriteStatus((i << 24) | freeze->ulControl[i]);
+       renderer_sync_ecmds(gpu.ex_regs);
+-      renderer_update_caches(0, 0, 1024, 512, 0);
++      // PICA uploads after LoadState has replaced CPU VRAM (type 2 below).
++      if (!psx3d_renderer_is_pica() || !gpu_async_enabled(&gpu))
++        renderer_update_caches(0, 0, 1024, 512, 0);
+       gpu_async_sync_ecmds(&gpu);
+       break;
+   }
+@@ -1263,7 +1359,22 @@ void GPUrearmedCallbacks(const struct rearmed_cbs *cbs)
+   renderer_set_config(cbs);
+   vout_set_config(cbs);
+ 
+-  gpu_async_enable(&gpu, cbs->thread_rendering);
++  int threaded = cbs->thread_rendering;
++#ifdef GPU_PICA
++  if (psx3d_renderer_is_pica()) {
++#ifdef _3DS
++    // Enforce this in the core as well as options.c: an option override must
++    // never put PICA on the Old 3DS's timesliced system core.
++    bool new3ds = false;
++    APT_CheckNew3DS(&new3ds);
++    threaded = new3ds && threaded;
++#else
++    // Host simulators explicitly opt in through the same core option.
++    threaded = threaded > 0;
++#endif
++  }
++#endif
++  gpu_async_enable(&gpu, threaded);
+ }
+ 
+ // for standalone plugins only
 diff --git a/plugins/gpulib/gpu.h b/plugins/gpulib/gpu.h
-index e929fe60..6368b604 100644
+index e929fe60..12ebcb3f 100644
 --- a/plugins/gpulib/gpu.h
 +++ b/plugins/gpulib/gpu.h
 @@ -170,6 +170,10 @@ int  prim_try_simplify_quad_gt(void *simplified, const void *prim);
@@ -4187,19 +4470,96 @@ index e929fe60..6368b604 100644
  }
  
  /* listing these here for correct linkage if rasterizer uses c++ */
+@@ -209,3 +215,12 @@ void SysPrintf(const char *fmt, ...);
+ #endif
+ 
+ #endif /* __GPULIB_GPU_H__ */
++
++static inline int psx3d_renderer_is_pica(void)
++{
++#ifdef GPU_PICA
++  return 1;
++#else
++  return 0;
++#endif
++}
 diff --git a/plugins/gpulib/gpu_async.c b/plugins/gpulib/gpu_async.c
-index a67509b3..4f6d2599 100644
+index a67509b3..9f460143 100644
 --- a/plugins/gpulib/gpu_async.c
 +++ b/plugins/gpulib/gpu_async.c
-@@ -13,6 +13,7 @@
+@@ -11,8 +11,13 @@
+ #include <stdlib.h>
+ #include <string.h>
  #include <assert.h>
++#include <stdbool.h>
  #include "gpu.h"
  #include "gpu_async.h"
++#ifdef GPU_PICA
++#include "../gpu_pica/gpu_pica_thread.h"
++#endif
 +#include "../../libpcsxcore/psx3d_depth.h"
  #include "gpu_timing.h"
  #include "../../include/arm_features.h"
  #include "../../include/compiler_features.h"
-@@ -273,6 +274,10 @@ int gpu_async_do_cmd_list(struct psx_gpu *gpu, const uint32_t *list_data, int li
+@@ -38,15 +43,12 @@
+ #define FAKECMD_DMA_WRITE     0xddu
+ #define FAKECMD_BREAK         0xdcu
+ 
+-#if defined(__aarch64__) || defined(HAVE_ARMV7)
+-#define BARRIER() __asm__ __volatile__ ("dmb ishst" ::: "memory")
+-#elif defined(HAVE_ARMV6)
+-#define BARRIER() __asm__ __volatile__ ("mcr p15, 0, %0, c7, c10, 5" :: "r"(0) : "memory")
+-#else
+-#define BARRIER() __asm__ __volatile__ ("" ::: "memory")
+-#endif
+-#define RDPOS(pos_) *(volatile uint32_t *)&(pos_)
+-#define WRPOS(pos_, d_) *(volatile uint32_t *)&(pos_) = (d_)
++// ARM11 MPCore normal memory is CPU-cache coherent. Release publishes queue
++// payload before its position; acquire makes it visible before consumption.
++// This also covers the unlocked idle/position fast paths (a compiler barrier
++// alone is insufficient on a multicore host).
++#define RDPOS(pos_) __atomic_load_n(&(pos_), __ATOMIC_ACQUIRE)
++#define WRPOS(pos_, d_) __atomic_store_n(&(pos_), (d_), __ATOMIC_RELEASE)
+ 
+ enum waitmode {
+   waitmode_none = 0,
+@@ -73,6 +75,9 @@ struct psx_gpu_async
+   slock_t *lock;
+   scond_t *cond_use;
+   scond_t *cond_add;
++  void (*call)(void *);
++  void *call_data;
++  uint32_t call_done;
+   uint32_t ex_regs[8]; // state at render time, native endian
+   uint32_t cmd_buffer[AGPU_BUF_LEN];
+   uint32_t pos_area;
+@@ -127,7 +132,7 @@ static int do_dma_write(struct psx_gpu *gpu,
+ static void run_thread_nolock(struct psx_gpu_async *agpu)
+ {
+   if (agpu->idle) {
+-    agpu->idle = 0;
++    WRPOS(agpu->idle, 0);
+     scond_signal(agpu->cond_use);
+     //agpu_log(&gpu, "%u/%u kick\n", RDPOS(agpu->pos_used), agpu->pos_added);
+   }
+@@ -181,7 +186,6 @@ static int do_add(struct psx_gpu_async *agpu, const void *list, int list_words)
+ {
+   uint32_t pos_added = agpu->pos_added;
+   int ret = do_add_pos(agpu, list, list_words, &pos_added);
+-  BARRIER();
+   WRPOS(agpu->pos_added, pos_added);
+   return ret;
+ }
+@@ -239,7 +243,7 @@ int gpu_async_do_cmd_list(struct psx_gpu *gpu, const uint32_t *list_data, int li
+ 
+   assert(agpu);
+   pos_added = agpu->pos_added;
+-  if (RDPOS(agpu->idle) && pos_added == RDPOS(agpu->pos_used)) {
++  if (!psx3d_renderer_is_pica() && RDPOS(agpu->idle) && pos_added == RDPOS(agpu->pos_used)) {
+     // do the cheap stuff directly to avoid thread wakeup/sync
+     for (; pos < list_len; pos++) {
+       uint32_t ecmd = LE32TOH(list_data[pos]);
+@@ -273,6 +277,10 @@ int gpu_async_do_cmd_list(struct psx_gpu *gpu, const uint32_t *list_data, int li
        cmd = -1;
        break; // incomplete cmd
      }
@@ -4210,6 +4570,209 @@ index a67509b3..4f6d2599 100644
  
      switch (cmd) {
        case 0x02:
+@@ -352,6 +360,10 @@ int gpu_async_do_cmd_list(struct psx_gpu *gpu, const uint32_t *list_data, int li
+       case 0x78 ... 0x7b:
+       case 0x7C ... 0x7f: gput_sum(cyc_sum, cyc, gput_sprite(16, 16)); break;
+       case 0x80 ... 0x9f: // vid -> vid
++        // PICA needs its CPU-visible readback hooks around this copy. Let
++        // gpu.c perform it synchronously, exactly as in the unthreaded path.
++        if (psx3d_renderer_is_pica())
++          goto breakloop;
+         rendered = do_vram_copy_pre(gpu, list, &cyc_tmp);
+         gput_sum(cyc_sum, cyc, cyc_tmp);
+         if (!rendered) {
+@@ -412,7 +424,6 @@ breakloop:
+ 
+   if (unlikely(rendered_anything && agpu->delayed_flip.src_x != -1))
+     gpu_async_try_delayed_flip(gpu, 1);
+-  BARRIER();
+   WRPOS(agpu->pos_added, pos_added);
+   if (pos_handled && (rendered_anything || pos_handled < pos))
+     run_thread(agpu);
+@@ -466,7 +477,7 @@ int gpu_async_try_dma(struct psx_gpu *gpu, const uint32_t *data, int words)
+   assert(!bad); (void)bad;
+ 
+   slock_lock(agpu->lock);
+-  agpu->pos_added = pos_added;
++  WRPOS(agpu->pos_added, pos_added);
+   run_thread_nolock(agpu);
+   slock_unlock(agpu->lock);
+ 
+@@ -483,6 +494,17 @@ static STRHEAD_RET_TYPE gpu_async_thread(void *unused)
+   slock_lock(agpu->lock);
+   while (!agpu->exit)
+   {
++    if (agpu->call) {
++      void (*call)(void *) = agpu->call;
++      void *data = agpu->call_data;
++      slock_unlock(agpu->lock);
++      call(data);
++      slock_lock(agpu->lock);
++      agpu->call = NULL;
++      agpu->call_done = 1;
++      scond_signal(agpu->cond_add);
++      continue;
++    }
+     int len = RDPOS(agpu->pos_added) - agpu->pos_used;
+     int pos = agpu->pos_used & AGPU_BUF_MASK;
+     int done, cycles_dummy = 0, cmd = -1;
+@@ -499,7 +521,7 @@ static STRHEAD_RET_TYPE gpu_async_thread(void *unused)
+         default:
+           assert(0);
+       }
+-      agpu->idle = 1;
++      WRPOS(agpu->idle, 1);
+       //agpu_log(&gpu, "%u/%u sleep\n", agpu->pos_used, RDPOS(agpu->pos_added));
+       scond_wait(agpu->cond_use, agpu->lock);
+       continue;
+@@ -549,7 +571,7 @@ static STRHEAD_RET_TYPE gpu_async_thread(void *unused)
+ 
+     assert(done > 0);
+     slock_lock(agpu->lock);
+-    agpu->pos_used += done;
++    WRPOS(agpu->pos_used, agpu->pos_used + done);
+     switch (agpu->wait_mode) {
+       case waitmode_target:
+         if ((int32_t)(agpu->pos_used - agpu->pos_target) < 0)
+@@ -572,7 +594,7 @@ void gpu_async_notify_screen_change(struct psx_gpu *gpu)
+   struct psx_gpu_async *agpu = gpu->async;
+   union cmd_screen_change cmd;
+ 
+-  if (!agpu)
++  if (!agpu || psx3d_renderer_is_pica())
+     return;
+   if (RDPOS(agpu->idle) && agpu->pos_added == RDPOS(agpu->pos_used)) {
+     renderer_notify_screen_change(&gpu->screen);
+@@ -673,7 +695,8 @@ static void gpu_async_sync_nocheck(struct psx_gpu *gpu)
+   if (!agpu->idle) {
+     assert(agpu->wait_mode == waitmode_none);
+     agpu->wait_mode = waitmode_full;
+-    scond_wait(agpu->cond_add, agpu->lock);
++    while (!RDPOS(agpu->idle) || agpu->pos_added != RDPOS(agpu->pos_used))
++      scond_wait(agpu->cond_add, agpu->lock);
+   }
+   slock_unlock(agpu->lock);
+   assert(agpu->pos_added == agpu->pos_used);
+@@ -779,6 +802,12 @@ int gpu_async_sync_scanout(struct psx_gpu *gpu)
+ 
+   if (!agpu)
+     return 0;
++  // PICA shares one citro3d context, including offscreen drawing. A partial
++  // software scanout fence cannot hand ownership to presentation safely.
++  if (psx3d_renderer_is_pica()) {
++    gpu_async_sync(gpu);
++    return 0;
++  }
+   ret = calc_scanout_wait(gpu, gpu->screen.src_x, gpu->screen.src_y, &target);
+   if (ret == 0)
+     return 0;
+@@ -815,11 +844,26 @@ void gpu_async_try_delayed_flip(struct psx_gpu *gpu, int force)
+   }
+ }
+ 
++static void sync_pica_ecmds(void *data)
++{
++  struct psx_gpu *gpu = data;
++  struct psx_gpu_async *agpu = gpu->async;
++  memcpy(agpu->ex_regs + 1, gpu->ex_regs + 1, 6*4);
++  renderer_sync_ecmds(agpu->ex_regs);
++}
++
+ void gpu_async_sync_ecmds(struct psx_gpu *gpu)
+ {
+   struct psx_gpu_async *agpu = gpu->async;
+   if (!agpu)
+     return;
++  // In particular, a state load must return with no pending renderer work:
++  // the caller replaces CPU VRAM after GPUfreeze returns.
++  if (psx3d_renderer_is_pica()) {
++    if (!gpu_async_call(sync_pica_ecmds, gpu))
++      sync_pica_ecmds(gpu);
++    return;
++  }
+   if (RDPOS(agpu->idle) && agpu->pos_added == RDPOS(agpu->pos_used)) {
+     memcpy(agpu->ex_regs + 1, gpu->ex_regs + 1, 6*4);
+     add_draw_area_e(agpu, agpu->pos_added, 0, gpu->ex_regs);
+@@ -838,9 +882,9 @@ void gpu_async_sync_ecmds(struct psx_gpu *gpu)
+ 
+ static void psx_gpu_async_free(struct psx_gpu_async *agpu)
+ {
+-  agpu->exit = 1;
+   if (agpu->lock) {
+     slock_lock(agpu->lock);
++    agpu->exit = 1;
+     if (agpu->cond_use)
+       scond_signal(agpu->cond_use);
+     slock_unlock(agpu->lock);
+@@ -859,6 +903,10 @@ void gpu_async_stop(struct psx_gpu *gpu)
+ {
+   if (gpu->async) {
+     gpu_async_sync(gpu);
++#ifdef GPU_PICA
++    if (psx3d_renderer_is_pica())
++      pica_thread_call = NULL;
++#endif
+     psx_gpu_async_free(gpu->async);
+     gpu->async = NULL;
+   }
+@@ -890,6 +938,11 @@ void gpu_async_enable(struct psx_gpu *gpu, int enable)
+       agpu->thread = pcsxr_sthread_create(gpu_async_thread, PCSXRT_GPU);
+     }
+     if (agpu->thread) {
++#ifdef GPU_PICA
++      if (psx3d_renderer_is_pica())
++        pica_thread_call = gpu_async_call;
++#endif
++      SysPrintf("gpu thread: %s enabled\n", psx3d_renderer_is_pica() ? "PICA" : "software");
+       gpu_async_sync_ecmds(gpu);
+       return;
+     }
+@@ -901,4 +954,32 @@ void gpu_async_enable(struct psx_gpu *gpu, int enable)
+     psx_gpu_async_free(agpu);
+ }
+ 
++// Only the emulation/frontend thread submits RPCs; stack arguments remain
++// alive until completion. The worker may call public PICA hooks recursively.
++int gpu_async_call(void (*call)(void *), void *data)
++{
++  struct psx_gpu_async *agpu = gpu.async;
++  if (!agpu)
++    return 0;
++#ifdef USE_C11_THREADS
++  if (thrd_equal(thrd_current(), *agpu->thread))
++#else
++  // rthreads implements this with threadGetCurrent() on CTR.
++  extern bool sthread_isself(sthread_t *thread);
++  if (sthread_isself(agpu->thread))
++#endif
++    return 0;
++  gpu_async_sync(&gpu);
++  slock_lock(agpu->lock);
++  assert(!agpu->call);
++  agpu->call_data = data;
++  agpu->call_done = 0;
++  agpu->call = call;
++  run_thread_nolock(agpu);
++  while (!agpu->call_done)
++    scond_wait(agpu->cond_add, agpu->lock);
++  slock_unlock(agpu->lock);
++  return 1;
++}
++
+ // vim:shiftwidth=2:expandtab
+diff --git a/plugins/gpulib/gpu_async.h b/plugins/gpulib/gpu_async.h
+index 65248945..463b880a 100644
+--- a/plugins/gpulib/gpu_async.h
++++ b/plugins/gpulib/gpu_async.h
+@@ -17,6 +17,8 @@ int gpu_async_do_cmd_list(struct psx_gpu *gpu, const uint32_t *list, int list_le
+ int gpu_async_try_dma(struct psx_gpu *gpu, const uint32_t *data, int words);
+ void gpu_async_enable(struct psx_gpu *gpu, int enable);
+ void gpu_async_stop(struct psx_gpu *gpu);
++// PICA owner-thread RPC. Returns 0 when already on the owner or not threaded.
++int gpu_async_call(void (*call)(void *), void *data);
+ void gpu_async_sync(struct psx_gpu *gpu);
+ int  gpu_async_sync_scanout(struct psx_gpu *gpu);
+ void gpu_async_sync_ecmds(struct psx_gpu *gpu);
 diff --git a/plugins/gpulib/vout_pl.c b/plugins/gpulib/vout_pl.c
 index 07cf6daa..3ad384d9 100644
 --- a/plugins/gpulib/vout_pl.c
