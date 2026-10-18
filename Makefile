@@ -17,7 +17,7 @@ EXTERN_SYMS := psx3d_depth_get psx3d_depth_frame psx3d_overlay_get psx3d_ov_seq 
 	psx3d_irq_t psx3d_irq_c
 ifeq ($(GPU),pica)
 EXTERN_SYMS += pica_init pica_exit pica_game_begin pica_game_end pica_flush_vertices pica_frame_started pica_frame_ended \
-	pica_state_lost pica_picture pica_stats pica_probe pica_debug pica_open_frame pica_async pica_double_buffer pica_wait_frame pica_frame_pending pica_dump_vram
+	pica_state_lost pica_prepare_present pica_picture pica_stats pica_probe pica_debug pica_open_frame pica_async pica_double_buffer pica_wait_frame pica_frame_pending pica_dump_vram
 APP_DEFS := -DPSX3D_PICA
 endif
 

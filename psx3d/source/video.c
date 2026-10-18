@@ -432,8 +432,10 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	video_gpu_wait_previous();
 	if (sw_gpu_async) gpu_ms += C3D_GetDrawingTime();
 #ifdef PSX3D_PICA
+	pica_prepare_present(); // a final batch can rebind PS1 target/shader/vertices
 	C2D_Prepare();   // the hardware renderer changed the GPU state
 	// ...including some C2D_Prepare leaves alone: back to citro3d's defaults
+	C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
 	C3D_AlphaTest(false, GPU_ALWAYS, 0);
 	C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
 		GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA);

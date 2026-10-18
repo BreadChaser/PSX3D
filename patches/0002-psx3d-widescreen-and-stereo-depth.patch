@@ -1,5 +1,5 @@
 diff --git a/Makefile b/Makefile
-index d637914..1f21065 100644
+index d6379148..1f210654 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -291,6 +291,14 @@ frontend/menu.o frontend/plugin_lib.o: CFLAGS += -DBUILTIN_GPU_PEOPS
@@ -18,7 +18,7 @@ index d637914..1f21065 100644
  CFLAGS += -DGPU_UNAI
  CFLAGS += -DUSE_GPULIB=1
 diff --git a/Makefile.libretro b/Makefile.libretro
-index cd53109..ffc58ec 100644
+index cd53109e..ffc58ecc 100644
 --- a/Makefile.libretro
 +++ b/Makefile.libretro
 @@ -362,6 +362,9 @@ else ifeq ($(platform), ctr)
@@ -46,7 +46,7 @@ index cd53109..ffc58ec 100644
  	ARCH = arm
  	PARTIAL_LINKING = 1
 diff --git a/frontend/libretro.c b/frontend/libretro.c
-index 9dd3502..a281df0 100644
+index 9dd3502c..a281df04 100644
 --- a/frontend/libretro.c
 +++ b/frontend/libretro.c
 @@ -31,6 +31,8 @@
@@ -99,7 +99,7 @@ index 9dd3502..a281df0 100644
     var.key = "pcsx_rearmed_3ds_appcputime";
     if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
 diff --git a/libpcsxcore/gte.c b/libpcsxcore/gte.c
-index d1f18df..3cc315e 100644
+index d1f18df1..3cc315e1 100644
 --- a/libpcsxcore/gte.c
 +++ b/libpcsxcore/gte.c
 @@ -24,6 +24,7 @@
@@ -169,7 +169,7 @@ index d1f18df..3cc315e 100644
  
  	gteMAC1 = mac1;
 diff --git a/libpcsxcore/gte.h b/libpcsxcore/gte.h
-index a7baf6f..686dd47 100644
+index a7baf6f6..686dd47c 100644
 --- a/libpcsxcore/gte.h
 +++ b/libpcsxcore/gte.h
 @@ -66,6 +66,12 @@ void MTC2(struct psxCP2Regs *regs, u32 value, int reg);
@@ -186,7 +186,7 @@ index a7baf6f..686dd47 100644
  gte_handler *gteGetHandler_nf(u32 code);
  
 diff --git a/libpcsxcore/new_dynarec/assem_arm.c b/libpcsxcore/new_dynarec/assem_arm.c
-index 6719602..daf899f 100644
+index 67196027..daf899f4 100644
 --- a/libpcsxcore/new_dynarec/assem_arm.c
 +++ b/libpcsxcore/new_dynarec/assem_arm.c
 @@ -22,6 +22,7 @@
@@ -234,7 +234,7 @@ index 6719602..daf899f 100644
      }
      c2op_epilogue(c2op, reglist);
 diff --git a/libpcsxcore/new_dynarec/new_dynarec.c b/libpcsxcore/new_dynarec/new_dynarec.c
-index fb99df6..950a048 100644
+index fb99df6e..950a048d 100644
 --- a/libpcsxcore/new_dynarec/new_dynarec.c
 +++ b/libpcsxcore/new_dynarec/new_dynarec.c
 @@ -37,6 +37,10 @@ static Jit g_jit;
@@ -598,7 +598,7 @@ index fb99df6..950a048 100644
    struct compile_state st;
    u_int pagelimit = 0;
 diff --git a/libpcsxcore/new_dynarec/new_dynarec.h b/libpcsxcore/new_dynarec/new_dynarec.h
-index 387aaac..b42e3c7 100644
+index 387aaac5..b42e3c7a 100644
 --- a/libpcsxcore/new_dynarec/new_dynarec.h
 +++ b/libpcsxcore/new_dynarec/new_dynarec.h
 @@ -30,6 +30,7 @@ struct ndrc_globals
@@ -611,7 +611,7 @@ index 387aaac..b42e3c7 100644
  void new_dynarec_cleanup(void);
 diff --git a/libpcsxcore/psx3d_depth.h b/libpcsxcore/psx3d_depth.h
 new file mode 100644
-index 0000000..9c55cbb
+index 00000000..9c55cbb7
 --- /dev/null
 +++ b/libpcsxcore/psx3d_depth.h
 @@ -0,0 +1,98 @@
@@ -715,7 +715,7 @@ index 0000000..9c55cbb
 +#endif
 diff --git a/libpcsxcore/psx3d_prof.h b/libpcsxcore/psx3d_prof.h
 new file mode 100644
-index 0000000..9ed0505
+index 00000000..9ed05057
 --- /dev/null
 +++ b/libpcsxcore/psx3d_prof.h
 @@ -0,0 +1,23 @@
@@ -743,7 +743,7 @@ index 0000000..9ed0505
 +#endif
 +#endif
 diff --git a/libpcsxcore/psxevents.c b/libpcsxcore/psxevents.c
-index 4f2d5cd..c27b722 100644
+index 4f2d5cd2..c27b722e 100644
 --- a/libpcsxcore/psxevents.c
 +++ b/libpcsxcore/psxevents.c
 @@ -1,3 +1,4 @@
@@ -793,7 +793,7 @@ index 4f2d5cd..c27b722 100644
  	psxRegisters *regs = cp0TOpsxRegs(cp0);
  
 diff --git a/plugins/dfsound/spu.c b/plugins/dfsound/spu.c
-index 76f76af..0e684ac 100644
+index 76f76afe..0e684ace 100644
 --- a/plugins/dfsound/spu.c
 +++ b/plugins/dfsound/spu.c
 @@ -1,3 +1,4 @@
@@ -946,10 +946,10 @@ index 76f76af..0e684ac 100644
    sem_post(&t.sem_done);
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 0000000..582839d
+index 00000000..ea29bc3b
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,1997 @@
+@@ -0,0 +1,2048 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -1034,9 +1034,9 @@ index 0000000..582839d
 +static C3D_Tex vram_tex;              // the PS1 VRAM render target
 +static C3D_RenderTarget *target;
 +static C3D_Tex stage_tex;             // CPU uploads on their way into the target
-+// With frameskip, the VRAM area shown at the last frame that was drawn: a
-+// skipped frame flips the display to a buffer that was never drawn, while
-+// the last drawn picture is still intact (skipped frames draw nothing)
++// A private copy of the last drawn scanout. Skipped frames still execute
++// large fills and CPU uploads, so holding VRAM coordinates is not enough.
++static C3D_Tex disp_tex;
 +static bool disp_used;
 +static int disp_x, disp_y, disp_w, disp_h;
 +static int stage_y;                   // stage rows used by uploads the GPU hasn't run yet
@@ -2279,7 +2279,9 @@ index 0000000..582839d
 +		if (gouraud && k)
 +			col = w[i++] & 0xffffff;
 +		u32 xy = w[i++];
-+		int x = sext11(sext11(xy) + ps.ox), y = sext11(sext11(xy >> 16) + ps.oy);
++		// Keep relative positions across x=1024/y=1024. The PS1 wraps one
++		// offset for the whole triangle, not each post-offset vertex.
++		int x = sext11(xy) + ps.ox, y = sext11(xy >> 16) + ps.oy;
 +		v[k].x = x;
 +		v[k].y = y;
 +		v[k].rgba = col;
@@ -2321,13 +2323,17 @@ index 0000000..582839d
 +		return;
 +	// finished vertices as three words each, built in cache and stored once
 +	// (never read back from the buffer: the Old 3DS cache fills on reads only).
-+	// Inside the drawing area x * 4 and y * 4 fit the target: no clamping.
++	// Exact target edges need the same quarter-pixel clamp as to_gpu:
++	// PICA cannot represent screen x=1024 or y=512 reliably.
 +	u32 q[4][3];
 +	if (!textured)
 +		du = plain->ax + 24, dv = plain->ay + 8;
 +	for (int k = 0; k < n; k++) {
 +		int u = textured ? v[k].u + du : du, vv = textured ? v[k].v + dv : dv;
-+		q[k][0] = (u32)(v[k].x * 4) | ((u32)(v[k].y * 4) << 16);
++		int x = v[k].x * 4, y = v[k].y * 4;
++		x = x > VRAM_W * 4 - 1 ? VRAM_W * 4 - 1 : x;
++		y = y > VRAM_H * 4 - 1 ? VRAM_H * 4 - 1 : y;
++		q[k][0] = (u32)x | ((u32)y << 16);
 +		q[k][1] = (u32)(u & 0xffff) | ((u32)vv << 16);
 +		q[k][2] = (rawcol ? rawcol : v[k].rgba) | a;
 +	}
@@ -2357,6 +2363,15 @@ index 0000000..582839d
 +		if (x1 - x0 > 1023 || y1 - y0 > 511)
 +			continue;
 +		tri[ntri * 3] = *a; tri[ntri * 3 + 1] = *b; tri[ntri * 3 + 2] = *c;
++		// Like UNAI/neon: wrap the lowest coordinate and translate all
++		// three vertices equally, after the size test. Each quad half can
++		// have a different minimum. Most triangles need no adjustment.
++		int dx = sext11(x0) - x0, dy = sext11(y0) - y0;
++		if (dx || dy)
++			for (int k = 0; k < 3; k++) {
++				tri[ntri * 3 + k].x += dx;
++				tri[ntri * 3 + k].y += dy;
++			}
 +		ntri++;
 +	}
 +	if (!ntri)
@@ -2615,7 +2630,8 @@ index 0000000..582839d
 +
 +void renderer_update_caches(int x, int y, int w, int h, int state_changed)
 +{
-+	(void)state_changed;
++	if (state_changed)
++		disp_used = false;
 +	mark_vram(x, y, w, h);
 +	push_to_target(x, y, w, h);
 +}
@@ -2753,6 +2769,9 @@ index 0000000..582839d
 +static void free_game_buffers(void)
 +{
 +	disp_used = false;
++	if (disp_tex.data)
++		C3D_TexDelete(&disp_tex);
++	memset(&disp_tex, 0, sizeof(disp_tex));
 +	if (atlas[0].tex.data)
 +		C3D_TexDelete(&atlas[0].tex);
 +	if (stage_tex.data)
@@ -2774,6 +2793,11 @@ index 0000000..582839d
 +	(void)small;
 +	if (!C3D_TexInit(&stage_tex, STAGE_W, STAGE_H, GPU_RGBA5551))
 +		goto fail;
++	if (!C3D_TexInit(&disp_tex, VRAM_W, VRAM_H, GPU_RGBA5551))
++		goto fail;
++	// Clean once: the CPU never writes this GPU-owned texture again.
++	GSPGPU_FlushDataCache(disp_tex.data, VRAM_W * VRAM_H * 2);
++	C3D_TexSetFilter(&disp_tex, GPU_NEAREST, GPU_NEAREST);
 +	disp_used = false;
 +	C3D_TexSetFilter(&stage_tex, GPU_NEAREST, GPU_NEAREST);
 +	vbuf = vbuf_base = linearAlloc(MAX_VERTS * sizeof(pvtx));
@@ -2842,11 +2866,35 @@ index 0000000..582839d
 +// frameskip, the shown area is copied so skipped frames keep showing it.
 +void pica_flip(void)
 +{
-+	disp_used = gpu.frameskip.set && !(gpu.status & PSX_GPU_STATUS_RGB24);
++	disp_used = ready && frame_open && gpu.frameskip.set && !(gpu.status & PSX_GPU_STATUS_RGB24)
++		&& gpu.screen.w > 0 && gpu.screen.h > 0;
 +	disp_x = gpu.screen.src_x;
 +	disp_y = gpu.screen.src_y;
 +	disp_w = gpu.screen.w;
 +	disp_h = gpu.screen.h;
++	if (disp_used) {
++		flush();
++		// Queue after the PS1 draws and before any skipped-frame clears.
++		// Copy only the scanout's 8-row tile bands, at the same coordinates
++		// in disp_tex. No readback, CPU pixel copy or GPU wait is needed.
++		int y0 = (disp_y & (VRAM_H - 1)) & ~7;
++		int y1 = (disp_y & (VRAM_H - 1)) + disp_h;
++		if (y1 > VRAM_H) { y0 = 0; y1 = VRAM_H; }
++		y1 = (y1 + 7) & ~7;
++		u32 offset = y0 * VRAM_W * 2, size = (y1 - y0) * VRAM_W * 2;
++		C3D_FrameSplit(0);
++		st_splits++;
++		GX_TextureCopy((u32 *)((u8 *)vram_tex.data + offset), 0,
++			(u32 *)((u8 *)disp_tex.data + offset), 0, size, 8);
++	}
++}
++
++// Finish PS1 work before the frontend prepares Citro2D or binds its target.
++// pica_picture is deliberately a query: both stereo eyes can call it safely.
++void pica_prepare_present(void)
++{
++	flush();
++	clear_tex_cache();
 +}
 +
 +// called by the frontend once per shown frame: the displayed VRAM area.
@@ -2854,9 +2902,9 @@ index 0000000..582839d
 +// PICA_PIC_CPU: 24-bit mode (movies), the core's own picture
 +static unsigned st_pic[3];   // frames shown per PICA_PIC_* result
 +static int pic_x, pic_y, pic_w, pic_h;   // the last area shown
++static C3D_Tex *pic_tex;
 +int pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h)
 +{
-+	flush();
 +	if (!ready || (gpu.status & PSX_GPU_STATUS_RGB24)) {
 +		st_pic[PICA_PIC_CPU]++;
 +		return PICA_PIC_CPU;
@@ -2873,7 +2921,8 @@ index 0000000..582839d
 +		x = disp_x; y = disp_y; sw = disp_w; sh = disp_h;
 +	}
 +	pic_x = x; pic_y = y; pic_w = sw; pic_h = sh;
-+	*tex = &vram_tex;
++	*tex = disp_used && gpu.frameskip.set && !(pica_debug & 32) ? &disp_tex : &vram_tex;
++	pic_tex = *tex;
 +	*l = (float)x / VRAM_W;
 +	*r = (float)(x + sw) / VRAM_W;
 +	*t = 1.0f - (float)y / VRAM_H;
@@ -2913,8 +2962,10 @@ index 0000000..582839d
 +void pica_probe(char *buf, int n)
 +{
 +	int lum = -1;
-+	if (ready && vram_tex.data && pic_w > 0 && pic_h > 0) {
-+		const u16 *src = vram_tex.data;
++	if (ready && pic_tex && pic_tex->data && pic_w > 0 && pic_h > 0) {
++		const u16 *src = pic_tex->data;
++		if (pic_tex == &disp_tex) // linear memory written only by the GPU
++			GSPGPU_InvalidateDataCache(src, VRAM_W * VRAM_H * 2);
 +		int sum = 0;
 +		for (int j = 0; j < 8; j++)
 +			for (int i = 0; i < 8; i++) {
@@ -2949,17 +3000,17 @@ index 0000000..582839d
 +}
 diff --git a/plugins/gpu_pica/gpu_pica.h b/plugins/gpu_pica/gpu_pica.h
 new file mode 100644
-index 0000000..2b8b07c
+index 00000000..13258f79
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.h
-@@ -0,0 +1,23 @@
+@@ -0,0 +1,24 @@
 +/* gpu_pica: PS1 GPU on the 3DS GPU. Frontend interface (PSX3D). */
 +#ifndef GPU_PICA_H
 +#define GPU_PICA_H
 +#include <stdbool.h>
 +#include <citro3d.h>
 +bool pica_init(const void *shbin, unsigned size);   // the frontend's compiled pica.v.pica
-+// buffers for a game (about 6 MB of GPU memory; small: 3.5 MB for an Old 3DS)
++// buffers for a game, including a 1 MB GPU-owned held scanout texture
 +bool pica_game_begin(bool small);
 +void pica_game_end(void);
 +void pica_exit(void);
@@ -2967,6 +3018,7 @@ index 0000000..2b8b07c
 +void pica_frame_started(void);   // a GPU frame is open: drawing can go in
 +void pica_frame_ended(void);
 +void pica_state_lost(void);      // someone else drew with citro3d/citro2d
++void pica_prepare_present(void); // flush PS1 work BEFORE setting up Citro2D/targets
 +// the displayed PS1 picture: texture, edges in texture coordinates (t > b), size
 +enum { PICA_PIC_NONE, PICA_PIC_GPU, PICA_PIC_CPU };
 +int pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h);
@@ -2977,7 +3029,7 @@ index 0000000..2b8b07c
 +extern void (*pica_open_frame)(void);   // opens a GPU frame when drawing starts
 +#endif
 diff --git a/plugins/gpu_unai/gpu_command.h b/plugins/gpu_unai/gpu_command.h
-index adede2b..199882b 100644
+index adede2b5..199882b3 100644
 --- a/plugins/gpu_unai/gpu_command.h
 +++ b/plugins/gpu_unai/gpu_command.h
 @@ -45,13 +45,14 @@ void gpuSetTexture(u16 tpage)
@@ -2998,7 +3050,7 @@ index adede2b..199882b 100644
  
  #ifdef  ENABLE_GPU_NULL_SUPPORT
 diff --git a/plugins/gpu_unai/gpu_raster_polygon.h b/plugins/gpu_unai/gpu_raster_polygon.h
-index 988e721..0876527 100644
+index 988e721f..08765271 100644
 --- a/plugins/gpu_unai/gpu_raster_polygon.h
 +++ b/plugins/gpu_unai/gpu_raster_polygon.h
 @@ -360,18 +360,24 @@ void gpuDrawPolyF(const PtrUnion packet, const PP gpuPolySpanDriver, u32 is_quad
@@ -3118,7 +3170,7 @@ index 988e721..0876527 100644
  		}
  	} while (++cur_pass < total_passes);
 diff --git a/plugins/gpu_unai/gpu_unai.h b/plugins/gpu_unai/gpu_unai.h
-index 2b5daee..acafaaf 100644
+index 2b5daee6..acafaaf4 100644
 --- a/plugins/gpu_unai/gpu_unai.h
 +++ b/plugins/gpu_unai/gpu_unai.h
 @@ -366,6 +366,7 @@ struct gpu_unai_t {
@@ -3130,7 +3182,7 @@ index 2b5daee..acafaaf 100644
  	u8 BLEND_MODE;
  	u8 TEXT_MODE;
 diff --git a/plugins/gpu_unai/gpulib_if.cpp b/plugins/gpu_unai/gpulib_if.cpp
-index 4b9b57e..a7f0c13 100644
+index 4b9b57e6..a7f0c13a 100644
 --- a/plugins/gpu_unai/gpulib_if.cpp
 +++ b/plugins/gpu_unai/gpulib_if.cpp
 @@ -22,10 +22,13 @@
@@ -3713,7 +3765,7 @@ index 4b9b57e..a7f0c13 100644
    ex_regs[1] |= gpu_unai.GPU_GP1 & 0x1ff;
  
 diff --git a/plugins/gpulib/gpu.c b/plugins/gpulib/gpu.c
-index f04e3a5..ed8df46 100644
+index f04e3a55..ed8df462 100644
 --- a/plugins/gpulib/gpu.c
 +++ b/plugins/gpulib/gpu.c
 @@ -1,3 +1,4 @@
@@ -3904,7 +3956,7 @@ index f04e3a5..ed8df46 100644
        memcpy(gpu.ex_regs, freeze->ulControl + 0xe0, sizeof(gpu.ex_regs));
        gpu.status = freeze->ulStatus;
 diff --git a/plugins/gpulib/gpu.h b/plugins/gpulib/gpu.h
-index e929fe6..6368b60 100644
+index e929fe60..6368b604 100644
 --- a/plugins/gpulib/gpu.h
 +++ b/plugins/gpulib/gpu.h
 @@ -170,6 +170,10 @@ int  prim_try_simplify_quad_gt(void *simplified, const void *prim);
@@ -3928,7 +3980,7 @@ index e929fe6..6368b60 100644
  
  /* listing these here for correct linkage if rasterizer uses c++ */
 diff --git a/plugins/gpulib/gpu_async.c b/plugins/gpulib/gpu_async.c
-index a67509b..4f6d259 100644
+index a67509b3..4f6d2599 100644
 --- a/plugins/gpulib/gpu_async.c
 +++ b/plugins/gpulib/gpu_async.c
 @@ -13,6 +13,7 @@
@@ -3951,7 +4003,7 @@ index a67509b..4f6d259 100644
      switch (cmd) {
        case 0x02:
 diff --git a/plugins/gpulib/vout_pl.c b/plugins/gpulib/vout_pl.c
-index 07cf6da..3ad384d 100644
+index 07cf6daa..3ad384d9 100644
 --- a/plugins/gpulib/vout_pl.c
 +++ b/plugins/gpulib/vout_pl.c
 @@ -82,6 +82,15 @@ int vout_update(struct psx_gpu *gpu, int src_x, int src_y)
