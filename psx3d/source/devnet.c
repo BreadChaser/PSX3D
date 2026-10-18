@@ -17,7 +17,7 @@ const char *const dev_columns[DEV_METRICS] = {
     "fps",       "speed_pct",     "emu_ms",  "present_ms", "wait_ms",   "gpu_ms",  "mcycles",
     "ev0_k",     "ev1_k",         "skipped", "late",       "batches",   "prims",   "decodes",
     "evictions", "invalidations", "uploads", "syncs",      "readbacks", "pic_gpu", "pic_none",
-    "lum",       "top_lum",       "xfer_ms", "heap_ms",    "queue_ms",  "gap_ms"};
+    "lum",       "top_lum",       "xfer_ms", "heap_ms",    "queue_ms",  "gap_ms", "front_run_ms", "front_present_ms", "audio_ms", "loop_ms", "pace_ms", "top_count", "bottom_count", "held_count", "ff", "spu_ms", "spu_wait_ms", "skip_level", "drawn_count", "skipped_count", "audio_underruns", "audio_drops", "audio_gap_ms", "pica_cpu_ms", "phase_list_ms", "phase_prim_ms", "phase_tex_ms", "phase_decode_ms", "phase_state_ms", "phase_submit_ms", "phase_read_ms", "phase_vertex_ms", "draw_mcycles", "skip_mcycles", "idle_mcycles", "draw_vblanks", "skip_vblanks", "idle_vblanks", "renderer_mcycles", "renderer_ev0_k", "renderer_ev1_k", "renderer_samples", "draw_ev0_k", "draw_ev1_k", "draw_spu_ms", "draw_spuwait_ms", "draw_pica_ms", "draw_audio_ms", "draw_dma_ms", "skip_ev0_k", "skip_ev1_k", "skip_spu_ms", "skip_spuwait_ms", "skip_pica_ms", "skip_audio_ms", "skip_dma_ms", "idle_ev0_k", "idle_ev1_k", "idle_spu_ms", "idle_spuwait_ms", "idle_pica_ms", "idle_audio_ms", "idle_dma_ms", "draw_fraction"};
 static LightLock lock;
 static Thread worker;
 static u32 *soc_buffer;
@@ -57,7 +57,7 @@ static char *json_string(char *p, const char *s)
 static char *stats_json(void)
 {
 	// Strings can expand 6x under JSON escaping; bounded fixed input fields.
-	char *out = malloc(DEV_HISTORY * 12000 + 128);
+	char *out = malloc(DEV_HISTORY * 20000 + 128);
 	if (!out)
 		return NULL;
 	dev_measurement *snapshot = malloc(DEV_HISTORY * sizeof(*history));

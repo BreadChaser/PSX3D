@@ -169,13 +169,15 @@ bool statsview_touch(void)
 
 bool statsview_redraw(int osd)
 {
-	static int mode = -1, previous_osd;
-	static u32 held;
-	static touchPosition previous_touch;
-	touchPosition touch; hidTouchRead(&touch);
-	u32 keys = hidKeysHeld() & KEY_TOUCH;
-	bool changed = dirty || mode != g_cfg.show_fps || osd || previous_osd || (g_cfg.show_fps == 2 && (keys != held || (keys && (touch.px != previous_touch.px || touch.py != previous_touch.py))));
-	previous_touch = touch;
-	dirty = false; mode = g_cfg.show_fps; previous_osd = osd; held = keys;
+	static int mode = -1;
+	static bool previous_osd;
+	// Static OSD text only needs repaint on appearance/disappearance.
+	// Touch controls have their own invalidation; this panel has no touch
+	// animation. Do not read HID or parse text on idle vblanks.
+	bool visible = osd > 0;
+	bool changed = dirty || mode != g_cfg.show_fps || visible != previous_osd;
+	dirty = false;
+	mode = g_cfg.show_fps;
+	previous_osd = visible;
 	return changed;
 }

@@ -1,0 +1,169 @@
+{
+  "hashes": {
+    "o3auto_skip1": {
+      "matched_frames": 600,
+      "draw_hash": "3f422f8417cb6985",
+      "trace_sha256": "c8ba12c2488a879aad7b4570fbf22ba535ab9afc58984cf13a71c637508d25b4",
+      "logs_sha256": [
+        "6a3987d876fb2cb11cea37fe3760d9f19654f4114a7b1870aa00708086d66b0d",
+        "27f7008e30cf3a100008866d0880a9b6f2e997d884d210834adcb7ba72833784"
+      ],
+      "after": "SIM opens 300 presents 151 draw-vblanks 151 skip-only 150 idle 299 audio 441000 work 6.513ms sleep 0.000ms level 0"
+    },
+    "o3auto_skip4": {
+      "matched_frames": 600,
+      "draw_hash": "5a0482519a931e5b",
+      "trace_sha256": "5bbd26b6b13e765d5d07efc0293cd916153da1a1a358bf21564b90179beee4ea",
+      "logs_sha256": [
+        "8c57a3adaa7fb34f77147db9887a8525f20ad5fe68c00ab6d0f5f51e7af40d9b",
+        "7c08e55d87ad6f41631d4a21777c79c2ad4c6daaec63686463bf29906307b204"
+      ],
+      "after": "SIM opens 121 presents 61 draw-vblanks 61 skip-only 240 idle 299 audio 441000 work 3.847ms sleep 0.000ms level 0"
+    },
+    "ctr_skip1": {
+      "matched_frames": 600,
+      "draw_hash": "63ce7b5db9a28cb2",
+      "trace_sha256": "f0b69d69f6c408a984d0ee3275d6ac14e4a2b732837718d502a221397597cbf1",
+      "logs_sha256": [
+        "a1c2ff14f5d3f36671432f2c22553e40869a2fbd5cba753eb4735093098a201f",
+        "8f3a8df5483d27bfb617ef55dbc333eccd0e94d4c337a403ade7796bebbe50f6"
+      ],
+      "after": "SIM opens 300 presents 151 draw-vblanks 150 skip-only 150 idle 300 audio 441000 work 8.637ms sleep 0.000ms level 0"
+    },
+    "ctr_skip4": {
+      "matched_frames": 600,
+      "draw_hash": "66e02565ffc6d472",
+      "trace_sha256": "75dd51175c9c6f2dcee7521f476852167fc1658d6c03142b84b6ec439243f802",
+      "logs_sha256": [
+        "ae8fb61e800f002bd66f12a2395e4bae03047f2999996ba668aebabac4305dc2",
+        "8a0931840dfc6bb1481bec1da0c693aa2750d25d852985b9ea3283d00a75ab48"
+      ],
+      "after": "SIM opens 120 presents 61 draw-vblanks 60 skip-only 240 idle 300 audio 441000 work 7.344ms sleep 0.000ms level 0"
+    },
+    "gt2_skip1": {
+      "matched_frames": 600,
+      "draw_hash": "9613d1919fd668b4",
+      "trace_sha256": "4dee6db014908357be7aa2125263f7645ab675e8d743fd6a3dad1b43a4eaa332",
+      "logs_sha256": [
+        "5f71c520688cf4217afbcbb4cd1dbf91fc83f004d924020cf16b6766d66e24ea",
+        "820c24669906a907ed40cfdf2f2f2b37f647a017af017c3ebf5eb8c2d48bfa62"
+      ],
+      "after": "SIM opens 301 presents 151 draw-vblanks 301 skip-only 0 idle 299 audio 441000 work 11.846ms sleep 0.000ms level 0"
+    },
+    "gt2_skip4": {
+      "matched_frames": 600,
+      "draw_hash": "8c4782ba3398b28c",
+      "trace_sha256": "8981f1f2104167ab920594c1bd70d6c00ea3d57aaa5f305d2ca3ce8ac49bcb89",
+      "logs_sha256": [
+        "848b9a613e66ab99f5e309a73b995e5abc4b74a6fb9239c9fc63bb5a6c558db1",
+        "2040656822d53c26fa65c7c37c61c71508703dd2cb7fa54d7390527597bb8aee"
+      ],
+      "after": "SIM opens 301 presents 61 draw-vblanks 301 skip-only 0 idle 299 audio 441000 work 7.331ms sleep 0.000ms level 0"
+    }
+  },
+  "timings": {
+    "verified_ctr_after.log": {
+      "elapsed_seconds_rounded": 10.0,
+      "emulated_fps": 60.0,
+      "summary": "SIM opens 300 presents 300 draw-vblanks 300 skip-only 0 idle 300 audio 441000 work 8.131ms sleep 8.487ms level 0",
+      "log_sha256": "8638ca75949a672fe09b329d8cfa907c0c09d034944248ff6d933d7fb771ad2d"
+    },
+    "verified_ctr_before.log": {
+      "elapsed_seconds_rounded": 10.0,
+      "emulated_fps": 60.0,
+      "summary": "SIM opens 600 presents 600 draw-vblanks 300 skip-only 0 idle 300 audio 441000 work 7.414ms sleep 9.211ms level 0",
+      "log_sha256": "3b8f1fdc2c1be0992945df2657f10b209bd38237bbab4468845554db731e34ac"
+    },
+    "verified_gt2_after.log": {
+      "elapsed_seconds_rounded": 10.0,
+      "emulated_fps": 60.0,
+      "summary": "SIM opens 300 presents 300 draw-vblanks 300 skip-only 0 idle 300 audio 441000 work 5.745ms sleep 10.885ms level 0",
+      "log_sha256": "1ed39c4d1cb6f88bf8e3ef84e46db7d9362756d5d1f72abe84bfb6d25a21d098"
+    },
+    "verified_gt2_before.log": {
+      "elapsed_seconds_rounded": 10.0,
+      "emulated_fps": 60.0,
+      "summary": "SIM opens 600 presents 600 draw-vblanks 300 skip-only 0 idle 300 audio 441000 work 10.355ms sleep 6.260ms level 0",
+      "log_sha256": "48a6bc8e21c5821b07a1dc2ef4f5510579931b99568be0acf4fe6592ff725ba9"
+    },
+    "verified_o3auto_after.log": {
+      "elapsed_seconds_rounded": 10.37,
+      "emulated_fps": 57.859,
+      "summary": "SIM opens 300 presents 244 draw-vblanks 244 skip-only 56 idle 300 audio 441000 work 7.491ms sleep 9.723ms level 3",
+      "log_sha256": "62afc6310f1a8e7fbf455acdbac470eb3b22150b7c98b3a894448ed5e1a7b5a4"
+    },
+    "verified_o3auto_before.log": {
+      "elapsed_seconds_rounded": 10.0,
+      "emulated_fps": 60.0,
+      "summary": "SIM opens 600 presents 600 draw-vblanks 299 skip-only 1 idle 300 audio 441000 work 5.012ms sleep 11.613ms level 0",
+      "log_sha256": "e6f8aad11eb91390314902f927f975578d142792d4947992f1912cd5763a77a1"
+    },
+    "verified_slow3_ctr_after.log": {
+      "elapsed_seconds_rounded": 9.97,
+      "emulated_fps": 60.181,
+      "summary": "SIM opens 300 presents 225 draw-vblanks 225 skip-only 75 idle 300 audio 441000 work 12.717ms sleep 3.854ms level 1",
+      "log_sha256": "87617e48a0b4a720da32028c149b6a1549105eb29c7db019c3d2e2fc7b6509b4"
+    },
+    "verified_slow3_ctr_before.log": {
+      "elapsed_seconds_rounded": 10.01,
+      "emulated_fps": 59.94,
+      "summary": "SIM opens 600 presents 600 draw-vblanks 186 skip-only 114 idle 300 audio 441000 work 13.052ms sleep 3.597ms level 0",
+      "log_sha256": "d677aa97964069607c0f7a9d163fdf255138894758a185fa247e0d968f0bb604"
+    },
+    "verified_slow3_gt2_after.log": {
+      "elapsed_seconds_rounded": 10.77,
+      "emulated_fps": 55.71,
+      "summary": "SIM opens 300 presents 60 draw-vblanks 300 skip-only 0 idle 300 audio 441000 work 17.133ms sleep 0.767ms level 6",
+      "log_sha256": "48e4152ba7d858096a1d6ad3869374d2bf67d72500a7d491defde0d1f9db64f9"
+    },
+    "verified_slow3_gt2_before.log": {
+      "elapsed_seconds_rounded": 10.12,
+      "emulated_fps": 59.289,
+      "summary": "SIM opens 600 presents 600 draw-vblanks 300 skip-only 0 idle 300 audio 441000 work 15.316ms sleep 1.522ms level 0",
+      "log_sha256": "4c3fa1ddea1854156e2fa942a050eee2483329b5cba7e329ffbc643c372c4dd2"
+    },
+    "verified_slow3_o3auto_after.log": {
+      "elapsed_seconds_rounded": 10.0,
+      "emulated_fps": 60.0,
+      "summary": "SIM opens 300 presents 225 draw-vblanks 225 skip-only 75 idle 300 audio 441000 work 9.560ms sleep 7.066ms level 1",
+      "log_sha256": "dbdb5eab20130f6aa51be91498043ffc579b53b180d3c880d7bb87335837f776"
+    },
+    "verified_slow3_o3auto_before.log": {
+      "elapsed_seconds_rounded": 10.0,
+      "emulated_fps": 60.0,
+      "summary": "SIM opens 600 presents 600 draw-vblanks 295 skip-only 5 idle 300 audio 441000 work 9.855ms sleep 6.787ms level 0",
+      "log_sha256": "307f48f3302fa81f55ec977b92e862fcb4e8b754e1b795f2b0fe038dc18ceb81"
+    },
+    "retest_ctr_after.log": {
+      "elapsed_seconds_rounded": 10.0,
+      "emulated_fps": 60.0,
+      "summary": "SIM opens 300 presents 300 draw-vblanks 300 skip-only 0 idle 300 audio 441000 work 4.852ms sleep 11.779ms level 0",
+      "log_sha256": "5baa620f081e1023ea7f094e6df70ca2019bacd90b121356843272a0f3ac5cbd"
+    },
+    "retest_gt2_after.log": {
+      "elapsed_seconds_rounded": 10.01,
+      "emulated_fps": 59.94,
+      "summary": "SIM opens 300 presents 300 draw-vblanks 300 skip-only 0 idle 300 audio 441000 work 6.575ms sleep 10.060ms level 0",
+      "log_sha256": "d7edf630fc609cadfc098a4f3d43f744824f2250001bf6d5d43742b2b9df726f"
+    },
+    "retest_o3auto_after.log": {
+      "elapsed_seconds_rounded": 10.0,
+      "emulated_fps": 60.0,
+      "summary": "SIM opens 300 presents 300 draw-vblanks 300 skip-only 0 idle 300 audio 441000 work 3.053ms sleep 13.588ms level 0",
+      "log_sha256": "f0bc5ac6d14911198ee24f3204ace6e24964f102b4a82493778127147de35235"
+    },
+    "retest_stress_o3auto_after.log": {
+      "elapsed_seconds_rounded": 10.14,
+      "emulated_fps": 59.172,
+      "summary": "SIM opens 210 presents 110 draw-vblanks 110 skip-only 190 idle 300 audio 441000 work 11.152ms sleep 5.703ms level 2",
+      "log_sha256": "b1cef168e1904ed16b661e431e557ca3c600f72274a4630d7cb38cd0cc8362ab"
+    }
+  },
+  "executables": {
+    "runner_pica": "975ff9f6196ea56d4de78f2249052e0ed6285af5ca767dee2d007a5c5d423763",
+    "runner_before": "27f90da5829c2cc29c3cddf03ccc9f17b946ff353eb219ff859c854cece0b23c",
+    "runner_after_hash": "0885a3845c8f304900c8d1c0cc65267b8f8b7b90aa6f5becdf545347432426c1",
+    "runner_before_hash": "df27cb9f0e8cf9539e0c263181a6c49a76159794e5ae442b4eb047476990d56a",
+    "runner_after": "975ff9f6196ea56d4de78f2249052e0ed6285af5ca767dee2d007a5c5d423763"
+  }
+}

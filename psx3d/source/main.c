@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include "psx3d.h"
 #include "devtools.h"
+#include "../../core/plugins/gpu_pica/gpu_pica.h"
 
 // Main thread stack; the core warns below 1MB (dynarec recursion).
 u32 __stacksize__ = 0x100000;
@@ -113,6 +114,10 @@ bool sw_sbs;            // test: both eyes side by side
 bool sw_prof;           // log where frame time goes, once a second
 bool sw_stats;          // log fps and renderer counters once a second (no timers)
 bool sw_o3ds;           // test: behave like an Old 3DS (settings not saved)
+bool sw_frontend = true, sw_ff;
+int sw_rtfscap, sw_rtfslevel = -1;
+bool sw_rtfsmodel, sw_rtfswindow, sw_pmuphase, sw_pmuclass, sw_rtfsdense;
+bool sw_rtfs;           // experimental predictive, even-cadence frameskip
 bool sw_fs3;            // test: Old 3DS auto frameskip may skip up to 3 in a row
 bool sw_fs1;            // test: force frameskip, every other frame
 bool sw_noskip;         // test: no frameskip (benchmarks)
@@ -133,6 +138,8 @@ int sw_renderer = -1;    // renderer=sw|gpu overrides global/per-game settings
 bool sw_aa;              // test: Old 3DS: gameplay supersampled too
 bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 
+extern int psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay;
+
 static void parse_switches(int argc, char **argv)
 {
 	for (int i = 1; i < argc; i++) {
@@ -146,7 +153,30 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "stats")) sw_stats = true;
 		else if (!strcmp(a, "o3ds")) sw_o3ds = true;
 		else if (!strcmp(a, "fs1")) sw_fs1 = true;
+		else if (!strcmp(a, "pmuclass=on")) sw_pmuclass = true;
+		else if (!strcmp(a, "pmuclass=off")) sw_pmuclass = false;
+		else if (!strcmp(a, "pmurender=on")) sw_pmuphase = true;
+		else if (!strcmp(a, "pmurender=off")) sw_pmuphase = false;
+		else if (!strcmp(a, "rtfs")) sw_rtfs = true;
+		else if (!strcmp(a, "rtfs=old")) { sw_rtfs = true; sw_rtfswindow = false; }
+		else if (!strcmp(a, "rtfs=dense")) { sw_rtfs = sw_rtfsdense = true; }
+		else if (!strcmp(a, "rtfs=model")) { sw_rtfs = true; sw_rtfsmodel = true; }
+		else if (!strcmp(a, "rtfs=new")) { sw_rtfs = true; sw_rtfswindow = true; }
+		else if (!strncmp(a, "rtfscap=", 8)) { sw_rtfscap = atoi(a + 8); sw_rtfs = true; }
+		else if (!strncmp(a, "rtfslevel=", 10)) { sw_rtfslevel = atoi(a + 10); sw_rtfs = true; }
+		else if (!strcmp(a, "frontend=old")) { sw_frontend = false; sw_gldbg |= 4194304; }
+		else if (!strcmp(a, "frontend=new")) { sw_frontend = true; sw_gldbg &= ~4194304; }
+		else if (!strcmp(a, "audio=old")) sw_floataudio = true;
+		else if (!strcmp(a, "audio=new")) sw_floataudio = false;
+		else if (!strcmp(a, "ff=on")) sw_ff = true;
+		else if (!strcmp(a, "ff=off")) sw_ff = false;
 		else if (!strcmp(a, "fs3")) sw_fs3 = true;
+		else if (!strcmp(a, "idle=off")) psx3d_idle_skip = 0;
+		else if (!strcmp(a, "idle=on")) psx3d_idle_skip = 1;
+		else if (!strcmp(a, "idleptr=off")) psx3d_idle_pointer = 0;
+		else if (!strcmp(a, "idleptr=on")) psx3d_idle_pointer = 1;
+		else if (!strcmp(a, "idledelay=off")) psx3d_idle_delay = 0;
+		else if (!strcmp(a, "idledelay=on")) psx3d_idle_delay = 1;
 		else if (!strcmp(a, "noskip")) sw_noskip = true;
 		else if (!strcmp(a, "nogputhread")) sw_nogputhread = true;
 		else if (!strcmp(a, "gputhread")) sw_nogputhread = false;
@@ -161,6 +191,23 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "rtt=auto")) sw_gldbg &= ~(262144 | 1048576);
 		else if (!strcmp(a, "rttcache=old")) sw_gldbg |= 524288;
 		else if (!strcmp(a, "rttcache=new")) sw_gldbg &= ~524288;
+		else if (!strcmp(a, "submitstate=old")) pica_submit &= ~PICA_SUBMIT_STATE;
+		else if (!strcmp(a, "submitstate=new")) pica_submit |= PICA_SUBMIT_STATE;
+		else if (!strcmp(a, "submitclip=old")) pica_submit &= ~PICA_SUBMIT_CLIP;
+		else if (!strcmp(a, "submitclip=new")) pica_submit |= PICA_SUBMIT_CLIP;
+		else if (!strcmp(a, "submittex=old")) pica_submit &= ~PICA_SUBMIT_TEX;
+		else if (!strcmp(a, "submittex=new")) pica_submit |= PICA_SUBMIT_TEX;
+		else if (!strcmp(a, "pica_prims_old")) pica_prims = 0;
+		else if (!strcmp(a, "pica_prims_fast")) pica_prims = 7;
+		else if (!strcmp(a, "pica_prims_copy")) pica_prims |= 1;
+		else if (!strcmp(a, "pica_prims_clip")) pica_prims |= 2;
+		else if (!strcmp(a, "pica_prims_round")) pica_prims |= 4;
+		else if (!strcmp(a, "skipgate=old")) psx3d_skipgate = 0;
+		else if (!strcmp(a, "skipgate=new")) psx3d_skipgate = 1;
+		else if (!strcmp(a, "texmemo=old")) pica_texmemo = false;
+		else if (!strcmp(a, "texmemo=new")) pica_texmemo = true;
+		else if (!strcmp(a, "texmask=old")) pica_texmask = false;
+		else if (!strcmp(a, "texmask=new")) pica_texmask = true;
 		else if (!strncmp(a, "gldbg=", 6)) sw_gldbg = atoi(a + 6);
 		else if (!strncmp(a, "vramdump=", 9)) sw_vramdump = atoi(a + 9);
 		else if (!strncmp(a, "pmu=", 4)) sscanf(a + 4, "%x,%x", (unsigned *)&sw_pmu0, (unsigned *)&sw_pmu1);
@@ -300,7 +347,6 @@ int main(int argc, char **argv)
 	log_printf("switches: csnd=%d nonet=%d nosound=%d noirrst=%d noaa=%d nolcd=%d nocovers=%d\n",
 		sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers);
 
-	if (dev_remote) sw_nocovers = true; // SOC belongs to the control server
 	config_load();
 	if (!video_init()) {
 		log_printf("video_init failed\n");
@@ -392,6 +438,9 @@ int main(int argc, char **argv)
 			break;
 	}
 
+	// Remote UI captures may have enabled curl on the control server's SOC.
+	// Close its connections before dev_shutdown releases that shared session.
+	covers_stop_wait();
 	dev_shutdown();
 	// each step is logged: a hang at exit shows up as the last line
 	log_printf("exit: config\n");

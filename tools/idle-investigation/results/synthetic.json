@@ -1,0 +1,112 @@
+[
+  {
+    "name": "delay-1",
+    "skipped_cycles": 0,
+    "status": "pass",
+    "checks": [
+      "METRIC frame=300 cycles=169293683 ram=918708b9463e646c audio=574aff2bb9351f43 samples=220436",
+      "METRIC frame=600 cycles=338637683 ram=e372b894072875eb audio=79744e49402cf703 samples=440936",
+      "draw hash a490883905778e60",
+      "state hash 1ad4ac9ef9dae603 (4456448 bytes)"
+    ]
+  },
+  {
+    "name": "delay-2",
+    "skipped_cycles": 0,
+    "status": "pass",
+    "checks": [
+      "METRIC frame=300 cycles=169293683 ram=54648b75dc2be400 audio=574aff2bb9351f43 samples=220436",
+      "METRIC frame=600 cycles=338637683 ram=11820ddb719863d3 audio=79744e49402cf703 samples=440936",
+      "draw hash a490883905778e60",
+      "state hash f54326da290f61b5 (4456448 bytes)"
+    ]
+  },
+  {
+    "name": "delay-9",
+    "skipped_cycles": 210830395,
+    "status": "pass",
+    "checks": [
+      "METRIC frame=300 cycles=169293683 ram=85dba4663ce9e2d3 audio=574aff2bb9351f43 samples=220436",
+      "METRIC frame=600 cycles=338637683 ram=8e35f1e7dce8b891 audio=79744e49402cf703 samples=440936",
+      "draw hash a490883905778e60",
+      "state hash 24691ea896ac606b (4456448 bytes)"
+    ]
+  },
+  {
+    "name": "delay-65",
+    "skipped_cycles": 311525900,
+    "status": "pass",
+    "checks": [
+      "METRIC frame=300 cycles=169293683 ram=92d06067f09543fd audio=574aff2bb9351f43 samples=220436",
+      "METRIC frame=600 cycles=338637683 ram=a262547961bfe987 audio=79744e49402cf703 samples=440936",
+      "draw hash a490883905778e60",
+      "state hash bc97cf532dbebfc1 (4456448 bytes)"
+    ]
+  },
+  {
+    "name": "delay-10000",
+    "skipped_cycles": 331172865,
+    "status": "pass",
+    "checks": [
+      "METRIC frame=300 cycles=169293683 ram=f4dd227330f92348 audio=574aff2bb9351f43 samples=220436",
+      "METRIC frame=600 cycles=338637683 ram=fe93256771be7f9b audio=79744e49402cf703 samples=440936",
+      "draw hash a490883905778e60",
+      "state hash b13748ab0ecd48d7 (4456448 bytes)"
+    ]
+  },
+  {
+    "name": "delay-0",
+    "skipped_cycles": 331305340,
+    "status": "pass",
+    "checks": [
+      "METRIC frame=300 cycles=169293683 ram=4dc8247c6df5a91f audio=574aff2bb9351f43 samples=220436",
+      "METRIC frame=600 cycles=338637683 ram=4dc8247c6df5a91f audio=79744e49402cf703 samples=440936",
+      "draw hash a490883905778e60",
+      "state hash 06257223213bb2ff (4456448 bytes)"
+    ]
+  },
+  {
+    "name": "delay--1",
+    "skipped_cycles": 331305340,
+    "status": "pass",
+    "checks": [
+      "METRIC frame=300 cycles=169293683 ram=52ef9098eda8b7f1 audio=574aff2bb9351f43 samples=220436",
+      "METRIC frame=600 cycles=338637683 ram=52ef9098eda8b7f1 audio=79744e49402cf703 samples=440936",
+      "draw hash a490883905778e60",
+      "state hash 0632ee63f82e4902 (4456448 bytes)"
+    ]
+  },
+  {
+    "name": "pointer",
+    "skipped_cycles": 325881426,
+    "status": "pass",
+    "checks": [
+      "METRIC frame=300 cycles=169293688 ram=d0e7bc742641ab84 audio=574aff2bb9351f43 samples=220436",
+      "METRIC frame=600 cycles=338637686 ram=7bec986b5ecffa97 audio=79744e49402cf703 samples=440936",
+      "draw hash a490883905778e60",
+      "state hash 9e1135a3c54fab46 (4456448 bytes)"
+    ]
+  },
+  {
+    "name": "io-pointer",
+    "skipped_cycles": 0,
+    "status": "pass",
+    "checks": [
+      "METRIC frame=300 cycles=169293682 ram=4ee2165a0bbbf003 audio=574aff2bb9351f43 samples=220436",
+      "METRIC frame=600 cycles=338637688 ram=4ee2165a0bbbf003 audio=79744e49402cf703 samples=440936",
+      "draw hash a490883905778e60",
+      "state hash 6abe3a0381e4946c (4456448 bytes)"
+    ]
+  },
+  {
+    "name": "stored-poll",
+    "skipped_cycles": 0,
+    "status": "pass",
+    "checks": [
+      "METRIC frame=300 cycles=169293686 ram=ce0370bec2c2b643 audio=574aff2bb9351f43 samples=220436",
+      "METRIC frame=600 cycles=338637694 ram=16d8a1a914075b04 audio=79744e49402cf703 samples=440936",
+      "draw hash a490883905778e60",
+      "state hash 2f48188612d5ae95 (4456448 bytes)"
+    ]
+  }
+]

@@ -7,12 +7,15 @@
 #ifdef PICA
 #include "citro3d.h"
 #include "plugins/gpu_pica/gpu_pica.h"
+#include "plugins/gpulib/psx3d_frameskip.h"
+psx3d_skip_state psx3d_skip;
 extern int pica_debug;
 #endif
 #ifdef GPU_COMPARE_ALT_REFERENCE
 // The portable gpu_neon backend uses this only for allocation diagnostics.
 void SysPrintf(const char *fmt, ...) { (void)fmt; }
 #endif
+int psx3d_skipgate = 1;
 struct psx_gpu gpu;
 unsigned sim_c3d_draws;
 static uint16_t vram[1024*1024]; /* peops uses extra guard space */
@@ -67,6 +70,11 @@ int main(int argc,char **argv)
 #ifdef PICA
     unsigned shader=0; assert(pica_init(&shader,4)); assert(pica_game_begin(true));
     if(getenv("PICA_DEBUG"))pica_debug=atoi(getenv("PICA_DEBUG"));
+    if(getenv("PICA_SUBMIT"))pica_submit=strtoul(getenv("PICA_SUBMIT"),NULL,0);
+    if(getenv("PICA_PRIMS"))pica_prims=strtoul(getenv("PICA_PRIMS"),NULL,0);
+    extern bool pica_texmask, pica_texmemo;
+    if(getenv("TEXMASK"))pica_texmask=atoi(getenv("TEXMASK"));
+    if(getenv("TEXMEMO"))pica_texmemo=atoi(getenv("TEXMEMO"));
     pica_frame_started();
 #endif
     uint32_t ex[8]={0}; int rect[5]={0}; unsigned header[2];
@@ -142,6 +150,12 @@ int main(int argc,char **argv)
 #endif
             break;
         }
+        case 9: // Synthetic state-replacement barrier, before the VRAM upload.
+            assert(bytes==0);
+#ifdef PICA
+            { void pica_drop_fills(void); pica_drop_fills(); }
+#endif
+            break;
         case 7: // Synthetic option-change fixtures; captures do not emit this.
             assert(bytes==4); cbs.dithering=*(uint32_t*)data;
             renderer_set_config(&cbs); break;

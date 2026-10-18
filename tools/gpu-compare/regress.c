@@ -1,12 +1,16 @@
 /* Host regressions for polygon coordinate overflow and held-frame lifetime. */
 #include "plugins/gpulib/gpu.h"
+#include "plugins/gpulib/psx3d_frameskip.h"
 #include "frontend/plugin_lib.h"
 #include "plugins/gpu_pica/gpu_pica.h"
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
+int psx3d_skipgate = 1;
 struct psx_gpu gpu;
+psx3d_skip_state psx3d_skip;
 unsigned sim_c3d_draws;
 static uint16_t vram[1024 * 512];
 void pica_flip(void);
@@ -43,11 +47,34 @@ static void pixel(int x,int y,bool red)
 
 int main(void)
 {
+    extern int pica_debug;
+    const char *debug = getenv("GPU_DEBUG");
+    if (debug) pica_debug = strtol(debug, NULL, 0);
+    const char *submit = getenv("PICA_SUBMIT");
+    if (submit) pica_submit = strtoul(submit, NULL, 0);
+    const char *prims = getenv("PICA_PRIMS");
+    if (prims) pica_prims = strtoul(prims, NULL, 0);
     gpu.vram=vram;
     renderer_init();
     unsigned shader=0;
     assert(pica_init(&shader,4) && pica_game_begin(true));
     pica_frame_started();
+
+    // A blocked skip must return at E3 so gpulib can reconsider the area.
+    // Preserve the entire batch when its presentation is still pending.
+    u32 boundary[]={0xe3000000,0xe4000000|319|(239<<10)};
+    for(int pending=0;pending<2;pending++) {
+        u32 ex[8]={0}; int sum=0,last=0,cmd=0;
+        gpu.frameskip.active=1; gpu.frameskip.allow=0;
+        gpu.frameskip.frame_ready=pending;
+        assert(renderer_do_cmd_list(boundary,2,ex,&sum,&last,&cmd)==(pending?2:1));
+        assert(sum==0 && last==0);
+    }
+    psx3d_skipgate=0;
+    u32 ex[8]={0}; int sum=0,last=0,cmd=0;
+    gpu.frameskip.frame_ready=0;
+    assert(renderer_do_cmd_list(boundary,2,ex,&sum,&last,&cmd)==2);
+    psx3d_skipgate=1; gpu.frameskip.active=0;
 
     // Equivalent polygons cross both edges of both Crash framebuffers.
     // The right-buffer right edge used to wrap vertices separately and

@@ -9,6 +9,7 @@
 #include <math.h>
 #include <sys/stat.h>
 #include "psx3d.h"
+#include "devtools.h"
 
 #define SLOTS 10
 #define TW 256          // thumbnail size, 4:3
@@ -273,6 +274,7 @@ int states_run(bool saving, const char *prefix, const char *title, int *slot)
 
 	int result = -1;
 	while (aptMainLoop()) {
+		if (dev_tick(true) || dev_ui_pending()) break;
 		input_poll();
 		u32 k = input_keys_down();
 		int before = b.sel;

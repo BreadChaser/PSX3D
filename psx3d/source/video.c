@@ -5,6 +5,7 @@
 // of the draw, while the core is already rendering the next one into the
 // other buffer; the CPU never waits for the copy.
 #include <string.h>
+#include <stdlib.h>
 #include "psx3d.h"
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
 #include "pica_shbin.h"
@@ -47,6 +48,7 @@ static int fb_cur;           // buffer the core renders into next
 static u16 *pending;         // finished frame waiting to be copied to the texture
 static unsigned frame_w = 320, frame_h = 240;
 static bool have_frame;
+static bool gpu_frame;
 static u64 wait_ticks, xfer_ticks;
 // test stats: GPU time per frame, and CPU time from FrameEnd to the next FrameBegin
 static float gpu_ms;
@@ -325,11 +327,58 @@ void video_frame(const void *data, unsigned width, unsigned height, size_t pitch
 	}
 }
 
+// Copy the same texture/scanout draw_game presents, including the held
+// frameskip picture. Never read VRAM directly from the CPU. A raw GPU copy
+// retains its Morton layout; only the thumbnail's samples need untile/convert.
+static bool snapshot_gpu(u16 *out, int w, int h, C3D_Tex *tex,
+                         float left, float top, float width, float height)
+{
+	// A physical pause can arrive between retro_run and video_present.
+	// Submit that frame before reading its texture or querying GPU completion.
+	if (gpu_frame) video_present(true, NULL, NULL, NULL);
+	video_gpu_idle();
+	u16 *pixels = linearAlloc(tex->size);
+	if (!pixels) return false;
+	GSPGPU_FlushDataCache(pixels, tex->size);
+	C3D_SyncTextureCopy(tex->data, 0, (u32 *)pixels, 0, tex->size, 8);
+	GSPGPU_InvalidateDataCache(pixels, tex->size);
+	int x0 = (int)(left * tex->width + 0.5f);
+	int y0 = (int)((1.0f - top) * tex->height + 0.5f);
+	for (int y = 0; y < h; y++) {
+		for (int x = 0; x < w; x++) {
+			unsigned r = 0, g = 0, b = 0;
+			for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) {
+				unsigned sx = (x0 + (int)((x + 0.25f + 0.5f * i) * width / w)) % tex->width;
+				unsigned sy = (y0 + (int)((y + 0.25f + 0.5f * j) * height / h)) % tex->height;
+				unsigned tile = (((sy >> 3) * (tex->width >> 3) + (sx >> 3)) << 6) |
+					(sx & 1) | ((sy & 1) << 1) | ((sx & 2) << 1) |
+					((sy & 2) << 2) | ((sx & 4) << 2) | ((sy & 4) << 3);
+				u16 p = pixels[tile]; // GPU_RGBA5551; alpha is the PS1 mask bit
+				r += p >> 11; g += (p >> 6) & 31; b += (p >> 1) & 31;
+			}
+			unsigned green = g / 4;
+			out[y * w + x] = ((r / 4) << 11) | ((green * 2 + (green >> 4)) << 5) | (b / 4);
+		}
+	}
+	linearFree(pixels);
+	return true;
+}
+
 // Shrink the last finished game frame to w x h (RGB565) for a save state
 // thumbnail. Each output pixel averages 2x2 samples of its source area.
 bool video_snapshot(u16 *out, int w, int h)
 {
 	pica_thread_sync();
+	if (!out || w <= 0 || h <= 0) return false;
+	if (renderer_is_gpu()) {
+		C3D_Tex *picture;
+		float l, t, r, b, pw, ph;
+		int pic = pica_picture(&picture, &l, &t, &r, &b, &pw, &ph);
+		if (pic == PICA_PIC_GPU)
+			return snapshot_gpu(out, w, h, picture, l, t, pw, ph);
+		if (pic == PICA_PIC_NONE) return false;
+		// RGB24 movies use the software framebuffer even in GPU mode.
+	}
 	if (!have_frame)
 		return false;
 	const u16 *src = fbs[fb_cur ^ 1];   // fb_cur is the one being drawn next
@@ -435,8 +484,8 @@ static void draw_game(float eye_dx)
 }
 
 // One GPU frame per shown frame. The hardware renderer draws into it
-// while the core runs, so emu.c opens it before retro_run; video_present
-// uses the same frame.
+// while the core runs, opening it lazily for required draws/uploads.
+// video_present uses that same frame; idle retained pictures open none.
 static bool gpu_frame;
 
 void video_gpu_frame_begin(void)
@@ -470,21 +519,21 @@ void video_gpu_idle(void)
 }
 
 struct present_request {
-	bool show_game;
+	bool show_game, repaint_top;
 	void (*draw_top)(void *), (*draw_bottom)(void *);
 	void *ud;
 };
 static void present_on_gpu_thread(void *data)
 {
 	struct present_request *r = data;
-	video_present(r->show_game, r->draw_top, r->draw_bottom, r->ud);
+	video_present_screens(r->show_game, r->repaint_top, r->draw_top, r->draw_bottom, r->ud);
 }
 
-void video_present(bool show_game, void (*draw_top)(void *),
+void video_present_screens(bool show_game, bool repaint_top, void (*draw_top)(void *),
 	void (*draw_bottom)(void *), void *ud)
 {
 	if (pica_thread_call) {
-		struct present_request r = { show_game, draw_top, draw_bottom, ud };
+		struct present_request r = { show_game, repaint_top, draw_top, draw_bottom, ud };
 		if (pica_thread_call(present_on_gpu_thread, &r)) return;
 	}
 	// no vsync wait here: emu.c paces frames; this only waits for the GPU
@@ -505,76 +554,78 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	if (video_pre_draw && !show_game)
 		video_pre_draw();
 
-	// queued on the GPU ahead of the draw below, so it never stalls the CPU
-	// only the rows the frame uses (a multiple of 8, for the tiling): a
-	// full 1024x512 copy every frame took GPU time and memory bandwidth
-	u32 rows = (frame_h + 7) & ~7u;
-	if (rows > TEX_H)
-		rows = TEX_H;
-	if (pending) {
-		GX_DisplayTransfer((u32 *)pending, GX_BUFFER_DIM(TEX_W, rows),
-			(u32 *)tex.data, GX_BUFFER_DIM(TEX_W, rows), TRANSFER_FLAGS);
-		pending = NULL;
-	}
+	if (repaint_top) {
+		// queued on the GPU ahead of the draw below, so it never stalls the CPU
+		// only the rows the frame uses (a multiple of 8, for the tiling): a
+		// full 1024x512 copy every frame took GPU time and memory bandwidth
+		u32 rows = (frame_h + 7) & ~7u;
+		if (rows > TEX_H)
+			rows = TEX_H;
+		if (pending) {
+			GX_DisplayTransfer((u32 *)pending, GX_BUFFER_DIM(TEX_W, rows),
+				(u32 *)tex.data, GX_BUFFER_DIM(TEX_W, rows), TRANSFER_FLAGS);
+			pending = NULL;
+		}
 
-	// Stereo 3D "screen depth": the game picture sits behind the screen,
-	// PSX3D's overlays (FPS, messages) stay on the screen surface. Each eye
-	// sees the picture shifted the opposite way.
-	float slider = slider_get();
-	bool ui3d = !show_game && ui_wants_3d && g_cfg.stereo && slider > 0.01f;
-	bool stereo = (show_game && g_cfg.stereo && slider > 0.01f) || ui3d;
-	// layers span depth -1.2..3: keep the whole range within a few pixels
-	ui_parallax = ui3d ? slider * 1.5f : 0.0f;
-	if (stereo != stereo_on) {
-		gfxSet3D(stereo);
-		stereo_on = stereo;
-	}
-	float depth = stereo ? slider * MAX_DEPTH_PX : 0.0f;
-	// real 3D: the core drew each eye separately; tell it how strong
-	psx3d_set_strength(show_game && !renderer_is_gpu() && stereo && g_cfg.stereo == 2 ? slider * MAX_REAL_PX : 0.0f);
-	if (right_pending) {
-		GX_DisplayTransfer((u32 *)right_lin, GX_BUFFER_DIM(TEX_W, rows),
-			(u32 *)tex_r.data, GX_BUFFER_DIM(TEX_W, rows), TRANSFER_FLAGS);
-		right_pending = false;
-	}
-	bool real = show_game && stereo && g_cfg.stereo == 2 && have_frame && right_ok;
+		// Stereo 3D "screen depth": the game picture sits behind the screen,
+		// PSX3D's overlays (FPS, messages) stay on the screen surface. Each eye
+		// sees the picture shifted the opposite way.
+		float slider = slider_get();
+		bool ui3d = !show_game && ui_wants_3d && g_cfg.stereo && slider > 0.01f;
+		bool stereo = (show_game && g_cfg.stereo && slider > 0.01f) || ui3d;
+		// layers span depth -1.2..3: keep the whole range within a few pixels
+		ui_parallax = ui3d ? slider * 1.5f : 0.0f;
+		if (stereo != stereo_on) {
+			gfxSet3D(stereo);
+			stereo_on = stereo;
+		}
+		float depth = stereo ? slider * MAX_DEPTH_PX : 0.0f;
+		// real 3D: the core drew each eye separately; tell it how strong
+		psx3d_set_strength(show_game && !renderer_is_gpu() && stereo && g_cfg.stereo == 2 ? slider * MAX_REAL_PX : 0.0f);
+		if (right_pending) {
+			GX_DisplayTransfer((u32 *)right_lin, GX_BUFFER_DIM(TEX_W, rows),
+				(u32 *)tex_r.data, GX_BUFFER_DIM(TEX_W, rows), TRANSFER_FLAGS);
+			right_pending = false;
+		}
+		bool real = show_game && stereo && g_cfg.stereo == 2 && have_frame && right_ok;
 
-	// gameplay at 1x on Old 3DS, menus supersampled
-	bool plain = renderer_is_gpu() && plain_ok && show_game && !in_menu_call;
-	if (plain != plain_now) {
-		top_set_plain(top, GFX_LEFT, plain);
-		top_set_plain(top_r, GFX_RIGHT, plain);
-		plain_now = plain;
-	}
-	C3D_RenderTarget *tl = top, *tr = top_r;
-	C2D_TargetClear(tl, C2D_Color32(0, 0, 0, 255));
-	top_begin(tl);
-	if (real && sw_sbs) {
-		// test: both eyes side by side (left | right), each squeezed to half width
-		C2D_Image l = { &tex, &subtex }, r = { &tex_r, &subtex };
-		draw_game(0.0f);   // sets up subtex
-		C2D_DrawRectSolid(0, 0, 0.55f, 400, 240, C2D_Color32(0, 0, 0, 255));
-		C2D_DrawImageAt(l, 0, 0, 0.6f, NULL, 200.0f / frame_w, 240.0f / frame_h);
-		C2D_DrawImageAt(r, 200, 0, 0.6f, NULL, 200.0f / frame_w, 240.0f / frame_h);
-	} else if (real)
-		draw_game_tex(sw_showright ? &tex_r : &tex, 0.0f);   // left eye: the core already moved everything
-	else if (show_game)
-		draw_game(-depth);
-	ui_eye = ui3d ? -1 : 0;
-	if (draw_top)
-		draw_top(ud);
-
-	if (stereo) {
-		C2D_TargetClear(tr, C2D_Color32(0, 0, 0, 255));
-		top_begin(tr);
-		if (real)
-			draw_game_tex(&tex_r, 0.0f);
+		// gameplay at 1x on Old 3DS, menus supersampled
+		bool plain = renderer_is_gpu() && plain_ok && show_game && !in_menu_call;
+		if (plain != plain_now) {
+			top_set_plain(top, GFX_LEFT, plain);
+			top_set_plain(top_r, GFX_RIGHT, plain);
+			plain_now = plain;
+		}
+		C3D_RenderTarget *tl = top, *tr = top_r;
+		C2D_TargetClear(tl, C2D_Color32(0, 0, 0, 255));
+		top_begin(tl);
+		if (real && sw_sbs) {
+			// test: both eyes side by side (left | right), each squeezed to half width
+			C2D_Image l = { &tex, &subtex }, r = { &tex_r, &subtex };
+			draw_game(0.0f);   // sets up subtex
+			C2D_DrawRectSolid(0, 0, 0.55f, 400, 240, C2D_Color32(0, 0, 0, 255));
+			C2D_DrawImageAt(l, 0, 0, 0.6f, NULL, 200.0f / frame_w, 240.0f / frame_h);
+			C2D_DrawImageAt(r, 200, 0, 0.6f, NULL, 200.0f / frame_w, 240.0f / frame_h);
+		} else if (real)
+			draw_game_tex(sw_showright ? &tex_r : &tex, 0.0f);   // left eye: the core already moved everything
 		else if (show_game)
-			draw_game(depth);
-		ui_eye = ui3d ? 1 : 0;
+			draw_game(-depth);
+		ui_eye = ui3d ? -1 : 0;
 		if (draw_top)
 			draw_top(ud);
-		ui_eye = 0;
+
+		if (stereo) {
+			C2D_TargetClear(tr, C2D_Color32(0, 0, 0, 255));
+			top_begin(tr);
+			if (real)
+				draw_game_tex(&tex_r, 0.0f);
+			else if (show_game)
+				draw_game(depth);
+			ui_eye = ui3d ? 1 : 0;
+			if (draw_top)
+				draw_top(ud);
+			ui_eye = 0;
+		}
 	}
 
 	if (draw_bottom) {
@@ -590,6 +641,33 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	gpu_frame = false;
 	if (renderer_is_gpu())
 		pica_frame_ended();
+}
+
+// Menus and legacy callers repaint both requested screens.
+void video_present(bool show_game, void (*draw_top)(void *),
+	void (*draw_bottom)(void *), void *ud)
+{
+	video_present_screens(show_game, true, draw_top, draw_bottom, ud);
+}
+
+// Called after the worker is synchronized. Software/RGB24 callbacks leave
+// a pending upload; GPU 16-bit callbacks are NULL and use renderer serials.
+bool video_display_changed(void)
+{
+	bool gpu_changed = renderer_is_gpu() && pica_display_changed();
+	return pending || right_pending || gpu_changed;
+}
+
+// Submit required offscreen work without composing or swapping LCD targets.
+static void hold_on_gpu_thread(void *unused) { (void)unused; video_hold(); }
+void video_hold(void)
+{
+	if (pica_thread_call && pica_thread_call(hold_on_gpu_thread, NULL)) return;
+	if (!gpu_frame) return;
+	C3D_FrameEnd(0);
+	frame_end_tick = svcGetSystemTick();
+	gpu_frame = false;
+	pica_frame_ended();
 }
 
 // UI screens (browser, menus): one frame per refresh. In game, emu.c paces

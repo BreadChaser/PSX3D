@@ -227,3 +227,58 @@ reads, CLUT reads, eviction, invalidation, growth, vertices and staging. `prev`
 counts previous-frame texture/upload waits separately. See
 [the round-two report](../../docs/gpu-rtt-round2.md) for measurements and console
 A/B commands.
+
+## Primitive investigation probes
+
+See [the primitive report](../../docs/gpu-primitive-investigation.md) for the
+six-state measurements, limits and named hardware switches. Native replay uses
+`PICA_PRIMS=0` for old paths, `1` for copies, `2` for clip-plane skipping, `4`
+for VFP rounding and `7` for all. Set it separately from `PICA_DEBUG`.
+
+`primitive-bench.c` repeatedly submits one GP0 packet to the ARM fake SDK.
+After building/copying the simulator into a private directory, generate
+`commands.h` with `build.sh`'s extraction step. From the repository root:
+
+```bash
+source /home/tony/Development/PS1_3ds/devtools/env.sh
+probe=/tmp/inv-prims-sim
+arm-linux-gnueabihf-gcc -O2 -g -march=armv6k -mtune=mpcore -mfpu=vfp \
+  -mfloat-abi=hard -marm -ffast-math -DARM11 -DPSX3D_SIM -DGPU_PICA \
+  -DUSE_GPULIB=1 -I"$probe/fake3ds" -Icore/include \
+  -c core/plugins/gpu_pica/gpu_pica.c -o "$probe/micro-candidate.o"
+arm-linux-gnueabihf-gcc -O2 -g -march=armv6k -mtune=mpcore -mfpu=vfp \
+  -mfloat-abi=hard -marm -Icore -I"$probe/fake3ds" -I"$probe" \
+  tools/gpu-compare/primitive-bench.c "$probe/micro-candidate.o" \
+  -static -lm -o "$probe/micro-candidate"
+```
+
+Use the matching `fake3ds` archived with the investigation: the older simulator
+headers need additional enum/stub definitions for this release. For pristine
+costs, compile the baseline renderer instead of the candidate. The benchmark's
+weak switch variable also links against the baseline. Run two lengths to remove
+initialization/texture-decode work:
+
+```bash
+qemu=/home/tony/Development/PS1_3ds/devtools/dl/qemu-full/build/qemu-arm
+for n in 1000 2000; do
+  CACHESIM_OUT="$probe/micro-$n.txt" "$qemu" \
+    -plugin "$probe/plugin/libcachesim.so" "$probe/micro-candidate" 0x34 "$n" 0
+done
+python3 tools/gpu-compare/primitive-profile.py "$probe/micro-candidate" \
+  "$probe/micro-1000.txt" "$probe/micro-2000.txt" --units 1000
+```
+
+`CLIP=1` intersects the packet with the drawing area's top/left. The final
+argument selects the primitive mask. This warm-cache probe measures CPU work;
+fake citro3d calls do not simulate console draw cost. `primitive-profile.py`
+also accepts game snapshots with `--units 300` for per-vblank accounting.
+`clip-round-arm.c` documents its standalone ARM build and checks bounded VFP
+rounding against `lrintf` under all four rounding modes.
+### Texture request memo stress
+
+`python tools/gpu-compare/texmemo.py --replay BUILD/replay-pica --output BUILD/memo`
+compares `TEXMASK=0/1` and `TEXMEMO=0/1` under CLUT collisions, atlas eviction,
+square growth, uploads, texture windows and state replacement. It checks full
+VRAM, scanout and delayed atlas/staging ownership. Synthetic trace tag 9 is a
+zero-byte state-replacement barrier: PICA drops deferred fills and readback
+tracking as gpulib does before replacing VRAM. Captures do not emit this tag.

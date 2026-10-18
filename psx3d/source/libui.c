@@ -551,6 +551,7 @@ static void settings_run(void)
 	st.fl.init = false;
 	sfx_play(SFX_SELECT);
 	while (aptMainLoop()) {
+		if (dev_tick(false) || dev_ui_pending()) break;
 		input_poll();
 		u32 k = input_keys_down();
 		if (st.controls) {
@@ -719,6 +720,8 @@ int libui_run(char *out_path, size_t len)
 			ui_wants_3d = false;
 			return 3;
 		}
+		int screen = dev_ui_take();
+		if (screen == DEV_UI_SETTINGS) { settings_run(); continue; }
 		input_poll();
 		u32 k = input_keys_down(), h = input_keys_held();
 		n = nview;

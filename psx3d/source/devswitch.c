@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 extern float sw_slider;
+extern unsigned pica_submit;
+extern int psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay;
 extern bool sw_aa, sw_showright, sw_sbs;
 void debug_parse_switch(const char *word);
 
@@ -11,6 +13,16 @@ void debug_parse_switch(const char *word);
 // remain startup-only: changing SOC/audio allocation mid-session is unsafe.
 bool switches_set(const char *word)
 {
+	if (!strncmp(word, "rtfscap=", 8)) {
+        char *end; long n = strtol(word+8, &end, 10);
+        if (!word[8] || *end || n < 4 || n > 5) return false;
+        sw_rtfscap = n; sw_rtfs = true; return true;
+    }
+	if (!strncmp(word, "rtfslevel=", 10)) {
+		char *end; long n = strtol(word+10, &end, 10);
+		if (!word[10] || *end || n < 0 || n > 7) return false;
+		sw_rtfslevel = n; sw_rtfs = true; return true;
+	}
 	if (!strncmp(word, "frameskip=", 10)) {
 		const char *v = word + 10;
 		if (strcmp(v, "off") && strcmp(v, "on") && strcmp(v, "auto"))
@@ -60,7 +72,7 @@ bool switches_set(const char *word)
 	static const char *flags[] = {"prof",         "stats",     "fs1",         "fs3",  "noskip",
 	                              "nogputhread",  "gputhread", "nosputhread", "acap", "renderer=sw",
 	                              "renderer=gpu", "state0",    "showright",   "sbs",  "gpuasync",
-	                              "nogpuasync",   "gpuflush",  "nogpuflush",  "aa", "rtt=old", "rtt=new", "rtt=auto", "rttcache=old", "rttcache=new"};
+	                              "nogpuasync",   "gpuflush",  "nogpuflush",  "aa", "rtt=old", "rtt=new", "rtt=auto", "rttcache=old", "rttcache=new", "rtfs", "rtfs=old", "rtfs=new", "rtfs=model", "rtfs=dense", "frontend=old", "frontend=new", "audio=old", "audio=new", "ff=on", "ff=off", "submitstate=old", "submitstate=new", "submitclip=old", "submitclip=new", "submittex=old", "submittex=new", "pmuclass=on", "pmuclass=off", "pmurender=on", "pmurender=off", "pica_prims_old", "pica_prims_fast", "pica_prims_copy", "pica_prims_clip", "pica_prims_round", "skipgate=old", "skipgate=new", "texmask=old", "texmask=new", "texmemo=old", "texmemo=new", "idle=on", "idle=off", "idleptr=on", "idleptr=off", "idledelay=on", "idledelay=off"};
 	static const char *prefix[] = {"slider=", "state=", "gldbg=", "vramdump=", "pmu=", "cdra=", "clock="};
 	bool known = false;
 	for (unsigned k = 0; k < sizeof(flags) / sizeof(*flags); k++)
@@ -78,12 +90,18 @@ bool switches_set(const char *word)
 
 bool switches_run(char *line, char *game, size_t len, char *error, size_t error_len)
 {
+	psx3d_idle_skip = 1; psx3d_idle_pointer = psx3d_idle_delay = 0;
+	sw_rtfslevel = -1; sw_rtfscap = 4; pica_submit = 7;
+	sw_rtfsdense = sw_rtfsmodel = sw_rtfswindow = sw_rtfs = sw_ff = sw_floataudio = false;
+	sw_frontend = true;
 	sw_prof = sw_stats = sw_fs1 = sw_fs3 = sw_noskip = sw_nosputhread = sw_acap = false;
 	sw_nogputhread = sw_aa = sw_showright = sw_sbs = false;
 	sw_gpu_async = sw_gpu_flush = true;
 	sw_slider = -1;
 	sw_state = sw_renderer = sw_pmu0 = sw_pmu1 = -1;
 	sw_gldbg = sw_vramdump = 0;
+	pica_prims = 7; sw_pmuphase = sw_pmuclass = false;
+	pica_texmask = pica_texmemo = true; psx3d_skipgate = 1;
 	memset(sw_opt, 0, sizeof(sw_opt));
 	sw_cdra[0] = sw_clock[0] = 0;
 	game[0] = 0;

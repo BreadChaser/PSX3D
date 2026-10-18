@@ -1,0 +1,141 @@
+--- a/runner.c
++++ b/runner.c
+@@ -9,6 +9,20 @@
+ #include <stdint.h>
+ #include <time.h>
+ #include "libretro.h"
++#include "core_pica/plugins/gpulib/psx3d_frameskip.h"
++psx3d_skip_state psx3d_skip __attribute__((weak));
++static retro_audio_buffer_status_callback_t fs_cb;
++static unsigned audio_frames;
++static double seconds(void) {
++ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
++ return t.tv_sec + t.tv_nsec * 1e-9;
++}
++static void until(double deadline) {
++ double wait = deadline - seconds();
++ if (wait > 0) { struct timespec t = {(time_t)wait, (long)((wait - (time_t)wait)*1e9)}; nanosleep(&t, 0); }
++}
++__attribute__((noinline)) void sim_frame_marker(void) { __asm__ volatile("" ::: "memory"); }
++
+ #ifdef PICA
+ #include <stdbool.h>
+ bool pica_init(const void *shbin, unsigned size);
+@@ -17,6 +31,12 @@
+ void pica_frame_ended(void);
+ void pica_stats(char *buf, int n);
+ unsigned sim_c3d_draws;
++static bool sim_frame_open;
++static unsigned sim_opens, sim_presents;
++extern void (*pica_open_frame)(void);
++bool pica_display_changed(void) __attribute__((weak));
++static void sim_open(void) { if (!sim_frame_open) { pica_frame_started(); sim_frame_open = true; sim_opens++; } }
++
+ #endif
+ #ifdef GLES
+ #include <stdbool.h>
+@@ -53,6 +73,8 @@
+ static bool env(unsigned cmd, void *data)
+ {
+ 	switch (cmd) {
++ case RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK:
++  fs_cb = data ? ((struct retro_audio_buffer_status_callback *)data)->callback : NULL; return true;
+ 	case RETRO_ENVIRONMENT_GET_CAN_DUPE: *(bool *)data = true; return true;
+ 	case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
+ 	case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: *(const char **)data = "."; return true;
+@@ -91,7 +113,7 @@
+ 	if (data) { last_fb = data; last_w = w; last_h = h; last_pitch = pitch; }
+ }
+ static void audio1(int16_t l, int16_t r) { (void)l; (void)r; }
+-static size_t audiob(const int16_t *d, size_t n) { (void)d; return n; }
++static size_t audiob(const int16_t *d, size_t n) { (void)d; audio_frames += n; return n; }
+ static void poll(void) {}
+ static int16_t state(unsigned p, unsigned d, unsigned i, unsigned id) { (void)p; (void)d; (void)i; (void)id; return 0; }
+ 
+@@ -140,6 +162,7 @@
+ 	static unsigned dummy_shbin[1];
+ 	pica_init(dummy_shbin, 4);
+ 	pica_game_begin(getenv("SMALL") != NULL);
++ pica_open_frame = sim_open;
+ 	{ extern int pica_debug; if (getenv("PICA_DEBUG")) pica_debug = atoi(getenv("PICA_DEBUG")); }
+ 	{ extern int psx3d_chain_batch; if (getenv("NOBATCH")) psx3d_chain_batch = 0; }
+ #endif
+@@ -158,14 +181,40 @@
+ 		retro_run();   // shift frame parity against the game's flips
+ 	psx3d_prof_on = 1;
+ 	psx3d_prof_t[5] = psx3d_prof_c[5] = 0;
+-	struct timespec t0, t1;
++	struct retro_system_av_info av; retro_get_system_av_info(&av);
++ double budget = 1 / av.timing.fps, deadline = seconds();
++ int rt = getenv("RTFS") != NULL, paced = getenv("PACED") != NULL;
++ int ff = getenv("FF") != NULL;
++ psx3d_skip_controller controller = {0};
++ unsigned drawn = 0, skipped = 0, idle = 0;
++ int warmup = getenv("WARMUP") ? atoi(getenv("WARMUP")) : 0;
++ double work_total = 0, sleep_total = 0;
++ struct timespec t0, t1;
+ 	clock_gettime(CLOCK_MONOTONIC, &t0);
+-	for (int i = 0; i < frames; i++) {
++	for (int i = 0; i < frames + warmup; i++) {
++  if (i == warmup) {
++   clock_gettime(CLOCK_MONOTONIC, &t0);
++   drawn = skipped = idle = audio_frames = sim_opens = sim_presents = 0;
++   psx3d_skip.flips_drawn = psx3d_skip.flips_skipped = 0;
++   work_total = sleep_total = 0;
++  }
++  double start = seconds();
++  bool late = start > deadline + budget / 8;
++  if (paced && !ff) { until(deadline); sleep_total += seconds() - start; }
++  start = seconds();
++  if (start > deadline + budget * 3) deadline = start;
++  deadline += budget;
++  psx3d_skip.enabled = rt;
++  psx3d_skip.level = getenv("LEVEL") ? atoi(getenv("LEVEL")) : controller.level;
++  if (fs_cb) fs_cb(true, 50, getenv("REQUEST_SKIP") || (paced && late));
++  unsigned long long before_draw = psx3d_prof_t[5];
++  unsigned before_prims = sim_c3d_draws;
++  unsigned before_skip = psx3d_prof_c[5];
+ #ifdef GLES
+ 		glc3d_frame_started();
+ #endif
+ #ifdef PICA
+-		pica_frame_started();
++		if (!rt) sim_open();
+ #endif
+ 		retro_run();
+ #ifdef GLES
+@@ -173,7 +222,23 @@
+ #endif
+ #ifdef PICA
+ 		{ void renderer_flush_queues(void); renderer_flush_queues(); }   // as the app's pica_picture does
+-		pica_frame_ended();
++  bool show = !rt || !pica_display_changed || pica_display_changed();
++  if (ff && i % 4 != 3) show = false;
++  if (show) { sim_open(); sim_presents++; }
++  // FF holds the frame open across its four retro_run calls, like emu.c.
++  if ((!ff || i % 4 == 3) && sim_frame_open) { pica_frame_ended(); sim_frame_open = false; }
++  if (sim_c3d_draws != before_prims) drawn++;
++  else if (psx3d_prof_c[5] != before_skip) skipped++;
++  else idle++;
++  double work = seconds() - start;
++  // Optional slow-host stress: measured QEMU work is stretched uniformly.
++  // This tests controller behavior, never claims an Old 3DS speed prediction.
++  if (getenv("WORK_SCALE")) { until(start + work * atof(getenv("WORK_SCALE"))); work = seconds() - start; }
++  work_total += work;
++  if (rt && !getenv("LEVEL")) psx3d_skip_observe(&controller, work * 1000, budget * 1000);
++  sim_frame_marker();
++  if (getenv("CSV")) fprintf(stderr, "cost %d %.3f %u %u %u\n", i, work * 1000,
++    psx3d_skip.level, (unsigned)(psx3d_prof_t[5] - before_draw), psx3d_prof_c[5] - before_skip);
+ 		if (getenv("HASHEVERY")) {
+ 			extern unsigned long long pica_sim_hash __attribute__((weak));
+ 			if (&pica_sim_hash) fprintf(stderr, "frame %d hash %016llx\n", i, pica_sim_hash);
+@@ -183,7 +248,8 @@
+ #endif
+ 	}
+ #ifdef PICA
+-	{ char b[300]; pica_stats(b, sizeof(b)); fprintf(stderr, "%s\nc3d draws/frame %u\n", b, sim_c3d_draws / frames); }
++ fprintf(stderr, "FLIPS drawn %u skipped %u\n", psx3d_skip.flips_drawn, psx3d_skip.flips_skipped);
++	{ fprintf(stderr, "SIM opens %u presents %u draw-vblanks %u skip-only %u idle %u audio %u work %.3fms sleep %.3fms level %u\n", sim_opens, sim_presents, drawn, skipped, idle, audio_frames, work_total * 1000 / frames, sleep_total * 1000 / frames, controller.level); char b[1000]; pica_stats(b, sizeof(b)); fprintf(stderr, "%s\nc3d draws/frame %u\n", b, sim_c3d_draws / frames); }
+ #endif
+ #ifdef GLES
+ 	fprintf(stderr, "c3d draws/frame %u\n", sim_c3d_draws / frames);

@@ -1,0 +1,36 @@
+--- a/runner.c
++++ b/runner.c
+@@ -11,0 +12,5 @@
++#include "audio_resample.h"
++static audio_resampler audio_rs;
++static FILE *audio_capture;
++static uint64_t audio_hash = 14695981039346656037ULL;
++static unsigned output_frames;
+@@ -116 +121,15 @@
+-static size_t audiob(const int16_t *d, size_t n) { (void)d; audio_frames += n; return n; }
++static size_t audiob(const int16_t *d, size_t n) {
++ for (size_t k=0; k<n*2; k++) { audio_hash ^= (uint16_t)d[k]; audio_hash *= 1099511628211ULL; }
++ if (audio_capture) fwrite(d, 4, n, audio_capture);
++ audio_frames += n;
++ if (!getenv("FF")) {
++  int16_t out[AUDIO_OUT*2];
++  float step = getenv("AUDIO_STEP") ? atof(getenv("AUDIO_STEP")) : 1.001f;
++  for (size_t at=0; at<n; ) {
++   size_t count=n-at; if (count>AUDIO_CHUNK) count=AUDIO_CHUNK;
++   output_frames += audio_resample(&audio_rs, d+at*2, count, step, out);
++   at+=count;
++  }
++ }
++ return n;
++}
+@@ -183,0 +203 @@
++	if (getenv("AUDIO_CAPTURE")) audio_capture = fopen(getenv("AUDIO_CAPTURE"), "wb");
+@@ -217 +237 @@
+-		if (!rt) sim_open();
++		if (!getenv("FRONTEND_NEW") && !rt) sim_open();
+@@ -225 +245 @@
+-  bool show = !rt || !pica_display_changed || pica_display_changed();
++  bool show = (!getenv("FRONTEND_NEW") && !rt) || !pica_display_changed || pica_display_changed();
+@@ -250,0 +271,2 @@
++ fprintf(stderr, "CORE_AUDIO %016llx OUTPUT %u\n", (unsigned long long)audio_hash, output_frames);
++ if (audio_capture) fclose(audio_capture);

@@ -1,4 +1,5 @@
 #include <math.h>
+#include <stdbool.h>
 #include <string.h>
 #include "audio_resample.h"
 
@@ -41,6 +42,7 @@ float audio_resample_step(audio_resampler *rs, float err, int percent,
 	return 1.0f + err * 0.005f - rs->slow;
 }
 
+bool sw_floataudio;
 static inline float hermite(float xm1, float x0, float x1, float x2, float t)
 {
 	float c1 = 0.5f * (x1 - xm1);
@@ -80,7 +82,7 @@ size_t audio_resample(audio_resampler *rs, const int16_t *in, size_t frames,
 			pos += delta;
 		}
 		rs->pos = (pos - (int)(frames * 32768)) / 32768.0f;
-	} else {
+	} else if (sw_floataudio) {
 		while ((size_t)(int)rs->pos < frames) {
 			int k = (int)rs->pos;
 			float t = rs->pos - k;
@@ -91,6 +93,40 @@ size_t audio_resample(audio_resampler *rs, const int16_t *in, size_t frames,
 			rs->pos += step;
 		}
 		rs->pos -= frames;
+	} else {
+		// Normal drift correction: Q20 phase gives <0.5 ppm step
+		// quantization; integer Hermite preserves high frequencies which a
+		// linear kernel would attenuate. Doubled coefficients and Q12 weights
+		// need only 32-bit multiplies (largest product < 12*32768*4096).
+		// Keep the same two-sample history delay and the existing slow path.
+		const int one = 1 << 20;
+		int pos = (int)(rs->pos * one);
+		int delta = (int)(step * one + 0.5f);
+		if (delta == one && !(pos & (one - 1))) {
+			int k = pos >> 20;
+			n = frames > (size_t)k ? frames - k : 0;
+			memcpy(out, src + (k + 1) * 2, n * 4);
+			pos += n * one;
+		} else {
+			while ((size_t)(pos >> 20) < frames) {
+				int k = pos >> 20, t = (pos & (one - 1)) >> 8;
+				for (int c = 0; c < 2; c++) {
+					int xm = src[k * 2 + c], a = src[(k + 1) * 2 + c];
+					int b = src[(k + 2) * 2 + c], x2 = src[(k + 3) * 2 + c];
+					int c1 = b - xm, c2 = 2*xm - 5*a + 4*b - x2;
+					int c3 = x2 - xm + 3*(a - b);
+					int v = ((c3*t + 2048) >> 12) + c2;
+					v = ((v*t + 2048) >> 12) + c1;
+					v = a + ((v*t + 4096) >> 13);
+					if (v > 32767) v = 32767;
+					if (v < -32768) v = -32768;
+					out[n * 2 + c] = v;
+				}
+				n++;
+				pos += delta;
+			}
+		}
+		rs->pos = (pos - (int)(frames * one)) / (float)one;
 	}
 	memcpy(rs->hist, src + frames * 2, sizeof(rs->hist));
 	return n;

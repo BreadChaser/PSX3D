@@ -2,6 +2,7 @@
 // console: lifecycle, renderer changes, warmup, averages, stop-on-failure, paths.
 #define PSX3D_H
 #define PSX3D_VERSION "test"
+#define PICA_LAYOUT_NAME "split"
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -17,6 +18,10 @@ typedef struct {
 	char title[256], cover_key[256];
 } game_t;
 static bool g_new3ds;
+int sw_rtfscap, sw_rtfslevel;
+bool sw_rtfsmodel, sw_rtfswindow, sw_rtfs, sw_ff, sw_floataudio, sw_frontend;
+typedef struct { unsigned emulated, elapsed_ms, presented, held, top, bottom; float run_ms, present_ms, audio_ms, misc_ms, pace_ms; float spu_ms, spu_wait_ms, pica_ms; float phase_ms[8], draw_fraction; unsigned skip_level, drawn, skipped; } emu_frontend_sample;
+const emu_frontend_sample *emu_frontend_stats(void) { static emu_frontend_sample f; return &f; }
 bool sw_prof, sw_stats, sw_fs1, sw_fs3, sw_noskip, sw_nosputhread, sw_acap;
 bool sw_nogputhread, sw_aa, sw_showright, sw_sbs, sw_gpu_async, sw_gpu_flush;
 float sw_slider;
@@ -26,6 +31,14 @@ static u64 mock_ms;
 static char wire[16384], response[512], status[4096];
 static int state_writes, init_calls, shot_calls;
 int pica_debug;
+unsigned pica_submit;
+unsigned pica_prims;
+int psx3d_idle_skip=1, psx3d_idle_pointer, psx3d_idle_delay;
+bool sw_pmuphase, sw_pmuclass, sw_rtfsdense;
+void pmu_category_detail(double values[21]) { for (int k=0;k<21;k++) values[k]=-1; }
+void pmu_renderer(double values[4]) { for (int k=0;k<4;k++) values[k]=-1; }
+int psx3d_skipgate = 1;
+bool pica_texmask = true, pica_texmemo = true;
 static bool state_ok = true;
 static game_t games[] = {{"Crash Bandicoot", "Crash Bandicoot (USA)"}, {"Crash Team Racing", "CTR"}};
 u64 osGetTime(void) { return mock_ms; }
@@ -39,6 +52,7 @@ const char *options_get(const char *key)
 	(void)key;
 	return "disabled";
 }
+void pmu_categories(double cycles[3], unsigned counts[3]) { for (int k=0;k<3;k++) { cycles[k]=-1; counts[k]=0; } }
 bool renderer_is_gpu(void) { return sw_renderer != 1; }
 unsigned statsview_emulated(void) { return 60; }
 int library_count(void) { return 2; }
@@ -59,16 +73,29 @@ void debug_parse_switch(const char *word)
 	if (!strcmp(word, "rtt=auto")) sw_gldbg &= ~(262144 | 1048576);
 	if (!strcmp(word, "rttcache=old")) sw_gldbg |= 524288;
 	if (!strcmp(word, "rttcache=new")) sw_gldbg &= ~524288;
+	if (!strcmp(word, "idle=off")) psx3d_idle_skip = 0;
+	if (!strcmp(word, "idle=on")) psx3d_idle_skip = 1;
+	if (!strcmp(word, "idleptr=off")) psx3d_idle_pointer = 0;
+	if (!strcmp(word, "idleptr=on")) psx3d_idle_pointer = 1;
+	if (!strcmp(word, "idledelay=off")) psx3d_idle_delay = 0;
+	if (!strcmp(word, "idledelay=on")) psx3d_idle_delay = 1;
+	if (!strcmp(word, "pica_prims_old")) pica_prims = 0;
+	if (!strcmp(word, "pica_prims_fast")) pica_prims = 7;
+	if (!strcmp(word, "pica_prims_copy")) pica_prims |= 1;
+	if (!strcmp(word, "pica_prims_clip")) pica_prims |= 2;
+	if (!strcmp(word, "pica_prims_round")) pica_prims |= 4;
 	if (!strcmp(word, "renderer=gpu"))
 		sw_renderer = 0;
 }
+void covers_remote_enable(bool enabled) { (void)enabled; }
+void libui_select_title(const char *title) { (void)title; }
 #include "../../source/devcontrol.c"
 #include "../../source/devswitch.c"
 const char *const dev_columns[DEV_METRICS] = {
     "fps",       "speed_pct",     "emu_ms",  "present_ms", "wait_ms",   "gpu_ms",  "mcycles",
     "ev0_k",     "ev1_k",         "skipped", "late",       "batches",   "prims",   "decodes",
     "evictions", "invalidations", "uploads", "syncs",      "readbacks", "pic_gpu", "pic_none",
-    "lum",       "top_lum",       "xfer_ms", "heap_ms",    "queue_ms",  "gap_ms"};
+    "lum",       "top_lum",       "xfer_ms", "heap_ms",    "queue_ms",  "gap_ms", "front_run_ms", "front_present_ms", "audio_ms", "loop_ms", "pace_ms", "top_count", "bottom_count", "held_count", "ff", "spu_ms", "spu_wait_ms", "skip_level", "drawn_count", "skipped_count", "audio_underruns", "audio_drops", "audio_gap_ms", "pica_cpu_ms", "phase_list_ms", "phase_prim_ms", "phase_tex_ms", "phase_decode_ms", "phase_state_ms", "phase_submit_ms", "phase_read_ms", "phase_vertex_ms", "draw_mcycles", "skip_mcycles", "idle_mcycles", "draw_vblanks", "skip_vblanks", "idle_vblanks", "renderer_mcycles", "renderer_ev0_k", "renderer_ev1_k", "renderer_samples", "draw_ev0_k", "draw_ev1_k", "draw_spu_ms", "draw_spuwait_ms", "draw_pica_ms", "draw_audio_ms", "draw_dma_ms", "skip_ev0_k", "skip_ev1_k", "skip_spu_ms", "skip_spuwait_ms", "skip_pica_ms", "skip_audio_ms", "skip_dma_ms", "idle_ev0_k", "idle_ev1_k", "idle_spu_ms", "idle_spuwait_ms", "idle_pica_ms", "idle_audio_ms", "idle_dma_ms", "draw_fraction"};
 void devnet_init(void) { init_calls++; }
 void devnet_exit(void) {}
 bool devnet_take(char *out)
@@ -195,8 +222,37 @@ int main(void)
 	assert(switches_set("rttcache=old") && (sw_gldbg & 524288));
 	assert(switches_set("rttcache=new") && !(sw_gldbg & 524288));
 	assert(!switches_set("rttcache=invalid"));
+	assert(switches_set("idleptr=on") && psx3d_idle_pointer);
+	assert(switches_set("idledelay=on") && psx3d_idle_delay);
+	command("set idleptr=off", true);
+	assert(strstr(response, "false") && psx3d_idle_pointer);
+	command("set pica_prims_fast", true);
+	assert(pica_prims == 7 && strstr(response, "true"));
+	command("set pica_prims_old", true);
+	assert(!pica_prims);
+	assert(switches_set("pica_prims_copy") && pica_prims == 1);
+	assert(switches_set("pica_prims_clip") && pica_prims == 3);
+	assert(switches_set("pica_prims_round") && pica_prims == 7);
+	assert(!switches_set("pica_prims_invalid"));
+	char defaults[] = "game=Crash_Bandicoot";
+	assert(switches_run(defaults, game, sizeof(game), err, sizeof(err)));
+	assert(pica_submit == 7 && pica_prims == 7 && pica_texmask && pica_texmemo && psx3d_skipgate);
+	assert(sw_frontend && !sw_floataudio && !sw_rtfs && !sw_rtfsdense && sw_rtfscap == 4);
+	assert(!psx3d_idle_pointer && !psx3d_idle_delay);
 	command("set renderer=gpu", true);
 	assert(strstr(response, "false"));
+	command("ui pause", false);
+	assert(strstr(response, "false") && !dev_ui_pending());
+	command("ui settings", true);
+	assert(dev_ui_take() == DEV_UI_SETTINGS && !dev_ui_pending());
+	command("ui states slot=9", true);
+	assert(dev_ui_take() == DEV_UI_STATES && dev_ui_slot == 9);
+	command("ui states slot=10", true);
+	assert(strstr(response, "false") && !dev_ui_pending());
+	command("ui states slot=9oops", true);
+	assert(strstr(response, "false") && !dev_ui_pending());
+	command("ui library select=Missing", true);
+	assert(strstr(response, "false") && !dev_ui_pending());
 	command("savestate 9oops", true);
 	assert(!state_writes);
 	command("savestate 9", true);

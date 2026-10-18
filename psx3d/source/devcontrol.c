@@ -13,6 +13,10 @@ bool dev_remote, dev_bench;
 char dev_token[96], dev_update_url[256];
 static bool exiting, load_pending, change, running, state_failed, command_loading, updated;
 static bool batch_active, batch_shot;
+static int ui_request;
+int dev_ui_slot;
+int dev_ui_pending(void) { return ui_request; }
+int dev_ui_take(void) { int request = ui_request; ui_request = DEV_UI_NONE; return request; }
 bool dev_bench_home;
 static char load_line[2048], current_title[PATH_LEN], last_error[160];
 static char update_pending[1024];
@@ -104,6 +108,8 @@ static unsigned linear_free(void)
 	return 0;
 #endif
 }
+extern int psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay;
+
 static void publish_status(void)
 {
 	if (!dev_remote)
@@ -126,7 +132,12 @@ static void publish_status(void)
 	        running && !strcmp(opt("pcsx_rearmed_gpu_thread_rendering"), "enabled") ? "true" : "false",
 	        sw_nosputhread ? "true" : "false");
 	p += strlen(p);
-	p += sprintf(p, ",\"version\":\"%s\",\"build\":\"release-v030-rttgate-2\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
+	p += sprintf(p, ",\"build\":\"release-v031-rc1-" PICA_LAYOUT_NAME "\",\"rtfs\":%s,\"ff\":%s,\"frontend\":%s,\"floataudio\":%s", sw_rtfs ? "true" : "false", sw_ff ? "true" : "false", sw_frontend ? "true" : "false", sw_floataudio ? "true" : "false");
+	p += sprintf(p, ",\"version\":\"%s\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
+	p += sprintf(p, ",\"pica_prims\":%u,\"idle\":%d,\"idleptr\":%d,\"idledelay\":%d", pica_prims, psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay);
+	p += sprintf(p, ",\"skipgate\":\"%s\"", psx3d_skipgate ? "new" : "old");
+	p += sprintf(p, ",\"texmask\":\"%s\",\"texmemo\":\"%s\"",
+	             pica_texmask ? "new" : "old", pica_texmemo ? "new" : "old");
 	sprintf(p, ",\"rtt\":\"%s\",\"free_heap\":%u,\"free_linear\":%u",
 	        sw_gldbg & 262144 ? "old" : sw_gldbg & 1048576 ? "new" : "auto", heap_free(), linear_free());
 	snprintf(json, sizeof(json),
@@ -310,6 +321,10 @@ static bool load_request(const char *args)
 }
 static bool runtime_set(const char *word)
 {
+	// dev_tick runs after pica_thread_sync. These arithmetic choices change
+	// no queued GPU state or texture lifetimes, so they can change live.
+	if (!strncmp(word, "pica_prims_", 11))
+		return switches_set(word);
 	// Conservative allowlist: renderer/thread/CD/SPU and arbitrary core option
 	// changes require a clean load. No pretending unsafe settings changed live.
 	if (!strncmp(word, "frameskip=", 10) || !strncmp(word, "clock=", 6) ||
@@ -339,12 +354,50 @@ bool dev_tick(bool playing)
 				args++;
 		} else
 			args = command + strlen(command);
-		if (!strcmp(command, "load")) {
+		if (!strcmp(command, "ui")) {
+			char *option = strchr(args, ' ');
+			if (option) *option++ = 0;
+			int screen = !strcmp(args, "library") ? DEV_UI_LIBRARY :
+			             !strcmp(args, "pause") ? DEV_UI_PAUSE :
+			             !strcmp(args, "settings") ? DEV_UI_SETTINGS :
+			             !strcmp(args, "states") ? DEV_UI_STATES :
+			             !strcmp(args, "resume") ? DEV_UI_RESUME : DEV_UI_NONE;
+			int slot = option && !strncmp(option, "slot=", 5) ? field_int(option, "slot", 0) : 0;
+			bool valid = screen && slot >= 0 && slot <= 9;
+			const game_t *selection = NULL;
+			if (option && *option) {
+				if (screen == DEV_UI_LIBRARY && !strncmp(option, "select=", 7)) {
+					char *title = option + 7;
+					for (char *c = title; *c; c++) if (*c == '_') *c = ' ';
+					const game_t *picked = NULL;
+					for (int i = 0; i < library_count(); i++)
+						if (!strcasecmp(library_get(i)->title, title)) picked = library_get(i);
+					if (picked) selection = picked; else valid = false;
+				} else if (screen != DEV_UI_STATES || strncmp(option, "slot=", 5)) valid = false;
+			}
+			if (!valid || batch_active || (!playing && screen != DEV_UI_LIBRARY && screen != DEV_UI_SETTINGS))
+				error_reply("ui library [select=title] | pause | settings | states [slot=0..9] | resume; idle batch required");
+			else {
+				if (selection) libui_select_title(selection->title);
+				ui_request = screen;
+				dev_ui_slot = slot;
+				if (screen == DEV_UI_LIBRARY) {
+					covers_remote_enable(true);
+					change = playing;
+				}
+				dev_reply("{\"ok\":true}");
+			}
+		} else if (!strcmp(command, "load")) {
+			ui_request = DEV_UI_NONE;
+			covers_remote_enable(false);
 			if (batch_active)
 				error_reply("batch active; quit to cancel first");
 			else if (!*args || !load_request(args))
 				error_reply("load requires a game or path (max 675 bytes)");
 			// load reply is sent only once loading + initial state have completed.
+		} else if (!strcmp(command, "ff")) {
+			if (!playing || batch_active || (strcmp(args, "on") && strcmp(args, "off"))) error_reply("ff on|off requires game and idle batch");
+			else { sw_ff = !strcmp(args, "on"); dev_reply("{\"ok\":true}"); }
 		} else if (!strcmp(command, "set") && (!strcmp(args, "rtt=old") || !strcmp(args, "rtt=new") || !strcmp(args, "rtt=auto"))) {
 			// RTT maps/cache generations cannot change in a live renderer. Repeat
 			// the last explicit load, retaining its state/settings, at a clean boundary.
@@ -383,11 +436,13 @@ bool dev_tick(bool playing)
 		} else if (!strcmp(command, "shot")) {
 			if (*args && strcmp(args, "both") && strcmp(args, "top"))
 				error_reply("shot [top|both]");
-			else if (!devnet_shot(NULL, !strcmp(args, "both")))
+			else if (!devnet_shot(NULL, (!*args || !strcmp(args, "both"))))
 				error_reply("screenshot busy or allocation failed");
 			else
 				dev_reply("{\"ok\":true}"); // worker sends PNG instead of JSON
 		} else if (!strcmp(command, "bench")) {
+			ui_request = DEV_UI_NONE;
+			covers_remote_enable(false);
 			if (batch_active) {
 				error_reply("batch already active");
 				publish_status();
@@ -413,6 +468,7 @@ bool dev_tick(bool playing)
 				dev_reply("{\"ok\":true}");
 			}
 		} else if (!strcmp(command, "quit") || !strcmp(command, "exit")) {
+			ui_request = DEV_UI_NONE;
 			if (batch_active) {
 				report_run("cancelled");
 				finish_batch(false);
@@ -422,6 +478,8 @@ bool dev_tick(bool playing)
 			load_pending = false;
 			dev_reply("{\"ok\":true}");
 		} else if (!strcmp(command, "update")) {
+			ui_request = DEV_UI_NONE;
+			covers_remote_enable(false);
 			if (batch_active || !*args || strlen(args) >= sizeof(update_pending))
 				error_reply("update requires URL and no active batch");
 			else {
@@ -568,6 +626,7 @@ void dev_sample(const statsview_sample *s, const char *probe, int top_lum, doubl
 {
 	if (!dev_enabled())
 		return;
+	const emu_frontend_sample *front = emu_frontend_stats();
 	dev_measurement m = {.seq = ++sample_seq, .ms = osGetTime()};
 	double values[DEV_METRICS] = {
 	    s->fps,  s->target && s->elapsed ? statsview_emulated() * 100000.0 / s->target / s->elapsed : 0,
@@ -583,8 +642,22 @@ void dev_sample(const statsview_sample *s, const char *probe, int top_lum, doubl
 	    -1,      -1,
 	    top_lum, s->xfer,
 	    s->heap, s->queue,
-	    s->gap};
+	    s->gap, front->run_ms, front->present_ms, front->audio_ms, front->misc_ms, front->pace_ms,
+	    front->top, front->bottom, front->held, sw_ff, front->spu_ms, front->spu_wait_ms,
+	    front->skip_level, front->drawn, front->skipped, -1, -1, -1, front->pica_ms};
 	memcpy(m.v, values, sizeof(values));
+ for (int k=0; k<8; k++) m.v[45+k] = (sw_gldbg & 8388608) ? front->phase_ms[k] : -1;
+ double category_cycles[3]; unsigned category_count[3];
+ pmu_categories(category_cycles, category_count);
+ pmu_renderer(&m.v[59]);
+ pmu_category_detail(&m.v[63]);
+ m.v[84] = front->draw_fraction;
+ for (int k=0; k<3; k++) { m.v[53+k] = category_cycles[k]; m.v[56+k] = category_count[k]; }
+	const char *ap = s->audio ? strstr(s->audio, "underruns=") : NULL;
+	unsigned au, ad;
+	if (ap && sscanf(ap, "underruns=%u drop=%u", &au, &ad) == 2) { m.v[41] = au; m.v[42] = ad; }
+	ap = s->audio ? strstr(s->audio, "maxgap=") : NULL;
+	if (ap) m.v[43] = atof(ap + 7);
 	snprintf(m.audio, sizeof(m.audio), "%s", s->audio ? s->audio : "");
 	snprintf(m.pica, sizeof(m.pica), "%s", s->renderer ? s->renderer : "");
 	snprintf(m.probe, sizeof(m.probe), "%s", probe);

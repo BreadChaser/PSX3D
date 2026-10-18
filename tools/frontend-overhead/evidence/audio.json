@@ -1,0 +1,256 @@
+{
+  "tone440": {
+    "0.995": {
+      "frames_before": 44322,
+      "frames_after": 44322,
+      "max_deviation": 164,
+      "rms_deviation": 66.7669010367338,
+      "same_phase": {
+        "frames_before": 44322,
+        "frames_after": 44322,
+        "max_deviation": 1,
+        "rms_deviation": 0.3388825578633491
+      },
+      "before": {
+        "frequency_hz": 437.79832424947307,
+        "amplitude": 16000.025618854208,
+        "thd_db": -113.18851931997912,
+        "thdn_db": -88.76382354844871
+      },
+      "after": {
+        "frequency_hz": 437.799949520004,
+        "amplitude": 16000.022904843714,
+        "thd_db": -113.32840416920834,
+        "thdn_db": -88.88517978536223
+      }
+    },
+    "1.0": {
+      "frames_before": 44100,
+      "frames_after": 44100,
+      "max_deviation": 0,
+      "rms_deviation": 0.0,
+      "same_phase": {
+        "frames_before": 44100,
+        "frames_after": 44100,
+        "max_deviation": 0,
+        "rms_deviation": 0.0
+      },
+      "before": {
+        "frequency_hz": 440.0000002142714,
+        "amplitude": 16000.025019518349,
+        "thd_db": -113.75937639287392,
+        "thdn_db": -91.79601695263887
+      },
+      "after": {
+        "frequency_hz": 440.0000002142714,
+        "amplitude": 16000.025019518349,
+        "thd_db": -113.75937639287392,
+        "thdn_db": -91.79601695263887
+      }
+    },
+    "1.001": {
+      "frames_before": 44057,
+      "frames_after": 44056,
+      "max_deviation": 172,
+      "rms_deviation": 69.50899761215571,
+      "same_phase": {
+        "frames_before": 44056,
+        "frames_after": 44056,
+        "max_deviation": 1,
+        "rms_deviation": 0.3352646670159819
+      },
+      "before": {
+        "frequency_hz": 440.438451615841,
+        "amplitude": 16000.021972519835,
+        "thd_db": -113.41612417487154,
+        "thdn_db": -80.62339655454765
+      },
+      "after": {
+        "frequency_hz": 440.4401789171418,
+        "amplitude": 16000.022894275995,
+        "thd_db": -113.57314377292795,
+        "thdn_db": -88.87051230599157
+      }
+    },
+    "1.005": {
+      "frames_before": 43881,
+      "frames_after": 43881,
+      "max_deviation": 162,
+      "rms_deviation": 66.07003510309833,
+      "same_phase": {
+        "frames_before": 43881,
+        "frames_after": 43881,
+        "max_deviation": 1,
+        "rms_deviation": 0.33283159978858
+      },
+      "before": {
+        "frequency_hz": 442.201670916263,
+        "amplitude": 16000.021292741178,
+        "thd_db": -113.11828006929761,
+        "thdn_db": -88.71266616407345
+      },
+      "after": {
+        "frequency_hz": 442.20005104335087,
+        "amplitude": 16000.020978305534,
+        "thd_db": -113.721980141555,
+        "thdn_db": -88.8942302979607
+      }
+    }
+  },
+  "tone10000": {
+    "0.995": {
+      "frames_before": 44322,
+      "frames_after": 44322,
+      "max_deviation": 4122,
+      "rms_deviation": 1470.2743078021886,
+      "same_phase": {
+        "frames_before": 44322,
+        "frames_after": 44322,
+        "max_deviation": 7,
+        "rms_deviation": 2.237928827415602
+      },
+      "after": {
+        "frequency_hz": 9949.99885559082,
+        "amplitude": 15313.249673613847,
+        "thd_db": -96.81114969557002,
+        "thdn_db": -26.440147786135487
+      },
+      "reference_same_phase": {
+        "frequency_hz": 9949.99885559082,
+        "amplitude": 15313.250628790565,
+        "thd_db": -96.63787899436534,
+        "thdn_db": -26.44021060446359
+      }
+    },
+    "1.0": {
+      "frames_before": 44100,
+      "frames_after": 44100,
+      "max_deviation": 0,
+      "rms_deviation": 0.0,
+      "same_phase": {
+        "frames_before": 44100,
+        "frames_after": 44100,
+        "max_deviation": 0,
+        "rms_deviation": 0.0
+      },
+      "after": {
+        "frequency_hz": 10000.0,
+        "amplitude": 16000.037545798868,
+        "thd_db": -103.9630934408877,
+        "thdn_db": -92.10282370542201
+      },
+      "reference_same_phase": {
+        "frequency_hz": 10000.0,
+        "amplitude": 16000.037545798868,
+        "thd_db": -103.9630934408877,
+        "thdn_db": -92.10282370542201
+      }
+    },
+    "1.001": {
+      "frames_before": 44057,
+      "frames_after": 44056,
+      "max_deviation": 4272,
+      "rms_deviation": 1530.0884341976473,
+      "same_phase": {
+        "frames_before": 44056,
+        "frames_after": 44056,
+        "max_deviation": 7,
+        "rms_deviation": 2.23601214616052
+      },
+      "after": {
+        "frequency_hz": 10010.004043579102,
+        "amplitude": 15312.103694902775,
+        "thd_db": -97.7210151188965,
+        "thdn_db": -26.44131994572319
+      },
+      "reference_same_phase": {
+        "frequency_hz": 10010.004043579102,
+        "amplitude": 15312.108008544095,
+        "thd_db": -97.50977048466507,
+        "thdn_db": -26.441399793925644
+      }
+    },
+    "1.005": {
+      "frames_before": 43881,
+      "frames_after": 43881,
+      "max_deviation": 4054,
+      "rms_deviation": 1454.1993045649042,
+      "same_phase": {
+        "frames_before": 43881,
+        "frames_after": 43881,
+        "max_deviation": 6,
+        "rms_deviation": 2.238207171079425
+      },
+      "after": {
+        "frequency_hz": 10050.00114440918,
+        "amplitude": 15313.510545408435,
+        "thd_db": -101.60936530228467,
+        "thdn_db": -26.439921382649764
+      },
+      "reference_same_phase": {
+        "frequency_hz": 10050.00114440918,
+        "amplitude": 15313.516784542891,
+        "thd_db": -101.47512357951464,
+        "thdn_db": -26.439931944445227
+      }
+    }
+  },
+  "game": {
+    "0.995": {
+      "frames_before": 443218,
+      "frames_after": 443217,
+      "max_deviation": 3914,
+      "rms_deviation": 296.32594247954694,
+      "same_phase": {
+        "frames_before": 443217,
+        "frames_after": 443217,
+        "max_deviation": 1,
+        "rms_deviation": 0.2816461869864798
+      }
+    },
+    "1.0": {
+      "frames_before": 441000,
+      "frames_after": 441000,
+      "max_deviation": 0,
+      "rms_deviation": 0.0,
+      "same_phase": {
+        "frames_before": 441000,
+        "frames_after": 441000,
+        "max_deviation": 0,
+        "rms_deviation": 0.0
+      }
+    },
+    "1.001": {
+      "frames_before": 440561,
+      "frames_after": 440560,
+      "max_deviation": 4145,
+      "rms_deviation": 310.370556285558,
+      "same_phase": {
+        "frames_before": 440560,
+        "frames_after": 440560,
+        "max_deviation": 1,
+        "rms_deviation": 0.2815525454427429
+      }
+    },
+    "1.005": {
+      "frames_before": 438805,
+      "frames_after": 438806,
+      "max_deviation": 3873,
+      "rms_deviation": 293.0133038147596,
+      "same_phase": {
+        "frames_before": 438806,
+        "frames_after": 438806,
+        "max_deviation": 1,
+        "rms_deviation": 0.2808151910177134
+      }
+    }
+  },
+  "capture": {
+    "sha256": "30df2854afbcdc23dbc4cf0dd6e87263cf4567ac7c79cb8bf8235070b3c5dd32",
+    "frames": 441000,
+    "rate": 44100,
+    "format": "s16le stereo",
+    "game": "Crash Bandicoot o3auto; 600 vblanks from slot-2 state"
+  },
+  "checks": "unity and stretch bit-exact; Q20 chunk independence; full-scale transitions passed"
+}

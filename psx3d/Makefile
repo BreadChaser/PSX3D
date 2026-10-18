@@ -55,12 +55,19 @@ CFLAGS	:=	-g -Wall -O2 -mword-relocations -fomit-frame-pointer -mfpu=vfp \
 			-ffunction-sections \
 			$(ARCH)
 
+PICA_LAYOUT ?= baseline
+CFLAGS += -DPICA_LAYOUT_NAME=\"$(PICA_LAYOUT)\"
+
 CFLAGS	+=	$(INCLUDE) -D__3DS__ $(EXTRA_DEFS) -I$(COREDIR)/deps/libretro-common/include
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
 
 ASFLAGS	:=	-g $(ARCH)
-LDFLAGS	=	-specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
+PICA_SPECS := 3dsx.specs
+ifeq ($(PICA_LAYOUT),section)
+PICA_SPECS := $(TOPDIR)/build/pica-hot.specs
+endif
+LDFLAGS	=	-specs=$(PICA_SPECS) -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 LDFLAGS += -Wl,--wrap=GSPGPU_FlushDataCache,--wrap=C3D_DrawElements
 
 LIBS	:= $(CORELIB) -lcitro2d -lcitro3d -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lpng16 -lz -lctru -lm
@@ -77,6 +84,7 @@ LIBDIRS	:= $(CTRULIB) $(PORTLIBS)
 # rules for different file extensions
 #---------------------------------------------------------------------------------
 ifneq ($(BUILD),$(notdir $(CURDIR)))
+.DEFAULT_GOAL := all
 #---------------------------------------------------------------------------------
 
 export OUTPUT	:=	$(CURDIR)/$(TARGET)
@@ -167,6 +175,13 @@ endif
 .PHONY: all clean
 
 #---------------------------------------------------------------------------------
+ifeq ($(PICA_LAYOUT),section)
+.PHONY: pica-hot-script
+pica-hot-script: $(BUILD)
+	@python3 $(TOPDIR)/../tools/pica-layout/link-script.py $(DEVKITARM) $(TOPDIR)
+all: pica-hot-script
+endif
+
 all: $(BUILD) $(GFXBUILD) $(DEPSDIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
@@ -205,6 +220,9 @@ $(OUTPUT).3dsx	:	$(OUTPUT).elf $(_3DSXDEPS)
 $(OFILES_SOURCES) : $(HFILES)
 
 $(OUTPUT).elf	:	$(OFILES) $(CORELIB)
+ifeq ($(PICA_LAYOUT),section)
+$(OUTPUT).elf: $(TOPDIR)/build/pica-hot-3dsx.ld
+endif
 
 #---------------------------------------------------------------------------------
 # you need a rule like this for each extension you use as binary data

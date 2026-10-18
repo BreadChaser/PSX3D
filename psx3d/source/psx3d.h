@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include "libretro.h"
 
-#define PSX3D_VERSION  "0.3.0"
+#define PSX3D_VERSION  "0.3.1"
 #define PSX3D_DIR      "sdmc:/3ds/PSX3D"
 #define PSX3D_BIOS_DIR PSX3D_DIR "/bios"
 #define PSX3D_SAVE_DIR PSX3D_DIR "/saves"
@@ -91,6 +91,23 @@ void video_exit(void);
 void *video_framebuffer(unsigned width, unsigned height, size_t *pitch);
 void video_frame(const void *data, unsigned width, unsigned height, size_t pitch);
 void video_gpu_frame_begin(void);
+// Last completed stats interval, main-thread access for remote stats.
+// All costs are ms per emulated vblank. Audio is nested in run; present
+// includes required offscreen submission on held frames. Misc includes the
+// previous interval's reporting/SD writes. Pacing is excluded from work.
+typedef struct {
+	unsigned emulated, elapsed_ms, presented, held, top, bottom;
+	float run_ms, present_ms, audio_ms, misc_ms, pace_ms;
+	float spu_ms, spu_wait_ms, pica_ms;
+	float phase_ms[8], draw_fraction;
+	unsigned skip_level, drawn, skipped;
+} emu_frontend_sample;
+const emu_frontend_sample *emu_frontend_stats(void);
+
+void video_hold(void);
+bool video_display_changed(void);
+void video_present_screens(bool show_game, bool repaint_top, void (*draw_top)(void *),
+	void (*draw_bottom)(void *), void *ud);
 void video_present(bool show_game, void (*draw_top)(void *),
 	void (*draw_bottom)(void *), void *ud);
 void video_present_vsync(bool show_game, void (*draw_top)(void *),
@@ -125,8 +142,14 @@ extern unsigned long long psx3d_prof_t[6];
 extern unsigned int psx3d_prof_c[6];
 extern int psx3d_prof_on;
 void new_dynarec_print_stats(void);
+extern bool sw_frontend, sw_floataudio, sw_ff;
+extern int sw_rtfscap, sw_rtfslevel;
+extern bool sw_rtfs, sw_rtfswindow, sw_rtfsmodel;
 extern bool sw_prof, sw_stats, sw_o3ds, sw_fs1, sw_fs3, sw_noskip, sw_nosputhread, sw_acap;
 extern int sw_state, sw_gldbg, sw_vramdump;
+extern unsigned pica_prims;
+extern bool pica_texmask, pica_texmemo;
+extern int psx3d_skipgate;
 extern int sw_renderer;       // -1 = use config; 0 = GPU, 1 = software
 extern int sw_pmu0, sw_pmu1;
 extern char sw_clock[8], sw_cdra[8], sw_opt[8][48];
@@ -134,6 +157,13 @@ extern char sw_clock[8], sw_cdra[8], sw_opt[8][48];
 void pmu_start(int ev0, int ev1);
 void pmu_begin(void);
 void pmu_end(void);
+extern bool sw_pmuphase;
+extern void (*pica_pmu)(int end);
+void pmu_renderer(double values[4]);
+extern bool sw_pmuclass, sw_rtfsdense;
+u64 emu_audio_ticks(void);
+void pmu_category_detail(double values[21]);
+void pmu_categories(double cycles[3], unsigned counts[3]);
 void pmu_report(void);
 void pmu_stop(void);
 void psx3d_stats(float *zc, int *n3d, int *n2d, int *dmin, int *dmax, int *zmin, int *zmax);

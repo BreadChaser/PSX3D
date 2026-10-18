@@ -8,6 +8,11 @@ void dev_authorize(void);
 bool dev_enabled(void);
 bool dev_batch_active(void);
 void dev_interrupt(void);
+enum { DEV_UI_NONE, DEV_UI_LIBRARY, DEV_UI_PAUSE, DEV_UI_SETTINGS, DEV_UI_STATES, DEV_UI_RESUME };
+int dev_ui_pending(void);
+int dev_ui_take(void);
+extern int dev_ui_slot;
+void covers_remote_enable(bool enable);
 void dev_init(void);
 void dev_shutdown(void);
 bool dev_tick(bool playing); /* main thread, after pica_thread_sync */

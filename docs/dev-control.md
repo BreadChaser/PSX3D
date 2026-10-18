@@ -21,8 +21,9 @@ There are no new menu entries. A `3dslink` argument cannot enable the server.
    BootNTR/NTR-HR running** (reboot if necessary). Pausing a PC viewer alone does
    not stop an already-active console-side NTR stream.
 
-Delete `remote` and restart PSX3D to turn the server off. Cover loading is
-suppressed during remote sessions so it cannot compete for SOC/network access.
+Delete `remote` and restart PSX3D to turn the server off. Cover loading starts
+paused during remote sessions. `ui library` explicitly enables it for UI
+captures; a remote load, batch or update pauses and closes cover transfers first.
 The ordinary library, controller inputs and game menu still work. Batch runs
 ignore gameplay/touch inputs, fast-forward and rewind. Physical HOME/sleep can
 still interrupt a run; do not use them during measurements or installation.
@@ -68,6 +69,33 @@ Content-Length, expected byte size and SHA256 in each update request. The driver
 waits for a changed PSX3D session ID before starting the batch. Use `remote`
 without startup `bench` for this workflow, so a relaunch does not auto-start an
 old on-card batch. There is no FTP fallback or blind menu automation.
+
+## UI screenshots without InputRedirection
+
+These commands use the same opt-in, token-gated mailbox as every other remote
+command. They open the real UI on the main thread; they do not synthesize images
+or inject controller inputs. An active benchmark rejects UI commands.
+
+```sh
+./psx3dctl.py old ui library select=Crash_Bandicoot
+./psx3dctl.py old shot both -o library.png
+./psx3dctl.py old load Crash_Bandicoot state=2 renderer=gpu
+./psx3dctl.py old ui pause
+./psx3dctl.py old ui settings   # in-game settings, or global settings in library
+./psx3dctl.py old savestate 9
+./psx3dctl.py old ui states slot=9  # load browser only; does not load/write a slot
+./psx3dctl.py old shot both -o states.png
+./psx3dctl.py old ui resume
+```
+
+`ui library [select=<exact title>]` returns to the library and enables covers.
+Use underscores for title spaces. `ui pause`, `ui states [slot=0..9]` and
+`ui resume` require a loaded game. `ui settings` opens the current context's
+settings list. Commands acknowledge the request before the next UI frame is
+drawn; allow that frame to complete before taking a screenshot. Modal settings
+and the state browser keep servicing remote commands, so `load`, `quit` and
+`update` can safely unwind them. `shot` defaults to both screens; `shot top`
+keeps the existing top-only format. Benchmark PNGs remain top-only.
 
 ## Batch format and output
 
@@ -163,7 +191,7 @@ repeating the on-card batch on future starts. Pull files without ftpd:
 TCP 5555, one client/command at a time. Send UTF-8 text ending in LF:
 `[token ]command arguments\n`. Responses start with `JSON <length>\n`,
 `PNG <length>\n` or `FILE <length>\n`, followed by exactly that many bytes; the
-connection then closes. JSON errors use `ok:false`/`error`. `shot top` (default)
+connection then closes. JSON errors use `ok:false`/`error`. `shot top`
 is 400x240; `shot both` is a 400x480 PNG with the 320-wide bottom screen at the
 lower left and black padding. `stats` returns a chronological `history` array of
 at most 60 intervals; the final element is the latest. Each sample has monotonic

@@ -5,7 +5,7 @@
 // audibly on a pure test tone.)
 //
 // The PS1 runs at 59.94Hz and the 3DS screen at ~59.83Hz, so the amount of
-// queued audio slowly drifts. A 4-point Hermite resampler on the CPU speeds
+// queued audio slowly drifts. A fixed-point cubic resampler on the CPU speeds
 // playback up or down by at most 0.5% to keep the queue at its target. When
 // emulation falls behind, optional frontend stretching slows sound further; the
 // DSP's own rate is never changed, because changing it makes the DSP click.
@@ -329,14 +329,22 @@ static void submit(const u32 *frames, size_t n)
 		csnd_submit(frames, n);
 		return;
 	}
-	for (size_t i = 0; i < n; i++) {
-		if (cur_fill == 0 && !buf_free(cur)) {
-			if (statsview_collecting()) st.dropped += n - i;   // every buffer is queued: we're far ahead
+	for (size_t at = 0; at < n; ) {
+		if (!cur_fill && !buf_free(cur)) {
+			if (statsview_collecting()) st.dropped += n - at;
 			return;
 		}
-		((u32 *)wb[cur].data_pcm16)[cur_fill++] = frames[i];
-		if (capturing && cap_played_n < CAP_FRAMES)
-			cap_played[cap_played_n++] = frames[i];
+		size_t count = BUF_FRAMES - cur_fill;
+		if (count > n - at) count = n - at;
+		memcpy((u32 *)wb[cur].data_pcm16 + cur_fill, frames + at, count * 4);
+		if (capturing && cap_played_n < CAP_FRAMES) {
+			size_t captured = count;
+			if (captured > CAP_FRAMES - cap_played_n) captured = CAP_FRAMES - cap_played_n;
+			memcpy(cap_played + cap_played_n, frames + at, captured * 4);
+			cap_played_n += captured;
+		}
+		cur_fill += count;
+		at += count;
 		if (cur_fill == BUF_FRAMES) {
 			DSP_FlushDataCache(wb[cur].data_pcm16, BUF_FRAMES * 4);
 			ndspChnWaveBufAdd(0, &wb[cur]);
@@ -391,7 +399,7 @@ size_t audio_write(const int16_t *data, size_t frames)
 			prev = d[i];
 		}
 	}
-	if (sw_stats || sw_prof || log_linked()) {
+	if (statsview_collecting()) {
 		// longest time between two writes
 		static u64 last_t;
 		if (!st.calls) last_t = 0;

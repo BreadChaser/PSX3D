@@ -13,6 +13,7 @@
 #include <curl/curl.h>
 #include <png.h>
 #include "psx3d.h"
+#include "devtools.h"
 
 #define COVER_DIR PSX3D_DIR "/covers"
 #define THUMB_URL "https://thumbnails.libretro.com/Sony%20-%20PlayStation/Named_Boxarts/"
@@ -36,6 +37,7 @@ static LightLock lock;
 static LightEvent wake;
 static volatile bool quit;
 static u64 net_retry_at;   // after a network failure, wait before trying again
+static bool remote_covers;
 static volatile bool paused; // HOME menu / sleep: don't start new downloads
 static volatile int busy;    // workers currently fetching/decoding a cover
 static aptHookCookie apt_cookie;
@@ -56,7 +58,7 @@ static void on_apt(APT_HookType hook, void *param)
 		break;
 	case APTHOOK_ONRESTORE:
 	case APTHOOK_ONWAKEUP:
-		paused = false;
+		paused = dev_remote && !remote_covers;
 		net_retry_at = osGetTime() + 1000;   // the network needs a moment back
 		LightEvent_Signal(&wake);
 		LightEvent_Signal(&wake);
@@ -383,13 +385,14 @@ static void worker_main(void *arg)
 void covers_init(void)
 {
 	mkdir(COVER_DIR, 0777);
+	paused = dev_remote;
 	for (int i = 0; i < SLOTS; i++)
 		slots[i].game = -1;
 	LightLock_Init(&lock);
 	LightEvent_Init(&wake, RESET_ONESHOT);   // each Signal wakes one worker
 	// the network: 3dslink logging may already have started it
 	// (3dslink logging may already have started the network)
-	if (!sw_nonet && !soc_buf && (soc_buf = memalign(0x1000, 0x100000)))
+	if (!dev_remote && !sw_nonet && !soc_buf && (soc_buf = memalign(0x1000, 0x100000)))
 		soc_started = R_SUCCEEDED(socInit(soc_buf, 0x100000));
 	curl_global_init(CURL_GLOBAL_DEFAULT);
 	LightLock_Init(&net_lock);
@@ -404,11 +407,14 @@ void covers_init(void)
 	// The New 3DS's spare core 2 when we have it: on core 0 under the UI,
 	// TLS got so little CPU that covers came in at 20KB/s. (The old HOME
 	// freeze blamed on core 2 was the blocking socket calls, see net_lock.)
+	// On core 0 the UI may consume the full refresh interval. A lower
+	// priority worker never runs then (3DS does not age thread priorities).
+	// Equal priority gives TLS/decode bounded time slices on Old 3DS.
 	for (int i = 0; i < WORKERS; i++) {
 		int core = 2;
 		workers[i] = threadCreate(worker_main, NULL, 64 * 1024, prio + 4, core, false);
 		if (!workers[i])
-			workers[i] = threadCreate(worker_main, NULL, 64 * 1024, prio + 4, core = 0, false);
+			workers[i] = threadCreate(worker_main, NULL, 64 * 1024, prio, core = 0, false);
 		log_printf("covers: worker %d on core %d\n", i, workers[i] ? core : -1);
 	}
 
@@ -460,7 +466,7 @@ void covers_exit(void)
 // Texture for game i if it's ready; otherwise queue it and return NULL.
 C3D_Tex *covers_get(int game)
 {
-	if (sw_nocovers)
+	if (sw_nocovers || (dev_remote && !remote_covers))
 		return NULL;
 	slot_t *s = NULL;
 	use_clock++;
@@ -578,7 +584,7 @@ void covers_stop_wait(void)
 
 void covers_resume(void)
 {
-	if (sw_nocovers)
+	if (sw_nocovers || (dev_remote && !remote_covers))
 		return;
 	paused = false;
 	LightEvent_Signal(&wake);
@@ -631,4 +637,14 @@ void covers_reset(void)
 		slots[i].pixels = NULL;
 	}
 	LightLock_Unlock(&lock);
+}
+
+// Explicit developer UI capture opt-in. Keep the control server's SOC
+// session; the curl worker uses short polls and closes before game/update.
+void covers_remote_enable(bool enable)
+{
+	if (!dev_remote || sw_nocovers) return;
+	remote_covers = enable;
+	if (enable) covers_resume();
+	else covers_stop_wait();
 }

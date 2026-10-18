@@ -1,5 +1,5 @@
 diff --git a/Makefile b/Makefile
-index d6379148..f2089dc2 100644
+index d637914..a1ff3f2 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -269,6 +269,7 @@ OBJS += plugins/gpulib/gpu.o plugins/gpulib/vout_pl.o plugins/gpulib/prim.o
@@ -10,7 +10,7 @@ index d6379148..f2089dc2 100644
  endif
  ifeq "$(BUILTIN_GPU)" "neon"
  CFLAGS += -DGPU_NEON
-@@ -291,7 +292,15 @@ frontend/menu.o frontend/plugin_lib.o: CFLAGS += -DBUILTIN_GPU_PEOPS
+@@ -291,7 +292,16 @@ frontend/menu.o frontend/plugin_lib.o: CFLAGS += -DBUILTIN_GPU_PEOPS
  OBJS += plugins/dfxvideo/gpulib_if.o
  endif
  
@@ -20,14 +20,15 @@ index d6379148..f2089dc2 100644
 +CFLAGS += -DGPU_PICA
 +CFLAGS += -DUSE_GPULIB=1
 +OBJS += plugins/gpu_pica/gpu_pica.o
-+plugins/gpu_pica/gpu_pica.o: CFLAGS += $(PICA_CFLAGS)   # the simulator passes fake 3DS headers
++plugins/gpu_pica/gpu_pica.o: CFLAGS += $(PICA_CFLAGS) $(PICA_LAYOUT_CFLAGS) $(PICA_OPT)   # renderer-only options
++plugins/gpulib/gpu.o: CFLAGS += $(PICA_LAYOUT_CFLAGS)
 +endif
 +
 +ifneq (,$(filter $(BUILTIN_GPU),unai dual))
  CFLAGS += -DGPU_UNAI
  CFLAGS += -DUSE_GPULIB=1
  OBJS += plugins/gpu_unai/gpulib_if.o
-@@ -313,6 +322,15 @@ endif
+@@ -313,6 +323,15 @@ endif
  CC_LINK = $(CXX)
  endif
  
@@ -44,7 +45,7 @@ index d6379148..f2089dc2 100644
  ifeq "$(HAVE_CHD)" "1"
  LCHDR = deps/libchdr
 diff --git a/Makefile.libretro b/Makefile.libretro
-index cd53109e..02807940 100644
+index cd53109..0280794 100644
 --- a/Makefile.libretro
 +++ b/Makefile.libretro
 @@ -356,12 +356,17 @@ else ifeq ($(platform), ctr)
@@ -78,7 +79,7 @@ index cd53109e..02807940 100644
  	ARCH = arm
  	PARTIAL_LINKING = 1
 diff --git a/frontend/libretro.c b/frontend/libretro.c
-index 9dd3502c..a281df04 100644
+index 9dd3502..a281df0 100644
 --- a/frontend/libretro.c
 +++ b/frontend/libretro.c
 @@ -31,6 +31,8 @@
@@ -131,7 +132,7 @@ index 9dd3502c..a281df04 100644
     var.key = "pcsx_rearmed_3ds_appcputime";
     if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
 diff --git a/libpcsxcore/gte.c b/libpcsxcore/gte.c
-index d1f18df1..3cc315e1 100644
+index d1f18df..3cc315e 100644
 --- a/libpcsxcore/gte.c
 +++ b/libpcsxcore/gte.c
 @@ -24,6 +24,7 @@
@@ -201,7 +202,7 @@ index d1f18df1..3cc315e1 100644
  
  	gteMAC1 = mac1;
 diff --git a/libpcsxcore/gte.h b/libpcsxcore/gte.h
-index a7baf6f6..686dd47c 100644
+index a7baf6f..686dd47 100644
 --- a/libpcsxcore/gte.h
 +++ b/libpcsxcore/gte.h
 @@ -66,6 +66,12 @@ void MTC2(struct psxCP2Regs *regs, u32 value, int reg);
@@ -218,7 +219,7 @@ index a7baf6f6..686dd47c 100644
  gte_handler *gteGetHandler_nf(u32 code);
  
 diff --git a/libpcsxcore/misc.c b/libpcsxcore/misc.c
-index 1072f04a..881d1b5d 100644
+index 1072f04..881d1b5 100644
 --- a/libpcsxcore/misc.c
 +++ b/libpcsxcore/misc.c
 @@ -961,6 +961,10 @@ int LoadState(const char *file) {
@@ -233,7 +234,7 @@ index 1072f04a..881d1b5d 100644
  
  	// spu
 diff --git a/libpcsxcore/new_dynarec/assem_arm.c b/libpcsxcore/new_dynarec/assem_arm.c
-index 67196027..daf899f4 100644
+index 6719602..daf899f 100644
 --- a/libpcsxcore/new_dynarec/assem_arm.c
 +++ b/libpcsxcore/new_dynarec/assem_arm.c
 @@ -22,6 +22,7 @@
@@ -281,7 +282,7 @@ index 67196027..daf899f4 100644
      }
      c2op_epilogue(c2op, reglist);
 diff --git a/libpcsxcore/new_dynarec/assem_arm.h b/libpcsxcore/new_dynarec/assem_arm.h
-index 74b1657f..90e90fff 100644
+index 74b1657..90e90ff 100644
 --- a/libpcsxcore/new_dynarec/assem_arm.h
 +++ b/libpcsxcore/new_dynarec/assem_arm.h
 @@ -37,7 +37,9 @@
@@ -295,7 +296,7 @@ index 74b1657f..90e90fff 100644
  struct tramp_insns
  {
 diff --git a/libpcsxcore/new_dynarec/new_dynarec.c b/libpcsxcore/new_dynarec/new_dynarec.c
-index fb99df6e..950a048d 100644
+index fb99df6..e84af18 100644
 --- a/libpcsxcore/new_dynarec/new_dynarec.c
 +++ b/libpcsxcore/new_dynarec/new_dynarec.c
 @@ -37,6 +37,10 @@ static Jit g_jit;
@@ -350,10 +351,12 @@ index fb99df6e..950a048d 100644
  {
    struct block_info *last_block = NULL;
    u_int start_page = get_page_prev(start);
-@@ -5850,6 +5867,241 @@ static void rjump_assemble(struct compile_state *st, int i, const struct regstat
+@@ -5850,6 +5867,360 @@ static void rjump_assemble(struct compile_state *st, int i, const struct regstat
    #endif
  }
  
++int psx3d_idle_pointer = 0; // opt-in: runtime-checked pointer-chasing RAM polls
++int psx3d_idle_delay = 0; // opt-in: pure register countdown loops
 +int psx3d_idle_skip = 1; // test switch: fast-forward polling loops
 +
 +// Polling loop: a short backward branch whose loop path only loads from RAM or
@@ -364,8 +367,10 @@ index fb99df6e..950a048d 100644
 +struct idle_loop {
 +  int iter;           // cycles per iteration
 +  int nchk;           // loads whose RAM address is checked at run time
-+  u_char chk_reg[3];
-+  short chk_ofs[3];
++  unsigned chk_mem;   // invariant bases that may be read from the register file
++  u_char chk_reg[6];
++  short chk_ofs[6];
++  signed char chk_parent[6]; // prior checked lw that produced this base
 +};
 +
 +static int idle_loop_check(struct compile_state *st, int i, struct idle_loop *il)
@@ -374,6 +379,8 @@ index fb99df6e..950a048d 100644
 +  int t = (ba - st->start) >> 2, j, k;
 +  uint64_t wr = 0, wr_all = 0, cst = 1;
 +  u_int cval[32];
++  int load_addr[32];
++  memset(load_addr, -1, sizeof(load_addr));
 +
 +  if (!psx3d_idle_skip || !internal_branch(st, ba) || t > i || i - t > 24
 +      || dops[t].is_ds || dops[i+1].is_jump)
@@ -384,6 +391,7 @@ index fb99df6e..950a048d 100644
 +  wr_all &= ~1ull;
 +  il->iter = -cinfo[t].ccadj;
 +  il->nchk = 0;
++  il->chk_mem = 0;
 +  for (j = t; j <= i + 1; j++) {
 +    const struct decoded_insn *d = &dops[j];
 +    uint64_t rd = (1ull << d->rs1) | (1ull << d->rs2);
@@ -413,31 +421,55 @@ index fb99df6e..950a048d 100644
 +        if (!is_ram_addr(a) && (a & 0x1ffffff8) != 0x1f801070)
 +          return 0;
 +      }
-+      else if (!((wr_all >> d->rs1) & 1)) {
++      else if (!((wr_all >> d->rs1) & 1) || psx3d_idle_pointer) {
++        // A newly loaded/computed RAM pointer is stable until the next event.
++        // The address guard runs at the back-edge, so it must still hold the
++        // value used by this load. Reject any later write to the base register.
++        for (k = j; k <= i + 1; k++)
++          if (dops[k].rt1 == d->rs1 || dops[k].rt2 == d->rs1)
++            return 0;
 +        for (k = 0; k < il->nchk; k++)
 +          if (il->chk_reg[k] == d->rs1 && il->chk_ofs[k] == cinfo[j].imm)
 +            break;
 +        if (k == il->nchk) {
-+          if (k == ARRAY_SIZE(il->chk_reg))
++          if (k == (psx3d_idle_pointer ? ARRAY_SIZE(il->chk_reg) : 3))
 +            return 0;
 +          il->chk_reg[k] = d->rs1, il->chk_ofs[k] = cinfo[j].imm;
++          il->chk_parent[k] = psx3d_idle_pointer ? load_addr[d->rs1] : -1;
++          // An unmapped invariant base can be loaded from the register file.
++          // Do not use this fallback for a value produced inside this block.
++          if (psx3d_idle_pointer) {
++            int z;
++            for (z = 0; z < st->slen; z++)
++              if (dops[z].rt1 == d->rs1 || dops[z].rt2 == d->rs1)
++                break;
++            if (z == st->slen)
++              il->chk_mem |= 1u << k;
++          }
 +          il->nchk++;
 +        }
 +      }
 +      else
 +        return 0;
++      // A discarded pointer can be reconstructed from a preceding checked
++      // word load. All ancestors have lower indices and were proved RAM before
++      // this guard, so rereading them has no side effects.
++      load_addr[d->rt1] = d->opcode == 0x23 && !((cst >> d->rs1) & 1) ? k : -1;
 +      cst &= ~(1ull << d->rt1);
 +      break;
 +    case CJUMP: case SJUMP:
 +      if (j == i + 1 || d->rt1 == 31) // no branch in DS, no bltzal
 +        return 0;
-+      if (j < i && cinfo[j].ba >= ba && cinfo[j].ba <= st->start + (i + 1) * 4)
-+        return 0; // exits only
++      if (j < i && cinfo[j].ba <= st->start + (i + 1) * 4
++          && (cinfo[j].ba > ba || (!psx3d_idle_pointer && cinfo[j].ba == ba)))
++        return 0; // exits or (opt-in) an earlier back-edge to this loop head
 +      il->iter += cinfo[j].ccadj + CLOCK_ADJUST(2);
 +      break;
 +    default:
 +      return 0;
 +    }
++    if (d->itype != LOAD && d->rt1 >= 0 && d->rt1 < 32)
++      load_addr[d->rt1] = -1;
 +    wr |= (1ull << d->rt1) | (1ull << d->rt2);
 +  }
 +#ifdef PSX3D_SIM
@@ -447,6 +479,34 @@ index fb99df6e..950a048d 100644
 +  return il->iter > 0;
 +}
 +
++// Reconstruct only already-checked RAM pointer ancestors; no emulated time
++// or memory writes occur between guards. Unknown root bases fail closed.
++static int idle_addr_available(const struct idle_loop *il, int j, const signed char *map)
++{
++  if (get_reg(map, il->chk_reg[j]) >= 0 || (il->chk_mem & (1u << j)))
++    return 1;
++  return il->chk_parent[j] >= 0 && il->chk_parent[j] < j
++      && idle_addr_available(il, il->chk_parent[j], map);
++}
++
++static void idle_addr_assemble(const struct idle_loop *il, int j, const signed char *map, int tmp)
++{
++  int base = get_reg(map, il->chk_reg[j]);
++  if (base < 0) {
++    base = tmp;
++    if (il->chk_parent[j] >= 0) {
++      idle_addr_assemble(il, il->chk_parent[j], map, tmp);
++      emit_shlimm(tmp, 11, tmp);
++      emit_shrimm(tmp, 11, tmp);
++      emit_movimm((u_int)psxRegs.ptrs.psxM, HOST_TEMPREG);
++      emit_ldr_dualindexed(HOST_TEMPREG, tmp, tmp);
++    }
++    else
++      emit_loadreg(il->chk_reg[j], tmp);
++  }
++  emit_addimm(base, il->chk_ofs[j], tmp);
++}
++
 +// emitted on the taken back-edge with cc = cycle count at the loop head
 +static void idle_loop_assemble(int i, const struct idle_loop *il, int adj, int cc)
 +{
@@ -454,10 +514,10 @@ index fb99df6e..950a048d 100644
 +  // iteration, after its loads
 +  void *lc_seen = (u_char *)dynarec_local + LO_unused2;
 +  int tmp = get_reg_temp(branch_regs[i].regmap);
-+  void *t_exit[4], *loop;
++  void *t_exit[13], *loop;
 +  int j, n, step;
 +  for (j = 0; j < il->nchk; j++)
-+    if (get_reg(branch_regs[i].regmap, il->chk_reg[j]) < 0)
++    if (!idle_addr_available(il, j, branch_regs[i].regmap))
 +      return;
 +  if (tmp < 0)
 +    return;
@@ -470,11 +530,25 @@ index fb99df6e..950a048d 100644
 +  t_exit[il->nchk] = out;
 +  emit_jne(0);
 +  for (j = 0; j < il->nchk; j++) {
-+    emit_addimm(get_reg(branch_regs[i].regmap, il->chk_reg[j]), il->chk_ofs[j], tmp);
++    idle_addr_assemble(il, j, branch_regs[i].regmap, tmp);
 +    emit_andimm(tmp, 0x1fffffff, tmp);
 +    emit_cmpimm(tmp, 0x800000);
 +    t_exit[j] = out;
 +    emit_jc(0);
++    // Fold alignment into the RAM guard by testing low bits only for a load
++    // that will be reread to reconstruct a discarded pointer.
++    if (psx3d_idle_pointer) {
++      int k, parent = 0;
++      for (k = j + 1; k < il->nchk; k++)
++        parent |= il->chk_parent[k] == j;
++      if (parent) {
++        emit_testimm(tmp, 3);
++        t_exit[il->nchk + 1 + j] = out;
++        emit_jne(0);
++      }
++      else
++        t_exit[il->nchk + 1 + j] = NULL;
++    }
 +  }
 +  // skip n iterations while the back-edge check after them would not fire
 +  for (n = 64; n >= 1; n /= 8) {
@@ -491,7 +565,53 @@ index fb99df6e..950a048d 100644
 +  }
 +  for (j = 0; j <= il->nchk; j++)
 +    set_jump_target(t_exit[j], out);
++  if (psx3d_idle_pointer)
++    for (j = 0; j < il->nchk; j++)
++      if (t_exit[il->nchk + 1 + j])
++        set_jump_target(t_exit[il->nchk + 1 + j], out);
 +  host_tempreg_release();
++}
++
++// addiu r,r,-1; bnez r,<addiu>; nop. Only whole iterations before
++// the next original back-edge cycle check are omitted. Keep the final nonzero
++// iteration so the branch exit and register state are identical, even at wrap.
++static int delay_loop_check(struct compile_state *st, int i)
++{
++  int t = i - 1, r = dops[i].rs1;
++  if (!psx3d_idle_delay || !dops[i].ooo || t < 0 || !r || r >= 32
++      || !internal_branch(st, cinfo[i].ba) || dops[t].is_ds
++      || cinfo[i].ba != st->start + t*4 || dops[i].opcode != 5
++      || dops[i].rs2 != 0 || dops[t].opcode != 9
++      || dops[t].rs1 != r || dops[t].rt1 != r || cinfo[t].imm != -1
++      || st->source[i+1] != 0)
++    return 0;
++#ifdef PSX3D_SIM
++  SysPrintf("countdown loop @%08x\n", cinfo[i].ba);
++#endif
++  return cinfo[i].ccadj + CLOCK_ADJUST(2) - cinfo[t].ccadj;
++}
++
++static void delay_loop_assemble(int i, int iter, int cc)
++{
++  int r = get_reg(branch_regs[i].regmap, dops[i].rs1), n;
++  void *loop, *a, *b;
++  if (r < 0 || iter <= 0)
++    return;
++  for (n = 64; n >= 1; n /= 8) {
++    int step = n * iter;
++    if (step >= 65536)
++      continue;
++    loop = out;
++    emit_cmpimm(r, n + 1);
++    a = out; emit_jcc(0); // unsigned r <= n, including zero
++    emit_cmpimm(cc, -step);
++    b = out; emit_jge(0);
++    emit_addimm(r, -n, r);
++    emit_addimm(cc, step, cc);
++    emit_jmp(loop);
++    set_jump_target(a, out);
++    set_jump_target(b, out);
++  }
 +}
 +
 +// PsyQ "while (VSync(1) < n);": VSync(1) reads the hblank counter (root counter 1)
@@ -592,29 +712,32 @@ index fb99df6e..950a048d 100644
  static void vsync_hack_assemble(int i, int ld_ofs, int cc)
  {
    int sp = get_reg(branch_regs[i].regmap, 29);
-@@ -5914,6 +6166,10 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
+@@ -5914,6 +6285,11 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
    if(i==(cinfo[i].ba-st->start)>>2) assem_debug("idle loop\n");
    if(!match) invert=1;
    if (vsync_hack && (vsync_hack >> 16) == i) invert=1;
 +  struct idle_loop il;
 +  int idle = idle_loop_check(st, i, &il);
++  int delay = !idle ? delay_loop_check(st, i) : 0;
 +  int vsync1 = !idle && dops[i].ooo && vsync1_loop_check(st, i);
-+  if ((idle || vsync1) && dops[i].ooo) invert=1;
++  if ((idle || vsync1 || delay) && dops[i].ooo) invert=1;
    #ifdef CORTEX_A8_BRANCH_PREDICTION_HACK
    if(i>(cinfo[i].ba-st->start)>>2) invert=1;
    #endif
-@@ -6050,6 +6306,10 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
+@@ -6050,6 +6426,12 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
          if(taken) set_jump_target(taken, out);
          if (vsync_hack && (vsync_hack >> 16) == i)
            vsync_hack_assemble(i, vsync_hack & 0xffff, cc);
 +        if (idle)
 +          idle_loop_assemble(i, &il, 0, cc);
++        if (delay)
++          delay_loop_assemble(i, delay, cc);
 +        if (vsync1)
 +          vsync1_loop_assemble(i, cc);
          #ifdef CORTEX_A8_BRANCH_PREDICTION_HACK
          if (match && (!internal || !dops[(cinfo[i].ba-st->start)>>2].is_ds)) {
            if(adj) {
-@@ -6148,6 +6408,8 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
+@@ -6148,6 +6530,8 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
        do_cc(st,i,i_regmap,&adj,cinfo[i].ba,TAKEN,0);
        assem_debug("cycle count (adj)\n");
        if(adj) emit_addimm(cc, cinfo[i].ccadj + CLOCK_ADJUST(2) - adj, cc);
@@ -623,7 +746,7 @@ index fb99df6e..950a048d 100644
        load_regs_bt(st,branch_regs[i].regmap,branch_regs[i].dirty,cinfo[i].ba);
        if(internal)
          assem_debug("branch: internal\n");
-@@ -6948,6 +7210,8 @@ void new_dynarec_load_blocks(const void *save, int size)
+@@ -6948,6 +7332,8 @@ void new_dynarec_load_blocks(const void *save, int size)
  
  void new_dynarec_print_stats(void)
  {
@@ -632,7 +755,7 @@ index fb99df6e..950a048d 100644
  #ifdef STAT_PRINT
    size_t i, lmem = 0;
    for (i = 0; i < ARRAY_SIZE(jumps); i++) {
-@@ -6956,7 +7220,7 @@ void new_dynarec_print_stats(void)
+@@ -6956,7 +7342,7 @@ void new_dynarec_print_stats(void)
        lmem += sizeof(*ji) + ji->alloc * sizeof(ji->e[0]) + sizeof(size_t) * 2;
    }
  
@@ -641,7 +764,7 @@ index fb99df6e..950a048d 100644
      stat_bc_direct, stat_bc_restore,
      stat_ht_lookups, stat_jump_in_lookups, stat_restore_tries,
      stat_restore_compares, stat_inv_addr_calls, stat_inv_hits,
-@@ -9604,7 +9868,16 @@ static void block_info_finish(const struct compile_state *st,
+@@ -9604,7 +9990,16 @@ static void block_info_finish(const struct compile_state *st,
    perf_dump_write(st, beginning, end);
  }
  
@@ -659,20 +782,21 @@ index fb99df6e..950a048d 100644
    struct compile_state st;
    u_int pagelimit = 0;
 diff --git a/libpcsxcore/new_dynarec/new_dynarec.h b/libpcsxcore/new_dynarec/new_dynarec.h
-index 387aaac5..b42e3c7a 100644
+index 387aaac..c69b31c 100644
 --- a/libpcsxcore/new_dynarec/new_dynarec.h
 +++ b/libpcsxcore/new_dynarec/new_dynarec.h
-@@ -30,6 +30,7 @@ struct ndrc_globals
+@@ -30,6 +30,8 @@ struct ndrc_globals
  	} thread;
  };
  extern struct ndrc_globals ndrc_g;
++extern int psx3d_idle_pointer, psx3d_idle_delay; // set before compiling blocks
 +extern int psx3d_idle_skip; // fast-forward polling loops (read when compiling)
  
  void new_dynarec_init(void);
  void new_dynarec_cleanup(void);
 diff --git a/libpcsxcore/psx3d_depth.h b/libpcsxcore/psx3d_depth.h
 new file mode 100644
-index 00000000..9c55cbb7
+index 0000000..9c55cbb
 --- /dev/null
 +++ b/libpcsxcore/psx3d_depth.h
 @@ -0,0 +1,98 @@
@@ -776,7 +900,7 @@ index 00000000..9c55cbb7
 +#endif
 diff --git a/libpcsxcore/psx3d_prof.h b/libpcsxcore/psx3d_prof.h
 new file mode 100644
-index 00000000..9ed05057
+index 0000000..9ed0505
 --- /dev/null
 +++ b/libpcsxcore/psx3d_prof.h
 @@ -0,0 +1,23 @@
@@ -804,7 +928,7 @@ index 00000000..9ed05057
 +#endif
 +#endif
 diff --git a/libpcsxcore/psxevents.c b/libpcsxcore/psxevents.c
-index 4f2d5cd2..c27b722e 100644
+index 4f2d5cd..c27b722 100644
 --- a/libpcsxcore/psxevents.c
 +++ b/libpcsxcore/psxevents.c
 @@ -1,3 +1,4 @@
@@ -854,15 +978,16 @@ index 4f2d5cd2..c27b722e 100644
  	psxRegisters *regs = cp0TOpsxRegs(cp0);
  
 diff --git a/plugins/dfsound/spu.c b/plugins/dfsound/spu.c
-index 76f76afe..0e684ace 100644
+index 76f76af..d718d85 100644
 --- a/plugins/dfsound/spu.c
 +++ b/plugins/dfsound/spu.c
-@@ -1,3 +1,4 @@
+@@ -1,3 +1,5 @@
++#include "../gpulib/psx3d_frameskip.h"
 +#include "../../libpcsxcore/psx3d_prof.h"
  /***************************************************************************
                              spu.c  -  description
                               -------------------
-@@ -718,12 +719,14 @@ static struct spu_worker {
+@@ -718,12 +720,14 @@ static struct spu_worker {
     unsigned int i_done;
     unsigned int active; // dsp
     unsigned int boot_cnt;
@@ -877,7 +1002,7 @@ index 76f76afe..0e684ace 100644
    int decode_pos;
    int rvb_addr;
    unsigned int channels_new;
-@@ -755,6 +758,10 @@ static void thread_work_start(void);
+@@ -755,6 +759,10 @@ static void thread_work_start(void);
  static void thread_work_wait_sync(struct work_item *work, int force);
  static void thread_sync_caches(void);
  static int  thread_get_i_done(void);
@@ -888,7 +1013,7 @@ index 76f76afe..0e684ace 100644
  
  static int decode_block_work(void *context, int ch, sample_buf *sb)
  {
-@@ -887,6 +894,8 @@ static void queue_channel_work(int ns_to, unsigned int silentch)
+@@ -887,6 +895,8 @@ static void queue_channel_work(int ns_to, unsigned int silentch)
     spu.rvb->CurrAddr -= 0x40000 - spu.rvb->StartAddr;
   }
  
@@ -897,7 +1022,7 @@ index 76f76afe..0e684ace 100644
   worker->i_ready++;
   thread_work_start();
  }
-@@ -945,6 +954,32 @@ static void do_channel_work(struct work_item *work)
+@@ -945,6 +955,33 @@ static void do_channel_work(struct work_item *work)
     REVERBDo(work->SSumLR, RVB, ns_to, work->rvb_addr);
  }
  
@@ -918,6 +1043,7 @@ index 76f76afe..0e684ace 100644
 + if (worker->i_claimed != i || !__sync_bool_compare_and_swap(&worker->i_claimed, i, i + 1))
 +  return 0;
 + do_channel_work(work);
++ psx3d_skip.spu_stolen++;
 + work->stolen = 1;
 + __sync_synchronize();
 + worker->i_done++;
@@ -930,7 +1056,7 @@ index 76f76afe..0e684ace 100644
  static void sync_worker_thread(int force_no_thread)
  {
   int force = force_no_thread;
-@@ -962,7 +997,15 @@ static void sync_worker_thread(int force_no_thread)
+@@ -962,7 +999,15 @@ static void sync_worker_thread(int force_no_thread)
  
   while ((force && used_space > 0) || used_space >= WORK_MAXCNT || done > 0) {
    work = &worker->i[worker->i_reaped & WORK_I_MASK];
@@ -946,7 +1072,7 @@ index 76f76afe..0e684ace 100644
  
    MixCD(work->SSumLR, RVB, work->ns_to, work->decode_pos);
    do_samples_finish(work->SSumLR, work->ns_to,
-@@ -997,7 +1040,15 @@ static const void * const worker = NULL;
+@@ -997,7 +1042,17 @@ static const void * const worker = NULL;
  // here is the main job handler...
  ////////////////////////////////////////////////////////////////////////
  
@@ -954,7 +1080,9 @@ index 76f76afe..0e684ace 100644
  void do_samples(unsigned int cycles_to, int force_no_thread)
 +{
 + PROF_BEGIN(PROF_SPU);
++ unsigned long long start = psx3d_skip.timing ? PROF_TICK() : 0;
 + do_samples_(cycles_to, force_no_thread);
++ if (psx3d_skip.timing) psx3d_skip.spu_main_ticks += PROF_TICK() - start;
 + PROF_END(PROF_SPU);
 +}
 +
@@ -962,7 +1090,7 @@ index 76f76afe..0e684ace 100644
  {
   unsigned int silentch;
   int cycle_diff;
-@@ -1014,6 +1065,12 @@ void do_samples(unsigned int cycles_to, int force_no_thread)
+@@ -1014,6 +1069,12 @@ void do_samples(unsigned int cycles_to, int force_no_thread)
   silentch = ~(spu.dwChannelsAudible | spu.dwNewChannel) & 0xffffff;
  
   force_no_thread |= (silentch == 0xffffff);
@@ -975,7 +1103,17 @@ index 76f76afe..0e684ace 100644
   if (worker != NULL)
    sync_worker_thread(force_no_thread);
  
-@@ -1338,12 +1395,28 @@ static STRHEAD_RET_TYPE spu_worker_thread(void *unused)
+@@ -1321,7 +1382,9 @@ static void thread_work_start(void)
+ 
+ static void thread_work_wait_sync(struct work_item *work, int force)
+ {
++ unsigned long long start = psx3d_skip.timing ? PROF_TICK() : 0;
+  sem_wait(&t.sem_done);
++ if (psx3d_skip.timing) psx3d_skip.spu_wait_ticks += PROF_TICK() - start;
+ }
+ 
+ static int thread_get_i_done(void)
+@@ -1338,12 +1401,31 @@ static STRHEAD_RET_TYPE spu_worker_thread(void *unused)
   struct work_item *work;
  
   while (1) {
@@ -1000,17 +1138,21 @@ index 76f76afe..0e684ace 100644
 +   __sync_synchronize();
 +
 +  work = &worker->i[i & WORK_I_MASK];
++  unsigned long long start = psx3d_skip.timing ? PROF_TICK() : 0;
    do_channel_work(work);
++  if (psx3d_skip.timing) __atomic_fetch_add(&psx3d_spu_worker_ticks, (unsigned)(PROF_TICK() - start), __ATOMIC_RELAXED);
++  __atomic_fetch_add(&psx3d_spu_worker_items, 1, __ATOMIC_RELAXED);
 +  __sync_synchronize();
    worker->i_done++;
  
    sem_post(&t.sem_done);
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 00000000..79eedcfe
+index 0000000..f902388
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,3255 @@
+@@ -0,0 +1,3613 @@
++#include "../gpulib/psx3d_frameskip.h"
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -1038,7 +1180,9 @@ index 00000000..79eedcfe
 +#include "../gpulib/gpu.h"
 +#include "gpu_pica_thread.h"
 +#include "../gpulib/gpu_timing.h"
++#include "../gpulib/gpu_async.h"
 +#include "gpu_pica.h"
++#include "../gpulib/pica_layout.h"
 +#include "../../frontend/plugin_lib.h"
 +
 +#define VRAM_W 1024
@@ -1103,8 +1247,8 @@ index 00000000..79eedcfe
 +static void renderer_flush_queues_local(void);
 +static void pica_flip_local(void);
 +static void pica_prepare_present_local(void);
-+static void pica_stats_local(char *buf, int n);
-+static void pica_probe_local(char *buf, int n);
++static void PICA_COLD pica_stats_local(char *buf, int n);
++static void PICA_COLD pica_probe_local(char *buf, int n);
 +// The command-list loop has no thread check. Only CPU-visible boundaries
 +// and frontend inspection use these synchronous owner-thread requests.
 +int (*pica_thread_call)(void (*call)(void *), void *data);
@@ -1293,7 +1437,20 @@ index 00000000..79eedcfe
 +typedef struct { s16 x, y, w, h; } prect;
 +static prect pend[16];
 +static int npend;
++bool pica_texmask = true, pica_texmemo = true; // named diagnostic A/B switches
 +int pica_debug;   // set by the frontend (test switch gldbg)
++unsigned pica_submit = 7; // named submitstate/submitclip/submittex switches
++void (*pica_pmu)(int end); // optional frontend kernel-PMU sampler
++unsigned pica_prims = 7;   // named pica_prims_* experiments, separate from gldbg
++// Per-primitive experiments; opt in individually or together in the same binary.
++#define PRIM_PACK_COPY 1u
++#define PRIM_CLIP_PLANES 2u
++#define PRIM_VFP_ROUND 4u
++#ifdef PICA_PRIMS_FIXED
++#define PRIM_TEST(mask) (PICA_PRIMS_FIXED & (mask))
++#else
++#define PRIM_TEST(mask) (pica_prims & (mask))
++#endif
 +// Set by the frontend: opens a GPU frame (waiting for the previous one to
 +// finish). Called when the first drawing command of a frame arrives, so the
 +// GPU finishes the last frame while the game's own code runs.
@@ -1302,13 +1459,59 @@ index 00000000..79eedcfe
 +void (*pica_wait_frame)(void);
 +bool (*pica_frame_pending)(void);
 +static u64 t_state, t_draw, t_tex, t_list, t_svc;
++/* gldbg=8388608: sample each hot phase at 1/16 calls. Inclusive estimates:
++ * list contains primitive, texture contains decode, primitive contains state/
++ * submission. Low-frequency list/readback boundaries are measured exactly. */
++static unsigned phase_random[8] = {1,2,3,4,5,6,7,8};
++#ifdef PICA_LAYOUT_SPLIT
++static PICA_COLD u64 phase_begin_sample(unsigned k)
++{
++ if (k != 0 && k != 6) {
++  phase_random[k] = phase_random[k] * 1664525u + 1013904223u;
++  if (phase_random[k] >> 28) return 0;
++ }
++ return svcGetSystemTick();
++}
++static inline u64 phase_begin(unsigned k)
++{
++ if (PICA_UNLIKELY(pica_debug & 8388608)) return phase_begin_sample(k);
++ return 0;
++}
++static PICA_COLD void phase_end_sample(unsigned k, u64 start)
++{
++ u64 ticks = svcGetSystemTick() - start;
++ ticks = ticks > t_svc ? ticks - t_svc : 0;
++ psx3d_skip.phase_ticks[k] += ticks * ((k == 0 || k == 6) ? 1 : 16);
++}
++static inline void phase_end(unsigned k, u64 start)
++{
++ if (PICA_UNLIKELY(start != 0)) phase_end_sample(k, start);
++}
++#else
++static u64 phase_begin(unsigned k)
++{
++ if (!(pica_debug & 8388608)) return 0;
++ if (k != 0 && k != 6) {
++  phase_random[k] = phase_random[k] * 1664525u + 1013904223u;
++  if (phase_random[k] >> 28) return 0;
++ }
++ return svcGetSystemTick();
++}
++static void phase_end(unsigned k, u64 start)
++{
++ if (!start) return;
++ u64 ticks = svcGetSystemTick() - start;
++ ticks = ticks > t_svc ? ticks - t_svc : 0;
++ psx3d_skip.phase_ticks[k] += ticks * ((k == 0 || k == 6) ? 1 : 16);
++}
++#endif
 +static unsigned n_list, n_flush;   // diagnostics: ticks in state setup, draw calls, textures
 +static unsigned st_why[5], st_evict_lg[NSIZES];   // batch ends: atlas, blend/mode, area, rebind, other
 +static unsigned st_batches, st_prims, st_decodes, st_uploads, st_syncs, st_evict, st_inval, st_keys;
 +
 +static void flush(void);
 +static bool decode_gpu(tcache *c, u64 need);
-+static void push_to_target(int x, int y, int w, int h);
++static void PICA_COLD push_to_target(int x, int y, int w, int h);
 +
 +// ------------------------------------------------------------------ helpers
 +
@@ -1475,15 +1678,10 @@ index 00000000..79eedcfe
 +static unsigned st_readbacks;
 +
 +// the GPU is about to draw into pixels x0..x1, y0..y1 (inclusive)
-+static noinline void mark_drawn_slow(int x0, int y0, int x1, int y1)
++#ifdef PICA_LAYOUT_SPLIT
++static PICA_COLD void mark_drawn_fine(int x0, int y0, int x1, int y1)
 +{
-+	if (x0 < 0) x0 = 0;
-+	if (y0 < 0) y0 = 0;
-+	if (x1 > VRAM_W - 1) x1 = VRAM_W - 1;
-+	if (y1 > VRAM_H - 1) y1 = VRAM_H - 1;
-+	if (x1 < x0 || y1 < y0)
-+		return;
-+	if (!rtt_old()) {
++
 +		gpu_readable = false;
 +		int bx0 = x0 >> 3, bx1 = x1 >> 3, by0 = y0 >> 3, by1 = y1 >> 3;
 +		if (bx0 >= known_fx0 && bx1 <= known_fx1 && by0 >= known_fy0 && by1 <= known_fy1) return;
@@ -1514,6 +1712,53 @@ index 00000000..79eedcfe
 +			}
 +		}
 +		if (changed) gen_clock = stamp;
++}
++#endif
++
++static noinline void PICA_HOT(mark_drawn_slow) mark_drawn_slow(int x0, int y0, int x1, int y1)
++{
++	if (x0 < 0) x0 = 0;
++	if (y0 < 0) y0 = 0;
++	if (x1 > VRAM_W - 1) x1 = VRAM_W - 1;
++	if (y1 > VRAM_H - 1) y1 = VRAM_H - 1;
++	if (x1 < x0 || y1 < y0)
++		return;
++	if (!rtt_old()) {
++#ifdef PICA_LAYOUT_SPLIT
++  mark_drawn_fine(x0, y0, x1, y1);
++#else
++
++		gpu_readable = false;
++		int bx0 = x0 >> 3, bx1 = x1 >> 3, by0 = y0 >> 3, by1 = y1 >> 3;
++		if (bx0 >= known_fx0 && bx1 <= known_fx1 && by0 >= known_fy0 && by1 <= known_fy1) return;
++		// Keep the largest covered rectangle, rather than replacing a
++		// framebuffer-sized hit with each tiny sprite outside it.
++		if (known_fx0 > known_fx1 || (bx1-bx0+1)*(by1-by0+1) >
++			(known_fx1-known_fx0+1)*(known_fy1-known_fy0+1)) {
++			known_fx0=bx0; known_fx1=bx1; known_fy0=by0; known_fy1=by1;
++		}
++		// A CPU-decoded texture has read back (and cleared) its source
++		// tiles. Writes to tiles still dirty cannot invalidate a CPU decode.
++		u32 stamp = gen_clock + 1;
++		bool changed = false;
++		for (int by = by0; by <= by1; by++) {
++			for (int word = bx0 >> 5; word <= (bx1 >> 5); word++) {
++				int lo = word == (bx0 >> 5) ? (bx0 & 31) : 0;
++				int hi = word == (bx1 >> 5) ? (bx1 & 31) : 31;
++				u32 mask = (~0u << lo) & (~0u >> (31-hi));
++				u32 add = mask & (~fine_drawn[by][word] | fine_snapshot[by][word]);
++				if (!add) continue;
++				fine_snapshot[by][word] &= ~mask;
++				fine_drawn[by][word] |= mask;
++				changed |= add != 0;
++				for (; add; add &= add-1) {
++					int bx=word*32+__builtin_ctz(add);
++					fine_gen[by][bx] = fine_draw_gen[by][bx] = stamp;
++				}
++			}
++		}
++		if (changed) gen_clock = stamp;
++#endif
 +		return;
 +	}
 +	int bx0 = x0 >> 6, bx1 = x1 >> 6, by0 = y0 >> 4, by1 = y1 >> 4;
@@ -1537,12 +1782,19 @@ index 00000000..79eedcfe
 +
 +// The common covered-rectangle case stays in the primitive hot path. Tile
 +// bit/version bookkeeping is called only when the bounds grow or move.
-+static inline void mark_drawn(int x0, int y0, int x1, int y1)
++static PICA_INLINE_HOT(mark_drawn) void mark_drawn(int x0, int y0, int x1, int y1)
 +{
 +	if (!rtt_old()) {
 +		gpu_readable=false;
 +		if ((x0>>3)>=known_fx0 && (x1>>3)<=known_fx1 &&
 +			(y0>>3)>=known_fy0 && (y1>>3)<=known_fy1) return;
++	} else if ((pica_debug & 33554432) && x0 >= 0 && y0 >= 0 &&
++		x1 < VRAM_W && y1 < VRAM_H &&
++		(x0 >> 6) >= known_bx0 && (x1 >> 6) <= known_bx1 &&
++		(y0 >> 4) >= known_by0 && (y1 >> 4) <= known_by1) {
++		// Coarse mode also has a common already-covered rectangle. Avoid
++		// the cold bookkeeping call only when the complete bounds are valid.
++		return;
 +	}
 +	mark_drawn_slow(x0,y0,x1,y1);
 +}
@@ -1619,7 +1871,7 @@ index 00000000..79eedcfe
 +#define trace_rtt(c, kind, x, y, w, h) ((void)0)
 +#endif
 +
-+static void readback_fine(int x, int y, int w, int h)
++static void PICA_COLD readback_fine(int x, int y, int w, int h)
 +{
 +	int x0 = x >> 3, x1 = (x + w - 1) >> 3;
 +	int y0 = y >> 3, y1 = (y + h - 1) >> 3;
@@ -1667,7 +1919,7 @@ index 00000000..79eedcfe
 +// Enter fine tracking once a real consumer intersects old GPU drawing.
 +// Drain readers before changing cache generations; expand the conservative
 +// old debt into native tiles so the first feedback read cannot lose pixels.
-+static void activate_rtt(void)
++static void PICA_COLD activate_rtt(void)
 +{
 +	if (!rtt_old() || (pica_debug & RTT_OLD)) return;
 +	gpu_idle();
@@ -1692,7 +1944,7 @@ index 00000000..79eedcfe
 +	rtt_cache_rebuild = true;
 +}
 +
-+static void readback_part(int x, int y, int w, int h)
++static void PICA_COLD readback_part_impl(int x, int y, int w, int h)
 +{
 +	if (w <= 0 || h <= 0 || !ready)
 +		return;
@@ -1753,6 +2005,14 @@ index 00000000..79eedcfe
 +		fprintf(stderr,"RTT readback %d %d %d %d pixels %u changed %u\n",x,y,w,h,pixels,changed);
 +#endif
 +}
++
++static void readback_part(int x, int y, int w, int h)
++{
++ u64 started = phase_begin(6);
++ readback_part_impl(x, y, w, h);
++ phase_end(6, started);
++}
++
 +
 +// copy GPU drawing in this VRAM rectangle (wrapping at the edges) to software VRAM
 +static void pica_readback_rect_local(int x, int y, int w, int h)
@@ -1922,7 +2182,7 @@ index 00000000..79eedcfe
 +	return c->tiles == old;
 +}
 +
-+static bool cache_valid(tcache *c)
++static bool PICA_COLD cache_valid(tcache *c)
 +{
 +	if (!rtt_old()) return cache_valid_fine(c);
 +	// gldbg=131072: baseline renderer CPU paths.
@@ -1990,16 +2250,24 @@ index 00000000..79eedcfe
 +	}
 +}
 +
-+static void decode_rect_reference(tcache *c, int u0, int u1, int v0, int v1)
++// Only called for missing tiles. Keep the 1KB palette and decoder register
++// saves off the overwhelmingly common decoded-texture hit path.
++static void PICA_COLD decode_rect_impl(tcache *c, u64 need, unsigned rect)
 +{
-+	int t0 = (u0 - c->rx) >> 5, t1 = (u1 - c->rx) >> 5, s0 = (v0 - c->ry) >> 5, s1 = (v1 - c->ry) >> 5;
-+	u64 need = 0;
-+	for (int r = s0; r <= s1; r++)
-+		for (int k = t0; k <= t1; k++)
-+			need |= 1ull << (r * 8 + k);
-+	need &= ~c->tiles;
-+	if (!need)
-+		return;
++	int t0=rect&7, t1=(rect>>3)&7, s0=(rect>>6)&7, s1=(rect>>9)&7;
++	if (pica_debug & 131072) {
++		need = 0;
++		for (int r=s0; r<=s1; r++)
++			for (int k=t0; k<=t1; k++) need |= 1ull << (r*8+k);
++		need &= ~c->tiles;
++	} else if (!pica_texmask) {
++		u64 columns = ((1u << (t1-t0+1))-1) << t0;
++		need = 0;
++		for (int r=s0; r<=s1; r++) need |= columns << (r*8);
++		need &= ~c->tiles;
++	}
++	if (!need) return;
++	if (!(pica_debug & 131072) && !rtt_old() && c->depth == 2 && !c->win && decode_gpu(c, need)) return;
 +	trace_cache("decode", c, need);
 +	u32 *dst = atlas[0].tex.data;
 +	int aw = atlas[0].w, ah = atlas[0].h;
@@ -2127,146 +2395,13 @@ index 00000000..79eedcfe
 +	atlas[0].rebind = true;
 +}
 +
-+static void decode_rect(tcache *c, int u0, int u1, int v0, int v1)
++static void decode_rect(tcache *c, u64 need, unsigned rect)
 +{
-+	// gldbg=131072: baseline renderer CPU paths.
-+	if (pica_debug & 131072) { decode_rect_reference(c, u0, u1, v0, v1); return; }
-+	int t0 = (u0 - c->rx) >> 5, t1 = (u1 - c->rx) >> 5, s0 = (v0 - c->ry) >> 5, s1 = (v1 - c->ry) >> 5;
-+	u64 need = 0;
-+	// Each tile row needs the same contiguous range of columns.
-+	u64 columns = ((1u << (t1 - t0 + 1)) - 1) << t0;
-+	for (int r = s0; r <= s1; r++)
-+		need |= columns << (r * 8);
-+	need &= ~c->tiles;
-+	if (!need)
-+		return;
-+	if (!rtt_old() && c->depth == 2 && !c->win && decode_gpu(c, need)) return;
-+	trace_cache("decode", c, need);
-+	u32 *dst = atlas[0].tex.data;
-+	int aw = atlas[0].w, ah = atlas[0].h;
-+	const u16 *vram = gpu.vram;
-+	int px = (c->page & 15) * 64, py = ((c->page >> 4) & 1) * 256;
-+	{
-+		// the VRAM the texels needed come from (the window can fetch from
-+		// anywhere in the page), and the CLUT: GPU drawing there
-+		// (render-to-texture) and pending fills have to reach software VRAM
-+		int sh = 2 - c->depth;   // texels per VRAM word: 4, 2, 1
-+		int lo = c->rx + t0 * 32, hi = c->rx + t1 * 32 + 31;
-+		int vx = px, vy = py, vw = 256 >> sh, vh = 256;
-+		if (!c->win) {
-+			vx = px + (lo >> sh);
-+			vy = py + c->ry + s0 * 32;
-+			vw = (hi >> sh) - (lo >> sh) + 1;
-+			vh = (s1 - s0 + 1) * 32;
-+		}
-+		int cx = (c->clut & 0x3f) * 16, cy = (c->clut >> 6) & 511, cw = c->depth == 0 ? 16 : 256;
-+		trace_rtt(c, "tex", vx, vy, vw, vh);
-+		read_reason = SY_READ_TEX;
-+		pica_readback_rect_local(vx, vy, vw, vh);
-+		read_reason = SY_READ_CPU;
-+		if (c->depth < 2) {
-+			trace_rtt(c, "clut", cx, cy, cw, 1);
-+			read_reason = SY_READ_CLUT;
-+			pica_readback_rect_local(cx, cy, cw, 1);
-+			read_reason = SY_READ_CPU;
-+		}
-+		// (settling the whole page wrote CTR's screen clears out every frame)
-+		if (nfills) {
-+			settle_fills(vx, vy, vw, vh);
-+			if (c->depth < 2)
-+				settle_fills(cx, cy, cw, 1);
-+		}
-+	}
-+	u32 pal[256];
-+	if (c->depth < 2) {
-+		int cx = (c->clut & 0x3f) * 16, cy = (c->clut >> 6) & 511;
-+		int n = c->depth == 0 ? 16 : 256;
-+		const u16 *crow = vram + cy * VRAM_W;
-+		for (int i = 0; i < n; i++)
-+			pal[i] = texel_rgba(crow[(cx + i) & 1023]);
-+	}
-+	// the atlas is 8x8 tiles of 64 texels in Z order: offsets of the 32
-+	// texels of a block row from its first, and of the row within a tile
-+	static const u16 xoff[32] = {
-+		0, 1, 4, 5, 16, 17, 20, 21, 64, 65, 68, 69, 80, 81, 84, 85,
-+		128, 129, 132, 133, 144, 145, 148, 149, 192, 193, 196, 197, 208, 209, 212, 213 };
-+	static const u8 yoff[8] = { 0, 2, 8, 10, 32, 34, 40, 42 };
-+	for (int t = 0; t < 64; t++) {
-+		if (!(need & (1ull << t)))
-+			continue;
-+		int lu = (t & 7) * 32, lv = (t >> 3) * 32;           // inside the square
-+		int tu = c->rx + lu;                                  // in the page
-+		int au = c->ax + lu;                                  // in the atlas
-+		for (int y = 0; y < 32; y++) {
-+			int v = c->ry + lv + y;
-+			// texture memory runs bottom-up: atlas row r is sampled at t = (r + 0.5) / height
-+			int ty = ah - 1 - (c->ay + lv + y);
-+			u32 *d = dst + ((ty >> 3) * (aw >> 3) + (au >> 3)) * 64 + yoff[ty & 7];
-+			if (c->win) {
-+				// texture window: page texel (u, v) shows texel
-+				// ((u & ~mask) | (offset & mask), same for v)
-+				u32 w = c->win;
-+				int mx = (w & 0x1f) * 8, my = ((w >> 5) & 0x1f) * 8;
-+				int ox = ((w >> 10) & 0x1f) * 8 & mx, oy = ((w >> 15) & 0x1f) * 8 & my;
-+				int wv = ((v & ~my) | oy) & 255;
-+				const u16 *row = vram + ((py + wv) & 511) * VRAM_W;
-+				for (int x = 0; x < 32; x++) {
-+					int wu = (((tu + x) & ~mx) | ox) & 255;
-+					u32 texel;
-+					if (c->depth == 0)
-+						texel = pal[(row[(px + wu / 4) & 1023] >> ((wu & 3) * 4)) & 15];
-+					else if (c->depth == 1)
-+						texel = pal[(row[(px + wu / 2) & 1023] >> ((wu & 1) * 8)) & 255];
-+					else
-+						texel = texel_rgba(row[(px + wu) & 1023]);
-+					d[xoff[x]] = texel;
-+				}
-+				continue;
-+			}
-+			const u16 *row = vram + ((py + v) & 511) * VRAM_W;
-+			if (c->depth == 0) {
-+				const u16 *s = row + ((px + tu / 4) & 1023);   // 8 words, inside one page row
-+				for (int x = 0; x < 8; x++) {
-+					u32 w = s[x];
-+					u32 *dd = d + xoff[x * 4];   // 4 texels: offsets +0 +1 +4 +5
-+					dd[0] = pal[w & 15];
-+					dd[1] = pal[(w >> 4) & 15];
-+					dd[4] = pal[(w >> 8) & 15];
-+					dd[5] = pal[w >> 12];
-+				}
-+			} else if (c->depth == 1) {
-+				for (int x = 0; x < 16; x++) {
-+					u32 w = row[(px + tu / 2 + x) & 1023];
-+					u32 *dd = d + xoff[x * 2];   // 2 texels: +0 +1
-+					dd[0] = pal[w & 255];
-+					dd[1] = pal[w >> 8];
-+				}
-+			} else {
-+				for (int x = 0; x < 32; x++)
-+					d[xoff[x]] = texel_rgba(row[(px + tu + x) & 1023]);
-+			}
-+		}
-+		st_decodes++;
-+	}
-+	// the GPU reads the atlas from memory: write the decoded texels out of
-+	// the CPU cache. A 32x32 block is 4 runs of 1KB (4 tiles of an 8-row
-+	// band); neighbouring blocks of a row continue those runs.
-+	for (int r = 0; r < 8; r++) {
-+		u32 row = (u32)(need >> (r * 8)) & 0xff;
-+		while (row) {
-+			int k0 = __builtin_ctz(row), k1 = k0;
-+			while (k1 < 7 && (row >> (k1 + 1)) & 1)
-+				k1++;
-+			row &= ~(((2u << k1) - 1) & ~((1u << k0) - 1));
-+			int ty0 = ah - 1 - (c->ay + r * 32 + 31);   // the lowest atlas row of the blocks
-+			for (int band = 0; band < 4; band++)
-+				flush_range(dst + (((ty0 >> 3) + band) * (aw >> 3) + ((c->ax + k0 * 32) >> 3)) * 64,
-+					(k1 - k0 + 1) * 1024);   // 4 tiles x 64 texels x 4 bytes per block
-+		}
-+	}
-+	c->tiles |= need;
-+	atlas[0].rebind = true;
++ u64 started = phase_begin(3);
++ decode_rect_impl(c, need, rect);
++ phase_end(3, started);
 +}
++
 +
 +// smallest square (32..256, starting on a multiple of 32, inside the page)
 +// holding u0..u1 x v0..v1
@@ -2310,8 +2445,10 @@ index 00000000..79eedcfe
 +}
 +
 +// forget an entry and free its cells (the caller syncs if queued draws use it)
++static u32 texmemo_epoch = 1;
 +static void drop_entry(tcache *c)
 +{
++	texmemo_epoch++;
 +	unhash(c);
 +	c->valid = false;
 +	cells_set(c->ax >> 5, c->ay >> 5, 1 << c->lg, CELL_FREE);
@@ -2402,9 +2539,42 @@ index 00000000..79eedcfe
 +	return u0 >= c->rx && u1 < c->rx + size && v0 >= c->ry && v1 < c->ry + size;
 +}
 +
++// A small direct-mapped memo of successful requests. A matching VRAM
++// generation and cache epoch prove the decoded rectangle is still alive.
++// Raw page/CLUT/window keys may conservatively miss, never alias textures.
++static struct {
++	u32 key, win, generation, epoch;
++	tcache *tex;
++	int u0, u1, v0, v1;
++} texmemo[32];
++
++#ifdef PICA_LAYOUT_SPLIT
++static PICA_COLD tcache *texture_new(int depth, u16 pg, u16 cl, u32 win, int u0, int u1, int v0, int v1)
++{
++ tcache *c;
++		int rx, ry, lg = square_for(u0, u1, v0, v1, &rx, &ry);
++		c = take_square(lg);
++		c->gpu_tiles = false;
++		c->depth = depth;
++		c->page = pg;
++		c->clut = cl;
++		c->win = win;
++		c->lg = lg;
++		c->rx = rx;
++		c->ry = ry;
++		c->tiles = 0;
++		c->valid = true;
++		c->stamp = c->checked = gen_clock;
++		int h = key_hash(depth, pg, cl, win);
++		c->next = buckets[h];
++		buckets[h] = c;
++ return c;
++}
++#endif
++
 +// the texture for drawing texels u0..u1 x v0..v1 (inclusive; past 255 they
 +// wrap, then the whole page is used) of this page and CLUT
-+static tcache *texture_for(u32 page, u32 clut, int u0, int u1, int v0, int v1)
++static noinline tcache *PICA_HOT(texture_for_slow) texture_for_slow(u32 page, u32 clut, int u0, int u1, int v0, int v1)
 +{
 +	if (rtt_cache_rebuild) {
 +		// Activation can happen inside decode_rect. Wait until the next
@@ -2462,6 +2632,9 @@ index 00000000..79eedcfe
 +		st_inval++;
 +	}
 +	if (!c) {
++#ifdef PICA_LAYOUT_SPLIT
++  c = texture_new(depth, pg, cl, win, u0, u1, v0, v1);
++#else
 +		int rx, ry, lg = square_for(u0, u1, v0, v1, &rx, &ry);
 +		c = take_square(lg);
 +		c->gpu_tiles = false;
@@ -2478,13 +2651,71 @@ index 00000000..79eedcfe
 +		int h = key_hash(depth, pg, cl, win);
 +		c->next = buckets[h];
 +		buckets[h] = c;
++#endif
 +	}
-+	decode_rect(c, u0, u1, v0, v1);
++	// texmask=old keeps the row loop for fixed-layout A/B.
++	int t0 = (u0-c->rx)>>5, t1 = (u1-c->rx)>>5;
++	int s0 = (v0-c->ry)>>5, s1 = (v1-c->ry)>>5;
++	u32 columns = ((1u << (t1-t0+1))-1) << t0;
++	u64 need;
++	if (pica_texmask && !(pica_debug & 131072)) {
++		static const u64 rows[9] = { 0, 0xff, 0xffff, 0xffffff,
++			0xffffffff, 0xffffffffff, 0xffffffffffff, 0xffffffffffffff, ~0ull };
++		u32 repeated = columns * 0x01010101u;
++		need = ((u64)repeated | ((u64)repeated << 32)) & (rows[s1+1] ^ rows[s0]);
++		need &= ~c->tiles;
++	} else need = 0;
++	if (need || (!pica_texmask || (pica_debug & 131072))) decode_rect(c, need, t0 | (t1<<3) | (s0<<6) | (s1<<9));
 +	c->lru = ++lru_clock;
 +	last_tex = c;
 +	have_last = true;
 +	return c;
 +}
++
++// This deliberately stays out of the primitive code: one small hot function
++// replaces the large lookup/allocator/decoder path on repeated requests.
++static noinline tcache *PICA_HOT(texture_for_impl) texture_for_impl(u32 page, u32 clut,
++	int u0, int u1, int v0, int v1)
++{
++	if (!pica_texmemo) return texture_for_slow(page, clut, u0, u1, v0, v1);
++	u32 key = (page & 0x19f) | ((clut & 0x7fff) << 9);
++	unsigned i = (page ^ clut ^ (clut >> 6)) & 31;
++	__typeof__(texmemo[0]) *m = &texmemo[i];
++	if (m->generation == gen_clock && m->epoch == texmemo_epoch &&
++		m->key == key && m->win == ps.texwin &&
++		u0 >= m->u0 && u1 <= m->u1 && v0 >= m->v0 && v1 <= m->v1) {
++		tcache *c = m->tex;
++		c->lru = ++lru_clock;
++		last_tex = c;
++		have_last = true;
++		return c;
++	}
++	tcache *c = texture_for_slow(page, clut, u0, u1, v0, v1);
++	if (rtt_cache_rebuild) return c;
++	// A wrapped request decodes the full page. Record its normalized bounds.
++	if ((unsigned)u0 > 255 || (unsigned)u1 > 255 ||
++		(unsigned)v0 > 255 || (unsigned)v1 > 255) {
++		u0 = v0 = 0; u1 = v1 = 255;
++	}
++	static const u64 full[4] = { 1, 0x303, 0x0f0f0f0f, ~0ull };
++	if (c->tiles == full[c->lg]) {
++		u0 = c->rx; v0 = c->ry;
++		u1 = u0 + (32 << c->lg) - 1;
++		v1 = v0 + (32 << c->lg) - 1;
++	}
++	*m = (__typeof__(*m)){ key, ps.texwin, gen_clock, texmemo_epoch, c,
++		u0 & ~31, u1 | 31, v0 & ~31, v1 | 31 };
++	return c;
++}
++
++static tcache *texture_for(u32 page, u32 clut, int u0, int u1, int v0, int v1)
++{
++ u64 started = phase_begin(2);
++ tcache * result = texture_for_impl(page, clut, u0, u1, v0, v1);
++ phase_end(2, started);
++ return result;
++}
++
 +
 +// ------------------------------------------------------------------ draw state -> citro3d
 +
@@ -2557,16 +2788,20 @@ index 00000000..79eedcfe
 +	sent_valid = false;
 +}
 +
-+static void apply_state(void)
++static void PICA_COLD apply_state_impl(void)
 +{
 +	if (base_dirty)
 +		apply_base();
 +	const drawstate *d = &cur;
-+	if (!sent_valid || memcmp(sent.sc, d->sc, sizeof(d->sc))) {
++	if (!sent_valid || ((pica_submit & PICA_SUBMIT_CLIP) ?
++		sent.sc[0] != d->sc[0] || sent.sc[2] != d->sc[2] :
++		memcmp(sent.sc, d->sc, sizeof(d->sc)))) {
 +		// columns by the GPU's scissor; rows are cut on the CPU (emit_tris):
 +		// limiting rows on the GPU, by scissor or viewport, lost pixels at
 +		// the sides of the picture
-+		set_area(0, 0, VRAM_W, VRAM_H);
++		// apply_base already installed this full-target viewport/projection.
++		// Row clipping is CPU-only; changing it cannot affect GPU scissoring.
++		if (!(pica_submit & PICA_SUBMIT_CLIP)) set_area(0, 0, VRAM_W, VRAM_H);
 +		C3D_SetScissor(GPU_SCISSOR_NORMAL, d->sc[0], 0, d->sc[2], VRAM_H);
 +	}
 +	if (!sent_valid || sent.blend != d->blend || sent.texmode != d->texmode || sent.pass != d->pass || sent.mask != d->mask) {
@@ -2677,16 +2912,30 @@ index 00000000..79eedcfe
 +	if (d->texmode != TX_NONE && (!sent_valid || sent.atlas != d->atlas || sent.texmode == TX_NONE || atlas[d->atlas].rebind)) {
 +		if (atlas[d->atlas].rebind)
 +			clear_tex_cache();
++		// A rewritten atlas needs a texel-cache clear, not new dimensions,
++		// a uniform upload and a full texture-unit register block.
++		bool cache_only = (pica_submit & PICA_SUBMIT_TEX) && sent_valid &&
++			sent.atlas == d->atlas && sent.texmode != TX_NONE;
 +		atlas[d->atlas].rebind = false;
++		if (!cache_only) {
 +		C3D_FVUnifSet(GPU_VERTEX_SHADER, u_texscale, 1.0f / atlas[d->atlas].w, 1.0f / atlas[d->atlas].h, 0, 0);
 +		alias_i ^= 1;
 +		tex_alias[alias_i] = atlas[d->atlas].tex;
 +		C3D_TexBind(0, &tex_alias[alias_i]);
++		}
 +	}
 +	sent = *d;
 +	sent_valid = true;
 +	state_dirty = false;
 +}
++
++static void apply_state(void)
++{
++ u64 started = phase_begin(4);
++ apply_state_impl();
++ phase_end(4, started);
++}
++
 +
 +static void flush_current(void)
 +{
@@ -2712,6 +2961,7 @@ index 00000000..79eedcfe
 +#ifdef PICA_TIMERS
 +	u64 t1 = svcGetSystemTick();
 +#endif
++	u64 submit_start = phase_begin(5);
 +	if (!(pica_debug & 1024))   // debug: no GPU drawing (CPU cost alone)
 +		C3D_DrawArrays(GPU_TRIANGLES, vstart, vpos - vstart);
 +	// gldbg=32768: skip this pass for a hardware submission-cost comparison.
@@ -2739,9 +2989,13 @@ index 00000000..79eedcfe
 +		C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ZERO, GPU_ONE,
 +			GPU_ONE, (cur.mask & 2) ? GPU_ONE : GPU_ZERO);
 +		C3D_DrawArrays(GPU_TRIANGLES, vstart, vpos - vstart);
-+		sent_valid = false;
++		// The mask draw changes TEV0/blend/alpha only. Keep the scissor,
++		// atlas binding and texture scale valid for the following batch.
++		if (pica_submit & PICA_SUBMIT_STATE) sent.blend = 0xff;
++		else sent_valid = false;
 +		state_dirty = true;
 +	}
++	phase_end(5, submit_start);
 +#ifdef PICA_SIM_HASH
 +	{   // simulator: what was drawn, to compare builds
 +		// the state only when it changes: how draws are grouped doesn't count
@@ -2777,17 +3031,9 @@ index 00000000..79eedcfe
 +		((cmd & 4) ? !(cmd & 1) : (cmd & 0x10));
 +}
 +
-+static inline void use_state(int at, int blend, int texmode, int pass, bool dither)
++#ifdef PICA_LAYOUT_SPLIT
++static PICA_COLD void use_state_changed(int at, int blend, int texmode, int pass, bool dither, u8 mask)
 +{
-+	u8 mask = ps.mask & 3;
-+	// Mask-check primitives must observe the preceding STP write.
-+	if ((mask & 2) && vpos != vstart)
-+		flush();
-+	// The four adjacent mode bytes include dither; mask is separate.
-+	u32 mode, want = blend | (texmode << 8) | (pass << 16) | ((u32)dither << 24);
-+	memcpy(&mode, &cur.blend, sizeof(mode));
-+	if (at == cur.atlas && mode == want && mask == cur.mask && ps.area_gen == cur_area_gen && !atlas[at].rebind)
-+		return;
 +	st_why[at != cur.atlas ? 0 : (blend != cur.blend || texmode != cur.texmode || pass != cur.pass) ? 1 :
 +		ps.area_gen != cur_area_gen ? 2 : 3]++;
 +	flush();
@@ -2800,6 +3046,36 @@ index 00000000..79eedcfe
 +	cur.sc[0] = ps.dx1; cur.sc[1] = ps.dy1; cur.sc[2] = ps.dx2; cur.sc[3] = ps.dy2;
 +	cur_area_gen = ps.area_gen;
 +	state_dirty = true;
++}
++#endif
++
++static PICA_INLINE_HOT(use_state) void use_state(int at, int blend, int texmode, int pass, bool dither)
++{
++	u8 mask = ps.mask & 3;
++	// Mask-check primitives must observe the preceding STP write.
++	if ((mask & 2) && vpos != vstart)
++		flush();
++	// The four adjacent mode bytes include dither; mask is separate.
++	u32 mode, want = blend | (texmode << 8) | (pass << 16) | ((u32)dither << 24);
++	memcpy(&mode, &cur.blend, sizeof(mode));
++	if (at == cur.atlas && mode == want && mask == cur.mask && ps.area_gen == cur_area_gen && !atlas[at].rebind)
++		return;
++#ifdef PICA_LAYOUT_SPLIT
++ use_state_changed(at, blend, texmode, pass, dither, mask);
++#else
++	st_why[at != cur.atlas ? 0 : (blend != cur.blend || texmode != cur.texmode || pass != cur.pass) ? 1 :
++		ps.area_gen != cur_area_gen ? 2 : 3]++;
++	flush();
++	cur.atlas = at;
++	cur.blend = blend;
++	cur.texmode = texmode;
++	cur.pass = pass;
++	cur.mask = mask;
++	cur.dither = dither;
++	cur.sc[0] = ps.dx1; cur.sc[1] = ps.dy1; cur.sc[2] = ps.dx2; cur.sc[3] = ps.dy2;
++	cur_area_gen = ps.area_gen;
++	state_dirty = true;
++#endif
 +}
 +
 +static unsigned st_splits;
@@ -2816,7 +3092,8 @@ index 00000000..79eedcfe
 +	sent_vpos = vpos;
 +}
 +
-+static inline pvtx *alloc_verts(int n)
++#ifdef PICA_LAYOUT_SPLIT
++static PICA_COLD pvtx *alloc_verts_slow(int n)
 +{
 +	if (vpos - sent_vpos >= SEND_VERTS)
 +		send_early();
@@ -2825,6 +3102,26 @@ index 00000000..79eedcfe
 +		if (vpos + n > vlimit)
 +			return NULL;
 +	}
++ pvtx *v = vbuf + vpos;
++ vpos += n;
++ return v;
++}
++#endif
++
++static inline pvtx *alloc_verts(int n)
++{
++#ifdef PICA_LAYOUT_SPLIT
++ if (PICA_UNLIKELY(vpos - sent_vpos >= SEND_VERTS || vpos + n > vlimit))
++  return alloc_verts_slow(n);
++#else
++	if (vpos - sent_vpos >= SEND_VERTS)
++		send_early();
++	if (vpos + n > vlimit) {
++		gpu_sync(SY_VERTICES);   // the GPU has used everything: start the buffer over
++		if (vpos + n > vlimit)
++			return NULL;
++	}
++#endif
 +	pvtx *v = vbuf + vpos;
 +	vpos += n;
 +	return v;
@@ -3009,17 +3306,37 @@ index 00000000..79eedcfe
 +	return BL_HALF + ((ps.texpage >> 5) & 3);
 +}
 +
++// Clipping deltas are finite, small signed values. VCVTR obeys FPSCR's
++// rounding mode, as lrintf does, without newlib's general exponent/bit path.
++// Keep the A/B decision in one small leaf instead of eight copies per edge.
++static noinline int clip_round(float f)
++{
++#if defined(__arm__)
++	if (PRIM_TEST(PRIM_VFP_ROUND)) {
++		float bits;
++		int result;
++		__asm__("vcvtr.s32.f32 %0, %1" : "=t" (bits) : "t" (f));
++		memcpy(&result, &bits, sizeof(result));
++		return result;
++	}
++#endif
++	return (int)lrintf(f);
++}
++
 +// one textured or plain triangle list entry; two-pass modes draw it twice
 +// The part of triangle t inside the drawing area x0 <= x < x1, y0 <= y < y1,
 +// as a fan of up to 5 triangles into out; returns how many. The GPU only
 +// ever sees geometry inside the area: the 3DS GPU mangles triangles that
 +// reach far outside its viewport (PS1 skies are huge polygons).
-+static int clip_area(const pvtx *t, int x0, int y0, int x1, int y1, pvtx *out)
++static int clip_area(const pvtx *t, int x0, int y0, int x1, int y1, unsigned planes, pvtx *out)
 +{
 +	pvtx a[9], b[9];
 +	int n = 3, m;
 +	memcpy(a, t, 3 * sizeof(pvtx));
 +	for (int side = 0; side < 4; side++) {
++		// Clipping and integer rounding cannot leave the original bounds.
++		// A containing plane would only copy every vertex back unchanged.
++		if (!(planes & (1u << side))) continue;
 +		m = 0;
 +		for (int i = 0; i < n; i++) {
 +			const pvtx *p = &a[i], *q = &a[(i + 1) % n];
@@ -3030,16 +3347,16 @@ index 00000000..79eedcfe
 +			if ((pc >= 0) != (qc >= 0)) {   // the edge crosses this side
 +				float f = (float)pc / (pc - qc);
 +				pvtx *o = &b[m++];
-+				o->x = p->x + (int)lrintf((q->x - p->x) * f);
-+				o->y = p->y + (int)lrintf((q->y - p->y) * f);
++				o->x = p->x + clip_round((q->x - p->x) * f);
++				o->y = p->y + clip_round((q->y - p->y) * f);
 +				if (side < 2) o->x = side == 0 ? x0 : x1;
 +				else o->y = side == 2 ? y0 : y1;
-+				o->u = p->u + (int)lrintf((q->u - p->u) * f);
-+				o->v = p->v + (int)lrintf((q->v - p->v) * f);
++				o->u = p->u + clip_round((q->u - p->u) * f);
++				o->v = p->v + clip_round((q->v - p->v) * f);
 +				u32 c = 0;
 +				for (int k = 0; k < 32; k += 8) {
 +					int cp = (p->rgba >> k) & 0xff, cq = (q->rgba >> k) & 0xff;
-+					c |= (u32)(cp + (int)lrintf((cq - cp) * f)) << k;
++					c |= (u32)(cp + clip_round((cq - cp) * f)) << k;
 +				}
 +				o->rgba = c;
 +			}
@@ -3057,18 +3374,9 @@ index 00000000..79eedcfe
 +	return n - 2;
 +}
 +
-+static void noinline emit_tris(const pvtx *v, int ntri, int blend, int texmode, tcache *tex, bool polygon, bool dither)
++#ifdef PICA_LAYOUT_SPLIT
++static PICA_COLD int clip_tris(const pvtx *v, int ntri, int x0, int y0, int x1, int y1, pvtx *clipped)
 +{
-+	bool semi = blend != BL_OPAQUE;
-+	if (!ready || (pica_debug & 4096))   // debug 4096: primitives decoded, not drawn
-+		return;
-+	// anything reaching outside the drawing area is cut to it here
-+	pvtx clipped[2 * 3 * 7];
-+	int x0 = ps.dx1, x1 = ps.dx2, y0 = ps.dy1, y1 = ps.dy2;
-+	bool cut = false;
-+	for (int i = 0; i < ntri * 3; i++)
-+		if (v[i].x < x0 || v[i].x > x1 || v[i].y < y0 || v[i].y > y1) { cut = true; break; }
-+	if (cut) {
 +		int n = 0;
 +		for (int t = 0; t < ntri; t++) {
 +			const pvtx *tv = &v[t * 3];
@@ -3080,8 +3388,47 @@ index 00000000..79eedcfe
 +				memcpy(&clipped[n * 3], tv, 3 * sizeof(pvtx));
 +				n++;
 +			} else
-+				n += clip_area(tv, x0, y0, x1, y1, &clipped[n * 3]);
++				n += clip_area(tv, x0, y0, x1, y1,
++					(PRIM_TEST(PRIM_CLIP_PLANES)) ?
++						(lx < x0) | ((hx > x1) << 1) | ((ly < y0) << 2) | ((hy > y1) << 3) : 15,
++					&clipped[n * 3]);
 +		}
++ return n;
++}
++#endif
++
++static void noinline PICA_HOT(emit_tris) emit_tris(const pvtx *v, int ntri, int blend, int texmode, tcache *tex, bool polygon, bool dither)
++{
++	bool semi = blend != BL_OPAQUE;
++	if (!ready || (pica_debug & 4096))   // debug 4096: primitives decoded, not drawn
++		return;
++	// anything reaching outside the drawing area is cut to it here
++	pvtx clipped[2 * 3 * 7];
++	int x0 = ps.dx1, x1 = ps.dx2, y0 = ps.dy1, y1 = ps.dy2;
++	bool cut = false;
++	for (int i = 0; i < ntri * 3; i++)
++		if (v[i].x < x0 || v[i].x > x1 || v[i].y < y0 || v[i].y > y1) { cut = true; break; }
++	if (cut) {
++#ifdef PICA_LAYOUT_SPLIT
++  int n = clip_tris(v, ntri, x0, y0, x1, y1, clipped);
++#else
++		int n = 0;
++		for (int t = 0; t < ntri; t++) {
++			const pvtx *tv = &v[t * 3];
++			int lx = MIN3(tv[0].x, tv[1].x, tv[2].x), hx = MAX3(tv[0].x, tv[1].x, tv[2].x);
++			int ly = MIN3(tv[0].y, tv[1].y, tv[2].y), hy = MAX3(tv[0].y, tv[1].y, tv[2].y);
++			if (hx <= x0 || lx >= x1 || hy <= y0 || ly >= y1)
++				continue;   // entirely outside
++			if (lx >= x0 && hx <= x1 && ly >= y0 && hy <= y1) {
++				memcpy(&clipped[n * 3], tv, 3 * sizeof(pvtx));
++				n++;
++			} else
++				n += clip_area(tv, x0, y0, x1, y1,
++					(PRIM_TEST(PRIM_CLIP_PLANES)) ?
++						(lx < x0) | ((hx > x1) << 1) | ((ly < y0) << 2) | ((hy > y1) << 3) : 15,
++					&clipped[n * 3]);
++		}
++#endif
 +		if (!n)
 +			return;
 +		v = clipped;
@@ -3161,12 +3508,12 @@ index 00000000..79eedcfe
 +		batch_semi |= semi;
 +	}
 +	tex->used_seq = seq + 1;   // the batch it is in: seq + 1 once sent
-+	st_prims++;
++	st_prims++; psx3d_skip.render_prims++;
 +}
 +
 +static void noinline __attribute__((cold)) draw_poly_slow(pvtx *v, int n, bool quad, bool textured, u32 page, u32 clut, u32 cmd);
 +
-+static void draw_poly(const u32 *w, u32 cmd)
++static void PICA_HOT(draw_poly_impl) draw_poly_impl(const u32 *w, u32 cmd)
 +{
 +	bool quad = cmd & 8, gouraud = cmd & 0x10, textured = cmd & 4;
 +	int n = quad ? 4 : 3;
@@ -3235,6 +3582,7 @@ index 00000000..79eedcfe
 +	// (never read back from the buffer: the Old 3DS cache fills on reads only).
 +	// Exact target edges need the same quarter-pixel clamp as to_gpu:
 +	// PICA cannot represent screen x=1024 or y=512 reliably.
++	u64 vertex_start = phase_begin(7);
 +	u32 q[4][3];
 +	if (!textured)
 +		du = plain->ax + (blend == BL_ADD ? 24 : 8), dv = plain->ay + 8;
@@ -3249,14 +3597,33 @@ index 00000000..79eedcfe
 +	}
 +	u32a *ow = (u32a *)o;
 +	static const u8 order[6] = { 0, 1, 2, 1, 3, 2 };
++	if ((pica_debug & 16777216) || PRIM_TEST(PRIM_PACK_COPY)) {
++		// Same triangle order, fixed copies let ARM use block transfers.
++		memcpy(ow, q, 3 * sizeof(q[0]));
++		if (quad) {
++			memcpy(ow + 9, q[1], sizeof(q[0]));
++			memcpy(ow + 12, q[3], sizeof(q[0]));
++			memcpy(ow + 15, q[2], sizeof(q[0]));
++		}
++	} else {
 +	for (int k = 0; k < (quad ? 6 : 3); k++) {
 +		ow[k * 3] = q[order[k]][0];
 +		ow[k * 3 + 1] = q[order[k]][1];
 +		ow[k * 3 + 2] = q[order[k]][2];
 +	}
++	}
++	phase_end(7, vertex_start);
 +	tex->used_seq = seq + 1;
-+	st_prims++;
++	st_prims++; psx3d_skip.render_prims++;
 +}
++
++static void draw_poly(const u32 *w, u32 cmd)
++{
++ u64 started = phase_begin(1);
++ draw_poly_impl(w, cmd);
++ phase_end(1, started);
++}
++
 +
 +// polygons that need clipping, lose a triangle to the size limit, or use
 +// the two-pass blend modes
@@ -3345,7 +3712,7 @@ index 00000000..79eedcfe
 +	emit_tris(q, 2, blend_of(cmd), texmode, tex, false, false);
 +}
 +
-+static void draw_rect(const u32 *w, u32 cmd)
++static void PICA_COLD draw_rect_impl(const u32 *w, u32 cmd)
 +{
 +	bool textured = cmd & 4;
 +	int sw, sh;
@@ -3365,6 +3732,14 @@ index 00000000..79eedcfe
 +	u32 uv = textured ? w[2] : 0;
 +	sprite(x, y, sw, sh, uv & 0xff, (uv >> 8) & 0xff, col, cmd, uv >> 16);
 +}
++
++static void draw_rect(const u32 *w, u32 cmd)
++{
++ u64 started = phase_begin(1);
++ draw_rect_impl(w, cmd);
++ phase_end(1, started);
++}
++
 +
 +// a line becomes a quad one pixel thick across its main direction
 +static void noinline draw_line(int x0, int y0, u32 c0, int x1, int y1, u32 c1, int blend)
@@ -3565,7 +3940,7 @@ index 00000000..79eedcfe
 +	st_uploads++;
 +}
 +
-+static void push_to_target(int x, int y, int w, int h)
++static void PICA_COLD push_to_target(int x, int y, int w, int h)
 +{
 +	gpu_readable = false;
 +	// gldbg=131072: baseline renderer CPU paths.
@@ -3674,6 +4049,7 @@ index 00000000..79eedcfe
 +// it; update_caches below will queue the upload for the next open GPU frame.
 +static void pica_drop_fills_local(void)
 +{
++	texmemo_epoch++;
 +	rtt_detected = rtt_cache_rebuild = false;
 +	nfills = npend = 0;
 +	memset(drawn, 0, sizeof(drawn));
@@ -3728,7 +4104,65 @@ index 00000000..79eedcfe
 +	push_to_target(x, y, w, h);
 +}
 +
-+int renderer_do_cmd_list(uint32_t *list_, int list_len, uint32_t *ex_regs,
++#ifdef PICA_LAYOUT_SPLIT
++static PICA_COLD int line_cmd(u32 *list, u32 *list_end, u32 cmd, u32 *len_out, int *sum_out, int *cycles_out)
++{
++ u32 len = *len_out;
++ int cpu_cycles_sum = 0, cpu_cycles = *cycles_out;
++ // Write accumulated timing even on an incomplete polyline.
++ #define LINE_PARTIAL() do { *sum_out += cpu_cycles_sum; *cycles_out = cpu_cycles; return -1; } while (0)
++ switch (cmd) {
++		case 0x40 ... 0x47:
++			draw_line(sext11(sext11(list[1]) + ps.ox), sext11(sext11(list[1] >> 16) + ps.oy), list[0] & 0xffffff,
++				sext11(sext11(list[2]) + ps.ox), sext11(sext11(list[2] >> 16) + ps.oy), list[0] & 0xffffff, blend_of(cmd));
++			gput_sum(cpu_cycles_sum, cpu_cycles, gput_line(0));
++			break;
++		case 0x48 ... 0x4f: {   // flat polyline: xy words until a 0x5xxx5xxx terminator
++			u32 *p = list + 1;
++			for (bool first = true;; first = false) {
++				if (p + 1 >= list_end) { cmd = -1; LINE_PARTIAL(); }
++				// the second vertex is always a vertex; the terminator can follow it
++				if (!first && (p[1] & 0xf000f000) == 0x50005000)
++					break;
++				draw_line(sext11(sext11(p[0]) + ps.ox), sext11(sext11(p[0] >> 16) + ps.oy), list[0] & 0xffffff,
++					sext11(sext11(p[1]) + ps.ox), sext11(sext11(p[1] >> 16) + ps.oy), list[0] & 0xffffff, blend_of(cmd));
++				gput_sum(cpu_cycles_sum, cpu_cycles, gput_line(0));
++				p++;
++			}
++			len = (p + 1) - list;   // through the terminator
++		} break;
++		case 0x50 ... 0x57:
++			draw_line(sext11(sext11(list[1]) + ps.ox), sext11(sext11(list[1] >> 16) + ps.oy), list[0] & 0xffffff,
++				sext11(sext11(list[3]) + ps.ox), sext11(sext11(list[3] >> 16) + ps.oy), list[2] & 0xffffff, blend_of(cmd));
++			gput_sum(cpu_cycles_sum, cpu_cycles, gput_line(0));
++			break;
++		case 0x58 ... 0x5f: {   // gouraud polyline: colour, xy pairs until the terminator
++			u32 *p = list;
++			for (bool first = true;; first = false) {
++				if (p + 2 >= list_end) { cmd = -1; LINE_PARTIAL(); }
++				// the second colour is always a colour; the terminator can follow it
++				if (!first && (p[2] & 0xf000f000) == 0x50005000)
++					break;
++				if (p + 3 >= list_end) { cmd = -1; LINE_PARTIAL(); }
++				draw_line(sext11(sext11(p[1]) + ps.ox), sext11(sext11(p[1] >> 16) + ps.oy), p[0] & 0xffffff,
++					sext11(sext11(p[3]) + ps.ox), sext11(sext11(p[3] >> 16) + ps.oy), p[2] & 0xffffff, blend_of(cmd));
++				gput_sum(cpu_cycles_sum, cpu_cycles, gput_line(0));
++				p += 2;
++			}
++			len = (p + 2) - list;
++		} break;
++
++ }
++ *len_out = len;
++ *sum_out += cpu_cycles_sum;
++ *cycles_out = cpu_cycles;
++ #undef LINE_PARTIAL
++ return 0;
++}
++#endif
++
++extern int psx3d_skipgate;
++static int PICA_HOT(renderer_do_cmd_list_impl) renderer_do_cmd_list_impl(uint32_t *list_, int list_len, uint32_t *ex_regs,
 +	int *cycles_sum_out, int *cycles_last, int *last_cmd)
 +{
 +#ifdef PICA_TIMERS
@@ -3736,8 +4170,7 @@ index 00000000..79eedcfe
 +#endif
 +	int cpu_cycles_sum = 0, cpu_cycles = *cycles_last;
 +	u32 *list = (u32 *)list_, *list_start = list, *list_end = list + list_len;
-+	if (!frame_open && pica_open_frame && ready)
-+		pica_open_frame();
++	if ((pica_debug & 4194304) && !frame_open && pica_open_frame && ready) pica_open_frame();
 +	u32 cmd = 0, len;
 +	const bool skip_draw = !ready || (pica_debug & 2048);
 +
@@ -3748,6 +4181,9 @@ index 00000000..79eedcfe
 +			cmd = -1;
 +			break;
 +		}
++		// State-only lists must not open/wait for a GPU frame.
++		if (!frame_open && pica_open_frame && ready && cmd >= 0x02 && cmd < 0x80)
++			pica_open_frame();
 +		// without its buffers (no game started, or no memory) nothing is drawn;
 +		// debug 2048: drawing commands are skipped (the rest of the emulator alone)
 +		if (skip_draw && cmd >= 0x02 && cmd < 0x80 && (cmd & 0xf8) != 0x48 && (cmd & 0xf8) != 0x58)
@@ -3763,6 +4199,14 @@ index 00000000..79eedcfe
 +				: ((cmd & 4) ? gput_poly_base_t() : gput_poly_base());
 +			gput_sum(cpu_cycles_sum, cpu_cycles, c);
 +		} break;
++#ifdef PICA_LAYOUT_SPLIT
++  case 0x40 ... 0x5f:
++   if (PICA_UNLIKELY(line_cmd(list, list_end, cmd, &len, &cpu_cycles_sum, &cpu_cycles) < 0)) {
++    cmd = -1;
++    goto breakloop;
++   }
++   break;
++#else
 +		case 0x40 ... 0x47:
 +			draw_line(sext11(sext11(list[1]) + ps.ox), sext11(sext11(list[1] >> 16) + ps.oy), list[0] & 0xffffff,
 +				sext11(sext11(list[2]) + ps.ox), sext11(sext11(list[2] >> 16) + ps.oy), list[0] & 0xffffff, blend_of(cmd));
@@ -3802,6 +4246,7 @@ index 00000000..79eedcfe
 +			}
 +			len = (p + 2) - list;
 +		} break;
++#endif
 +		case 0x60 ... 0x7f: {
 +			draw_rect(list, cmd);
 +			int sw = 16, sh = 16;
@@ -3818,6 +4263,13 @@ index 00000000..79eedcfe
 +		case 0xe1 ... 0xe6:
 +			ex_regs[cmd & 7] = list[0];
 +			set_ex(list[0]);
++			// A pending presentation still needs the previous batch boundary.
++			// Only return early while holding an already presented picture.
++			if (cmd == 0xe3 && psx3d_skipgate && gpu.frameskip.active &&
++				!gpu.frameskip.allow && !gpu.frameskip.frame_ready && !gpu_async_enabled(&gpu)) {
++				list += 1 + len;
++				goto breakloop;
++			}
 +			break;
 +		default:
 +			break;
@@ -3833,6 +4285,17 @@ index 00000000..79eedcfe
 +#endif
 +	n_list++;
 +	return list - list_start;
++}
++
++int PICA_HOT(renderer_do_cmd_list) renderer_do_cmd_list(uint32_t *list, int len, uint32_t *regs,
++ int *sum, int *last_cycles, int *last_cmd)
++{
++ if (pica_pmu) pica_pmu(0);
++ u64 started = phase_begin(0);
++ int result = renderer_do_cmd_list_impl(list, len, regs, sum, last_cycles, last_cmd);
++ phase_end(0, started);
++ if (pica_pmu) pica_pmu(1);
++ return result;
 +}
 +
 +// ------------------------------------------------------------------ frontend interface
@@ -3886,6 +4349,7 @@ index 00000000..79eedcfe
 +// the big buffers only exist while a game runs (the library needs the memory)
 +bool pica_game_begin(bool small)
 +{
++	texmemo_epoch++;
 +	if (!dvlb)
 +		return false;
 +	free_game_buffers();
@@ -3989,8 +4453,15 @@ index 00000000..79eedcfe
 +
 +// gpulib, at the flip of a frame that was drawn (vout_update). With
 +// frameskip, the shown area is copied so skipped frames keep showing it.
++static u32 disp_serial;
 +static void pica_flip_local(void)
 +{
++	psx3d_skip.pictures++;
++	// A display flip can arrive on an idle vblank, after the drawing frame
++	// was submitted. It still needs a snapshot of the newly displayed bank.
++	if (ready && gpu.frameskip.set &&
++	    !(gpu.status & PSX_GPU_STATUS_RGB24) && !frame_open && pica_open_frame)
++		pica_open_frame();
 +	disp_used = ready && frame_open && gpu.frameskip.set && !(gpu.status & PSX_GPU_STATUS_RGB24)
 +		&& gpu.screen.w > 0 && gpu.screen.h > 0;
 +	disp_x = gpu.screen.src_x;
@@ -3999,6 +4470,7 @@ index 00000000..79eedcfe
 +	disp_h = gpu.screen.h;
 +	if (disp_used) {
 +		flush();
++		disp_serial++;
 +		// Queue after the PS1 draws and before any skipped-frame clears.
 +		// Copy only the scanout's 8-row tile bands, at the same coordinates
 +		// in disp_tex. No readback, CPU pixel copy or GPU wait is needed.
@@ -4020,6 +4492,33 @@ index 00000000..79eedcfe
 +{
 +	flush();
 +	clear_tex_cache();
++}
++
++// Conservative: offscreen writes also force submission. Movies always present.
++// Called after pica_thread_sync(), on the main thread, with no queued worker work.
++static bool pica_display_changed_local(void)
++{
++	static u32 last[9];
++	flush();
++	u32 state[9] = { disp_used && gpu.frameskip.set ? disp_serial : seq, ready, gpu.status & (PSX_GPU_STATUS_RGB24 | PSX_GPU_STATUS_BLANKING),
++		disp_used && gpu.frameskip.set, disp_x, disp_y, gpu.screen.w, gpu.screen.h,
++		(gpu.screen.src_y << 10) | gpu.screen.src_x };
++	// When retaining a drawn snapshot, skipped display flips aren't new pictures.
++	if (disp_used && gpu.frameskip.set) state[8] = (disp_y << 10) | disp_x;
++	bool changed = memcmp(last, state, sizeof(state)) != 0;
++	memcpy(last, state, sizeof(state));
++	return changed || npend || !ready || (gpu.status & PSX_GPU_STATUS_RGB24);
++}
++
++static void display_changed_on_thread(void *data)
++{
++	*(bool *)data = pica_display_changed_local();
++}
++bool pica_display_changed(void)
++{
++	bool changed;
++	if (pica_thread_call && pica_thread_call(display_changed_on_thread, &changed)) return changed;
++	return pica_display_changed_local();
 +}
 +
 +// called by the frontend once per shown frame: the displayed VRAM area.
@@ -4071,7 +4570,7 @@ index 00000000..79eedcfe
 +	return PICA_PIC_GPU;
 +}
 +
-+static void pica_stats_local(char *buf, int n)
++static void PICA_COLD pica_stats_local(char *buf, int n)
 +{
 +	if (!t_svc) {   // what one timer read costs
 +		u64 a = svcGetSystemTick();
@@ -4108,7 +4607,7 @@ index 00000000..79eedcfe
 +
 +// test (stats): what was shown in the last second, and how bright the shown
 +// area of the render target is now (8x8 samples, 0-31; no GPU sync)
-+static void pica_probe_local(char *buf, int n)
++static void PICA_COLD pica_probe_local(char *buf, int n)
 +{
 +	int lum = -1;
 +	if (ready && pic_tex && pic_tex->data && pic_w > 0 && pic_h > 0) {
@@ -4268,10 +4767,10 @@ index 00000000..79eedcfe
 +}
 diff --git a/plugins/gpu_pica/gpu_pica.h b/plugins/gpu_pica/gpu_pica.h
 new file mode 100644
-index 00000000..ec3667b8
+index 0000000..433ca91
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.h
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,32 @@
 +/* gpu_pica: PS1 GPU on the 3DS GPU. Frontend interface (PSX3D). */
 +#ifndef GPU_PICA_H
 +#define GPU_PICA_H
@@ -4292,16 +4791,21 @@ index 00000000..ec3667b8
 +enum { PICA_PIC_NONE, PICA_PIC_GPU, PICA_PIC_CPU };
 +int pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h);
 +void pica_stats(char *buf, int n);
++// Independent experimental submission switches; zero keeps release behavior.
++enum { PICA_SUBMIT_STATE = 1, PICA_SUBMIT_CLIP = 2, PICA_SUBMIT_TEX = 4 };
++extern unsigned pica_prims;
++extern unsigned pica_submit;
 +extern bool pica_async, pica_double_buffer;
 +extern void (*pica_wait_frame)(void);
 +extern bool (*pica_frame_pending)(void);
 +extern void (*pica_open_frame)(void);   // opens a GPU frame when drawing starts
++bool pica_display_changed(void); // query only after synchronizing the GPU worker
 +#endif
 +
 +int pica_vram_copy(int sx, int sy, int dx, int dy, int w, int h, unsigned mask);
 diff --git a/plugins/gpu_pica/gpu_pica_thread.h b/plugins/gpu_pica/gpu_pica_thread.h
 new file mode 100644
-index 00000000..54392eb2
+index 0000000..54392eb
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica_thread.h
 @@ -0,0 +1,10 @@
@@ -4316,7 +4820,7 @@ index 00000000..54392eb2
 +
 +#endif
 diff --git a/plugins/gpu_unai/gpu_command.h b/plugins/gpu_unai/gpu_command.h
-index adede2b5..199882b3 100644
+index adede2b..199882b 100644
 --- a/plugins/gpu_unai/gpu_command.h
 +++ b/plugins/gpu_unai/gpu_command.h
 @@ -45,13 +45,14 @@ void gpuSetTexture(u16 tpage)
@@ -4337,7 +4841,7 @@ index adede2b5..199882b3 100644
  
  #ifdef  ENABLE_GPU_NULL_SUPPORT
 diff --git a/plugins/gpu_unai/gpu_raster_polygon.h b/plugins/gpu_unai/gpu_raster_polygon.h
-index 988e721f..08765271 100644
+index 988e721..0876527 100644
 --- a/plugins/gpu_unai/gpu_raster_polygon.h
 +++ b/plugins/gpu_unai/gpu_raster_polygon.h
 @@ -360,18 +360,24 @@ void gpuDrawPolyF(const PtrUnion packet, const PP gpuPolySpanDriver, u32 is_quad
@@ -4457,7 +4961,7 @@ index 988e721f..08765271 100644
  		}
  	} while (++cur_pass < total_passes);
 diff --git a/plugins/gpu_unai/gpu_unai.h b/plugins/gpu_unai/gpu_unai.h
-index 2b5daee6..acafaaf4 100644
+index 2b5daee..acafaaf 100644
 --- a/plugins/gpu_unai/gpu_unai.h
 +++ b/plugins/gpu_unai/gpu_unai.h
 @@ -366,6 +366,7 @@ struct gpu_unai_t {
@@ -4469,7 +4973,7 @@ index 2b5daee6..acafaaf4 100644
  	u8 BLEND_MODE;
  	u8 TEXT_MODE;
 diff --git a/plugins/gpu_unai/gpulib_if.cpp b/plugins/gpu_unai/gpulib_if.cpp
-index 4b9b57e6..c2d56b87 100644
+index 4b9b57e..c2d56b8 100644
 --- a/plugins/gpu_unai/gpulib_if.cpp
 +++ b/plugins/gpu_unai/gpulib_if.cpp
 @@ -22,10 +22,13 @@
@@ -5093,15 +5597,17 @@ index 4b9b57e6..c2d56b87 100644
    ex_regs[1] |= gpu_unai.GPU_GP1 & 0x1ff;
  
 diff --git a/plugins/gpulib/gpu.c b/plugins/gpulib/gpu.c
-index f04e3a55..92bc8907 100644
+index f04e3a5..48ccd01 100644
 --- a/plugins/gpulib/gpu.c
 +++ b/plugins/gpulib/gpu.c
-@@ -1,3 +1,4 @@
+@@ -1,3 +1,6 @@
++#include "pica_layout.h"
++#include "psx3d_frameskip.h"
 +#include "../../libpcsxcore/psx3d_prof.h"
  /*
   * (C) Gražvydas "notaz" Ignotas, 2011-2012
   *
-@@ -8,6 +9,9 @@
+@@ -8,6 +11,9 @@
   * See the COPYING file in the top-level directory.
   */
  
@@ -5111,7 +5617,24 @@ index f04e3a55..92bc8907 100644
  #include <stdio.h>
  #include <stdlib.h>
  #include <string.h>
-@@ -32,6 +36,32 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+@@ -19,6 +25,9 @@
+ #include "../../frontend/plugin_lib.h"
+ #include "../../include/compiler_features.h"
+ 
++psx3d_skip_state psx3d_skip;
++unsigned psx3d_spu_worker_ticks, psx3d_spu_worker_items;
++
+ #ifndef ARRAY_SIZE
+ #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+ #endif
+@@ -27,11 +36,38 @@
+ #define log_io(...)
+ 
+ struct psx_gpu gpu;
++int psx3d_skipgate = 1; // named diagnostic A/B: recompute at E3 boundaries
+ 
+-static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count,
++static noinline int PICA_HOT(do_cmd_buffer) do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count,
      int *cycles_sum, int *cycles_last);
  static noinline void finish_vram_transfer(struct psx_gpu *gpu, int is_read, int is_async);
  
@@ -5144,7 +5667,45 @@ index f04e3a55..92bc8907 100644
  static void sync_renderer(struct psx_gpu *gpu)
  {
    if (gpu_async_enabled(gpu))
-@@ -582,6 +612,9 @@ static noinline void start_vram_transfer(struct psx_gpu *gpu, uint32_t pos_word,
+@@ -216,6 +252,7 @@ static noinline void decide_frameskip(struct psx_gpu *gpu, uint32_t flip_delay)
+     gpu->frameskip.active = 0;
+     gpu->frameskip.cnt = 0;
+     gpu->frameskip.frame_ready = 1;
++    psx3d_skip.streak = psx3d_skip.phase = 0;
+     return;
+   }
+ 
+@@ -228,8 +265,11 @@ static noinline void decide_frameskip(struct psx_gpu *gpu, uint32_t flip_delay)
+     gpu->frameskip.frame_ready = 1;
+   }
+ 
++  if (psx3d_skip.enabled) {
++    gpu->frameskip.active = psx3d_skip_decide(&psx3d_skip);
++  }
+   // note: frontend/libretro only uses 'force'
+-  if (*gpu->frameskip.force)
++  else if (*gpu->frameskip.force)
+     gpu->frameskip.active = 1;
+   else if (!gpu->frameskip.active && *gpu->frameskip.advice)
+     gpu->frameskip.active = 1;
+@@ -237,6 +277,8 @@ static noinline void decide_frameskip(struct psx_gpu *gpu, uint32_t flip_delay)
+     gpu->frameskip.active = 1;
+   else
+     gpu->frameskip.active = 0;
++  if (gpu->frameskip.active) psx3d_skip.flips_skipped++;
++  else psx3d_skip.flips_drawn++;
+ }
+ 
+ static int check_screen_intersect(struct psx_gpu *gpu, int x, int y, int w, int h)
+@@ -426,6 +468,7 @@ void GPUwriteStatus(uint32_t data)
+           if (!gpu.frameskip.active || !gpu.frameskip.allow)
+             frameskip_prepare_noskip(&gpu);
+         }
++        else psx3d_skip.flips_drawn++;
+         gpu.frameskip.last_flip_frame = *gpu.state.frame_count;
+       }
+       if (changed) {
+@@ -582,6 +625,9 @@ static noinline void start_vram_transfer(struct psx_gpu *gpu, uint32_t pos_word,
    gpu->dma.offset = 0;
    gpu->dma.is_read = is_read;
    gpu->dma_start = gpu->dma;
@@ -5154,7 +5715,7 @@ index f04e3a55..92bc8907 100644
  
    // postponed until the actual transfer
    //sync_renderer(gpu);
-@@ -686,6 +719,8 @@ int do_vram_copy(uint16_t *vram, const uint32_t *ex_regs, const uint32_t *params
+@@ -686,6 +732,8 @@ int do_vram_copy(uint16_t *vram, const uint32_t *ex_regs, const uint32_t *params
    }
  
    renderer_update_caches(dx, dy, w, h, 0);
@@ -5163,28 +5724,30 @@ index f04e3a55..92bc8907 100644
    return 4;
  }
  
-@@ -824,8 +859,20 @@ breakloop:
+@@ -824,7 +872,21 @@ breakloop:
    return pos;
  }
  
-+static noinline int do_cmd_buffer_(struct psx_gpu *gpu, uint32_t *data, int count,
+-static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count,
++static noinline int PICA_HOT(do_cmd_buffer_) do_cmd_buffer_(struct psx_gpu *gpu, uint32_t *data, int count,
 +    int *cycles_sum, int *cycles_last)
 +;
- static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count,
-     int *cycles_sum, int *cycles_last)
++static noinline int PICA_HOT(do_cmd_buffer) do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count,
++    int *cycles_sum, int *cycles_last)
 +{
++  unsigned long long t = psx3d_skip.timing ? PROF_TICK() : 0;
 +  PROF_BEGIN(PROF_GPU);
 +  int r = do_cmd_buffer_(gpu, data, count, cycles_sum, cycles_last);
 +  PROF_END(PROF_GPU);
++  if (psx3d_skip.timing) psx3d_skip.gpu_main_ticks += PROF_TICK() - t;
 +  return r;
 +}
 +
-+static noinline int do_cmd_buffer_(struct psx_gpu *gpu, uint32_t *data, int count,
-+    int *cycles_sum, int *cycles_last)
++static noinline int PICA_HOT(do_cmd_buffer_) do_cmd_buffer_(struct psx_gpu *gpu, uint32_t *data, int count,
+     int *cycles_sum, int *cycles_last)
  {
    int cmd, pos;
-   uint32_t old_e3 = gpu->ex_regs[3];
-@@ -869,12 +916,31 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+@@ -869,12 +931,31 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
          cmd = -1; // incomplete cmd, can't consume yet
          break;
        }
@@ -5218,7 +5781,7 @@ index f04e3a55..92bc8907 100644
        pos += 4;
        continue;
      case 0x00:
-@@ -886,17 +952,24 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+@@ -886,25 +967,42 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
        continue;
      }
  
@@ -5227,24 +5790,43 @@ index f04e3a55..92bc8907 100644
 +      int p0 = pos;
        pos += do_cmd_list_skip(gpu, data + pos, count - pos,
                 cycles_sum, cycles_last, &cmd);
++      psx3d_skip.words_skipped += pos - p0;
 +      if (psx3d_prof_on)
 +        psx3d_prof_c[PROF_CDR] += pos - p0;   // PSX3D: words skipped
 +    }
      else if (gpu_async_enabled(gpu)) {
++      int p0 = pos;
        pos += gpu_async_do_cmd_list(gpu, data + pos, count - pos,
                 cycles_sum, cycles_last, &cmd, &vram_dirty);
++      psx3d_skip.words_drawn += pos - p0;
      }
      else {
 +      int p0 = pos;
        pos += renderer_do_cmd_list(data + pos, count - pos, gpu->ex_regs,
                 cycles_sum, cycles_last, &cmd);
        vram_dirty = 1;
++      psx3d_skip.words_drawn += pos - p0;
 +      if (psx3d_prof_on)
 +        psx3d_prof_t[PROF_CDR] += pos - p0;   // PSX3D: words drawn
      }
  
++    // PICA returns at E3 while a selected skip is blocked by overlap.
++    // Re-evaluate before dispatching the remainder of this same batch.
++    if (psx3d_skipgate && psx3d_renderer_is_pica() && !gpu_async_enabled(gpu) &&
++        unlikely(old_e3 != gpu->ex_regs[3])) {
++      old_e3 = gpu->ex_regs[3];
++      check_draw_to_display(gpu);
++    }
      if (cmd == -1)
-@@ -954,9 +1027,27 @@ void GPUwriteData(uint32_t data)
+       // incomplete cmd
+       break;
+   }
+ 
+-  // this is here because the renderer doesn't tell us if it saw e3
+   if (unlikely(old_e3 != gpu->ex_regs[3]))
+     check_draw_to_display(gpu);
+ 
+@@ -954,9 +1052,28 @@ void GPUwriteData(uint32_t data)
    }
  }
  
@@ -5267,12 +5849,13 @@ index f04e3a55..92bc8907 100644
  long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
    uint32_t *progress_addr, int32_t *cycles_last_cmd)
  {
++  unsigned long long dma_begin = psx3d_skip.class_timing ? PROF_TICK() : 0;
 +  static uint32_t batch[1024];
 +  int batch_len = 0;
    uint32_t addr, *list, ld_addr;
    int len, left, count, ld_count = 32;
    int cpu_cycles_sum = 0;
-@@ -993,6 +1084,25 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
+@@ -993,6 +1110,25 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
        continue;
      }
  
@@ -5298,7 +5881,7 @@ index f04e3a55..92bc8907 100644
      if (len) {
        left = do_cmd_buffer(&gpu, list + 1, len, &cpu_cycles_sum, &cpu_cycles_last);
        if (left) {
-@@ -1019,6 +1129,8 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
+@@ -1019,6 +1155,8 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
      }
    }
  
@@ -5307,7 +5890,15 @@ index f04e3a55..92bc8907 100644
    sync_ecmds_status_bits(&gpu);
  
    //printf(" -> %d %d\n", cpu_cycles_sum, cpu_cycles_last);
-@@ -1085,6 +1197,10 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+@@ -1030,6 +1168,7 @@ long GPUdmaChain(uint32_t *rambase, uint32_t start_addr,
+   if (progress_addr)
+     *progress_addr = addr;
+   *cycles_last_cmd = cpu_cycles_last;
++  if (psx3d_skip.class_timing) psx3d_skip.dma_ticks += PROF_TICK() - dma_begin;
+   return cpu_cycles_sum;
+ }
+ 
+@@ -1085,6 +1224,10 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
    int i;
  
    switch (type) {
@@ -5318,7 +5909,7 @@ index f04e3a55..92bc8907 100644
      case 1: // save
        if (gpu.cmd_len > 0) {
          flush_cmd_buffer(&gpu);
-@@ -1092,12 +1208,15 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+@@ -1092,12 +1235,15 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
        }
  
        sync_renderer(&gpu);
@@ -5334,7 +5925,7 @@ index f04e3a55..92bc8907 100644
        //memcpy(gpu.regs, freeze->ulControl, sizeof(gpu.regs));
        memcpy(gpu.ex_regs, freeze->ulControl + 0xe0, sizeof(gpu.ex_regs));
        gpu.status = freeze->ulStatus;
-@@ -1105,7 +1224,9 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
+@@ -1105,7 +1251,9 @@ long GPUfreeze(uint32_t type, GPUFreeze_t *freeze, uint16_t **vram_ptr)
        for (i = 8; i > 1; i--)
          GPUwriteStatus((i << 24) | freeze->ulControl[i]);
        renderer_sync_ecmds(gpu.ex_regs);
@@ -5345,7 +5936,7 @@ index f04e3a55..92bc8907 100644
        gpu_async_sync_ecmds(&gpu);
        break;
    }
-@@ -1263,7 +1384,22 @@ void GPUrearmedCallbacks(const struct rearmed_cbs *cbs)
+@@ -1263,7 +1411,22 @@ void GPUrearmedCallbacks(const struct rearmed_cbs *cbs)
    renderer_set_config(cbs);
    vout_set_config(cbs);
  
@@ -5370,7 +5961,7 @@ index f04e3a55..92bc8907 100644
  
  // for standalone plugins only
 diff --git a/plugins/gpulib/gpu.h b/plugins/gpulib/gpu.h
-index e929fe60..1450997a 100644
+index e929fe6..1450997 100644
 --- a/plugins/gpulib/gpu.h
 +++ b/plugins/gpulib/gpu.h
 @@ -136,6 +136,22 @@ struct psx_gpu {
@@ -5417,7 +6008,7 @@ index e929fe60..1450997a 100644
  
  /* listing these here for correct linkage if rasterizer uses c++ */
 diff --git a/plugins/gpulib/gpu_async.c b/plugins/gpulib/gpu_async.c
-index a67509b3..9f460143 100644
+index a67509b..9f46014 100644
 --- a/plugins/gpulib/gpu_async.c
 +++ b/plugins/gpulib/gpu_async.c
 @@ -11,8 +11,13 @@
@@ -5694,7 +6285,7 @@ index a67509b3..9f460143 100644
 +
  // vim:shiftwidth=2:expandtab
 diff --git a/plugins/gpulib/gpu_async.h b/plugins/gpulib/gpu_async.h
-index 65248945..0e58b89f 100644
+index 6524894..0e58b89 100644
 --- a/plugins/gpulib/gpu_async.h
 +++ b/plugins/gpulib/gpu_async.h
 @@ -6,6 +6,10 @@
@@ -5726,9 +6317,247 @@ index 65248945..0e58b89f 100644
 +#endif
 +
  #endif // __GPULIB_GPU_ASYNC_H__
+diff --git a/plugins/gpulib/pica_layout.h b/plugins/gpulib/pica_layout.h
+new file mode 100644
+index 0000000..547ec9a
+--- /dev/null
++++ b/plugins/gpulib/pica_layout.h
+@@ -0,0 +1,19 @@
++/* Build-only renderer layout experiments; no runtime or rendering state. */
++#ifndef PICA_LAYOUT_H
++#define PICA_LAYOUT_H
++#ifdef PICA_LAYOUT_SPLIT
++#define PICA_INLINE_HOT(name) PICA_HOT(name)
++#define PICA_COLD __attribute__((__cold__, __noinline__))
++#define PICA_UNLIKELY(x) __builtin_expect(!!(x), 0)
++#ifdef PICA_LAYOUT_SECTION
++#define PICA_HOT(name) __attribute__((__noinline__, __section__(".pica_hot." #name)))
++#else
++#define PICA_HOT(name) __attribute__((__noinline__))
++#endif
++#else
++#define PICA_INLINE_HOT(name) inline
++#define PICA_COLD
++#define PICA_HOT(name)
++#define PICA_UNLIKELY(x) (x)
++#endif
++#endif
+diff --git a/plugins/gpulib/psx3d_frameskip.h b/plugins/gpulib/psx3d_frameskip.h
+new file mode 100644
+index 0000000..34e1bee
+--- /dev/null
++++ b/plugins/gpulib/psx3d_frameskip.h
+@@ -0,0 +1,207 @@
++/* Shared by gpulib, frontend and the timing harness. No platform dependencies. */
++#ifndef PSX3D_FRAMESKIP_H
++#define PSX3D_FRAMESKIP_H
++#include <stdint.h>
++#include <string.h>
++
++typedef struct {
++  unsigned enabled, level, phase, streak, max_skips;
++  unsigned numerator, denominator;
++  unsigned timing, spu_main_ticks, spu_wait_ticks;
++  unsigned gpu_main_ticks;
++  unsigned phase_ticks[8], render_prims;
++  unsigned spu_stolen;
++  unsigned flips_drawn, flips_skipped, words_drawn, words_skipped, pictures;
++  unsigned class_timing, dma_ticks;
++} psx3d_skip_state;
++extern psx3d_skip_state psx3d_skip;
++/* Written by the SPU worker, read atomically; keep out of main-thread snapshots. */
++extern unsigned psx3d_spu_worker_ticks, psx3d_spu_worker_items;
++
++/* Rational cadences spread draws evenly: D, DDDS, DDS, DS, DSS, DSSS, DSSSS.
++ * Phase changes only at a game flip, never at a host vblank. */
++static inline unsigned psx3d_skip_draw(unsigned level)
++{
++  static const unsigned n[] = {1, 3, 2, 1, 1, 1, 1, 1};
++  return n[level < 8 ? level : 7];
++}
++static inline unsigned psx3d_skip_period(unsigned level)
++{
++  static const unsigned n[] = {1, 4, 3, 2, 3, 4, 5, 6};
++  return n[level < 8 ? level : 7];
++}
++static inline unsigned psx3d_skip_decide(psx3d_skip_state *s)
++{
++  unsigned period = s->denominator ? s->denominator : psx3d_skip_period(s->level);
++  s->phase += s->denominator ? s->numerator : psx3d_skip_draw(s->level);
++  unsigned skip = s->phase < period && s->streak < (s->max_skips ? s->max_skips : 4);
++  if (!skip) { s->phase %= period; s->streak = 0; }
++  else s->streak++;
++  return skip;
++}
++
++typedef struct {
++  double average, previous, previous_fraction, slope;
++  unsigned samples, age, level, max_level;
++  double window_work;
++  unsigned window_count;
++  double class_work[3], class_average[3], picture_fraction;
++  unsigned class_count[3], class_samples[3];
++  unsigned dense_numerator;
++} psx3d_skip_controller;
++
++/* Work excludes pacing sleep. Average spans heavy/light vblank pairs. A
++ * measured slope predicts the cost of the next denser cadence before trying
++ * it. Until both costs are known, recovery probes are spaced two seconds
++ * apart. Slow down promptly, recover conservatively; no audio-driven jitter. */
++static inline void psx3d_skip_observe(psx3d_skip_controller *c,
++    double work, double budget)
++{
++  if (work > budget * 8) { unsigned cap = c->max_level; memset(c, 0, sizeof(*c)); c->max_level = cap; return; }
++  c->average += (work - c->average) / 16;
++  c->samples++;
++  c->age++;
++  if (c->samples < 32 || c->age < 32) return;
++  double fraction = (double)psx3d_skip_draw(c->level) / psx3d_skip_period(c->level);
++  if (c->previous_fraction && c->previous_fraction != fraction) {
++    double slope = (c->average - c->previous) / (fraction - c->previous_fraction);
++    if (slope > 0 && slope < budget * 8) c->slope = slope;
++  }
++  unsigned level = c->level;
++  if (c->average > budget * 1.02 && level < (c->max_level ? c->max_level : 6)) level++;
++  else if (level && c->age >= 120 && c->average < budget * .94) {
++    double denser = (double)psx3d_skip_draw(level - 1) / psx3d_skip_period(level - 1);
++    if ((c->slope && c->average + c->slope * (denser - fraction) < budget * .97)
++        || !c->slope || (c->age >= 240 && c->average < budget * .70)) level--;
++  }
++  if (level != c->level) {
++    c->previous = c->average;
++    c->previous_fraction = fraction;
++    c->level = level;
++    c->age = 0;
++  }
++}
++/* Whole 24-vblank windows cover complete 30fps DDDS, DDS and DS periods.
++ * EWMA peaks from heavy/idle pairs otherwise cause false overload decisions.
++ * Keep this separate from the original observer for same-binary hardware A/B. */
++static inline void psx3d_skip_observe_window(psx3d_skip_controller *c,
++    double work, double budget)
++{
++  if (work > budget * 8) { unsigned cap = c->max_level; memset(c, 0, sizeof(*c)); c->max_level = cap; return; }
++  c->window_work += work;
++  if (++c->window_count < 24) return;
++  c->average = c->window_work / c->window_count;
++  c->samples += c->window_count;
++  c->age += c->window_count;
++  c->window_work = 0;
++  c->window_count = 0;
++  if (c->age < 48) return;
++  double fraction = (double)psx3d_skip_draw(c->level) / psx3d_skip_period(c->level);
++  if (c->previous_fraction && c->previous_fraction != fraction) {
++    double slope = (c->average - c->previous) / (fraction - c->previous_fraction);
++    if (slope > 0 && slope < budget * 8) c->slope = slope;
++  }
++  unsigned level = c->level;
++  if (c->average > budget * .995 && level < (c->max_level ? c->max_level : 6)) level++;
++  else if (level && c->age >= 120 && c->average < budget * .97) {
++    double denser = (double)psx3d_skip_draw(level - 1) / psx3d_skip_period(level - 1);
++    if ((c->slope && c->average + c->slope * (denser - fraction) < budget * .985)
++        || !c->slope || (c->age >= 240 && c->average < budget * .70)) level--;
++  }
++  if (level != c->level) {
++    c->previous = c->average;
++    c->previous_fraction = fraction;
++    c->level = level;
++    c->age = 0;
++  }
++}
++/* Predict the cost of a denser cadence from actual drawing/skipping/idle
++ * vblanks. Keeping these populations separate avoids a stale cross-scene
++ * slope locking a light scene into a sparse cadence. Runtime opt-in only. */
++static inline void psx3d_skip_observe_model(psx3d_skip_controller *c,
++    double work, double budget, unsigned kind)
++{
++  if (work > budget * 8) { unsigned cap = c->max_level; memset(c, 0, sizeof(*c)); c->max_level = cap; return; }
++  if (kind > 2) kind = 2;
++  c->class_work[kind] += work;
++  c->class_count[kind]++;
++  c->window_work += work;
++  if (++c->window_count < 24) return;
++  c->average = c->window_work / c->window_count;
++  double pictures = (double)(c->class_count[0] + c->class_count[1]) / c->window_count;
++  c->picture_fraction = c->samples ? c->picture_fraction * .75 + pictures * .25 : pictures;
++  for (unsigned k = 0; k < 3; k++) {
++    if (c->class_count[k]) {
++      double mean = c->class_work[k] / c->class_count[k];
++      c->class_average[k] = c->class_samples[k] ? c->class_average[k] * .75 + mean * .25 : mean;
++      c->class_samples[k] += c->class_count[k];
++    }
++    c->class_work[k] = 0;
++    c->class_count[k] = 0;
++  }
++  c->samples += c->window_count;
++  c->age += c->window_count;
++  c->window_work = 0;
++  c->window_count = 0;
++  if (c->age < 48) return;
++  unsigned level = c->level;
++  if (c->average > budget * .995 && level < (c->max_level ? c->max_level : 6)) level++;
++  else if (level && c->age >= 120 && c->average < budget * .97 &&
++      c->class_samples[0] >= 4 && c->class_samples[1] >= 4) {
++    double fraction = (double)psx3d_skip_draw(level-1) / psx3d_skip_period(level-1);
++    double predicted = c->picture_fraction * (c->class_average[1] + fraction *
++        (c->class_average[0] - c->class_average[1])) +
++        (1 - c->picture_fraction) * c->class_average[2];
++    if (predicted < budget * .97) level--;
++  }
++  if (level != c->level) { c->level = level; c->age = 0; }
++}
++/* A 60-picture accumulator fills the gaps between the coarse rational levels.
++ * It permits adjacent gaps only, while preserving the explicit maximum skip
++ * streak. Class costs include frontend work but exclude pacing sleep. */
++static inline void psx3d_skip_observe_dense(psx3d_skip_controller *c,
++    double work, double budget, unsigned kind)
++{
++  if (work > budget * 8) { unsigned cap = c->max_level; memset(c, 0, sizeof(*c)); c->max_level = cap; return; }
++  if (kind > 2) kind = 2;
++  c->class_work[kind] += work;
++  c->class_count[kind]++;
++  c->window_work += work;
++  if (++c->window_count < 24) return;
++  c->average = c->window_work / c->window_count;
++  double pictures = (double)(c->class_count[0] + c->class_count[1]) / c->window_count;
++  c->picture_fraction = c->samples ? c->picture_fraction * .75 + pictures * .25 : pictures;
++  for (unsigned k=0; k<3; k++) {
++    if (c->class_count[k]) {
++      double mean = c->class_work[k] / c->class_count[k];
++      c->class_average[k] = c->class_samples[k] ? c->class_average[k] * .75 + mean * .25 : mean;
++      c->class_samples[k] += c->class_count[k];
++    }
++    c->class_work[k] = 0; c->class_count[k] = 0;
++  }
++  c->samples += c->window_count; c->age += c->window_count;
++  c->window_count = 0; c->window_work = 0;
++  if (c->age < 48) return;
++  unsigned current = c->dense_numerator ? c->dense_numerator : 60;
++  unsigned target = current;
++  unsigned minimum = c->max_level == 7 ? 10 : 12;
++  double slope = c->picture_fraction * (c->class_average[0] - c->class_average[1]);
++  if (c->class_samples[0] >= 4 && c->class_samples[1] >= 4 && slope > .1) {
++    double floor = c->picture_fraction * c->class_average[1] +
++        (1-c->picture_fraction) * c->class_average[2];
++    double optimal = (budget * .98 - floor) * 60 / slope;
++    target = optimal <= minimum ? minimum : optimal >= 60 ? 60 : (unsigned)optimal;
++  } else if (c->average > budget * .995) {
++    target = current > minimum + 4 ? current-4 : minimum;
++  } else if (c->age >= 120 && c->average < budget * .96) target = 60;
++  // The measured deadline wins if stale class estimates predict too much.
++  if (c->average > budget * .995 && target >= current && current > minimum)
++    target = current-1;
++  if (target < current && c->average > budget * .985) current = target;
++  else if (target > current && c->age >= 120 && c->average < budget * .98)
++    current += target-current > 4 ? 4 : target-current;
++  if (current != (c->dense_numerator ? c->dense_numerator : 60)) {
++    c->dense_numerator = current; c->age = 0;
++  }
++}
++#endif
 diff --git a/plugins/gpulib/renderer_dispatch.c b/plugins/gpulib/renderer_dispatch.c
 new file mode 100644
-index 00000000..2afeb84f
+index 0000000..2afeb84
 --- /dev/null
 +++ b/plugins/gpulib/renderer_dispatch.c
 @@ -0,0 +1,53 @@
@@ -5786,7 +6615,7 @@ index 00000000..2afeb84f
 +DISPATCH(void, set_config, (const struct rearmed_cbs *cbs), (cbs))
 +DISPATCH(void, notify_screen_change, (const struct psx_gpu_screen *screen), (screen))
 diff --git a/plugins/gpulib/vout_pl.c b/plugins/gpulib/vout_pl.c
-index 07cf6daa..362735c0 100644
+index 07cf6da..362735c 100644
 --- a/plugins/gpulib/vout_pl.c
 +++ b/plugins/gpulib/vout_pl.c
 @@ -82,6 +82,15 @@ int vout_update(struct psx_gpu *gpu, int src_x, int src_y)
