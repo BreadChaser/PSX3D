@@ -39,6 +39,7 @@ typedef struct {
 	int  music;        // library music
 	int  bottom_off;   // backlight off on the bottom screen while playing
 	int  autosave;     // save on exit, offer to continue next time
+	int  audio_stretch; // maximum slowdown in percent, 0 disables (0..50)
 	int  half3d;       // draw 3D polygons at half vertical resolution (Old 3DS default)
 	int  renderer;     // 0 = GPU, 1 = software; applied when a game starts
 } psx3d_config;
@@ -115,7 +116,7 @@ extern unsigned long long psx3d_prof_t[6];
 extern unsigned int psx3d_prof_c[6];
 extern int psx3d_prof_on;
 void new_dynarec_print_stats(void);
-extern bool sw_prof, sw_stats, sw_o3ds, sw_fs1, sw_noskip, sw_nosputhread, sw_acap;
+extern bool sw_prof, sw_stats, sw_o3ds, sw_fs1, sw_fs3, sw_noskip, sw_nosputhread, sw_acap;
 extern int sw_state, sw_gldbg, sw_vramdump;
 extern int sw_renderer;       // -1 = use config; 0 = GPU, 1 = software
 extern int sw_pmu0, sw_pmu1;

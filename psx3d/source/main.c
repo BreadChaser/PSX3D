@@ -33,12 +33,16 @@ void __system_allocateHeaps(void)
 	svcCloseHandle(reslimit);
 
 	u32 remaining = (u32)(max_commit - cur_commit) & ~0xFFF;
-	u32 reserve = remaining > 80 * MB ? 12 * MB : 8 * MB;
+	// RAM 0x210000 + scratch 0x10000 + BIOS 0x80000 + LUTs 0x800000
+	// need 10.625 MiB outside the heaps. An 8 MiB reserve made the LUT
+	// mapping fall back to calloc, taking 8 MiB from the save-state heap.
+	// With the 8 MiB static dynarec cache the Old 3DS can afford 12 MiB.
+	u32 reserve = 12 * MB;
 	u32 linear = remaining / 3;
 	if (linear > 24 * MB) linear = 24 * MB;
-	// The dual image reduces remaining memory slightly. Keep enough linear
-	// space for the contiguous 4 MiB atlas as well as staging and vertices.
-	if (linear < 14 * MB) linear = 14 * MB;
+	// GPU atlas/staging/UI consume ~13.5 MiB before core startup. Leave
+	// another ~3 MiB for core VRAM/vout and ~1.4 MiB for eleven thumbnails.
+	if (linear < 19 * MB) linear = 19 * MB;
 	u32 heap = remaining > linear + reserve + 8 * MB ? remaining - linear - reserve : 8 * MB;
 	if (heap > 64 * MB) heap = 64 * MB;
 	if (heap + linear > remaining)
@@ -108,6 +112,7 @@ bool sw_sbs;            // test: both eyes side by side
 bool sw_prof;           // log where frame time goes, once a second
 bool sw_stats;          // log fps and renderer counters once a second (no timers)
 bool sw_o3ds;           // test: behave like an Old 3DS (settings not saved)
+bool sw_fs3;            // test: Old 3DS auto frameskip may skip up to 3 in a row
 bool sw_fs1;            // test: force frameskip, every other frame
 bool sw_noskip;         // test: no frameskip (benchmarks)
 bool sw_nosputhread;    // test: Old 3DS: sound mixing on the main core
@@ -140,6 +145,7 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "stats")) sw_stats = true;
 		else if (!strcmp(a, "o3ds")) sw_o3ds = true;
 		else if (!strcmp(a, "fs1")) sw_fs1 = true;
+		else if (!strcmp(a, "fs3")) sw_fs3 = true;
 		else if (!strcmp(a, "noskip")) sw_noskip = true;
 		else if (!strcmp(a, "nogputhread")) sw_nogputhread = true;
 		else if (!strcmp(a, "gputhread")) sw_nogputhread = false;

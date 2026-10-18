@@ -44,10 +44,18 @@ index d6379148..f2089dc2 100644
  ifeq "$(HAVE_CHD)" "1"
  LCHDR = deps/libchdr
 diff --git a/Makefile.libretro b/Makefile.libretro
-index cd53109e..b693c228 100644
+index cd53109e..02807940 100644
 --- a/Makefile.libretro
 +++ b/Makefile.libretro
-@@ -362,6 +362,9 @@ else ifeq ($(platform), ctr)
+@@ -356,12 +356,17 @@ else ifeq ($(platform), ctr)
+  	$(error "CTRULIB env var is not set")
+ 	endif
+ 	TARGET := $(TARGET_NAME)_libretro_ctr.a
++	# Static cache shares the application budget with heaps and save states.
++	CFLAGS += -DTARGET_SIZE_2=23
+ 	CFLAGS += -DARM11 -D_3DS -D__3DS__
+ 	CFLAGS += -DGPU_UNAI_USE_FLOATMATH -DGPU_UNAI_USE_FLOAT_DIV_MULTINV
+ 	CFLAGS += -march=armv6k -mtune=mpcore -mfloat-abi=hard -marm -mfpu=vfp -mtp=soft
  	CFLAGS += -mword-relocations
  	CFLAGS += -fomit-frame-pointer
  	# CFLAGS += -funroll-loops # ~500K of bloat
@@ -57,7 +65,7 @@ index cd53109e..b693c228 100644
  	CFLAGS += -Ifrontend/3ds -I$(CTRULIB)/include
  	CFLAGS += -Werror=implicit-function-declaration
  	CFLAGS += -Wno-format
-@@ -374,7 +377,10 @@ else ifeq ($(platform), ctr)
+@@ -374,7 +379,10 @@ else ifeq ($(platform), ctr)
  	OBJS += deps/arm-mem/memset-v6l.o
  	OBJS += frontend/3ds/utils.o
  
@@ -272,6 +280,20 @@ index 67196027..daf899f4 100644
          break;
      }
      c2op_epilogue(c2op, reglist);
+diff --git a/libpcsxcore/new_dynarec/assem_arm.h b/libpcsxcore/new_dynarec/assem_arm.h
+index 74b1657f..90e90fff 100644
+--- a/libpcsxcore/new_dynarec/assem_arm.h
++++ b/libpcsxcore/new_dynarec/assem_arm.h
+@@ -37,7 +37,9 @@
+ extern char *invc_ptr;
+ 
+ // note: max due to branch encoding: arm 32M, arm64 128M
++#ifndef TARGET_SIZE_2
+ #define TARGET_SIZE_2 24 // 2^24 = 16 megabytes
++#endif
+ 
+ struct tramp_insns
+ {
 diff --git a/libpcsxcore/new_dynarec/new_dynarec.c b/libpcsxcore/new_dynarec/new_dynarec.c
 index fb99df6e..950a048d 100644
 --- a/libpcsxcore/new_dynarec/new_dynarec.c

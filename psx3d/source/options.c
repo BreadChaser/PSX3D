@@ -229,6 +229,10 @@ const char *options_get(const char *key)
 	if (ff_skip && !strcmp(key, "pcsx_rearmed_frameskip_interval"))
 		return "3";
 
+	// Test only the skip limit; keep the selected frameskip policy intact.
+	if (sw_fs3 && !g_new3ds && !strcmp(key, "pcsx_rearmed_frameskip_interval"))
+		return "3";
+
 	if (!ov)
 		ov = config_core_override(key);
 	// Old 3DS: one 268MHz core runs the CPU, GPU and sound. Defaults that
