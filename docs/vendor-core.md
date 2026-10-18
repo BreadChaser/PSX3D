@@ -91,6 +91,13 @@ The frontend host suite and developer-control/transport/updater suites pass
 with ASan/UBSan. Generated host mockups were archived under devtools and the
 tracked reference images restored.
 
+### Stage 4: remaining standalone plugin build/test glue
+
+Removed six unused files: the standalone gpu_unai/GPULib Makefiles, GPULib
+plugin make fragment, upstream GPULib test driver and SDL video output.
+Root make compiles the shared GPULib implementation directly. Clean CIA
+build and complete ELF/3DSX identity checks pass.
+
 ## Final measurements
 
 Counts below are exact Git-tree snapshots, not build-directory sizes. Text

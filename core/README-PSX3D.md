@@ -34,3 +34,6 @@ licence/author notices remain. Required ARMv6 memory routines, VFS/threading,
 CHD codecs (miniz, LZMA, FLAC, Huffman and Zstandard), compressed disc support,
 cheats and patch support remain. Included lightrec declarations are retained
 because shared ARM code still preprocesses them.
+
+Unused standalone plugin Makefiles, the upstream GPULib test driver and SDL
+output were also removed; root make still builds GPULib directly.
