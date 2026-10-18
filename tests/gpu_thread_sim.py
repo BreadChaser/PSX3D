@@ -58,10 +58,15 @@ if not args.reuse:
     text = sdk.read_text()
     for key, value in (("GPU_PREVIOUS", 109), ("GPU_TEXTURE1", 110), ("GPU_ADD_SIGNED", 111)):
         if key not in text: text += f"\n#define {key} {value}\n"
+    # citro3d 1.7.1 dereferences textures on units 1/2 while checking type;
+    # unlike unit 0, NULL is not a supported unbind on those units.
+    text = text.replace("(void)u; (void)t; }", '(void)u; if (u > 0 && !t) { fprintf(stderr, "invalid NULL C3D_TexBind on unit %d\\n", u); abort(); } }')
     sdk.write_text(text)
     makefile = sim / "core_pica/Makefile.libretro"
     makefile.write_text(makefile.read_text().replace(
         "\tifneq ($(CTR_GPU),unai)\n\tUSE_ASYNC_GPU = 0\n\tendif\n", ""))
+    # Dual renderer must explicitly select GPU before core initialization;
+    # its factory default is software. This exercises the release dispatch.
     # Check gpulib's queue invariants too, even in an otherwise release build.
     with (sim / "core_pica/Makefile").open("a") as out:
         out.write("\nplugins/gpulib/gpu_async.o: CFLAGS += -UNDEBUG\n")
@@ -89,9 +94,10 @@ if not args.reuse:
             fprintf(stderr, "thread stress save/restore frame %d\\n", i);
         }
 #ifdef GLES""", 1)
+    text = text.replace("\tretro_init();", "\t{ int psx3d_renderer_select(int); if (psx3d_renderer_select(0)) abort(); }\n\tretro_init();")
     runner.write_text(text)
     core = sim / "core_pica"
-    command = ["make", "-f", "Makefile.libretro", "platform=ctrsim", "CTR_GPU=pica", "USE_ASYNC_GPU=1"]
+    command = ["make", "-f", "Makefile.libretro", "platform=ctrsim", "CTR_GPU=dual", "USE_ASYNC_GPU=1"]
     with (sim / "thread-build.log").open("w") as log:
         subprocess.run(command + ["clean"], cwd=core, stdout=log, stderr=log, check=True)
         subprocess.run(command + ["-j16", "DEBUG_SYMS=1", "CFLAGS_OPT=-O2",
@@ -167,6 +173,7 @@ def run(case):
     text = path.read_text()
     hashed = re.search(r"draw hash (\w+)", text)
     assert hashed, path
+    assert re.search(r"c3d draws/frame [1-9][0-9]*", text), path
     assert ("gpu thread: PICA enabled" in text) == (mode != "off"), path
     if mode == "stress":
         assert text.count("thread stress save/restore") == 6, path

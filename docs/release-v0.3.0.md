@@ -249,3 +249,25 @@ by the integration worker.
    game exit, backlight idle/wake, HOME, sleep/wake, app exit and CIA/HBL launch.
    Check PICA drawing stays on its owner and software rendering is unaffected
    by GPU-only switches. Never press HOME during a netload transfer.
+
+## Hardware startup correction (2026-10-18)
+
+The first GPU run of RC `01b1563` crashed on both consoles. Matching ARM11
+Luma dumps identify `C3D_TexBind(1, NULL)`: PC `0x00210c10`, LR `0x001829bc`,
+FAR `0x0000000c`, r0=1/r1=0. Old faults on core 0; New on worker core 2.
+The exact RC ELF maps this to citro3d 1.7.1 texture type inspection called
+from PICA `apply_state`. Units 1/2 require a texture pointer. Resetting stage
+1 already disables dithering, so its unused binding can remain intact.
+
+The corrected renderer removes the invalid unbind. The simulator SDK now
+rejects NULL bindings on units 1/2, and worker validation builds the actual
+dual renderer, explicitly selects GPU before initialization and requires
+nonzero draw calls. Before the correction both direct and worker modes abort
+on their first geometry. Evidence (logs, dumps, SHA-256 manifests and decoded
+registers) is retained locally in `devtools/release_check/crash/`.
+
+Corrected dual-renderer simulator validation passed all 20 cases: five games
+with direct, worker, repeated worker and save/load/live-toggle stress modes,
+600 frames each. Per-frame triangle/state/texel content matches across modes.
+Raw draw hashes can differ when equivalent opaque primitives are batched in a
+different order. Both CIA and 3DSX builds pass; hardware rechecks follow.

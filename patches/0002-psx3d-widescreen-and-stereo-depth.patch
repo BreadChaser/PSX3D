@@ -1007,10 +1007,10 @@ index 76f76afe..0e684ace 100644
    sem_post(&t.sem_done);
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 00000000..fe550669
+index 00000000..5001c35a
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,2735 @@
+@@ -0,0 +1,2737 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -2330,8 +2330,10 @@ index 00000000..fe550669
 +			C3D_TexBind(1, &dither_tex);
 +			C3D_TexEnvSrc(env, C3D_RGB, GPU_PREVIOUS, GPU_TEXTURE1, 0);
 +			C3D_TexEnvFunc(env, C3D_RGB, GPU_ADD_SIGNED);
-+		} else
-+			C3D_TexBind(1, NULL);
++		}
++		// Stage 1 passes through when dithering is off; its texture is
++		// unused. citro3d 1.7.1 dereferences the texture on units 1/2,
++		// so NULL cannot be used to unbind it there.
 +		applied_dither = d->dither;
 +	}
 +	if (d->texmode != TX_NONE && (!sent_valid || sent.atlas != d->atlas || sent.texmode == TX_NONE || atlas[d->atlas].rebind)) {
