@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "psx3d.h"
+#include "devtools.h"
 
 // Main thread stack; the core warns below 1MB (dynarec recursion).
 u32 __stacksize__ = 0x100000;
@@ -180,6 +181,12 @@ static void parse_switches(int argc, char **argv)
 	}
 }
 
+void debug_parse_switch(const char *word)
+{
+	char *argv[2] = {NULL, (char *)word};
+	parse_switches(2, argv);
+}
+
 // Same switches from sdmc:/3ds/PSX3D/switches.txt (space or newline
 // separated), for consoles started from the HOME Menu instead of 3dslink.
 static void parse_switch_file(void)
@@ -187,8 +194,14 @@ static void parse_switch_file(void)
 	FILE *f = fopen(PSX3D_DIR "/switches.txt", "r");
 	if (!f)
 		return;
-	char word[64];
-	while (fscanf(f, "%63s", word) == 1) {
+	char word[384];
+	while (fscanf(f, "%383s", word) == 1) {
+		// Control/install permission is granted only by the on-card file.
+		if (!strcmp(word, "bench-exit=home")) dev_bench_home = true;
+		else if (!strcmp(word, "remote")) dev_remote = true;
+		else if (!strcmp(word, "bench")) dev_bench = true;
+		else if (!strncmp(word, "token=", 6)) snprintf(dev_token, sizeof(dev_token), "%.95s", word + 6);
+		else if (!strncmp(word, "update=", 7)) snprintf(dev_update_url, sizeof(dev_update_url), "%.255s", word + 7);
 		char *argv[2] = { NULL, word };
 		parse_switches(2, argv);
 	}
@@ -281,6 +294,7 @@ int main(int argc, char **argv)
 	log_printf("switches: csnd=%d nonet=%d nosound=%d noirrst=%d noaa=%d nolcd=%d nocovers=%d\n",
 		sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers);
 
+	if (dev_remote) sw_nocovers = true; // SOC belongs to the control server
 	config_load();
 	if (!video_init()) {
 		log_printf("video_init failed\n");
@@ -293,8 +307,9 @@ int main(int argc, char **argv)
 		covers_init();
 	if (!sw_nosound)
 		dsp_firmware_ensure();   // first start: copy it from the HOME Menu
-		uisound_init();
+	uisound_init();
 	emu_init();
+	dev_init();
 
 	// Home screen: the game library (needs a games folder); Y switches to
 	// the folder browser, which also is where a games folder gets picked.
@@ -302,6 +317,16 @@ int main(int argc, char **argv)
 	if (use_library && g_cfg.last_title[0])
 		libui_select_title(g_cfg.last_title);
 	for (;;) {
+		dev_tick(false);
+		if (dev_exiting())
+			break;
+		char remote_save[PATH_LEN], remote_title[PATH_LEN];
+		if (dev_next_game(path, remote_save, remote_title)) {
+			emu_run_game(path, remote_save[0] ? remote_save : NULL, remote_title);
+			if (aptShouldClose())
+				break;
+			continue;
+		}
 		bool play;
 		const game_t *picked = NULL;
 		if (use_library && sw_game[0]) {
@@ -327,10 +352,12 @@ int main(int argc, char **argv)
 		}
 		if (use_library) {
 			int r = libui_run(path, sizeof(path));
+			if (r == 3) continue;
 			if (r == 0)
 				break;
 			if (r == 2) {
 				play = browser_run(path, sizeof(path));
+				if (dev_transition()) continue;
 				if (!play) {
 					// back from the browser: the games folder may have changed
 					use_library = g_cfg.games_dir[0] && library_load(g_cfg.games_dir, false);
@@ -342,6 +369,7 @@ int main(int argc, char **argv)
 			}
 		} else {
 			play = browser_run(path, sizeof(path));
+			if (dev_transition()) continue;
 			if (!play) {
 				if (g_cfg.games_dir[0] && library_load(g_cfg.games_dir, false)) {
 					use_library = true;
@@ -358,6 +386,7 @@ int main(int argc, char **argv)
 			break;
 	}
 
+	dev_shutdown();
 	// each step is logged: a hang at exit shows up as the last line
 	log_printf("exit: config\n");
 	config_save();

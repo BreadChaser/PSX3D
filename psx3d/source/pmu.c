@@ -4,6 +4,7 @@
 // PSX3D. Test tool: measures what the emulator does on the real CPU (cache and
 // TLB misses, mispredicted branches, stalls) at a few system calls per frame.
 #include "psx3d.h"
+#include "devtools.h"
 
 static const u32 regs[3] = {
 	PERFCOUNTERREG_CORE_CYCLE_COUNTER, PERFCOUNTERREG_CORE_COUNT_REG_0, PERFCOUNTERREG_CORE_COUNT_REG_1
@@ -71,12 +72,24 @@ void pmu_stop(void)
 	on = false;
 }
 
+bool pmu_sample(double *cycles, double *ev0, double *ev1)
+{
+	*cycles = *ev0 = *ev1 = -1;
+	if (!on || !frames)
+		return false;
+	*cycles = sum[0] / (double)frames / 1e6;
+	*ev0 = sum[1] / (double)frames / 1e3;
+	*ev1 = sum[2] / (double)frames / 1e3;
+	return true;
+}
+
 // once a second: per frame averages
 void pmu_report(void)
 {
 	if (!on || !frames)
 		return;
-	log_printf("pmu: per frame %.3fM cycles, ev0 %.1fk, ev1 %.1fk\n",
+	if (!dev_enabled() || log_linked() || sw_prof || sw_stats)
+		log_printf("pmu: per frame %.3fM cycles, ev0 %.1fk, ev1 %.1fk\n",
 		sum[0] / (double)frames / 1e6, sum[1] / (double)frames / 1e3, sum[2] / (double)frames / 1e3);
 	sum[0] = sum[1] = sum[2] = 0;
 	frames = 0;
