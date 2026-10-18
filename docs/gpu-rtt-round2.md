@@ -1,5 +1,8 @@
 # RTT round two: retain disjoint texture regions
 
+> Historical report: submodule/patch instructions apply to its original commit.
+> Current builds use the committed `core/` directory; see [vendor-core.md](vendor-core.md).
+
 Based on `ce16a3a` (`t3/rtt-no-readback`), implemented on `t3/rtt-round2`.
 No console connection, install, remote input or push was performed. Hardware
 acceptance belongs to the console worker. The simulator's `sotn` state is the

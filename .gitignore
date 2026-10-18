@@ -13,3 +13,7 @@ psx3d/romfs/gfx/
 /tools/*/evidence/
 /tools/*/results/
 /tools/**/*gallery*.html
+
+/devtools/
+/core/*.o
+/core/*.a

@@ -30,3 +30,12 @@ with no freeze and no exception screen.
 ## Performance spot checks
 
 Silent Hill, Tekken 3, Crash Team Racing: about 60 FPS in play (FPS counter on).
+
+## Core housekeeping
+
+The core and required dependencies are committed directly under `core/`.
+Use `make clean && make -j16` for a clean build; do not apply/regenerate patches.
+For file removal or build housekeeping, compare allocated ELF sections with a
+clean baseline using the same toolchain and `SOURCE_DATE_EPOCH` (the core logs
+`__DATE__`/`__TIME__`). Unchanged bytes and addresses avoid Old 3DS code-layout
+regressions. See [vendor-core.md](docs/vendor-core.md).

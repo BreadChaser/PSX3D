@@ -1,5 +1,8 @@
 # Renderer CPU work removal
 
+> Historical report: submodule/patch instructions apply to its original commit.
+> Current builds use the committed `core/` directory; see [vendor-core.md](vendor-core.md).
+
 Rebased onto `gpu-renderer` commit `9b4dc04`, retaining only the renderer CPU
 change from combined stage `166af68` (original `9e8f279`). Patch 0002 was
 regenerated from the merged real core source with `devtools/mk.sh`; the native

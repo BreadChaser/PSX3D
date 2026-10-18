@@ -1,5 +1,8 @@
 # Renderer footprint/layout experiment
 
+> Historical report: submodule/patch instructions apply to its original commit.
+> Current builds use the committed `core/` directory; see [vendor-core.md](vendor-core.md).
+
 Base: `t3/o3ds60` at `b27a139`. Implementation: `t3/pica-layout` in `/home/tony/.t3/worktrees/PS1_3ds/t3-82d2c88c`.
 No console contact or push. All hardware performance judgments remain pending.
 

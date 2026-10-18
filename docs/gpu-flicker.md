@@ -1,5 +1,8 @@
 # Crash edge polygons and GPU presentation flicker
 
+> Historical report: submodule/patch instructions apply to its original commit.
+> Current builds use the committed `core/` directory; see [vendor-core.md](vendor-core.md).
+
 Implementation branch: `t3/fix-gpu-polygon-flicker`, based on `9b4dc04`.
 Only harness commit `85423f1` was imported (as `cec36d0`); none of the reference
 branch's sampling or mask fixes was imported. No console access or push occurred.

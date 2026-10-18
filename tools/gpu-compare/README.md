@@ -13,7 +13,7 @@ and qemu from the project's devtools. No console connection is used.
 
 ```sh
 # Follow the project instructions: initialize/patch core first.
-git submodule update --init core && make patch
+make # core sources and dependencies are already committed
 cp -a /home/tony/Development/PS1_3ds/devtools/sim /tmp/correct-sim
 tools/gpu-compare/build.sh
 python3 -m venv /tmp/correct-sim/venv

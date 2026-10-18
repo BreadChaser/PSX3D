@@ -1,5 +1,8 @@
 # GPU render-to-texture: implementation and hardware handoff
 
+> Historical report: submodule/patch instructions apply to its original commit.
+> Current builds use the committed `core/` directory; see [vendor-core.md](vendor-core.md).
+
 Implementation commit `9bc61b4` on `t3/rtt-no-readback`, based on console build `10a5ac8` (`t3/fps-in-layout`).
 No consoles were contacted and nothing was pushed. This is a host-verified
 candidate, not a hardware acceptance result. Beating software in SotN and fixing

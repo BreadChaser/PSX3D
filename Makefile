@@ -1,13 +1,7 @@
 # Builds the PCSX-ReARMed core as a static library, then the PSX3D app.
-.PHONY: all patch core app cia clean
+.PHONY: all core app cia clean
 
 all: app
-
-# small fixes to the upstream core, kept as patches so the submodule stays upstream
-patch:
-	@for p in $(CURDIR)/patches/*.patch; do \
-		git -C core apply --reverse --check $$p 2>/dev/null || git -C core apply $$p; \
-	done
 
 # The frontend always includes both renderers; selection is a game setting.
 # Core-only builds still accept CTR_GPU=pica/unai for diagnostics.
@@ -40,7 +34,7 @@ EXTERN_SYMS += psx3d_spu_worker_ticks psx3d_spu_worker_items psx3d_skip pica_dis
 EXTERN_SYMS += pica_init pica_exit pica_game_begin pica_game_end pica_flush_vertices pica_frame_started pica_frame_ended \
 	pica_texmask pica_texmemo psx3d_skipgate pica_thread_call pica_thread_sync pica_state_lost pica_prepare_present pica_picture pica_stats pica_probe pica_debug pica_submit pica_prims pica_pmu pica_open_frame pica_async pica_double_buffer pica_wait_frame pica_frame_pending pica_dump_vram
 
-core: patch
+core:
 	@python3 tools/pica-layout/prepare.py $(PICA_LAYOUT)
 	$(MAKE) -C core -f Makefile.libretro platform=ctr CTR_GPU=dual EXTRA_EXTERN_SYMS="$(EXTERN_SYMS)"
 

@@ -1,5 +1,8 @@
 # Texture hits and command-list investigation
 
+> Historical report: submodule/patch instructions apply to its original commit.
+> Current builds use the committed `core/` directory; see [vendor-core.md](vendor-core.md).
+
 Branch: `t3/pica-inv-tex`, 2026-10-18. No console contact and no push.
 Baseline is `4ed8026`, the release/v0.3.0-final tip when this work started:
 `a63bece` plus the RTT activation/atlas-rebuild correction. That correction

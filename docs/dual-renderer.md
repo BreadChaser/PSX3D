@@ -1,5 +1,8 @@
 # Dual renderer implementation and verification
 
+> Historical report: submodule/patch instructions apply to its original commit.
+> Current builds use the committed `core/` directory; see [vendor-core.md](vendor-core.md).
+
 Based on `gpu-renderer` commit `30c62a9`. Both gpulib renderers are included in
 one frontend. Release v0.3.0 defaults to Software on both console families.
 No console was contacted or modified by the integration worker; no changes
@@ -166,21 +169,10 @@ and `cycle.log`. The runner selects the backend before `retro_init`; software
 runs skip PICA allocation/frame callbacks. Fake citro3d verifies command output
 and lifecycle, not actual PICA rendering, shader compilation or 3DS allocation.
 
-## Rebuilding patch 0002 without private tooling
+## Building the current core
 
-All core changes remain under the existing regeneration paths. No extra core
-path needs adding to `devtools/mk.sh`. New files must be visible to `git diff`
-through intent-to-add (never commit the patched submodule):
-
-```sh
-git -C core add -N libpcsxcore/psx3d_depth.h libpcsxcore/psx3d_prof.h \
-  plugins/gpu_pica/gpu_pica.c plugins/gpu_pica/gpu_pica.h \
-  plugins/gpulib/renderer_dispatch.c
-git -C core -c diff.mnemonicPrefix=false -c diff.noprefix=false diff -- \
-  Makefile Makefile.libretro frontend/libretro.c libpcsxcore plugins \
-  > patches/0002-psx3d-widescreen-and-stereo-depth.patch
-make -j16
-```
+Core changes are ordinary repository changes. Run `make -j16`; no patch
+regeneration or intent-to-add inside a submodule is required.
 
 ## Console owner checks (Old and New 3DS)
 

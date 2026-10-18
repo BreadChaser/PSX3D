@@ -1,5 +1,8 @@
 # Per-primitive renderer investigation
 
+> Historical report: submodule/patch instructions apply to its original commit.
+> Current builds use the committed `core/` directory; see [vendor-core.md](vendor-core.md).
+
 Branch `t3/pica-inv-prims`, based on `4ed8026`. The requested release ref had
 advanced one commit from `a63bece` before checkout; retaining the newer RTT
 allocation fix was explicitly agreed. No consoles contacted, no push.

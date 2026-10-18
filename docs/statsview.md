@@ -1,5 +1,8 @@
 # Bottom-screen statistics
 
+> Historical report: submodule/patch instructions apply to its original commit.
+> Current builds use the committed `core/` directory; see [vendor-core.md](vendor-core.md).
+
 `show_fps=0/1/2` in `sdmc:/3ds/PSX3D/config.ini` selects Off, FPS,
 or Detailed. Existing 0/1 files retain their meaning; invalid values become 0.
 Choose Show FPS repeatedly, or tap the bottom 22-pixel stats/footer strip, to

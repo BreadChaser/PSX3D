@@ -1,5 +1,8 @@
 # Silent Hill additive batching
 
+> Historical report: submodule/patch instructions apply to its original commit.
+> Current builds use the committed `core/` directory; see [vendor-core.md](vendor-core.md).
+
 Implementation branch `t3/silent-hill-gpu-batching`, based on `9b4dc04`.
 `sh` means **Silent Hill**. No consoles were contacted, no deployment or push
 was performed, and no approximate/per-game cheap mode was added.

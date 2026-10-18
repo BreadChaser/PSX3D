@@ -1,5 +1,8 @@
 # Predictive real-time frameskip (post-v0.3.0 experiment)
 
+> Historical report: submodule/patch instructions apply to its original commit.
+> Current builds use the committed `core/` directory; see [vendor-core.md](vendor-core.md).
+
 Base: `10a5ac8` (`t3/fps-in-layout`). Branch: `t3/frameskip-ff`.
 Nothing was deployed, no console was contacted, and nothing was pushed. This is
 not a v0.3.0 release change. Hardware acceptance is still required.
@@ -305,18 +308,15 @@ would copy the changed GPU sources over the reference. Preserve separate
 `runner_before`/`runner_after` executables, and separate hash/non-hash binaries.
 The evidence summary records hashes of these binaries and compared frame traces.
 
-For normal product build/patch regeneration, **do not execute the installed
-`devtools/mk.sh`**, which changes directory to the primary checkout:
+For current product builds, edit and commit `core/` directly, then run:
 
 ```sh
-git -C core add -N libpcsxcore/psx3d_depth.h libpcsxcore/psx3d_prof.h \
-  plugins/gpu_pica plugins/gpulib/renderer_dispatch.c plugins/gpulib/psx3d_frameskip.h
-git -C core -c diff.mnemonicPrefix=false -c diff.noprefix=false diff \
-  -- Makefile Makefile.libretro frontend/libretro.c libpcsxcore plugins \
-  > patches/0002-psx3d-widescreen-and-stereo-depth.patch
 source /home/tony/Development/PS1_3ds/devtools/env.sh
 make -j16
 ```
+
+The shared legacy `devtools/mk.sh` still targets the main checkout; do not run it
+unmodified from an isolated worktree. No patch regeneration is needed here.
 
 ## Old 3DS hardware acceptance — ONLY when release testing frees the consoles
 

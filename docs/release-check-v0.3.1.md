@@ -1,5 +1,8 @@
 # PSX3D v0.3.1 candidate hardware check
 
+> Historical report: submodule/patch instructions apply to its original commit.
+> Current builds use the committed `core/` directory; see [vendor-core.md](vendor-core.md).
+
 Local candidate; unpublished. App version 0.3.1, CIA title counter 3076.
 The exact executable, source commit and SHA256 are recorded with the artifacts
 under the main checkout's ignored `devtools/release_v031/`.

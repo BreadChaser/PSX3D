@@ -1,7 +1,7 @@
 # PSX3D
 
 PSX3D is a standalone PlayStation emulator for Nintendo 3DS by **BreadChaser**,
-built around PCSX-ReARMed. It runs without RetroArch. This project is a work
+built around our modified fork of PCSX-ReARMed. It runs without RetroArch. This project is a work
 in progress.
 
 **The first PS1 emulator for the 3DS that draws on the 3DS GPU.** On an Old 3DS
@@ -163,14 +163,13 @@ When reporting a problem, include the affected session's `log.txt`.
 ## Building
 
 Requires devkitPro/devkitARM, libctru, citro2d, citro3d, makerom and bannertool.
-Both renderers are included; no renderer build flag is needed.
+Both renderers and all core dependencies are included; no submodule, patch step
+or renderer build flag is needed. Core changes are committed directly under
+`core/`. See [core ownership and verification](docs/vendor-core.md).
 
 ```bash
-git clone --recursive https://github.com/BreadChaser/PSX3D.git
+git clone https://github.com/BreadChaser/PSX3D.git
 cd PSX3D
-git submodule update --init core
-git -C core submodule update --init deps/libchdr deps/libretro-common
-make patch
 make        # psx3d/PSX3D.3dsx
 make cia    # psx3d/PSX3D.cia
 ```

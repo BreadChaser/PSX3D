@@ -1,5 +1,8 @@
 # Old 3DS full-speed experiments
 
+> Historical report: submodule/patch instructions apply to its original commit.
+> Current builds use the committed `core/` directory; see [vendor-core.md](vendor-core.md).
+
 The target is 100% emulated game speed with continuous audio, then the largest
 stable, evenly spaced picture rate that fits. These experiments are local and
 opt-in; they are not release defaults. Full speed has not been achieved in all

@@ -1,5 +1,8 @@
 # PICA state and submission investigation
 
+> Historical report: submodule/patch instructions apply to its original commit.
+> Current builds use the committed `core/` directory; see [vendor-core.md](vendor-core.md).
+
 Local branch `t3/pica-inv-submit`, based on the requested **a63bece**. No
 console access or push. The release branch had advanced to 4ed8026 when work
 started; the experiments were subsequently rebased onto a63bece and both
