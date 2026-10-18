@@ -1007,10 +1007,10 @@ index 76f76afe..0e684ace 100644
    sem_post(&t.sem_done);
 diff --git a/plugins/gpu_pica/gpu_pica.c b/plugins/gpu_pica/gpu_pica.c
 new file mode 100644
-index 00000000..dc705618
+index 00000000..79eedcfe
 --- /dev/null
 +++ b/plugins/gpu_pica/gpu_pica.c
-@@ -0,0 +1,3243 @@
+@@ -0,0 +1,3255 @@
 +/*
 + * gpu_pica: the PS1 GPU drawn by the 3DS GPU (PICA200) through citro3d.
 + * PSX3D, GPL v2 or later.
@@ -1230,7 +1230,7 @@ index 00000000..dc705618
 +// independent; the old 64x16 tracker remains available for hardware A/B.
 +#define RTT_OLD 262144
 +#define RTT_FORCE_NEW 1048576
-+static bool rtt_detected;
++static bool rtt_detected, rtt_cache_rebuild;
 +extern int pica_debug;
 +static u32 fine_gen[64][128], fine_draw_gen[64][128];
 +// CPU palette uploads are often adjacent rows in the same native tile.
@@ -1689,6 +1689,7 @@ index 00000000..dc705618
 +	have_last = false;
 +	gpu_readable = false;
 +	rtt_detected = true;
++	rtt_cache_rebuild = true;
 +}
 +
 +static void readback_part(int x, int y, int w, int h)
@@ -2405,6 +2406,17 @@ index 00000000..dc705618
 +// wrap, then the whole page is used) of this page and CLUT
 +static tcache *texture_for(u32 page, u32 clut, int u0, int u1, int v0, int v1)
 +{
++	if (rtt_cache_rebuild) {
++		// Activation can happen inside decode_rect. Wait until the next
++		// lookup to retire old grown squares, after draining their readers.
++		// Otherwise their oversized allocations can keep the region cache
++		// thrashing long after the one-time transition (GT2).
++		gpu_idle();
++		for (unsigned i = 0; i < sizeof(cache)/sizeof(cache[0]); i++)
++			if (cache[i].valid) drop_entry(&cache[i]);
++		have_last = false;
++		rtt_cache_rebuild = false;
++	}
 +	int depth = (page >> 7) & 3;
 +	if (depth == 3)
 +		depth = 2;
@@ -3662,7 +3674,7 @@ index 00000000..dc705618
 +// it; update_caches below will queue the upload for the next open GPU frame.
 +static void pica_drop_fills_local(void)
 +{
-+	rtt_detected = false;
++	rtt_detected = rtt_cache_rebuild = false;
 +	nfills = npend = 0;
 +	memset(drawn, 0, sizeof(drawn));
 +	memset(fine_drawn, 0, sizeof(fine_drawn));
