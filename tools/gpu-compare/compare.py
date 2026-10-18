@@ -11,6 +11,9 @@ from PIL import Image, ImageChops, ImageDraw, ImageEnhance
 import numpy as np
 
 GAMES = {
+    "sotn": "Castlevania - Symphony of the Night (USA)",
+    "sotn-fight": "Castlevania - Symphony of the Night (USA)",
+    "sotn-menu": "Castlevania - Symphony of the Night (USA)",
     "o3auto": "Crash Bandicoot (USA)",
     "sh": "Silent Hill (USA)",
     "r4": "R4 - Ridge Racer Type 4 (USA)",
@@ -42,7 +45,7 @@ def main():
     p.add_argument("--build", type=Path, default=Path("/tmp/correct-sim"))
     p.add_argument("--devtools", type=Path, default=Path("/home/tony/Development/PS1_3ds/devtools"))
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--states", nargs="+", default=list(GAMES))
+    p.add_argument("--states", nargs="+", default=["o3auto", "sh", "r4", "ctr", "gt2"])
     p.add_argument("--frames", nargs="+", type=int, default=[2, 30, 60])
     p.add_argument("--reuse-traces", action="store_true")
     p.add_argument("--pica", type=Path, help="alternate PICA replay binary for deterministic A/B")

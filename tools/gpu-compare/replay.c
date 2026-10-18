@@ -70,6 +70,7 @@ int main(int argc,char **argv)
     pica_frame_started();
 #endif
     uint32_t ex[8]={0}; int rect[5]={0}; unsigned header[2];
+    int copied=0;
     while(fread(header,4,2,f)==2) {
         unsigned tag=header[0],bytes=header[1];
         assert(bytes<=16*1024*1024);
@@ -89,6 +90,9 @@ int main(int argc,char **argv)
             // gpulib's synchronization before the CPU overwrites them.
             renderer_flush_queues();
 #endif
+#ifdef PICA
+            if(copied) { copied=0; break; } // the explicit GPU copy already ran
+#endif
             int x=rect[0],y=rect[1],w=rect[2],h=rect[3];
             assert(bytes==(unsigned)(w*h*2));
             for(int r=0;r<h;r++)for(int c=0;c<w;c++)
@@ -103,6 +107,11 @@ int main(int argc,char **argv)
               fprintf(stderr,"frame %d draw calls %u dither setups %u\n",*(int*)data,sim_c3d_draws-previous,sim_dither_setups-previous_setups);
               previous_setups=sim_dither_setups;
               previous=sim_c3d_draws; }
+            if(getenv("GPU_DUMP_VRAM")) {
+                FILE *dump=fopen(getenv("GPU_DUMP_VRAM"),"wb"); assert(dump);
+                for(int y=0;y<512;y++)for(int x=0;x<1024;x++) { u16 pixel=sim_target_pixel(x,y); fwrite(&pixel,2,1,dump); }
+                assert(!fclose(dump));
+            }
             if(getenv("GPU_HASH_VRAM")) {
                 // Include offscreen pixels and mask bits: a scanout RGB PNG
                 // alone cannot detect reordering that corrupts later masks.
@@ -114,9 +123,25 @@ int main(int argc,char **argv)
                 }
                 fprintf(stderr,"frame %d VRAM hash %016llx\n",*(int*)data,hash);
             }
-            pica_frame_ended(); pica_frame_started();
+            { int *info=data;
+              gpu.screen.src_x=info[2]; gpu.screen.src_y=info[3];
+              gpu.screen.w=info[4]; gpu.screen.h=info[5]; }
+            if(getenv("PICA_STATS")) { char stats[2048]; pica_stats(stats,sizeof(stats)); fprintf(stderr,"stats %d %s\n",*(int*)data,stats); }
+            C3D_FrameEnd(0); pica_frame_ended(); pica_frame_started();
 #endif
             break;
+        case 8: {
+            assert(bytes==16); unsigned *p=data;
+            int sx=p[1]&1023,sy=(p[1]>>16)&511,dx=p[2]&1023,dy=(p[2]>>16)&511;
+            int w=((p[3]-1)&1023)+1,h=(((p[3]>>16)-1)&511)+1;
+            fprintf(stderr,"VRAM copy %d %d %d %d %d %d\n",sx,sy,dx,dy,w,h);
+#ifdef PICA
+            copied=pica_vram_copy(sx,sy,dx,dy,w,h,ex[6]&3);
+#else
+            (void)sx;(void)sy;(void)dx;(void)dy;(void)w;(void)h;
+#endif
+            break;
+        }
         case 7: // Synthetic option-change fixtures; captures do not emit this.
             assert(bytes==4); cbs.dithering=*(uint32_t*)data;
             renderer_set_config(&cbs); break;
@@ -136,7 +161,7 @@ int main(int argc,char **argv)
     }
     fclose(f);
 #ifdef PICA
-    pica_frame_ended(); pica_exit();
+    C3D_FrameEnd(0); pica_frame_ended(); pica_exit();
 #endif
     #ifdef PICA_SIM_HASH
     extern unsigned long long pica_sim_hash;
