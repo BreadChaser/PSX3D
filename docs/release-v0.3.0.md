@@ -1,4 +1,10 @@
-# PSX3D v0.3.0 integration report
+# PSX3D v0.3.0 original integration report
+
+This records the initial source-integration stage before RC hardware fixes,
+settings cleanup and both RTT updates. For the final build, renderer defaults,
+measurements and limits, see [release notes](release-notes-v0.3.0.md) and
+[final hardware check](release-check-v0.3.0.md). Historical claims below describe
+that earlier candidate.
 
 Local branch **release/v0.3.0**, based on GPU renderer **9b4dc04**. No push,
 deployment or console access was performed. The final CIA title version is

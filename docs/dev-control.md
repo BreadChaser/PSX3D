@@ -116,8 +116,11 @@ The default `auto` starts with the original coarse tracker and single-square
 cache. A GPU-dirty texture/CLUT read, VRAM readback or source copy activates
 fine tracking and retained regions for the rest of that state/game session.
 The transition drains queued readers and conservatively seeds generations/debt.
+At the next texture lookup it drains readers again and retires the old enlarged
+cache entries, so they cannot keep the retained-region allocator thrashing. The
+decode that triggered activation finishes with its current allocation intact.
 `rtt=old` forces the original path; `rtt=new` forces fine tracking from startup.
-`set rtt=old|new` repeats the last load with its original state/settings, then replies
+`set rtt=auto|old|new` repeats the last load with its original state/settings, then replies
 after the new game starts; it does not change cache mappings during a live game.
 `rttcache=old|new` selects round-one or retained-region caching after activation on a clean
 `load`/batch; the default is `new`. Status includes build identity, `rttcache`, requested `rtt` policy, `free_heap` and `free_linear` (bytes) under `settings`.
@@ -182,7 +185,7 @@ manually before remote game changes; ordinary library/browser/game menu loops
 are serviced, but nested system keyboard/confirmation applets are not.
 
 `set` currently allows `frameskip=...`, `clock=...`, `o:frameskip_*=...`,
-`slider=N`, and `gldbg=N`. `set rtt=old|new` repeats the previous load cleanly.
+`slider=N`, and `gldbg=N`. `set rtt=auto|old|new` repeats the previous load cleanly.
 Renderer, thread and other options require a new `load`;
 unsafe live changes are rejected. Use `load` with the same game/state to compare
 those. Per-run `o:` values use the existing core option mechanism.
