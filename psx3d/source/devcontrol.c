@@ -25,7 +25,7 @@ int dev_ui_take(void) { int request = ui_request; ui_request = DEV_UI_NONE; retu
 bool dev_bench_home;
 static char load_line[2048], current_title[PATH_LEN], last_error[160];
 static char update_pending[1024];
-bool dev_covers_blocked(void) { return update_pending[0] || batch_active || load_pending || running; }
+bool dev_covers_blocked(void) { return update_pending[0] || batch_active || load_pending || running || devnet_import_active(); }
 static u64 boot_ms, sample_seq, status_at;
 static FILE *tsv, *markdown;
 static char (*runs)[2048];

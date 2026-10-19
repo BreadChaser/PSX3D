@@ -44,9 +44,15 @@ static bool shot_reply;
 static char update_args[1024];
 static bool background_update;
 static char import_path[PATH_LEN], import_hash[65];
+static bool importing;
+bool devnet_import_active(void)
+{
+    LightLock_Lock(&lock); bool active=importing; LightLock_Unlock(&lock); return active;
+}
 void devnet_import_reply(const char *path, const char *sha256)
 {
     LightLock_Lock(&lock);
+    importing=true;
     snprintf(import_path,sizeof(import_path),"%s",path);
     snprintf(import_hash,sizeof(import_hash),"%s",sha256);
     mailbox=3;
@@ -1013,7 +1019,10 @@ static void serve_client(int fd)
 			return;
 		}
 	} else if (state_path[0])
+        {
         receive_benchmark_state(fd,state_path,state_hash);
+        LightLock_Lock(&lock); importing=false; LightLock_Unlock(&lock);
+    }
     else if (!encode_shot(fd))
 		send_json(fd, r);
 	free(r);
