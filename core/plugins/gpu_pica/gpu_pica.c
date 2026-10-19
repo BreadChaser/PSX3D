@@ -65,7 +65,8 @@ typedef struct tcache {
 	bool valid;
 	bool gpu_tiles;
 	u8 depth;          // 0 4-bit, 1 8-bit, 2 15-bit
-	u8 lg;             // size = 32 << lg
+	u8 lg;             // size class: squares are 32 << lg
+	u8 cw, ch;         // size in 32x32 cells (squares: 1 << lg)
 	u8 rx, ry;         // the square's origin in page texels
 	s16 ax, ay;        // ...and in its atlas
 	u16 page;          // texpage bits 0-4 (x/64, y/256)
@@ -147,6 +148,8 @@ static u32 seq = 1, synced_seq;
 static tcache cache[NENTRIES];
 static s16 cell_owner[CELLS * CELLS];   // entry, CELL_FREE or CELL_PLAIN
 static u8 block_used[16];               // occupied cells of each 256x256 area
+static u32 cell_rows[CELLS];            // occupied cells, a bit per column
+static bool rect_cache;                 // texevict=new, latched at game start
 static u16 active[NSIZES][NENTRIES];    // entries in use, by size
 static int nactive[NSIZES];
 static u16 free_list[NENTRIES];
@@ -187,8 +190,7 @@ static void sim_vertex(const pvtx *v)
 		}
 		for (int i = 0; i < NENTRIES; i++) {
 			const tcache *c = &cache[i];
-			int size = 32 << c->lg;
-			if (c->valid && uu >= c->ax && uu < c->ax + size && vv >= c->ay && vv < c->ay + size) {
+			if (c->valid && uu >= c->ax && uu < c->ax + 32 * c->cw && vv >= c->ay && vv < c->ay + 32 * c->ch) {
 				rec[2] = c->depth | (c->page << 8) | ((u32)c->clut << 16);
 				rec[3] = c->win;
 				rec[4] = (c->rx + uu - c->ax) | ((c->ry + vv - c->ay) << 16);
@@ -209,7 +211,7 @@ static void sim_vertex(const pvtx *v)
 static tcache *last_tex;             // the previous lookup's result
 static bool have_last;                // reserved square: texels for untextured drawing
 static tcache *buckets[256];
-static u32 lru_clock;
+static u32 lru_clock, lru_frame, lru_prev_frame;   // lru_clock at the last two frame starts
 
 // VRAM write generations in 64x16 blocks: texture pages and CLUTs depend
 // on them (CLUTs often sit right next to a framebuffer that is cleared
@@ -284,6 +286,7 @@ typedef struct { s16 x, y, w, h; } prect;
 static prect pend[16];
 static int npend;
 bool pica_texmask = true, pica_texmemo = true; // named diagnostic A/B switches
+bool pica_texevict = true;   // texevict=old: power-of-two squares, same-size eviction (latched per game)
 int pica_debug;   // set by the frontend (test switch gldbg)
 unsigned pica_submit = 7; // named submitstate/submitclip/submittex switches
 void (*pica_pmu)(int end); // optional frontend kernel-PMU sampler
@@ -905,6 +908,8 @@ static void pica_frame_started_local(void)
 	vpos = vstart = sent_vpos = vclean = 0;
 	addq.n = addq.nv = 0;
 	frame_seq = seq;
+	lru_prev_frame = lru_frame;
+	lru_frame = lru_clock;
 	if (!pica_async || !pica_frame_pending || !pica_frame_pending()) synced_seq = seq;
 	if (vbuf_base) {
 		vlimit = pica_double_buffer ? MAX_VERTS / 2 : MAX_VERTS;
@@ -1042,8 +1047,8 @@ static bool PICA_COLD cache_valid(tcache *c)
 	if (!c->win) {
 		px += c->rx >> sh;
 		py += c->ry;
-		h = 32 << c->lg;
-		w = h >> sh;
+		h = 32 * c->ch;
+		w = (32 * c->cw) >> sh;
 	}
 	int nbx = ((px + w - 1) >> 6) - (px >> 6) + 1;
 	if (block_stamp(px >> 6, py >> 4, nbx, h >> 4) > c->stamp)
@@ -1268,15 +1273,19 @@ static int square_for(int u0, int u1, int v0, int v1, int *rx, int *ry)
 	return NSIZES - 1;
 }
 
-static void cells_set(int cx, int cy, int n, s16 v)
+static void cells_rect(int cx, int cy, int w, int h, s16 v)
 {
-	for (int y = cy; y < cy + n; y++)
-		for (int x = cx; x < cx + n; x++) {
+	for (int y = cy; y < cy + h; y++) {
+		for (int x = cx; x < cx + w; x++) {
 			s16 *o = &cell_owner[y * CELLS + x];
 			block_used[(y >> 3) * 4 + (x >> 3)] += (v != CELL_FREE) - (*o != CELL_FREE);
 			*o = v;
 		}
+		u32 bits = (w == 32 ? ~0u : (1u << w) - 1) << cx;
+		cell_rows[y] = v == CELL_FREE ? cell_rows[y] & ~bits : cell_rows[y] | bits;
+	}
 }
+static void cells_set(int cx, int cy, int n, s16 v) { cells_rect(cx, cy, n, n, v); }
 
 static void texture_idle(tcache *c, enum sync_reason why)
 {
@@ -1297,7 +1306,7 @@ static void drop_entry(tcache *c)
 	texmemo_epoch++;
 	unhash(c);
 	c->valid = false;
-	cells_set(c->ax >> 5, c->ay >> 5, 1 << c->lg, CELL_FREE);
+	cells_rect(c->ax >> 5, c->ay >> 5, c->cw, c->ch, CELL_FREE);
 	int last = active[c->lg][--nactive[c->lg]];
 	active[c->lg][c->slot] = last;
 	cache[last].slot = c->slot;
@@ -1369,10 +1378,95 @@ static tcache *take_square(int lg)
 	c->ax = bx * 32;
 	c->ay = by * 32;
 	c->lg = lg;
+	c->cw = c->ch = n;
 	c->slot = nactive[lg];
 	active[lg][nactive[lg]++] = e;
 	cells_set(bx, by, n, e);
 	return c;
+}
+
+// The rectangle of whole cells holding u0..u1 x v0..v1 (inside the page).
+// Squares rounded up to 32 << lg wasted half the atlas on 3D scenes.
+static void rect_for(int u0, int u1, int v0, int v1, int *rx, int *ry, int *cw, int *ch)
+{
+	*rx = u0 & ~31;
+	*ry = v0 & ~31;
+	*cw = (u1 >> 5) - (u0 >> 5) + 1;
+	*ch = (v1 >> 5) - (v0 >> 5) + 1;
+}
+
+// A new entry of cw x ch cells: free space if there is any (large ones from
+// the bottom, small ones from the top, keeping large free areas together),
+// else the window whose newest occupant is oldest, preferring one no queued
+// draw reads. Evicting only the same size froze each size's share of a full
+// atlas: stale squares of one size were never reused while another size
+// thrashed, and synced, for the rest of the session.
+static PICA_COLD tcache *take_rect(int cw, int ch)
+{
+	int bx = -1, by = -1;
+	bool big = cw * ch >= 8;
+	for (int i = 0; i <= CELLS - ch && bx < 0; i++) {
+		int y = big ? CELLS - ch - i : i;
+		u32 m = 0;
+		for (int k = 0; k < ch; k++)
+			m |= cell_rows[y + k];
+		u32 f = ~m;
+		for (int k = 1; k < cw; k++)
+			f &= ~m >> k;   // bit x: cells x..x+cw-1 are free
+		if (f) { bx = __builtin_ctz(f); by = y; }
+	}
+	if (bx < 0) {
+		// row maxima over cw cells, then the best window over ch rows
+		static u64 hmax[CELLS * CELLS];
+		for (int y = 0; y < CELLS; y++)
+			for (int x = 0; x + cw <= CELLS; x++) {
+				u64 m = 0;
+				for (int k = 0; k < cw; k++) {
+					int o = cell_owner[y * CELLS + x + k];
+					u64 v = o == CELL_PLAIN ? ~0ull : o < 0 ? 0 :
+						((u64)(cache[o].used_seq > synced_seq) << 32) | cache[o].lru;
+					if (v > m) m = v;
+				}
+				hmax[y * CELLS + x] = m;
+			}
+		u64 best = ~0ull;
+		for (int y = 0; y + ch <= CELLS; y++)
+			for (int x = 0; x + cw <= CELLS; x++) {
+				u64 m = 0;
+				for (int k = 0; k < ch && m < best; k++)
+					if (hmax[(y + k) * CELLS + x] > m) m = hmax[(y + k) * CELLS + x];
+				if (m < best) { best = m; bx = x; by = y; }
+			}
+		for (int y = by; y < by + ch; y++)
+			for (int x = bx; x < bx + cw; x++)
+				if (cell_owner[y * CELLS + x] >= 0)
+					evict(&cache[cell_owner[y * CELLS + x]]);
+	}
+	int lg = cw > ch ? cw : ch;
+	lg = lg <= 1 ? 0 : lg <= 2 ? 1 : lg <= 4 ? 2 : 3;
+	int e = free_list[--nfree];
+	tcache *c = &cache[e];
+	memset(c, 0, sizeof(*c));
+	c->ax = bx * 32;
+	c->ay = by * 32;
+	c->lg = lg;
+	c->cw = cw;
+	c->ch = ch;
+	c->slot = nactive[lg];
+	active[lg][nactive[lg]++] = e;
+	cells_rect(bx, by, cw, ch, e);
+	return c;
+}
+
+// a new entry for u0..u1 x v0..v1 of the page
+static tcache *take_entry(int u0, int u1, int v0, int v1, int *rx, int *ry)
+{
+	if (rect_cache) {
+		int cw, ch;
+		rect_for(u0, u1, v0, v1, rx, ry, &cw, &ch);
+		return take_rect(cw, ch);
+	}
+	return take_square(square_for(u0, u1, v0, v1, rx, ry));
 }
 
 // Several disjoint sprites may share a page/CLUT. Growing their union to
@@ -1381,8 +1475,7 @@ static tcache *take_square(int lg)
 static inline bool region_cache(void) { return !rtt_old() && !(pica_debug & 524288); }
 static inline bool covers(const tcache *c, int u0, int u1, int v0, int v1)
 {
-	int size = 32 << c->lg;
-	return u0 >= c->rx && u1 < c->rx + size && v0 >= c->ry && v1 < c->ry + size;
+	return u0 >= c->rx && u1 < c->rx + 32 * c->cw && v0 >= c->ry && v1 < c->ry + 32 * c->ch;
 }
 
 // A small direct-mapped memo of successful requests. A matching VRAM
@@ -1398,14 +1491,13 @@ static struct {
 static PICA_COLD tcache *texture_new(int depth, u16 pg, u16 cl, u32 win, int u0, int u1, int v0, int v1)
 {
  tcache *c;
-		int rx, ry, lg = square_for(u0, u1, v0, v1, &rx, &ry);
-		c = take_square(lg);
+		int rx, ry;
+		c = take_entry(u0, u1, v0, v1, &rx, &ry);
 		c->gpu_tiles = false;
 		c->depth = depth;
 		c->page = pg;
 		c->clut = cl;
 		c->win = win;
-		c->lg = lg;
 		c->rx = rx;
 		c->ry = ry;
 		c->tiles = 0;
@@ -1450,8 +1542,8 @@ static noinline tcache *PICA_HOT(texture_for_slow) texture_for_slow(u32 page, u3
 	}
 
 	if (c) {
-		int size = 32 << c->lg;
-		if (u0 < c->rx || u1 >= c->rx + size || v0 < c->ry || v1 >= c->ry + size) {
+		int sw = 32 * c->cw, sh = 32 * c->ch;
+		if (u0 < c->rx || u1 >= c->rx + sw || v0 < c->ry || v1 >= c->ry + sh) {
 			if (region_cache()) {
 				// The common covering hit keeps the original lookup path.
 				// Only a region miss searches for another square of this key.
@@ -1460,8 +1552,8 @@ static noinline tcache *PICA_HOT(texture_for_slow) texture_for_slow(u32 page, u3
 						covers(c, u0, u1, v0, v1)) break;
 			} else {
 				// outside the square: move to one that holds both
-				int nu0 = u0 < c->rx ? u0 : c->rx, nu1 = u1 > c->rx + size - 1 ? u1 : c->rx + size - 1;
-				int nv0 = v0 < c->ry ? v0 : c->ry, nv1 = v1 > c->ry + size - 1 ? v1 : c->ry + size - 1;
+				int nu0 = u0 < c->rx ? u0 : c->rx, nu1 = u1 > c->rx + sw - 1 ? u1 : c->rx + sw - 1;
+				int nv0 = v0 < c->ry ? v0 : c->ry, nv1 = v1 > c->ry + sh - 1 ? v1 : c->ry + sh - 1;
 				u0 = nu0; u1 = nu1; v0 = nv0; v1 = nv1;
 				trace_cache("grow", c, c->tiles);
 				texture_idle(c, SY_GROW);
@@ -1481,14 +1573,13 @@ static noinline tcache *PICA_HOT(texture_for_slow) texture_for_slow(u32 page, u3
 #ifdef PICA_LAYOUT_SPLIT
   c = texture_new(depth, pg, cl, win, u0, u1, v0, v1);
 #else
-		int rx, ry, lg = square_for(u0, u1, v0, v1, &rx, &ry);
-		c = take_square(lg);
+		int rx, ry;
+		c = take_entry(u0, u1, v0, v1, &rx, &ry);
 		c->gpu_tiles = false;
 		c->depth = depth;
 		c->page = pg;
 		c->clut = cl;
 		c->win = win;
-		c->lg = lg;
 		c->rx = rx;
 		c->ry = ry;
 		c->tiles = 0;
@@ -1543,11 +1634,12 @@ static noinline tcache *PICA_HOT(texture_for_impl) texture_for_impl(u32 page, u3
 		(unsigned)v0 > 255 || (unsigned)v1 > 255) {
 		u0 = v0 = 0; u1 = v1 = 255;
 	}
-	static const u64 full[4] = { 1, 0x303, 0x0f0f0f0f, ~0ull };
-	if (c->tiles == full[c->lg]) {
+	// all cw x ch tiles: the row's bits repeated in each of ch rows
+	u64 full = (u64)((1u << c->cw) - 1) * (0x0101010101010101ull >> (64 - 8 * c->ch));
+	if (c->tiles == full) {
 		u0 = c->rx; v0 = c->ry;
-		u1 = u0 + (32 << c->lg) - 1;
-		v1 = v0 + (32 << c->lg) - 1;
+		u1 = u0 + 32 * c->cw - 1;
+		v1 = v0 + 32 * c->ch - 1;
 	}
 	*m = (__typeof__(*m)){ key, ps.texwin, gen_clock, texmemo_epoch, c,
 		u0 & ~31, u1 | 31, v0 & ~31, v1 | 31 };
@@ -3255,6 +3347,8 @@ bool pica_game_begin(bool small)
 	for (int i = 0; i < CELLS * CELLS; i++)
 		cell_owner[i] = CELL_FREE;
 	memset(block_used, 0, sizeof(block_used));
+	memset(cell_rows, 0, sizeof(cell_rows));
+	rect_cache = pica_texevict;
 	memset(nactive, 0, sizeof(nactive));
 	for (nfree = 0; nfree < NENTRIES; nfree++)
 		free_list[nfree] = NENTRIES - 1 - nfree;
@@ -3459,6 +3553,23 @@ static void PICA_COLD pica_stats_local(char *buf, int n)
 		ps.dx1, ps.dy1, ps.dx2, ps.dy2, ps.ox, ps.oy, gpu.screen.src_x, gpu.screen.src_y, gpu.screen.w, gpu.screen.h, rtt_old() ? "old" : "new");
 	st_read_pixels = st_read_bytes = st_gpu_tiles = st_gpu_copies = 0;
 	st_batches = st_prims = st_decodes = st_uploads = st_syncs = st_evict = st_inval = st_readbacks = st_splits = 0;
+	// atlas occupancy: cells owned, entries per size, and cells of entries
+	// looked up since the previous frame started (the recent working set)
+	unsigned used = 0, recent = 0, win = 0, tiles = 0, rtiles = 0;
+	for (int i = 0; i < CELLS * CELLS; i++) used += cell_owner[i] != CELL_FREE;
+	for (unsigned i = 0; i < NENTRIES; i++)
+		if (cache[i].valid) {
+			win += cache[i].win != 0;
+			tiles += __builtin_popcountll(cache[i].tiles);
+			if (cache[i].lru > lru_prev_frame) {
+				recent += cache[i].cw * cache[i].ch;
+				rtiles += __builtin_popcountll(cache[i].tiles);
+			}
+		}
+	int len = strlen(buf);
+	if (len < n)
+		snprintf(buf + len, n - len, "; atlas cells %u (%u decoded) recent %u (%u decoded) entries %u %u %u %u win %u",
+			used, tiles, recent, rtiles, nactive[0], nactive[1], nactive[2], nactive[3], win);
 }
 
 // test (stats): what was shown in the last second, and how bright the shown

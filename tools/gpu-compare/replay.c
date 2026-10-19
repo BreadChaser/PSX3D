@@ -76,7 +76,8 @@ int main(int argc,char **argv)
     if(getenv("PICA_DEBUG"))pica_debug=atoi(getenv("PICA_DEBUG"));
     if(getenv("PICA_SUBMIT"))pica_submit=strtoul(getenv("PICA_SUBMIT"),NULL,0);
     if(getenv("PICA_PRIMS"))pica_prims=strtoul(getenv("PICA_PRIMS"),NULL,0);
-    extern bool pica_texmask, pica_texmemo;
+    extern bool pica_texmask, pica_texmemo, pica_texevict;
+    if(getenv("TEXEVICT"))pica_texevict=atoi(getenv("TEXEVICT"));
     if(getenv("TEXMASK"))pica_texmask=atoi(getenv("TEXMASK"));
     if(getenv("TEXMEMO"))pica_texmemo=atoi(getenv("TEXMEMO"));
     pica_frame_started();
