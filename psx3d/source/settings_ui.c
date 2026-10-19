@@ -64,7 +64,7 @@ static const int groups[] = {
  [F_RECORD]=CAT_DEBUG, [F_TONE]=CAT_DEBUG
 };
 static const char *const tips[] = {
- [F_SCREEN]="Widescreen may change the game's picture.",
+ [F_SCREEN]="Widescreen only in games with a widescreen fix.",
  [F_SMOOTH]="Soften pixels when enlarging the picture.",
  [F_STEREO]="Use the 3D slider for screen depth.",
  [F_FPS]="Show the frame counter on the bottom screen.",
@@ -73,6 +73,21 @@ static const char *const tips[] = {
  [F_SOUNDS]="Play sounds while navigating menus.", [F_MUSIC]="Play music in the game library.",
  [F_AUTO]="Keep your place when leaving a game.", [F_REWIND]="Hold the rewind shortcut to go back.",
  [F_RECORD]="Capture 30 seconds for troubleshooting.", [F_TONE]="Play a tone to check audio output."
+};
+// Longer help, shown on the top screen while the row is selected.
+static const char *const helps[] = {
+ [F_SCREEN]="4:3 keeps the original shape. Stretch fills the screen. Widescreen shows a wider view in games that have a widescreen fix; other games use 4:3.",
+ [F_SMOOTH]="Soften enlarged pixels. Turn off for a sharper picture.",
+ [F_STEREO]="Screen depth puts the picture behind the screen when you raise the 3D slider.",
+ [F_FPS]="FPS shows new pictures per second and game speed on the bottom screen. Detailed adds more numbers. Tap the counter to switch views.",
+ [F_SIDE]="Place the touch buttons on the right or left side. The menu button and logo move to the other side.",
+ [F_AUDIO]="Keep sound flowing when a game runs slowly; music and voices slow down with it.",
+ [F_SOUNDS]="Play a sound when you move through menus or select an item.",
+ [F_MUSIC]="Play background music while browsing your games.",
+ [F_AUTO]="Save your place when you leave a game and offer to continue next time.",
+ [F_REWIND]="Save recent moments so you can hold the Rewind button to go back. Needs free memory.",
+ [F_RECORD]="Record 30 seconds of game audio for troubleshooting.",
+ [F_TONE]="Play a steady tone to check audio output."
 };
 static const char *const category_tips[] = {
  [CAT_DISPLAY]="Picture shape, smoothing, 3D and the FPS counter.",
@@ -131,6 +146,9 @@ static bool frontend_visible(settings_ui_t *s, int i)
 {
 	if (i == F_STEREO && !g_new3ds)
 		return false;
+	// App-wide: only in the library's settings.
+	if ((i == F_SOUNDS || i == F_MUSIC || i == F_AUTO) && s->game)
+		return false;
 	if (i == F_SIDE &&
 		(!g_new3ds || (s->game && (g_cfg.show_fps == 2 || (!touch_buttons_active() && !g_cfg.show_fps)))))
 		return false;
@@ -180,18 +198,24 @@ static void rebuild(settings_ui_t *s)
 	if (*sel >= s->count)
 		*sel = s->count ? s->count - 1 : 0;
 }
-static bool per_game(settings_ui_t *s, int item)
-{
-	return s->game && ((item >= CONTROL_ROW && item < CATEGORY_ROW) || item == F_SCREEN ||
-					   item == F_REWIND || item == F_RECORD || item == F_TONE);
-}
+// The games/<game>.ini key a row's value is stored under in a game's menu.
 static const char *override_key(int item)
 {
-	if (item == F_SCREEN)
-		return "screen";
-	if (item == F_REWIND)
-		return "rewind";
-	return NULL;
+	static const char *const keys[] = {
+	 [F_SCREEN]="screen", [F_SMOOTH]="smooth", [F_STEREO]="stereo", [F_FPS]="show_fps",
+	 [F_SIDE]="touch_click_left", [F_AUDIO]="audio_stretch", [F_REWIND]="rewind"};
+	if (item >= CORE_ROW && item < CONTROL_ROW)
+		return options_game_key(options_key(item - CORE_ROW));
+	return item >= 0 && item < F_COUNT && item < (int)(sizeof(keys) / sizeof(keys[0])) ? keys[item] : NULL;
+}
+static bool overridden(settings_ui_t *s, int item)
+{
+	if (!s->game)
+		return false;
+	if (item >= CONTROL_ROW && item < CHEAT_ROW)
+		return config_control_overridden(item - CONTROL_ROW);
+	const char *key = override_key(item);
+	return key && config_game_overridden(key);
 }
 static const char *row_label(int i, void *ud)
 {
@@ -209,12 +233,9 @@ static const char *row_label(int i, void *ud)
 				 config_control_overridden(row) ? " *" : "");
 		return control;
 	}
-	if (item >= CORE_ROW)
-		return options_desc(item - CORE_ROW);
 	static char text[80];
-	const char *key = override_key(item);
-	snprintf(text, sizeof(text), "%s%s", labels[item],
-			 s->game && key && config_game_overridden(key) ? " *" : "");
+	snprintf(text, sizeof(text), "%s%s", item >= CORE_ROW ? options_desc(item - CORE_ROW) : labels[item],
+			 overridden(s, item) ? " *" : "");
 	return text;
 }
 static const char *row_value(int i, void *ud)
@@ -266,18 +287,14 @@ static void open_page(settings_ui_t *s, int page)
 	rebuild(s);
 	s->list.init = false;
 }
-static void sync_picture(void)
-{
-	bool want = config_screen_mode() == 2;
-	config_set_ws_native(want && cheats_widescreen(want));
-}
+static void sync_picture(void) { config_ws_sync(); }
 static void draw_settings(void *ud)
 {
 	settings_ui_t *s = ud;
 	int sel = s->selected[s->page];
 	u32 muted = C2D_Color32(130, 150, 190, 255), white = C2D_Color32(230, 235, 255, 255);
 	C2D_DrawRectSolid(0, 0, .1f, 320, 240, C2D_Color32(6, 9, 24, 255));
-	ui_menu_header(categories[s->page], s->game ? "this game" : "all games");
+	ui_menu_header(categories[s->page], s->game ? ui_fit(emu_game_title(), .42f, 150) : "All games");
 	flist_draw(&s->list, s->count, sel, 0, 40, 320, s->page == CAT_HOME ? 20 : 23,
 			   s->page == CAT_HOME ? 8 : VISIBLE_ROWS, row_label,
 			   s->page == CAT_BINDINGS ? input_control_value : row_value, s,
@@ -301,20 +318,18 @@ static void draw_settings(void *ud)
 			s->game ? "X use inherited mapping    Y reset controls" : "X reset all button and touch mappings";
 	else if (item >= CORE_ROW)
 		tip = options_impact(item - CORE_ROW);
+	else if (item == F_SCREEN && s->game && !config_ws_fix())
+		tip = "This game has no widescreen fix.";
 	else if (item >= 0)
 		tip = tips[item];
 	if (message_frames > 0)
 		ui_text_ex(NULL, 12, 183, .39f, C2D_Color32(255, 210, 120, 255), 0, message);
 	else if (tip && s->page != CAT_HOME)
 		ui_text_ex(NULL, 12, 183, .39f, muted, 0, tip);
-	if (item >= 0 && item < CATEGORY_ROW) {
-		const char *scope = per_game(s, item) ? "This game" : "All games";
-		const char *key = override_key(item);
-		char text[100];
-		snprintf(text, sizeof(text), "%s%s", scope,
-				 s->game && key && config_game_overridden(key) ? "  * override - X use default" : "");
-		ui_text_ex(NULL, 12, 199, .4f, white, 0, text);
-	}
+	// In a game every value belongs to that game; unchanged ones follow all games.
+	if (s->game && item >= 0 && item < CHEAT_ROW && item != F_REWIND && (item >= CORE_ROW || override_key(item)))
+		ui_text_ex(NULL, 12, 199, .4f, white, 0,
+				   overridden(s, item) ? "* Changed for this game    X use all-games value" : "Same as all games");
 	// Category rows open with A; Left/Right only changes values.
 	ui_text_ex(NULL, 160, 222, .39f, muted, C2D_AlignCenter,
 			   s->page == CAT_HOME ? "A open    B back"
@@ -343,12 +358,13 @@ static void change(settings_ui_t *s, int item, int dir)
 	}
 	switch (item) {
 	case F_SCREEN:
-		if (s->game)
-			config_game_set_screen((config_screen_mode() + dir + 3) % 3);
-		else
-			config_set_screen_mode((config_screen_mode() + dir + 3) % 3);
-		if (s->game)
+		if (s->game) {
+			// Without a widescreen fix the choices are 4:3 and Stretch.
+			int n = config_ws_fix() ? 3 : 2;
+			config_game_set_screen((config_screen_mode() + dir + n) % n);
 			sync_picture();
+		} else
+			config_set_screen_mode((config_screen_mode() + dir + 3) % 3);
 		break;
 	case F_SMOOTH:
 		g_cfg.smooth ^= 1;
@@ -402,6 +418,24 @@ static void change(settings_ui_t *s, int item, int dir)
 		resume_requested = true;
 		break;
 	}
+}
+// Top screen: the library or game picture, with the selected row's help.
+static void (*draw_behind)(void *);
+static void draw_help(void *ud)
+{
+	settings_ui_t *s = ud;
+	if (draw_behind)
+		draw_behind(NULL);
+	int item = s->count ? s->items[s->selected[s->page]] : -1;
+	if (item >= CATEGORY_ROW || item < 0 || item >= CHEAT_ROW)
+		return;
+	if (item >= CONTROL_ROW)
+		ui_help_panel(150, input_control_label(item - CONTROL_ROW, NULL), NULL, input_controls_help());
+	else if (item >= CORE_ROW)
+		ui_help_panel(150, options_desc(item - CORE_ROW), options_impact(item - CORE_ROW),
+					  options_info(item - CORE_ROW));
+	else
+		ui_help_panel(150, labels[item], NULL, helps[item]);
 }
 static bool run_settings(bool game, int page, void (*draw_top)(void *))
 {
@@ -473,7 +507,7 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 								: "Restore this console's default button and touch mappings?",
 						   game))
 				config_controls_defaults();
-		} else if ((k & KEY_X) && game && override_key(item)) {
+		} else if ((k & KEY_X) && game && item < CONTROL_ROW && override_key(item)) {
 			config_game_clear(override_key(item));
 			if (item == F_REWIND)
 				rewind_stop();
@@ -510,7 +544,8 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 		if (!game)
 			music_update();
 		ui_begin();
-		video_present_vsync(game, draw_top, draw_settings, s);
+		draw_behind = draw_top;
+		video_present_vsync(game, draw_help, draw_settings, s);
 	}
 	active = false;
 	capture_debug = false;

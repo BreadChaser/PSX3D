@@ -416,44 +416,6 @@ void ui_help_panel(float y0, const char *title, const char *impact, const char *
 	}
 }
 
-// help for PSX3D's own settings, by name
-static const char *const own_help[][3] = {
-	{ "Display", NULL, "Choose the shape and look of the game picture." },
-	{ "Performance", NULL, "Choose how games are drawn and show their frame rate." },
-	{ "Controls", NULL, "Change button mappings and the bottom-screen layout." },
-	{ "Sound", NULL, "Set game audio smoothing, menu sounds and library music." },
-	{ "General", NULL, "Choose whether to continue games automatically, or restore defaults." },
-	{ "Advanced", NULL, "Extra choices for games that need help to run correctly." },
-	{ "Screen mode", "Widescreen may be slower", "4:3 keeps the original shape. Stretch fills the screen. Widescreen shows a wider 3D view. Saved per game during play; library choices set the default." },
-	{ "3D", "New 3DS only", "Screen depth puts the picture behind the screen when you raise the 3D slider. Affects every game." },
-	{ "Smooth audio when slow", "Affects every game", "Keep audio flowing when a game runs slowly; music and voices slow down with it." },
-	{ "Smoothing", "Affects every game", "Soften enlarged pixels. Turn off for a sharper picture." },
-	{ "Show FPS", "Affects every game", "FPS shows new pictures per second and game speed beside touch controls. Detailed adds emulated and host rates. Tap the bottom-screen footer to cycle views." },
-	{ "Controls...", NULL, "Change physical buttons, touch buttons and shortcuts. Choices follow the game's preset. Hide removes a touch button; mapping an empty slot shows it." },
-	{ "Reset to defaults", NULL, "Restore this console's global settings and button mappings. Game overrides, saves, cheats and library folders are kept. Asks for confirmation." },
-	{ "Bottom-screen buttons", "Affects every game", "Place New 3DS touch buttons on the Right side or Left side. Menu and the logo move to the opposite side." },
-	{ "Rewind", "This game only", "Save recent moments so you can hold your Rewind button or shortcut to go back. Needs free memory; available only when this console and the game's preset allow it." },
-	{ "Continue where I left off", "Affects every game", "Save your place when you leave a game and offer to continue next time." },
-	{ "Core options...", "Affects every game", "BIOS, memory cards and extra picture, sound and compatibility choices. Use these if a game needs help to boot or play correctly." },
-	{ "Menu sounds", "Affects every game", "Play a sound when you move through menus or select an item." },
-	{ "Library music", "Library only", "Play background music while browsing your games." },
-	{ "Debug: record audio", NULL, "Record 30 seconds of game audio for troubleshooting." },
-	{ "Debug: test tone", NULL, "Play a steady tone to check audio output." },
-};
-
-void ui_help_for(float y0, const char *name)
-{
-	if (config_in_game() && !strcmp(name, "Reset to defaults")) {
-		ui_help_panel(y0, name, "This game only", "Remove this game's overrides and use its preset and library defaults again. Saves and cheats are kept. Shared settings are kept. Asks for confirmation.");
-		return;
-	}
-	for (size_t i = 0; i < sizeof(own_help) / sizeof(own_help[0]); i++)
-		if (!strcmp(own_help[i][0], name)) {
-			ui_help_panel(y0, name, own_help[i][1], !strcmp(name,"Controls...") ? input_controls_help() : own_help[i][2]);
-			return;
-		}
-}
-
 // Destructive settings actions require a fresh A press. B always cancels.
 typedef struct { const char *title, *message, *action; } confirm_t;
 static void confirm_draw(void *ud)
@@ -461,7 +423,7 @@ static void confirm_draw(void *ud)
 	confirm_t *c = ud;
 	// Behind the header's colour rule, like the other menus.
 	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
-	ui_menu_header(c->title, config_in_game() ? "this game" : "all games");
+	ui_menu_header(c->title, config_in_game() ? ui_fit(emu_game_title(), .42f, 150) : "All games");
 	C2D_Text t;
 	if (C2D_TextParse(&t, textbuf, c->message))
 		C2D_DrawText(&t, C2D_WithColor | C2D_WordWrap, 16.0f, 62.0f, 0.7f, 0.5f, 0.5f,

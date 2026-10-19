@@ -90,6 +90,20 @@ static const char *locked_value(const char *key)
 	return NULL;
 }
 
+// Options changed in a game's menu belong to that game: games/<game>.ini
+// "o.<name>" (pcsx_rearmed_ prefix dropped to fit the key length).
+const char *options_game_key(const char *key)
+{
+	static char k[32];
+	snprintf(k, sizeof(k), "o.%s", !strncmp(key, "pcsx_rearmed_", 13) ? key + 13 : key);
+	return k;
+}
+static const char *saved_value(const char *key)
+{
+	const char *v = config_in_game() ? gamecfg_get(options_game_key(key)) : NULL;
+	return v ? v : config_core_override(key);
+}
+
 static bool option_is(const char *key, const char *value)
 {
 	const char *v = options_get(key);
@@ -236,6 +250,9 @@ const char *options_get(const char *key)
 	if (recorded) return recorded;
 	if (!g_new3ds && !strcmp(key, "pcsx_rearmed_psx3d_stereo"))
 		return "disabled";
+	// Widescreen comes only from a game's own fix, never the GTE squeeze.
+	if (!strcmp(key, "pcsx_rearmed_psx3d_widescreen"))
+		return "0";
 	if (!strcmp(key, "pcsx_rearmed_gpu_thread_rendering") && (!g_new3ds || sw_nogputhread))
 		return "disabled";
 	if (!strcmp(key, RENDERER_KEY) || !strncmp(key, "pcsx_rearmed_gpu_unai_", sizeof("pcsx_rearmed_gpu_unai_") - 1)) return NULL;
@@ -268,14 +285,14 @@ const char *options_get(const char *key)
 		// Curated profiles inherit the console default, independently of globals.
 		if (config_in_game() && game_preset_curated())
 			return game_capabilities().frameskip ? "auto" : "disabled";
-		const char *saved = config_core_override(key);
+		const char *saved = saved_value(key);
 		return saved && !strcmp(saved, "disabled") ? "disabled" : "auto";
 	}
 	// Core-only legacy/fast-forward policy knobs; never read saved values.
 	if (!strcmp(key, "pcsx_rearmed_frameskip_interval")) return "2";
 	if (!strcmp(key, "pcsx_rearmed_frameskip_threshold")) return "33";
 	if (!ov)
-		ov = config_core_override(key);
+		ov = saved_value(key);
 	// Old 3DS: one 268MHz core runs the CPU, GPU and sound. Defaults that
 	// trade a little accuracy for speed (all still changeable in the menu).
 	if (!ov && !g_new3ds) {
@@ -328,8 +345,8 @@ static const char *const player_names[][2] = {
 	{ "pcsx_rearmed_dithering", "PS1 colour shading" },
 	{ "pcsx_rearmed_frameskip_type", "Skip frames when slow" },
 	{ "pcsx_rearmed_display_info", "Debug: core messages" },
-	{ "pcsx_rearmed_alt_flip", "Picture timing" },
-	{ "pcsx_rearmed_gpu_slow_llists", "Careful drawing order" },
+	{ "pcsx_rearmed_alt_flip", "Flicker fix" },
+	{ "pcsx_rearmed_gpu_slow_llists", "Safe drawing" },
 	{ "pcsx_rearmed_spu_reverb", "Sound echo" },
 	{ "pcsx_rearmed_nocdaudio", "Disc music" }, { "pcsx_rearmed_noxadecoding", "Disc voices and effects" },
 	{ "pcsx_rearmed_analog_axis_modifier", "Stick response" },
@@ -385,7 +402,10 @@ const char *options_cycle(int i, int dir)
 			idx = j;
 	idx = (idx + dir + o->nvalues) % o->nvalues;
 
-	config_set_core_override(o->key, o->values[idx]);
+	if (config_in_game())
+		gamecfg_set(options_game_key(o->key), o->values[idx]);
+	else
+		config_set_core_override(o->key, o->values[idx]);
 	updated = true;
 	return o->values[idx];
 }
@@ -402,8 +422,8 @@ static const char *const notes[][3] = {
 	{ "pcsx_rearmed_psxclock", "Lower may slow the game itself", "How fast the game's PS1 CPU runs. Lower values may raise the frame count while slowing the game itself or causing glitches. Usually leave Auto." },
 	{ "pcsx_rearmed_frameskip_type", "Auto balances speed and smooth pictures", "Auto skips drawing to help game speed, while keeping at least 15 pictures a second when possible. Off draws every picture and can slow busy scenes. Curated games choose this automatically." },
 	{ "pcsx_rearmed_dithering", "Smoother colour gradients", "Adds the PS1's fine colour pattern to shaded polygons. On follows the game; Always also enables it when the game turns it off." },
-	{ "pcsx_rearmed_alt_flip", "Usually leave Auto", "Choose when to capture the game's picture. Try Early or Late only if a game shows incomplete pictures or flicker." },
-	{ "pcsx_rearmed_gpu_slow_llists", "May be slower", "Follow the game's drawing order more closely. Leave Auto unless a game needs this to draw correctly." },
+	{ "pcsx_rearmed_alt_flip", "Usually leave Auto", "Changes when the game's picture is taken for the screen. Try Early or Late only if a game flickers or shows half-drawn pictures." },
+	{ "pcsx_rearmed_gpu_slow_llists", "May be slower", "Draws every part of the picture strictly in the game's order. Turn on only if parts of a game are missing or drawn wrongly." },
 	{ "pcsx_rearmed_spu_reverb", "Off can improve speed", "Play the PS1's echo effect. Off sounds drier and can help Old 3DS keep up." },
 	{ "pcsx_rearmed_nocdaudio", "Usually keep On", "Play music stored as audio tracks on the game disc." },
 	{ "pcsx_rearmed_noxadecoding", "Usually keep On", "Play compressed voices, music and effects stored on the game disc." },

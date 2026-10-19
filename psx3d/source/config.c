@@ -18,11 +18,32 @@ static int novr;
 // default for games that don't have one (see config_game_begin).
 static bool in_game;
 bool config_in_game(void) { return in_game; }
-void config_set_ws_native(bool on);
 static int default_screen;
 static int default_maps[INPUT_REMAP_N], default_touch_stick;
 static int default_hotkeys[INPUT_HOTKEY_N];
 #define WS_KEY "pcsx_rearmed_psx3d_widescreen"
+
+// Frontend settings a game keeps for itself when changed in its menu
+// (games/<game>.ini stores only the ones that differ from all games).
+static int *const game_fields[] = { &g_cfg.smooth, &g_cfg.show_fps, &g_cfg.stereo,
+	&g_cfg.audio_stretch, &g_cfg.touch_click_left };
+static const char *const game_field_keys[] = { "smooth", "show_fps", "stereo",
+	"audio_stretch", "touch_click_left" };
+#define GAME_FIELDS 5
+static int default_fields[GAME_FIELDS];
+static void game_fields_store(void)
+{
+	for (int i = 0; i < GAME_FIELDS; i++) {
+		if (*game_fields[i] == default_fields[i]) gamecfg_unset(game_field_keys[i]);
+		else gamecfg_set_int(game_field_keys[i], *game_fields[i]);
+	}
+}
+static void game_fields_restore(void)
+{
+	for (int i = 0; i < GAME_FIELDS; i++) *game_fields[i] = default_fields[i];
+	config_sync_stereo();
+	input_touch_reset();
+}
 
 // Defaults tuned for the 3DS that differ from the core's own defaults.
 // (Options with only one sensible value on the 3DS are locked in options.c.)
@@ -154,9 +175,18 @@ void config_save(void)
 {
 	if (sw_o3ds)
 		return;   // test mode: leave the real settings alone
+	// In a game these belong to the game; config.ini keeps the all-games values.
+	int game_values[GAME_FIELDS];
+	if (in_game) {
+		game_fields_store();
+		for (int i = 0; i < GAME_FIELDS; i++) {
+			game_values[i] = *game_fields[i];
+			*game_fields[i] = default_fields[i];
+		}
+	}
 	FILE *f = fopen(PSX3D_CONFIG, "w");
 	if (!f)
-		return;
+		goto done;
 	fprintf(f, "# PSX3D settings\ntouch_slots=1\n");
 	fprintf(f, "last_dir=%s\n", g_cfg.last_dir);
 	if (g_cfg.games_dir[0])
@@ -193,6 +223,9 @@ void config_save(void)
 			fprintf(f, "core.%s=%s\n", ovr[i].key, ovr[i].value);
 	}
 	fclose(f);
+done:
+	if (in_game)
+		for (int i = 0; i < GAME_FIELDS; i++) *game_fields[i] = game_values[i];
 }
 
 const char *config_core_override(const char *key)
@@ -279,30 +312,28 @@ void config_set_stereo_active(bool on)
 	config_sync_stereo();
 }
 
-// Screen: 0 = 4:3, 1 = stretched to 400x240, 2 = widescreen hack (3D games
-// draw a wider view, shown full width)
-// widescreen from the game's own cheat code instead of the GTE squeeze
-static bool ws_native;
+// Screen: 0 = 4:3, 1 = stretched to 400x240, 2 = widescreen (the game draws
+// a wider view, shown full width). Widescreen comes only from the game's own
+// widescreen fix: config_ws_fix() is the one test (today its cheat code; the
+// curated bundles replace cheats_widescreen() there). Games without a fix show
+// 4:3, and the GTE squeeze is never sent to the core (options.c).
+static bool ws_fix;
+bool config_ws_fix(void) { return ws_fix; }
 
-void config_set_ws_native(bool on)
+// After the game's cheats load and whenever its screen mode changes.
+void config_ws_sync(void)
 {
-	if (on == ws_native)
-		return;
-	ws_native = on;
-	config_set_core_override(WS_KEY, on ? "0" : WS_Q16);
-	options_mark_updated();
+	ws_fix = in_game && cheats_widescreen(config_widescreen());
 }
 
 int config_screen_mode(void)
 {
-	if (ws_native)
-		return 2;
-	return config_widescreen() ? 2 : (g_cfg.stretch ? 1 : 0);
+	int mode = config_widescreen() ? 2 : (g_cfg.stretch ? 1 : 0);
+	return mode == 2 && in_game && !ws_fix ? 0 : mode;
 }
 
 void config_set_screen_mode(int mode)
 {
-	ws_native = false;
 	g_cfg.stretch = mode == 1;
 	config_set_widescreen(mode == 2);
 }
@@ -343,8 +374,11 @@ void config_game_begin(const char *game)
 	for (int i = 0; i < INPUT_REMAP_N; i++) default_maps[i] = input_map_raw(i);
 	default_touch_stick = g_cfg.touch_stick;
 	for (int i = 0; i < INPUT_HOTKEY_N; i++) default_hotkeys[i] = input_hotkey_get(i);
+	for (int i = 0; i < GAME_FIELDS; i++) default_fields[i] = *game_fields[i];
 	in_game = true;
 	gamecfg_load(game);
+	for (int i = 0; i < GAME_FIELDS; i++) *game_fields[i] = gamecfg_int(game_field_keys[i], default_fields[i]);
+	config_sync_stereo();
 	for (int i = 0; i < INPUT_HOTKEY_N; i++) {
 		const char *name = gamecfg_get(input_hotkey_key_name(i));
 		if (name) input_hotkey_load(i, name);
@@ -384,12 +418,13 @@ void config_game_end(void)
 	config_set_stereo_active(false);
 	in_game = false;
 	gamecfg_end();
+	game_fields_restore();
 	input_touch_begin();
 	for (int i = 0; i < INPUT_REMAP_N; i++) input_map_set(i, default_maps[i]);
 	for (int i = 0; i < INPUT_HOTKEY_N; i++) input_hotkey_set(i, default_hotkeys[i]);
 	g_cfg.touch_stick = default_touch_stick;
 	input_touch_reset();
-	config_set_ws_native(false);
+	ws_fix = false;
 	if (config_screen_mode() != default_screen)
 		config_set_screen_mode(default_screen);
 }
@@ -421,6 +456,7 @@ void config_controls_defaults(void)
 		for (int i = 0; i < INPUT_REMAP_N; i++) input_map_set(i, default_maps[i]);
 		for (int i = 0; i < INPUT_HOTKEY_N; i++) input_hotkey_set(i, default_hotkeys[i]);
 		g_cfg.touch_stick = default_touch_stick;
+		g_cfg.touch_click_left = default_fields[4];
 	} else {
 		input_map_reset();
 		g_cfg.touch_stick = -1;
@@ -459,6 +495,8 @@ bool config_game_reset(void)
 	if (!in_game || !forget_legacy_screen() || !gamecfg_reset()) return false;
 	legacy_screen_override = false;
 	config_set_screen_mode(default_screen);
+	game_fields_restore();
+	options_mark_updated();
 	config_controls_defaults();
 	return true;
 }
@@ -476,8 +514,19 @@ bool config_game_clear(const char *key)
 		config_set_screen_mode(default_screen);
 	} else if (!strcmp(key, "rewind"))
 		gamecfg_unset(key);
-	else
-		return false;
+	else if (!strncmp(key, "o.", 2)) {
+		gamecfg_unset(key);
+		options_mark_updated();
+	} else {
+		int i = 0;
+		while (i < GAME_FIELDS && strcmp(key, game_field_keys[i])) i++;
+		if (i == GAME_FIELDS)
+			return false;
+		gamecfg_unset(key);
+		*game_fields[i] = default_fields[i];
+		config_sync_stereo();
+		input_touch_reset();
+	}
 	return true;
 }
 

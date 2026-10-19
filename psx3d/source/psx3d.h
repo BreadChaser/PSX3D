@@ -70,7 +70,8 @@ void config_game_begin(const char *game);
 void config_game_set_screen(int mode);
 void config_game_end(void);
 bool config_in_game(void);
-void config_set_ws_native(bool on);
+bool config_ws_fix(void);
+void config_ws_sync(void);
 void config_set_widescreen(bool on);
 void config_set_core_override(const char *key, const char *value);
 
@@ -85,6 +86,7 @@ const char *options_info(int i);
 const char *options_impact(int i);
 void options_fast_forward(bool on);
 const char *options_key(int i);
+const char *options_game_key(const char *key);
 const char *options_desc(int i);
 const char *options_value(int i);
 const char *options_cycle(int i, int dir);
@@ -351,8 +353,8 @@ void flist_draw_sections(const flist_t *f, int n, int sel, float x, float y0, fl
 	bool (*header)(int, void *));
 int flist_row_at(const flist_t *f, float y0, float row_h, float py);
 void flist_snap(flist_t *f, int sel, int n, int rows);
+const char *emu_game_title(void);
 void ui_help_panel(float y0, const char *title, const char *impact, const char *text);
-void ui_help_for(float y0, const char *name);
 
 // library.c - one entry per game, clean titles, discs grouped
 typedef struct {

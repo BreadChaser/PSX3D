@@ -19,6 +19,7 @@
 
 static char game_name[PATH_LEN];   // save/state file name (disc 1's name)
 static char game_title[PATH_LEN];  // what the menu shows
+const char *emu_game_title(void) { return game_title; }
 static char osd_msg[128];
 static int  osd_frames;
 static bool osd_dirty;
@@ -530,12 +531,6 @@ static void menu_draw_bottom(void *ud)
 			   m->items[m->sel] == M_DISC ? "Left/Right choose disc    A insert    B resume"
 										  : "A select    B resume");
 }
-static void sync_widescreen(void)
-{
-	bool want = config_screen_mode() == 2;
-	bool native = cheats_widescreen(want);
-	config_set_ws_native(want && native);
-}
 static bool game_menu_open;
 
 // Returns false when the user wants to leave the game.
@@ -862,11 +857,9 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	if (clip_replay_session) {
 		cheats_unload();
 		retro_cheat_reset();
-		config_set_ws_native(false);
-	} else {
+	} else
 		cheats_load(game_name);
-		sync_widescreen();
-	}
+	config_ws_sync();
 	psx3d_prof_on = sw_prof;
 
 	{
