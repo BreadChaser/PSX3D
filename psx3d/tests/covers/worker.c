@@ -39,7 +39,7 @@ typedef struct { char cover_key[256]; } game_t;
 static game_t game = { "cover" };
 static bool sw_nocovers,sw_nonet;
 bool dev_remote = true;
-static bool blocked;
+static bool blocked, g_new3ds;
 bool dev_covers_blocked(void) { return blocked; }
 static void (*video_pre_draw)(void);
 static int cancel_after, sleeps;
@@ -97,6 +97,8 @@ int main(void)
 	covers_resume();on_apt(APTHOOK_ONSUSPEND,NULL);on_apt(APTHOOK_ONSLEEP,NULL);
 	on_apt(APTHOOK_ONRESTORE,NULL);assert(paused);on_apt(APTHOOK_ONWAKEUP,NULL);assert(!paused);
 	assert(covers_refresh(0));assert(slots[0].refresh && slots[0].state==1);
+	slots[0].pixels=malloc(COVER_SIZE*COVER_SIZE*4);slots[0].state=3;
+	covers_release_gpu();assert(!slots[0].pixels && slots[0].state==1);
 	assert(!covers_refresh(-1) && !covers_refresh(1));
 	covers_exit();
 	puts("PASS remote covers, core0 priority, backoff, HTTPS driver cancellation, HTTP retries, nested APT gameplay pause");

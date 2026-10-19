@@ -622,7 +622,8 @@ void covers_focus(int game)
 }
 
 // A game needs the GPU memory: drop the cover textures (about 3 MB). The
-// decoded pixels stay, so back in the library they are uploaded again.
+// New 3DS keeps decoded pixels for return to the library. Old 3DS needs
+// that heap for emulation too; its small GPU-ready SD files reload on return.
 // Call with no GPU frame using them in flight.
 void covers_release_gpu(void)
 {
@@ -637,6 +638,12 @@ void covers_release_gpu(void)
 		if (s->staging)
 			linearFree(s->staging);
 		s->staging = NULL;
+		if (!g_new3ds) {
+			free(s->pixels);
+			s->pixels = NULL;
+			s->retry_at = 0;
+			s->state = s->game >= 0 ? 1 : 0;
+		}
 		if (s->state == 3)
 			s->state = s->pixels ? 2 : 0;
 	}
