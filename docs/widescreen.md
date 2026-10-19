@@ -188,7 +188,7 @@ and restored that exact artifact. During testing it moved from
 `devtools/v040-final/artifacts/` to `devtools/v040-final/rejected-1/artifacts/`;
 a private identical copy is retained as `round3/baseline-final.cia`.
 Future sessions must re-read the baseline manifest and common policy; the
-release worker is replacing this build. Do not infer an exact CIA from a
+release build is replacing this build. Do not infer an exact CIA from a
 reused build identity. rc1 is accepted only when it was the entry baseline.
 
 Frozen hardware candidate: `577f0f6880d0e16ca2b032356eee2ceaed64aba2`, identity `widescreen-10-split`,
@@ -217,8 +217,8 @@ Final package hardware checks are recorded in their own build-10 table below. It
 | Spider-Man | HLE cold boot / menu; not gameplay | 59.99 | 59.97 | -0.03% |
 | Medal_of_Honor | HLE cold boot / menu; not gameplay | 59.78 | 60.23 | +0.74% |
 
-The normal restore stopped before sending an install request because another
-worker moved the baseline CIA to `v040-final/rejected-1/artifacts/`. A separate
+The normal restore stopped before sending an install request because the
+baseline CIA had moved to `v040-final/rejected-1/artifacts/`. A separate
 locked recovery verified its exact entry SHA256 and restored it successfully.
 Recovery status/picture are in `hardware-new-recovery/`; no uncertain install
 was retried. A private baseline copy is now retained for subsequent sessions.
@@ -280,7 +280,7 @@ counts emulated VBlank/host frames, not necessarily distinct game pictures:
 a PS1 title rendering 30 pictures/s can still report 60 at full emulation
 speed. The new FPS overlay displays picture rate separately from game speed.
 The final New build-10 GPU street pair shows no added Silent Hill border junk;
-this sparse check does not certify every scene. Silent Hill's separate junk-row repair belongs to the other worker; no such
+this sparse check does not certify every scene. Silent Hill's separate junk-row repair is separate work; no such
 fix is implemented here. Earlier and current GPU street pictures should be
 judged separately from the retired Software path.
 

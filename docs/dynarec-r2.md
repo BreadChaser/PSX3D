@@ -165,8 +165,8 @@ baseline, exact restore of the installed baseline), batches in
 
 Not completed yet. After "Old queue released" the first attempt stopped at
 A1 run 2 (wrong GT2 library title, fixed); the console stayed on
-release-v040-final2. Since then the Old has been busy with two other workers'
-FTP game uploads and is left in ftpd until the user reopens PSX3D. The New was
+release-v040-final2. Since then the Old has been busy with FTP game
+uploads and is left in ftpd until the user reopens PSX3D. The New was
 unreachable. The only hardware number so far: A1 CTR baseline 37.05 fps,
 6.043 M cycles/frame (v0.4.0 final2, slot 2, frameskip off).
 
@@ -178,6 +178,6 @@ unreachable. The only hardware number so far: A1 CTR baseline 37.05 fps,
   CTR, ~4.7k in GT2, so at most ~0.4%.
 - Merge SMC checks of RAM group stores into one range check.
 - Faster OT-clear DMA loop (GT2 `psxDma6` ~42k instructions/vblank, 5 per word).
-- Cross-block register retention (state traffic ~90k/vblank): previous worker
+- Cross-block register retention (state traffic ~90k/vblank): an earlier round
   found allocation changes alter GTE stall timing; needs that coupling fixed
   first.

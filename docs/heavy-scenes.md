@@ -60,7 +60,7 @@ GPU drawing never dominates on the New (≤ 5.6 ms of 16.7). Every slow scene is
 The user's live café stats (`new-sh-live/`): 37–40 fps, 62–67% speed, emu 22 ms, about **8,400 texture decodes/s** and 3,000 evictions/s.
 The same state (slot 9, and the byte-identical copy in slot 7), loaded fresh, runs at 100% with under 1 decode/s. I tested it with the GPU thread forced on, rtt=new, no PMU, a 45 s window and slot 9 directly (`hw/new-gt/bench-cafeprobe`).
 So the thrash depends on renderer state carried over from the earlier session, not on the scene itself. Likely candidates: the texture cache / RTT retained regions not being reset when a state is loaded on top of a running game, or memory fragmentation after a long session (live free_linear 7.6 MB).
-→ Hand this to the sh-texcache worker: reproduce by playing into the café, or by loading slot 9 *while SH is already running*, rather than by a clean load.
+→ Next step (sh-texcache): reproduce by playing into the café, or by loading slot 9 *while SH is already running*, rather than by a clean load.
 
 ## Batch files (for fastbench and tools/perfchart)
 `batches/heavy-off.txt`, `heavy-auto.txt` (Old, generic), `heavy-new-off.txt`, `heavy-new-auto.txt` (New, `gputhread`), `heavy-cafeprobe.txt`.
