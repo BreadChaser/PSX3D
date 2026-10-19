@@ -10,7 +10,8 @@
 #include "devtools.h"
 
 #define MAX_ENTRIES 4096
-#define LINES 13
+#define ROWS 7      // visible list rows
+#define ROW_H 23
 
 typedef struct {
 	char *name;
@@ -18,7 +19,8 @@ typedef struct {
 } entry_t;
 
 static entry_t entries[MAX_ENTRIES];
-static int nentries, sel, scroll;
+static int nentries, sel;   // sel: list row; row 0 is "Use this folder"
+static flist_t lst;
 static bool truncated;
 static char cwd[PATH_LEN];
 static char msg[64];
@@ -75,7 +77,8 @@ static void load_dir(const char *path)
 
 	free_entries();
 	truncated = false;
-	sel = scroll = 0;
+	sel = 0;
+	lst.init = false;
 	snprintf(cwd, sizeof(cwd), "%s", path);
 
 	d = opendir(cwd);
@@ -126,8 +129,8 @@ static void select_name(const char *name)
 {
 	for (int i = 0; i < nentries; i++)
 		if (strcmp(entries[i].name, name) == 0) {
-			sel = i;
-			scroll = sel > LINES / 2 ? sel - LINES / 2 : 0;
+			sel = i + 1;
+			flist_snap(&lst, sel, nentries + 1, ROWS);
 			return;
 		}
 }
@@ -192,45 +195,56 @@ static bool single_game(char *out, size_t len)
 static void draw_top(void *ud)
 {
 	(void)ud;
-	ui_rect(0, 0, 400, 20, C2D_Color32(40, 40, 70, 255));
-	ui_text(6, 2, 0.5f, C2D_Color32(255, 255, 255, 255), "PSX3D  %s", cwd);
+	C2D_DrawRectSolid(0, 0, 0.1f, 400, 240, C2D_Color32(6, 9, 24, 255));
+	ui_text_ex(libui_font(), 16, 14, 0.8f, C2D_Color32(235, 238, 255, 255), 0, "PSX3D");
+	ui_text_ex(NULL, 16, 46, 0.42f, C2D_Color32(130, 150, 190, 255), 0,
+		"Version " PSX3D_VERSION ", based on PCSX-ReARMed (GPL v2)");
+	ui_text_ex(NULL, 16, 70, 0.39f, C2D_Color32(110, 120, 160, 255), 0, "Games folder");
+	ui_text_ex(NULL, 16, 84, 0.42f, C2D_Color32(170, 185, 220, 255), 0,
+		g_cfg.games_dir[0] ? ui_fit(g_cfg.games_dir, .42f, 368) : "None chosen yet");
+	if (!__ctr_svchax)
+		ui_text_ex(NULL, 16, 108, 0.42f, C2D_Color32(255, 160, 120, 255), 0,
+			"Fast CPU mode needs Luma3DS: games will run slowly");
+	ui_help_panel(150, "This folder", truncated ? "Over 4096 entries; the list is cut off" : NULL, cwd);
+}
 
-	if (nentries == 0)
-		ui_text(10, 40, 0.5f, C2D_Color32(200, 200, 200, 255),
-			"No games or folders here.");
+static const char *row_label(int i, void *ud)
+{
+	(void)ud;
+	if (!i)
+		return "Use this folder for games";
+	return ui_fit(entries[i - 1].name, 0.5f, entries[i - 1].dir ? 270 : 250);
+}
 
-	for (int i = 0; i < LINES && scroll + i < nentries; i++) {
-		int idx = scroll + i;
-		float y = 24 + i * 16;
-		if (idx == sel)
-			ui_rect(0, y, 400, 16, C2D_Color32(70, 90, 160, 255));
-		ui_text(8, y, 0.5f,
-			entries[idx].dir ? C2D_Color32(255, 220, 120, 255) : C2D_Color32(255, 255, 255, 255),
-			"%s%s", entries[idx].name, entries[idx].dir ? "/" : "");
-	}
+static const char *row_value(int i, void *ud)
+{
+	(void)ud;
+	if (!i)
+		return strcmp(cwd, g_cfg.games_dir) ? NULL : "In use";
+	return entries[i - 1].dir ? ">" : "Play";
 }
 
 static void draw_bottom(void *ud)
 {
 	(void)ud;
-	u32 white = C2D_Color32(255, 255, 255, 255), grey = C2D_Color32(160, 160, 170, 255);
-
-	ui_text(10, 10, 0.7f, white, "PSX3D v" PSX3D_VERSION);
-	ui_text(10, 34, 0.45f, grey, "Based on PCSX-ReARMed (GPL v2)");
-	ui_text(10, 62, 0.5f, white, "A: open    B: back    L/R: page");
-	ui_text(10, 80, 0.5f, white, "Y: games folder    X: set games folder");
-	ui_text(10, 98, 0.5f, white, g_cfg.games_dir[0] ? "START: back to library" : "START: exit PSX3D");
+	u32 muted = C2D_Color32(130, 150, 190, 255);
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
+	const char *name = strrchr(cwd, '/');
+	ui_menu_header("Folders", ui_fit(name && name[1] ? name + 1 : cwd, .42f, 170));
+	flist_draw(&lst, nentries + 1, sel, 0, 40, 320, ROW_H, ROWS, row_label, row_value, NULL,
+		(const u32[]){0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28}[sel & 3]);
+	if (nentries + 1 > ROWS) {
+		float h = ROWS * (float)ROW_H;
+		C2D_DrawRectSolid(317, 40 + h * lst.scroll / (nentries + 1), .3f, 2, h * ROWS / (nentries + 1), muted);
+	}
 	if (msg_frames > 0) {
 		msg_frames--;
-		ui_text(10, 180, 0.5f, C2D_Color32(140, 220, 140, 255), "%s", msg);
-	}
-	ui_text(10, 120, 0.45f, grey, "BIOS (optional): " PSX3D_BIOS_DIR);
-	ui_text(10, 136, 0.45f, grey, __ctr_svchax ? "Dynarec: ON (fast)" :
-		"Dynarec: OFF - needs Luma3DS (slow!)");
-	if (truncated)
-		ui_text(10, 160, 0.45f, C2D_Color32(255, 160, 120, 255),
-			"Folder has over %d entries, list cut off", MAX_ENTRIES);
-	ui_text(10, 200, 0.45f, grey, "%d item%s", nentries, nentries == 1 ? "" : "s");
+		ui_text_ex(NULL, 12, 204, .4f, C2D_Color32(255, 210, 120, 255), 0, msg);
+	} else if (!nentries)
+		ui_text_ex(NULL, 12, 204, .4f, muted, 0, "No games or folders here");
+	ui_text_ex(NULL, 160, 222, .39f, muted, C2D_AlignCenter,
+		g_cfg.games_dir[0] ? "A open    B up    Y games folder    START library"
+		                   : "A open    B up    START quit");
 }
 
 // held-button repeat: fires on press, then after 18 frames every 3 frames
@@ -264,13 +278,12 @@ bool browser_run(char *out_path, size_t out_len)
 {
 	static int rep_down, rep_up, rep_l, rep_r;
 
+	// Back from a game started here: that folder. Otherwise the games folder.
 	guess_games_dir();
-	if (dir_exists(g_cfg.last_dir)) {
+	if (back_sel[0] && dir_exists(g_cfg.last_dir)) {
 		load_dir(g_cfg.last_dir);
-		if (back_sel[0])
-			select_name(back_sel);
-	}
-	else if (g_cfg.games_dir[0] && dir_exists(g_cfg.games_dir))
+		select_name(back_sel);
+	} else if (g_cfg.games_dir[0] && dir_exists(g_cfg.games_dir))
 		load_dir(g_cfg.games_dir);
 	else
 		load_dir("sdmc:/");
@@ -282,39 +295,54 @@ bool browser_run(char *out_path, size_t out_len)
 			break;   // remote: back to the library
 		input_poll();
 		u32 k = input_keys_down(), h = input_keys_held();
+		int n = nentries + 1, before = sel;
 
 		if (k & KEY_START)
 			break;
-		if (nentries) {
-			if (repeat(k, h, KEY_DOWN, &rep_down)) sel = (sel + 1) % nentries;
-			if (repeat(k, h, KEY_UP, &rep_up)) sel = (sel - 1 + nentries) % nentries;
-			if (repeat(k, h, KEY_R, &rep_r)) { sel += LINES; if (sel >= nentries) sel = nentries - 1; }
-			if (repeat(k, h, KEY_L, &rep_l)) { sel -= LINES; if (sel < 0) sel = 0; }
+		if (repeat(k, h, KEY_DOWN, &rep_down)) sel = (sel + 1) % n;
+		if (repeat(k, h, KEY_UP, &rep_up)) sel = (sel - 1 + n) % n;
+		if (repeat(k, h, KEY_R, &rep_r)) { sel += ROWS; if (sel >= n) sel = n - 1; }
+		if (repeat(k, h, KEY_L, &rep_l)) { sel -= ROWS; if (sel < 0) sel = 0; }
+		if (k & KEY_TOUCH) {
+			touchPosition tp;
+			hidTouchRead(&tp);
+			int row = flist_row_at(&lst, 40, ROW_H, tp.py);
+			if (tp.py >= 40 && tp.py < 40 + ROWS * ROW_H && row >= 0 && row < n) {
+				if (row == sel)
+					k |= KEY_A;
+				sel = row;
+			}
 		}
-		if (sel < scroll) scroll = sel;
-		if (sel >= scroll + LINES) scroll = sel - LINES + 1;
+		if (sel != before)
+			sfx_play(SFX_MOVE);
 
 		if (k & KEY_Y) {
 			if (g_cfg.games_dir[0] && dir_exists(g_cfg.games_dir)) {
 				load_dir(g_cfg.games_dir);
 			} else {
-				snprintf(msg, sizeof(msg), "No games folder yet: press X in it");
+				snprintf(msg, sizeof(msg), "No games folder yet: choose one first");
 				msg_frames = 150;
 			}
-		} else if (k & KEY_X) {
-			snprintf(g_cfg.games_dir, sizeof(g_cfg.games_dir), "%s", cwd);
-			config_save();
-			snprintf(msg, sizeof(msg), "Games folder set");
-			msg_frames = 120;
 		} else if (k & KEY_B) {
 			sfx_play(SFX_BACK);
-			go_up();
-		} else if ((k & KEY_A) && nentries) {
+			if (strcmp(cwd, "sdmc:/"))
+				go_up();
+			else if (g_cfg.games_dir[0])
+				break;   // nothing above the card: back to the library
+		} else if ((k & KEY_A) && !sel) {
+			// the library loads this folder when the browser closes
+			sfx_play(SFX_SELECT);
+			snprintf(g_cfg.games_dir, sizeof(g_cfg.games_dir), "%s", cwd);
+			config_save();
+			break;
+		} else if (k & KEY_A) {
+			const entry_t *e = &entries[sel - 1];
 			char path[PATH_LEN], from[PATH_LEN], name[PATH_LEN];
-			join(path, sizeof(path), cwd, entries[sel].name);
+			join(path, sizeof(path), cwd, e->name);
 			snprintf(from, sizeof(from), "%s", cwd);
-			snprintf(name, sizeof(name), "%s", entries[sel].name);
-			if (entries[sel].dir) {
+			snprintf(name, sizeof(name), "%s", e->name);
+			sfx_play(SFX_SELECT);
+			if (e->dir) {
 				load_dir(path);
 				// one game per folder (the usual layout): just start it
 				char game[PATH_LEN];
@@ -325,9 +353,11 @@ bool browser_run(char *out_path, size_t out_len)
 			}
 		}
 
+		flist_update(&lst, sel, n, ROWS);
 		ui_begin();
 		video_present_vsync(false, draw_top, draw_bottom, NULL);
 	}
+	back_sel[0] = 0;
 	free_entries();
 	return false;
 }
