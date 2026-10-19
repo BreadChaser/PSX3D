@@ -6532,6 +6532,83 @@ static int ndrc_vsync1_skip(int cc)
   return cc + k * d;
 }
 
+// PsyQ "while (VSync(-1) <= n);" (Klonoa): VSync(-1) reads GPUSTAT and the
+// hblank counter (idempotent reads, results discarded), saves and restores
+// ra/s0/s1 and returns the vblank count, which only an interrupt changes. So
+// iterations between events are identical but for time: whole ones are
+// skipped once two in a row measured the same cycles.
+//   jal VSync; li a0, -1; lw y, n(gp); nop; slt y, y, v0; beqz y, <jal>; nop
+static const u32 vpoll_code[][2] = { // VSync(): entry and the mode < 0 path
+  { 0x00, 0x3c020000 }, { 0x04, 0x8c420000 }, { 0x08, 0x3c030000 }, { 0x0c, 0x8c630000 },
+  { 0x10, 0x27bdffe0 }, { 0x14, 0xafbf0018 }, { 0x18, 0xafb10014 }, { 0x1c, 0xafb00010 },
+  { 0x20, 0x8c500000 }, { 0x24, 0x8c620000 }, { 0x28, 0x3c030000 }, { 0x2c, 0x8c630000 },
+  { 0x30, 0x00000000 }, { 0x34, 0x00431023 }, { 0x38, 0x04810005 }, { 0x3c, 0x3051ffff },
+  { 0x40, 0x3c020000 }, { 0x44, 0x8c420000 }, { 0x4c, 0x00000000 },
+  { 0x130, 0x8fbf0018 }, { 0x134, 0x8fb10014 }, { 0x138, 0x8fb00010 }, { 0x13c, 0x27bd0020 },
+  { 0x140, 0x03e00008 }, { 0x144, 0x00000000 },
+};
+
+static int vpoll_loop_check(struct compile_state *st, int i)
+{
+  u32 pc = st->start + i*4, ba = cinfo[i].ba, f, w, y, j;
+  const u32 *m;
+  if (!psx3d_idle_skip || dops[i].opcode != 0x04 || dops[i].rs2 != 0 || ba + 20 != pc
+      || !is_ram_addr(ba) || (ba & 0x1fffff) > 0x200000 - 28 || st->source[i+1] != 0)
+    return 0;
+  m = (u32 *)psxRegs.ptrs.psxM + ((ba & 0x1fffff) >> 2);
+  y = (m[2] >> 16) & 31;
+  if ((m[0] >> 26) != 3 || m[1] != 0x2404ffff || (m[2] & 0xffe00000) != 0x8f800000
+      || !y || y == 2 || y == 28 || dops[i].rs1 != y || m[3] != 0
+      || m[4] != ((y << 21) | (2 << 16) | (y << 11) | 0x2a)
+      || m[5] != (0x1000fffa | (y << 21)) || m[6] != 0)
+    return 0;
+  f = (ba & 0xf0000000) | ((m[0] & 0x3ffffff) << 2);
+  if (!is_ram_addr(f) || (f & 0x1fffff) > 0x200000 - 0x148)
+    return 0;
+  m = (u32 *)psxRegs.ptrs.psxM + ((f & 0x1fffff) >> 2);
+  for (j = 0; j < ARRAY_SIZE(vpoll_code); j++) {
+    w = m[vpoll_code[j][0] / 4];
+    if (((w >> 26) == 0x0f || (w >> 26) == 0x23) && !(vpoll_code[j][1] & 0xffff))
+      w &= 0xffff0000; // lui/lw of globals
+    if (w != vpoll_code[j][1])
+      return 0;
+  }
+  if (m[0x48/4] != (0x08000000 | (((f + 0x130) >> 2) & 0x3ffffff)))
+    return 0;
+  SysPrintf("VSync(-1) loop @%08x, VSync %08x\n", ba, f);
+  return 1;
+}
+
+// at the back-edge, cc counting up to the next event
+static int ndrc_vpoll_skip(int cc)
+{
+  static u32 x1, d1, lc1;
+  u32 x = last_count + cc, d = x - x1;
+  int k;
+  x1 = x;
+  if (last_count != lc1 || d != d1 || d - 1 >= 4096) {
+    lc1 = last_count;
+    d1 = d;
+    return cc;
+  }
+  k = (-cc - 1) / (int)d;
+  if (cc >= 0 || k <= 0)
+    return cc;
+  x1 += k * d;
+  return cc + k * d;
+}
+
+static void vpoll_loop_assemble(int i, int cc)
+{
+  u_int reglist = get_host_reglist(branch_regs[i].regmap);
+  assem_debug("; VSync(-1) skip\n");
+  save_regs(reglist);
+  emit_mov(cc, 0);
+  emit_far_call(ndrc_vpoll_skip);
+  emit_mov(0, cc);
+  restore_regs(reglist);
+}
+
 static void vsync1_loop_assemble(int i, int cc)
 {
   u_int reglist = get_host_reglist(branch_regs[i].regmap);
@@ -6543,6 +6620,35 @@ static void vsync1_loop_assemble(int i, int cc)
   restore_regs(reglist);
 }
 
+// vsync_hack_assemble for a back-edge where sp is not in a register. The
+// cycles per iteration are measured (the clock multiplier rounds the loop's
+// blocks separately): two back-edges in a row with no event between give d,
+// then whole iterations are skipped while the next event stays ahead and the
+// timeout counter stays clear of -1. Exactly the cycles and counter value
+// the iterations would have produced.
+static int ndrc_vwait_skip(int cc, u_int ofs)
+{
+  static u32 x1, d1, lc1;
+  u32 x = last_count + cc, d = x - x1;
+  u32 o = (psxRegs.GPR.n.sp & ~0x00e00000) - 0x80000000u + ofs;
+  s32 v, k;
+  x1 = x;
+  if (last_count != lc1 || d != d1 || d - 1 >= 256 || o > RAM_SIZE - 4) {
+    lc1 = last_count;
+    d1 = d;
+    return cc;
+  }
+  v = *(s32 *)((u8 *)psxRegs.ptrs.psxM + o);
+  k = (-cc - 1) / (s32)d;
+  if (k > v)
+    k = v;
+  if (cc >= 0 || k <= 0)
+    return cc;
+  *(s32 *)((u8 *)psxRegs.ptrs.psxM + o) = v - k;
+  x1 += k * d;
+  return cc + k * d;
+}
+
 static void vsync_hack_assemble(int i, int ld_ofs, int cc)
 {
   int sp = get_reg(branch_regs[i].regmap, 29);
@@ -6552,7 +6658,16 @@ static void vsync_hack_assemble(int i, int ld_ofs, int cc)
   void *t_exit[3], *loop_target, *t_loop_break;
   int j;
   if (sp < 0 || (ram_offset && ro < 0) || tmp < 0) {
-    //printf("vsync hack r %d %d %d\n", sp, ro, tmp);
+    // sp is not allocated here (the loop's tail block never uses it): the
+    // same skip in C, sp read from the register file
+    u_int reglist = get_host_reglist(branch_regs[i].regmap);
+    assem_debug("; vsync hack (C)\n");
+    save_regs(reglist);
+    emit_mov(cc, 0);
+    emit_movimm(ld_ofs, 1);
+    emit_far_call(ndrc_vwait_skip);
+    emit_mov(0, cc);
+    restore_regs(reglist);
     return;
   }
   assem_debug("; vsync hack\n");
@@ -6611,7 +6726,8 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
   int idle = idle_loop_check(st, i, &il);
   int delay = !idle ? delay_loop_check(st, i) : 0;
   int vsync1 = !idle && dops[i].ooo && vsync1_loop_check(st, i);
-  if ((idle || vsync1 || delay) && dops[i].ooo) invert=1;
+  int vpoll = !idle && !vsync1 && dops[i].ooo && vpoll_loop_check(st, i);
+  if ((idle || vsync1 || delay || vpoll) && dops[i].ooo) invert=1;
   #ifdef CORTEX_A8_BRANCH_PREDICTION_HACK
   if(i>(cinfo[i].ba-st->start)>>2) invert=1;
   #endif
@@ -6754,6 +6870,8 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
           delay_loop_assemble(i, delay, cc);
         if (vsync1)
           vsync1_loop_assemble(i, cc);
+        if (vpoll)
+          vpoll_loop_assemble(i, cc);
         #ifdef CORTEX_A8_BRANCH_PREDICTION_HACK
         if (match && (!internal || !dops[(cinfo[i].ba-st->start)>>2].is_ds)) {
           if(adj) {
@@ -7703,6 +7821,8 @@ static noinline void do_vsync(struct compile_state *st, int i, u32 addr)
   for (j = i+1; j < st->slen; j++) {
     if (dops[j].itype == SHIFTIMM || dops[j].itype == IMM16 || dops[j].itype == ALU)
       continue;
+    if (dops[j].itype == NOP) // older PsyQ leaves jal delay slots empty
+      continue;
     if (dops[j].opcode == 0x03) {
       jals_cnt++; continue;
     }
@@ -7711,7 +7831,8 @@ static noinline void do_vsync(struct compile_state *st, int i, u32 addr)
   if (j >= st->slen || jals_cnt != 3 || dops[j++].opcode != 0x02)
     return;
   for (; j < st->slen; j++)
-    if (dops[j].itype != SHIFTIMM && dops[j].itype != IMM16)
+    if (dops[j].itype != SHIFTIMM && dops[j].itype != IMM16
+        && dops[j].itype != NOP)
       break;
   if (j >= st->slen || dops[j].opcode != 0x23) // lw x, condition
     return;
@@ -7732,6 +7853,42 @@ static noinline void do_vsync(struct compile_state *st, int i, u32 addr)
   vsync_hack = (j << 16) | (cinfo[t].imm & 0xffff);
 }
 
+// The same PsyQ v_wait loop recognised from its back-edge alone, checking the
+// whole loop in RAM: blocks are cut where execution first entered (a state
+// saved in the loop resumes mid-loop), so head, timeout call and back-edge
+// are often in different blocks.
+//   head: lw x, d(sp); nop; addiu x, x, -1; sw x, d(sp); lw x, d(sp); nop
+//         bne x, v1, tail; nop; lui a0, "VSync: timeout"; addiu a0 ...
+//   tail: lui y; lw y, Vcount(y); nop; slt y, y, a0; bne y, zero, head; nop
+static void vwait_backedge_check(struct compile_state *st, int i)
+{
+  u32 pc = st->start + i*4, ba = cinfo[i].ba, x, y, d, a;
+  const u32 *m, *t;
+  if (dops[i].opcode != 0x05 || dops[i].rs2 != 0 || ba >= pc || pc - ba > 0x100
+      || !is_ram_addr(ba) || (pc & 0x1fffff) > 0x200000 - 8 || st->source[i+1] != 0)
+    return;
+  m = (u32 *)psxRegs.ptrs.psxM + ((ba & 0x1fffff) >> 2);
+  t = (u32 *)psxRegs.ptrs.psxM + (((pc - 16) & 0x1fffff) >> 2);
+  x = (m[0] >> 16) & 31, d = m[0] & 0xffff, y = (t[0] >> 16) & 31;
+  if ((m[0] & 0xffe00000) != 0x8fa00000 || d >= 1024 || !x || m[1] != 0
+      || m[2] != (0x2400ffff | (x << 21) | (x << 16))
+      || m[3] != (0xafa00000 | (x << 16) | d) || m[4] != m[0] || m[5] != 0
+      || (m[6] & 0xffff0000) != (0x14030000 | (x << 21)) || m[7] != 0
+      || ba + 28 + ((s16)m[6] << 2) != pc - 16
+      || (m[8] & 0xffff0000) != 0x3c040000 || (m[9] & 0xffff0000) != 0x24840000)
+    return;
+  a = (m[8] << 16) + (s16)m[9];
+  if (!is_ram_addr(a) || (a & 0x1fffff) > 0x200000 - 16
+      || strncmp((char *)psxRegs.ptrs.psxM + (a & 0x1fffff), "VSync: timeout", 14))
+    return;
+  if (!y || dops[i].rs1 != y || (t[0] & 0xffe00000) != 0x3c000000 || (t[1] & 0xffe00000) != (0x8c000000 | (y << 21))
+      || ((t[1] >> 16) & 31) != y || t[2] != 0
+      || t[3] != ((y << 21) | (4 << 16) | (y << 11) | 0x2a))
+    return;
+  SysPrintf("vsync @%08x (back-edge %08x)\n", ba, pc);
+  vsync_hack = (i << 16) | d;
+}
+
 static int apply_hacks(struct compile_state *st)
 {
   int i;
@@ -7739,6 +7896,9 @@ static int apply_hacks(struct compile_state *st)
   if (HACK_ENABLED(NDHACK_NO_COMPAT_HACKS))
     return 0;
   /* special hack(s) */
+  for (i = 0; i < st->slen - 1; i++)
+    if (!vsync_hack && dops[i].itype == CJUMP)
+      vwait_backedge_check(st, i);
   for (i = 0; i < st->slen - 4; i++)
   {
     // lui a4, 0xf200; jal <rcnt_read>; addu a0, 2; slti v0, 28224
