@@ -432,7 +432,15 @@ static void clamp_list(void)
 // Global settings, reachable from the library with X (the defaults for every
 // game; a game's own screen mode, controls and rewind live in its menu).
 
-static void settings_run(void) { settings_ui_run(false, draw_top); }
+static void settings_draw_top(void *ud)
+{
+	// The library loop is paused here; finish its pending artwork uploads and
+	// show the title even when remote settings opened before its first fade.
+	covers_pump();
+	title_t = 1;
+	draw_top(ud);
+}
+static void settings_run(void) { settings_ui_run(false, settings_draw_top); }
 
 // select a game by title (to come back to the last one played)
 void libui_select_title(const char *title)
