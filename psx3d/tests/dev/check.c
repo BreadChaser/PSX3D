@@ -322,6 +322,16 @@ int main(void)
 	sample(21000,50); clip_status.done=clip_status.failed=true; clip_status.first_divergent=60;
 	sample(22000,50); assert(!batch_active && run_index==0 && !load_pending);
 	dev_game_ended(true); clip_close();
+	// A local launch after remote runs gets the startup switches back and is
+	// not a remote game: no leftover replay= (ignored local input) or state=.
+	command("quit",false); dev_next_game(path,save,title);
+	command("load game=Crash_Bandicoot state=2 stats o:frameskip_type=disabled",false);
+	assert(dev_next_game(path,save,title) && dev_remote_game() && sw_state==2 && sw_opt[0][0]);
+	dev_game_started(title,true); command("quit",true); dev_game_ended(true); dev_next_game(path,save,title);
+	assert(dev_remote_game());
+	clip_requested=3; sw_ff=sw_stats=true;
+	dev_local_game();
+	assert(!dev_remote_game() && sw_state==-1 && !sw_stats && !sw_opt[0][0] && clip_requested==-1 && !sw_ff);
 	dev_shutdown();
 	puts("developer lifecycle, batch averaging, state validation and safe failures: PASS");
 }

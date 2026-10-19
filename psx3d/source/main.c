@@ -379,6 +379,7 @@ int main(int argc, char **argv)
 		char remote_save[PATH_LEN], remote_title[PATH_LEN];
 		if (dev_next_game(path, remote_save, remote_title)) {
 			emu_run_game(path, remote_save[0] ? remote_save : NULL, remote_title);
+			dev_local_game();   // the library is local again (a batch reapplies its own)
 			if (aptShouldClose())
 				break;
 			continue;
@@ -397,6 +398,7 @@ int main(int argc, char **argv)
 					picked = library_get(i);
 			if (picked && library_launch_path(picked, path, sizeof(path))) {
 				log_printf("test: starting %s\n", picked->title);
+				dev_local_game();
 				if (!emu_run_game(path, picked->cover_key, picked->title))
 					show_error("Could not load that game.\nCheck sdmc:/3ds/PSX3D/log.txt");
 				if (aptShouldClose())
@@ -436,6 +438,7 @@ int main(int argc, char **argv)
 		}
 		// library games save under disc 1's name, same as starting that
 		// disc from the folder browser
+		dev_local_game();
 		if (!emu_run_game(path, picked ? picked->cover_key : NULL, picked ? picked->title : NULL))
 			show_error("Could not load that game.\nCheck sdmc:/3ds/PSX3D/log.txt");
 		if (aptShouldClose())

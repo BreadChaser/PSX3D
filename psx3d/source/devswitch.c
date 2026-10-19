@@ -95,8 +95,54 @@ bool switches_set(const char *word)
 	return true;
 }
 
+/* A remote load/batch applies its switches to the same globals as switches.txt.
+ * Snapshot the startup values before the first remote run and put them back
+ * before a local launch, so remote runs never change local play (a leftover
+ * replay= ignored local input, state= loaded a benchmark slot, o: options stuck). */
+static struct {
+	bool saved;
+	int idle_skip, idle_pointer, idle_delay, rtfslevel, rtfscap, state, pmu0, pmu1, gldbg, vramdump, skipgate;
+	int clip_requested, clip_seconds;
+	unsigned submit, prims;
+	bool rtfsdense, rtfsmodel, rtfswindow, rtfs, ff, floataudio, frontend, fsmart, prof, stats, fs1, fs3, noskip;
+	bool nosputhread, acap, nogputhread, aa, showright, sbs, gpu_async, gpu_flush, pmuphase, pmuclass;
+	bool texmask, texmemo, clip_enabled;
+	float slider;
+	char opt[8][48], cdra[8], clock[8];
+} local;
+#define SWITCH_COPY(TO, FROM)                                                                                  \
+	do {                                                                                                         \
+		TO(idle_skip, psx3d_idle_skip); TO(idle_pointer, psx3d_idle_pointer); TO(idle_delay, psx3d_idle_delay); \
+		TO(rtfslevel, sw_rtfslevel); TO(rtfscap, sw_rtfscap); TO(state, sw_state); TO(pmu0, sw_pmu0);           \
+		TO(pmu1, sw_pmu1); TO(gldbg, sw_gldbg); TO(vramdump, sw_vramdump); TO(skipgate, psx3d_skipgate);       \
+		TO(clip_requested, clip_requested); TO(clip_seconds, clip_seconds); TO(submit, pica_submit);           \
+		TO(prims, pica_prims); TO(rtfsdense, sw_rtfsdense); TO(rtfsmodel, sw_rtfsmodel);                       \
+		TO(rtfswindow, sw_rtfswindow); TO(rtfs, sw_rtfs); TO(ff, sw_ff); TO(floataudio, sw_floataudio);        \
+		TO(frontend, sw_frontend); TO(fsmart, sw_fsmart); TO(prof, sw_prof); TO(stats, sw_stats);              \
+		TO(fs1, sw_fs1); TO(fs3, sw_fs3); TO(noskip, sw_noskip); TO(nosputhread, sw_nosputhread);              \
+		TO(acap, sw_acap); TO(nogputhread, sw_nogputhread); TO(aa, sw_aa); TO(showright, sw_showright);        \
+		TO(sbs, sw_sbs); TO(gpu_async, sw_gpu_async); TO(gpu_flush, sw_gpu_flush); TO(pmuphase, sw_pmuphase);  \
+		TO(pmuclass, sw_pmuclass); TO(texmask, pica_texmask); TO(texmemo, pica_texmemo);                       \
+		TO(clip_enabled, clip_enabled); TO(slider, sw_slider);                                                 \
+		FROM(opt, sw_opt); FROM(cdra, sw_cdra); FROM(clock, sw_clock);                                         \
+	} while (0)
+#define SAVE_VALUE(field, var) local.field = var
+#define SAVE_ARRAY(field, var) memcpy(local.field, var, sizeof(local.field))
+#define LOAD_VALUE(field, var) var = local.field
+#define LOAD_ARRAY(field, var) memcpy(var, local.field, sizeof(local.field))
+void switches_local(void)
+{
+	if (!local.saved)
+		return;
+	SWITCH_COPY(LOAD_VALUE, LOAD_ARRAY);
+	options_mark_updated();
+}
 bool switches_run(char *line, char *game, size_t len, char *error, size_t error_len)
 {
+	if (!local.saved) {
+		SWITCH_COPY(SAVE_VALUE, SAVE_ARRAY);
+		local.saved = true;
+	}
 	clip_reset_request();
 	psx3d_idle_skip = 1; psx3d_idle_pointer = psx3d_idle_delay = 0;
 	sw_rtfslevel = -1; sw_rtfscap = 4; pica_submit = 7;

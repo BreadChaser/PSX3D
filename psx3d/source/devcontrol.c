@@ -13,6 +13,8 @@
 bool dev_remote, dev_bench;
 char dev_token[96], dev_update_url[256];
 static bool exiting, load_pending, change, running, state_failed, command_loading, updated;
+/* The game now running was started by a remote load/batch (not from the library). */
+static bool remote_game;
 static bool batch_active, batch_shot;
 static int ui_request;
 int dev_ui_slot;
@@ -160,6 +162,7 @@ static void publish_status(void)
 	p += strlen(p);
 	p += sprintf(p, ",\"build\":\"release-v040-final2\",\"rtfs\":%s,\"ff\":%s,\"frontend\":%s,\"floataudio\":%s", sw_rtfs ? "true" : "false", sw_ff ? "true" : "false", sw_frontend ? "true" : "false", sw_floataudio ? "true" : "false");
 	p += sprintf(p, ",\"fsmart\":\"%s\"", sw_fsmart ? "new" : "old");
+	p += sprintf(p, ",\"remote_game\":%s", remote_game ? "true" : "false");
 	p += sprintf(p, ",\"version\":\"%s\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
 	p += sprintf(p, ",\"pica_prims\":%u,\"idle\":%d,\"idleptr\":%d,\"idledelay\":%d", pica_prims, psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay);
 	p += sprintf(p, ",\"skipgate\":\"%s\"", psx3d_skipgate ? "new" : "old");
@@ -562,6 +565,13 @@ bool dev_tick(bool playing)
 	return dev_transition();
 }
 
+bool dev_remote_game(void) { return remote_game; }
+void dev_local_game(void)
+{
+	remote_game = false;
+	switches_local();
+	publish_status();
+}
 bool dev_next_game(char *path, char *save, char *title)
 {
 	if (!load_pending) {
@@ -624,6 +634,7 @@ bool dev_next_game(char *path, char *save, char *title)
 		dev_game_ended(false);
 		return false;
 	}
+	remote_game = true;
 	snprintf(current_title, sizeof(current_title), "%s", title);
 	strcpy(command_result, "loading");
 	publish_status();
