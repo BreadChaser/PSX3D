@@ -52,10 +52,11 @@ BUILD_DIR=/tmp/psx3d-clips bash tools/input-replay/check.sh
 BUILD_DIR=/tmp/psx3d-gpu bash tools/gpu-compare/regress.sh
 bash tools/pica-layout/check.sh
 bash tools/frameskip/check.sh
-python3 tests/gpu_thread_sim.py
+python3 tests/gpu_thread_sim.py --sim /tmp/psx3d-thread-sim --sdk tools/input-replay/fake3ds
 ```
 
-These use local substitutes and ASan/UBSan where applicable. Generated mockups
+The thread test needs a fresh simulator directory; use `--jobs 2 --timeout 1200`
+on a busy host. These checks use local substitutes and ASan/UBSan where applicable. Generated mockups
 are offline renderings, not hardware screenshots; write them outside the source
 tree. See [GPU comparisons](../tools/gpu-compare/README.md) for the independent
 renderer oracles, [remote testing](dev-control.md) for hardware measurements and

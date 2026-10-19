@@ -20,8 +20,12 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--devtools", type=Path, default=Path.home() / "Development/PS1_3ds/devtools")
 parser.add_argument("--sim", type=Path, default=Path("/tmp/n3thread-sim"))
 parser.add_argument("--sdk", type=Path, help="current simulator fake3ds SDK")
+parser.add_argument("--timeout", type=int, default=180, help="timeout per run in seconds")
+parser.add_argument("--jobs", type=int, default=4, help="concurrent simulator processes")
 parser.add_argument("--reuse", action="store_true", help="reuse a copy prepared by this script")
 args = parser.parse_args()
+if args.timeout < 1 or args.jobs < 1:
+    parser.error("--timeout and --jobs must be positive")
 sim, devtools = args.sim.resolve(), args.devtools.resolve()
 if not args.reuse:
     # Copy only the runner, fake SDK, save states and PICA core; profiling
@@ -166,7 +170,7 @@ def run(case):
     path = sim / f"thread-{state}-{mode}.log"
     with path.open("w") as log:
         subprocess.run([str(qemu), "./runner_pica", str(cue), "600", f"states/{state}.st0", ini],
-            cwd=sim, env=env, stdout=log, stderr=log, check=True, timeout=180)
+            cwd=sim, env=env, stdout=log, stderr=log, check=True, timeout=args.timeout)
     text = path.read_text()
     hashed = re.search(r"draw hash (\w+)", text)
     assert hashed, path
@@ -179,7 +183,7 @@ def run(case):
     trace.unlink()
     return state, mode, hashed[1], content
 
-with ThreadPoolExecutor(max_workers=4) as pool:
+with ThreadPoolExecutor(max_workers=args.jobs) as pool:
     results = list(pool.map(run, [(s, m) for s in games for m in ("off", "on", "on2", "stress")]))
 for state in games:
     hashes = [(m, h) for s, m, h, _ in results if s == state]
