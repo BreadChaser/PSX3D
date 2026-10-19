@@ -4,7 +4,7 @@
 .fvec proj[4]
 
 .constf consts(0.5, 1.0, 0.00392156862745, 0.0)
-.constf dither_scale(0.03125, 0.03125, 0.0, 0.0)
+.constf dither_scale(0.0078125, 0.0078125, 0.0, 0.0)
 .fvec texscale
 
 .out outpos position
@@ -28,7 +28,7 @@
 	mul r1.xy, texscale.xy, intex.xy
 	mov r1.zw, consts.ww
 	mov outtc0, r1
-	; Quarter-pixel position / 32 maps one VRAM pixel to one 8x8 texel.
+	; Sixteenth-pixel position / 128 maps one VRAM pixel to one 8x8 texel.
 	; Its repeated 4x4 pattern remains anchored to VRAM across drawing areas.
 	mul outtc1, dither_scale, r0
 	mul outclr, consts.zzzz, inclr

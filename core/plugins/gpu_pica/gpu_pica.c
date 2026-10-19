@@ -1585,28 +1585,32 @@ static void set_area(int x1, int y1, int x2, int y2)
 	// the viewport counts rows from the bottom of the target
 	C3D_SetViewport(x1, VRAM_H - y2, x2 - x1, y2 - y1);
 	float w = x2 - x1, h = y2 - y1;
-	// positions arrive in quarter pixels (see to_gpu)
-	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_proj + 0, 0.5f / w, 0, 0, -1.0f - 2.0f * x1 / w);
-	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_proj + 1, 0, -0.5f / h, 0, 1.0f + 2.0f * y1 / h);
+	// positions arrive in sixteenths of a pixel (see to_gpu)
+	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_proj + 0, 0.125f / w, 0, 0, -1.0f - 2.0f * x1 / w);
+	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_proj + 1, 0, -0.125f / h, 0, 1.0f + 2.0f * y1 / h);
 }
 
-// Vertex positions go to the GPU in quarter pixels, kept just inside the
-// target: the GPU can't hold a screen x of 1024 (or y of 512), a triangle
-// touching that edge came out wrong (1023.75 still covers the last pixel's centre).
+// Vertex positions go to the GPU in sixteenths of a pixel (VRAM fits in 16
+// bits), kept just inside the target: the GPU can't hold a screen x of 1024
+// (or y of 512), a triangle touching that edge came out wrong (1023.9375
+// still covers the last pixel's centre).
+#define GPU_UNIT 16
+#define POLY_SHIFT_X 8   // polygons: 1/2 pixel across, 7/16 down; see emit_tris
+#define POLY_SHIFT_Y 7
 static inline void to_gpu(pvtx *v, int n)
 {
 	for (int i = 0; i < n; i++) {
-		int x = v[i].x * 4, y = v[i].y * 4;
-		v[i].x = x > VRAM_W * 4 - 1 ? VRAM_W * 4 - 1 : x;
-		v[i].y = y > VRAM_H * 4 - 1 ? VRAM_H * 4 - 1 : y;
+		int x = v[i].x * GPU_UNIT, y = v[i].y * GPU_UNIT;
+		v[i].x = x > VRAM_W * GPU_UNIT - 1 ? VRAM_W * GPU_UNIT - 1 : x;
+		v[i].y = y > VRAM_H * GPU_UNIT - 1 ? VRAM_H * GPU_UNIT - 1 : y;
 	}
 }
 
 static void set_proj(void)
 {
-	// VRAM pixels -> clip space; y = 0 at the top, the GPU's depth range is 0..-1
-	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_proj + 0, 0.5f / VRAM_W, 0, 0, -1.0f);
-	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_proj + 1, 0, -0.5f / VRAM_H, 0, 1.0f);
+	// VRAM sixteenth pixels -> clip space; y = 0 at the top, the GPU's depth range is 0..-1
+	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_proj + 0, 2.0f / (VRAM_W * GPU_UNIT), 0, 0, -1.0f);
+	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_proj + 1, 0, -2.0f / (VRAM_H * GPU_UNIT), 0, 1.0f);
 	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_proj + 2, 0, 0, 0, -0.5f);
 	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_proj + 3, 0, 0, 0, 1.0f);
 }
@@ -2327,12 +2331,18 @@ static void noinline PICA_HOT(emit_tris) emit_tris(const pvtx *v, int ntri, int 
 	memcpy(fin, v, nv * sizeof(pvtx));
 	to_gpu(fin, nv);
 	// PS1 polygons interpolate at integer pixel positions; PICA samples at
-	// pixel centres. Half a pixel of translation aligns those samples.
+	// pixel centres. Half a pixel of translation aligns those samples, which
+	// keeps 1:1 sprites (also mirrored ones) on exact texels. In y exactly
+	// half a pixel put every PS1 row edge on a sample point, and real PICA
+	// breaks those ties its own way (rows are flipped in the target):
+	// polygons lost their first row and gained one below (Crash: the sky
+	// fill showed as a blue line at the top). 7/16 keeps row edges off the
+	// sample points; interpolation moves by only 1/16 pixel.
 	// Rectangles/uploads already map their pixel centres to texel centres.
 	if (polygon)
 		for (int i = 0; i < nv; i++) {
-			fin[i].x = fin[i].x < VRAM_W * 4 - 2 ? fin[i].x + 2 : VRAM_W * 4 - 1;
-			fin[i].y = fin[i].y < VRAM_H * 4 - 2 ? fin[i].y + 2 : VRAM_H * 4 - 1;
+			fin[i].x = fin[i].x < VRAM_W * GPU_UNIT - POLY_SHIFT_X ? fin[i].x + POLY_SHIFT_X : VRAM_W * GPU_UNIT - 1;
+			fin[i].y = fin[i].y < VRAM_H * GPU_UNIT - POLY_SHIFT_Y ? fin[i].y + POLY_SHIFT_Y : VRAM_H * GPU_UNIT - 1;
 		}
 	if (col_and != ~0u || col_or)
 		for (int i = 0; i < nv; i++)
@@ -2426,7 +2436,7 @@ static void PICA_HOT(draw_poly_impl) draw_poly_impl(const u32 *w, u32 cmd)
 		return;
 	// finished vertices as three words each, built in cache and stored once
 	// (never read back from the buffer: the Old 3DS cache fills on reads only).
-	// Exact target edges need the same quarter-pixel clamp as to_gpu:
+	// Exact target edges need the same sub-pixel clamp as to_gpu:
 	// PICA cannot represent screen x=1024 or y=512 reliably.
 	u64 vertex_start = phase_begin(7);
 	u32 q[4][3];
@@ -2434,9 +2444,9 @@ static void PICA_HOT(draw_poly_impl) draw_poly_impl(const u32 *w, u32 cmd)
 		du = plain->ax + (blend == BL_ADD ? 24 : 8), dv = plain->ay + 8;
 	for (int k = 0; k < n; k++) {
 		int u = textured ? v[k].u + du : du, vv = textured ? v[k].v + dv : dv;
-		int gx = v[k].x * 4 + 2, gy = v[k].y * 4 + 2;
-		gx = gx < VRAM_W * 4 ? gx : VRAM_W * 4 - 1;
-		gy = gy < VRAM_H * 4 ? gy : VRAM_H * 4 - 1;
+		int gx = v[k].x * GPU_UNIT + POLY_SHIFT_X, gy = v[k].y * GPU_UNIT + POLY_SHIFT_Y;   // see emit_tris
+		gx = gx < VRAM_W * GPU_UNIT ? gx : VRAM_W * GPU_UNIT - 1;
+		gy = gy < VRAM_H * GPU_UNIT ? gy : VRAM_H * GPU_UNIT - 1;
 		q[k][0] = (u32)gx | ((u32)gy << 16);
 		q[k][1] = (u32)(u & 0xffff) | ((u32)vv << 16);
 		q[k][2] = (rawcol ? rawcol : v[k].rgba) | a;

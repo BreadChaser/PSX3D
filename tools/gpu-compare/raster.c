@@ -198,7 +198,7 @@ void C3D_DrawArrays(int primitive,int first,int n)
             v[j].x=viewport[0]+(x+1)*viewport[2]*.5f;
             v[j].y=rt.tex->height-viewport[1]-(y+1)*viewport[3]*.5f;
             v[j].u=a->u; v[j].v=a->v;
-            v[j].dx=a->x/32.f; v[j].dy=a->y/32.f;
+            v[j].dx=a->x/128.f; v[j].dy=a->y/128.f; /* sixteenth pixels, as the shader */
             for(int k=0;k<4;k++)v[j].c[k]=((a->rgba>>(8*k))&255)/255.f;
         }
         double area=edge(&v[0],&v[1],v[2].x,v[2].y);
