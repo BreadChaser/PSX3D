@@ -93,8 +93,7 @@ R4 measured 53.65 FPS with automatic RTT and 33.41 with both old paths
 (+60.58%). The gain persists without streaming, so the earlier R4 jump was not
 solely a streaming artifact.
 
-See the [performance guide](performance.md) for measurement methodology,
-RC02 screening flags, save/load checks and picture limits.
+See the [performance guide](performance.md) for measurement methodology and picture limits.
 
 ## Known issues and upgrading
 

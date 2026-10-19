@@ -47,7 +47,7 @@ and Symphony of the Night to full game speed on the original 3DS.
 
 ## Performance
 
-![Old and New 3DS performance](docs/performance.svg)
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/performance-light.svg"><img src="docs/performance-dark.svg" alt="PSX3D speed on Old 3DS and New 3DS" width="880"></picture>
 
 Six saved scenes, clock 57, HLE consoles; 10-second warmup, 15-second sample.
 See [methodology and limitations](docs/performance.md).
@@ -58,6 +58,7 @@ See [methodology and limitations](docs/performance.md).
 Frameskip-off numbers are emulated frames per second. Full speed is 60 FPS,
 or 100% game speed; automatic frameskip shows fewer pictures to improve speed.
 
+<!-- perf-table -->
 | Game | Old, off (FPS) | Old, auto (game speed) | New, off (FPS) | New, auto (game speed) |
 |---|---:|---:|---:|---:|
 | Crash Bandicoot | 53.0 | 100.0% | 60.0 | 100.0% |
@@ -65,7 +66,8 @@ or 100% game speed; automatic frameskip shows fewer pictures to improve speed.
 | Gran Turismo 2 | 34.4 | 79.0% | 60.0 | 100.0% |
 | Silent Hill | 42.0 | 100.0% | 60.0 | 100.0% |
 | Ridge Racer Type 4 | 60.0 | 100.0% | 60.0 | 100.0% |
-| Castlevania: Symphony of the Night | 57.8 | 100.0% | 60.0 | 100.0% |
+| Symphony of the Night | 57.8 | 100.0% | 60.0 | 100.0% |
+<!-- /perf-table -->
 
 </details>
 

@@ -79,3 +79,16 @@ state. Also compare 1,200-frame cold boots with a real BIOS and HLE separately.
 Matching hashes establish identity for those inputs, not complete game
 compatibility. Old 3DS CPU performance must be measured on hardware: its small
 instruction cache makes code layout significant.
+
+## Updating the performance chart
+
+1. Run the benchmark batch with `fastbench.py`, using the same saved scenes and
+   settings as the existing measurements.
+2. Import each console's results:
+   `tools/perfchart/perfchart.py --results <directory> --console old` (and `new`).
+3. Commit `docs/performance.json`, both generated SVGs and the README table.
+
+For a new release, first run `tools/perfchart/perfchart.py --promote vX.Y.Z`.
+The current Old 3DS numbers become the previous-release comparison.
+`--set "Game name" old_fps=54.1 old_auto=100` can enter a separately verified
+measurement; plain `tools/perfchart/perfchart.py` regenerates all outputs.

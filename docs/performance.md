@@ -1,20 +1,13 @@
 # Performance
 
-![Old and New 3DS performance](performance.svg)
+<picture><source media="(prefers-color-scheme: light)" srcset="performance-light.svg"><img src="performance-dark.svg" alt="PSX3D speed on Old 3DS and New 3DS" width="880"></picture>
 
 The v0.4.0 GPU-only candidate was measured on 2026-10-19 in six saved scenes.
 Each run used clock 57, a 10-second warmup and a 15-second sample, Old slot 2
 or New slot 0. The consoles use HLE BIOS; these runs load existing states.
 NTR was not explicitly unloaded; the host observer reported no recent packets.
 
-| Game | Old off, FPS | Old auto, game speed | New off, FPS | New auto, game speed |
-|---|---:|---:|---:|---:|
-| Crash Bandicoot | 53.0 | 100.0% | 60.0 | 100.0% |
-| Crash Team Racing | 37.4 | 83.2% | 60.0 | 100.0% |
-| Gran Turismo 2 | 34.4 | 79.0% | 60.0 | 100.0% |
-| Silent Hill | 42.0 | 100.0% | 60.0 | 100.0% |
-| Ridge Racer Type 4 | 60.0 | 100.0% | 60.0 | 100.0% |
-| Castlevania: Symphony of the Night | 57.8 | 100.0% | 60.0 | 100.0% |
+Exact values are in the [README table](../README.md#performance).
 
 Full speed is 60 emulated frames per second for these scenes. Automatic
 frameskip reduces displayed pictures to improve game speed; 100% does not mean
