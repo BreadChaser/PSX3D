@@ -50,17 +50,17 @@ static const char *const categories[] = {"Settings",
 										 "Speed hacks",
 										 "Button mappings"};
 enum { F_SCREEN, F_SMOOTH, F_STEREO, F_FPS, F_SIDE, F_AUDIO, F_SOUNDS,
-       F_MUSIC, F_AUTO, F_REWIND, F_RECORD, F_TONE, F_COUNT };
+       F_MUSIC, F_REWIND, F_RECORD, F_TONE, F_COUNT };
 static const char *const labels[] = {
  [F_SCREEN]="Screen mode", [F_SMOOTH]="Smoothing", [F_STEREO]="3D",
  [F_FPS]="Show FPS", [F_SIDE]="Bottom-screen buttons", [F_AUDIO]="Smooth audio when slow",
- [F_SOUNDS]="Menu sounds", [F_MUSIC]="Library music", [F_AUTO]="Continue where I left off",
+ [F_SOUNDS]="Menu sounds", [F_MUSIC]="Library music",
  [F_REWIND]="Rewind", [F_RECORD]="Record audio", [F_TONE]="Test tone"
 };
 static const int groups[] = {
  [F_SCREEN]=CAT_DISPLAY, [F_SMOOTH]=CAT_DISPLAY, [F_STEREO]=CAT_DISPLAY,
  [F_FPS]=CAT_DISPLAY, [F_SIDE]=CAT_CONTROLS, [F_AUDIO]=CAT_SOUND, [F_SOUNDS]=CAT_SOUND,
- [F_MUSIC]=CAT_SOUND, [F_AUTO]=CAT_SAVES, [F_REWIND]=CAT_SAVES,
+ [F_MUSIC]=CAT_SOUND, [F_REWIND]=CAT_SAVES,
  [F_RECORD]=CAT_DEBUG, [F_TONE]=CAT_DEBUG
 };
 static const char *const tips[] = {
@@ -71,7 +71,7 @@ static const char *const tips[] = {
  [F_SIDE]="Choose the side for touch buttons.",
  [F_AUDIO]="Keep sound smooth when the game runs slowly.",
  [F_SOUNDS]="Play sounds while navigating menus.", [F_MUSIC]="Play music in the game library.",
- [F_AUTO]="Keep your place when leaving a game.", [F_REWIND]="Hold the rewind shortcut to go back.",
+ [F_REWIND]="Hold the rewind shortcut to go back.",
  [F_RECORD]="Capture 30 seconds for troubleshooting.", [F_TONE]="Play a tone to check audio output."
 };
 // Longer help, shown on the top screen while the row is selected.
@@ -84,7 +84,6 @@ static const char *const helps[] = {
  [F_AUDIO]="Keep sound flowing when a game runs slowly; music and voices slow down with it.",
  [F_SOUNDS]="Play a sound when you move through menus or select an item.",
  [F_MUSIC]="Play background music while browsing your games.",
- [F_AUTO]="Save your place when you leave a game and offer to continue next time.",
  [F_REWIND]="Save recent moments so you can hold the Rewind button to go back. Needs free memory.",
  [F_RECORD]="Record 30 seconds of game audio for troubleshooting.",
  [F_TONE]="Play a steady tone to check audio output."
@@ -95,7 +94,7 @@ static const char *const category_tips[] = {
  [CAT_SOUND]="Game audio, menu sounds and library music.",
  [CAT_CONTROLS]="Buttons, touch buttons and the analog stick.",
  [CAT_CHEATS]="Turn this game's cheat codes on or off.",
- [CAT_SAVES]="Continue where you left off, rewind and memory cards.",
+ [CAT_SAVES]="Rewind and memory cards.",
  [CAT_ADVANCED]="Options for games that need help to run correctly.",
  [CAT_RESET]="Restore defaults; asks for confirmation.",
  [CAT_CPU]="Region, BIOS and accuracy options for games that misbehave.",
@@ -147,7 +146,7 @@ static bool frontend_visible(settings_ui_t *s, int i)
 	if (i == F_STEREO && !g_new3ds)
 		return false;
 	// App-wide: only in the library's settings.
-	if ((i == F_SOUNDS || i == F_MUSIC || i == F_AUTO) && s->game)
+	if ((i == F_SOUNDS || i == F_MUSIC) && s->game)
 		return false;
 	if (i == F_SIDE &&
 		(!g_new3ds || (s->game && (g_cfg.show_fps == 2 || (!touch_buttons_active() && !g_cfg.show_fps)))))
@@ -265,8 +264,6 @@ static const char *row_value(int i, void *ud)
 		return g_cfg.sounds ? "On" : "Off";
 	case F_MUSIC:
 		return g_cfg.music ? "On" : "Off";
-	case F_AUTO:
-		return g_cfg.autosave ? "On" : "Off";
 	case F_REWIND:
 		return gamecfg_int("rewind", 0) ? (rewind_active() ? "On" : "Unavailable") : "Off";
 	default:
@@ -396,9 +393,6 @@ static void change(settings_ui_t *s, int item, int dir)
 			music_play(false);
 			music_play(true);
 		}
-		break;
-	case F_AUTO:
-		g_cfg.autosave ^= 1;
 		break;
 	case F_REWIND:
 		gamecfg_set_int("rewind", !gamecfg_int("rewind", 0));

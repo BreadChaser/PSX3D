@@ -38,7 +38,6 @@ typedef struct {
 	int  sounds;       // interface sounds
 	int  music;        // library music
 	int  bottom_off;   // backlight off on the bottom screen while playing
-	int  autosave;     // save on exit, offer to continue next time
 	int  audio_stretch; // maximum slowdown in percent, 0 disables (0..50)
 	int  touch_stick;  // Old 3DS virtual right stick
 	int  touch_click_left; // global New 3DS bottom-screen layout: 0 right, 1 left

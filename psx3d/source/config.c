@@ -77,7 +77,6 @@ static void set_defaults(void)
 	g_cfg.sounds = 1;
 	g_cfg.music = 1;
 	g_cfg.bottom_off = 1;
-	g_cfg.autosave = 1;
 	g_cfg.audio_stretch = 50; // both models: only used when sound runs low
 	g_cfg.touch_stick = -1;
 	input_map_reset();
@@ -154,8 +153,6 @@ void config_load(void)
 			g_cfg.music = atoi(v) != 0;
 		else if (strcmp(k, "bottom_off") == 0)
 			g_cfg.bottom_off = atoi(v) != 0;
-		else if (strcmp(k, "autosave") == 0)
-			g_cfg.autosave = atoi(v) != 0;
 		else if (strcmp(k, "audio_stretch") == 0) {
 			int n = atoi(v);
 			g_cfg.audio_stretch = n < 0 ? 0 : n > 50 ? 50 : n;
@@ -204,7 +201,6 @@ void config_save(void)
 	int screen = in_game ? default_screen : config_screen_mode();
 	fprintf(f, "stretch=%d\n", screen == 1);
 	fprintf(f, "sounds=%d\nmusic=%d\nbottom_off=%d\n", g_cfg.sounds, g_cfg.music, g_cfg.bottom_off);
-	fprintf(f, "autosave=%d\n", g_cfg.autosave);
 	fprintf(f, "audio_stretch=%d\n", g_cfg.audio_stretch);
 	fprintf(f, "touch_stick=%d\n", in_game ? default_touch_stick : g_cfg.touch_stick);
 	fprintf(f, "touch_click_left=%d\n", g_cfg.touch_click_left);
