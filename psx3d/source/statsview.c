@@ -105,7 +105,7 @@ void statsview_update(const statsview_sample *s)
 	snprintf(lines[10], sizeof(lines[10]), "Tex up/dec %u/%u  sync/read %u/%u", uploads, decodes, syncs, reads);
 	snprintf(lines[11], sizeof(lines[11]), "Draw/batch %u/%u  linear %luK  DRC n/a", prims, batches, (unsigned long)(linearSpaceFree()/1024));
 	if (!s->renderer || !*s->renderer) {
-		strcpy(lines[10], "Renderer counters n/a (software GPU)");
+		strcpy(lines[10], "GPU counters unavailable");
 		snprintf(lines[11], sizeof(lines[11]), "Linear %luK  DRC n/a", (unsigned long)(linearSpaceFree()/1024));
 	}
 	snprintf(lines[12], sizeof(lines[12]), "PS1 clock %.8s  GTE regs %.8s", opt("pcsx_rearmed_psxclock"), opt("pcsx_rearmed_gteregsunneeded"));

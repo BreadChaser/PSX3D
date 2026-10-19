@@ -29,10 +29,10 @@ typedef struct {C3D_Tex *tex; void *subtex;} C2D_Image;
 #define GX_BUFFER_DIM(x,y) 0
 #define C2D_Color32(r,g,b,a) 0
 static struct {int stereo;} g_cfg;
-static bool gpu=true, gpu_frame, sw_gpu_async, stereo_on, ui_wants_3d, have_frame=true;
-static bool right_pending, right_ok, plain_ok, plain_now, in_menu_call, sw_sbs, sw_showright;
-static unsigned frame_h=240,frame_w=320; static float ui_parallax, slider;
-static int ui_eye,subtex; static C3D_Tex tex,tex_r; static u32 *pending,*right_lin;
+static bool gpu=true, gpu_frame, sw_gpu_async, stereo_on, ui_wants_3d;
+static bool plain_ok, plain_now, in_menu_call;
+static unsigned frame_h=240; static float ui_parallax, slider;
+static int ui_eye; static C3D_Tex tex; static u32 *pending;
 static u64 frame_end_tick; static float gpu_ms;
 static C3D_RenderTarget targets[3]={{0},{1},{2}},*top=&targets[0],*top_r=&targets[1],*bottom=&targets[2];
 static unsigned begins,ends,top_clears,bottom_clears,top_scenes,bottom_scenes,transfers,draws,top_ui,bottom_ui;
@@ -53,14 +53,10 @@ static void (*video_pre_draw)(void);
 static void GX_DisplayTransfer(u32*a,int b,u32*c,int d,int e){(void)a;(void)b;(void)c;(void)d;(void)e;transfers++;}
 static float slider_get(void){return slider;}
 static void gfxSet3D(bool a){(void)a;}
-static void psx3d_set_strength(float a){(void)a;}
 static void top_set_plain(C3D_RenderTarget*t,int e,bool p){(void)t;(void)e;(void)p;}
 static void C2D_TargetClear(C3D_RenderTarget*t,u32 c){(void)c;if(t==bottom)bottom_clears++;else top_clears++;}
 static void top_begin(C3D_RenderTarget*t){assert(t!=bottom);top_scenes++;}
 static void draw_game(float d){(void)d;draws++;}
-static void draw_game_tex(C3D_Tex*t,float d){(void)t;(void)d;draws++;}
-static void C2D_DrawRectSolid(float a,float b,float c,float d,float e,u32 f){(void)a;(void)b;(void)c;(void)d;(void)e;(void)f;}
-static void C2D_DrawImageAt(C2D_Image i,float a,float b,float c,void*p,float d,float e){(void)i;(void)a;(void)b;(void)c;(void)p;(void)d;(void)e;draws++;}
 static void C2D_SceneBegin(C3D_RenderTarget*t){assert(t==bottom);bottom_scenes++;}
 static void C3D_FrameEnd(int a){(void)a;ends++;}
 static u64 svcGetSystemTick(void){return 0;}

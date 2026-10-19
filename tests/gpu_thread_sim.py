@@ -19,6 +19,7 @@ repo = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--devtools", type=Path, default=Path.home() / "Development/PS1_3ds/devtools")
 parser.add_argument("--sim", type=Path, default=Path("/tmp/n3thread-sim"))
+parser.add_argument("--sdk", type=Path, help="current simulator fake3ds SDK")
 parser.add_argument("--reuse", action="store_true", help="reuse a copy prepared by this script")
 args = parser.parse_args()
 sim, devtools = args.sim.resolve(), args.devtools.resolve()
@@ -27,7 +28,7 @@ if not args.reuse:
     # logs and the other renderer checkouts are unrelated to this test.
     sim.mkdir(parents=True)
     for name in ("core_pica", "fake3ds", "states"):
-        shutil.copytree(devtools / "sim" / name, sim / name, symlinks=True,
+        shutil.copytree(args.sdk if name == "fake3ds" and args.sdk else devtools / "sim" / name, sim / name, symlinks=True,
             copy_function=shutil.copyfile, ignore=shutil.ignore_patterns(".git", "*.o", "*.d", "*.a"))
     for name in ("runner.c", "o3hw_off.ini"):
         shutil.copyfile(devtools / "sim" / name, sim / name)

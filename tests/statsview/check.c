@@ -30,6 +30,7 @@ static int g_syscore_pct=30, parses, saves, sw_pmu0=-1;
 static u32 keys;
 static touchPosition touch;
 char CdromId[10]="SCUS94900";
+static bool dev_enabled(void) { return false; }
 static bool log_linked(void) { return linked; }
 static const char *options_get(const char *s) {
  if (strstr(s,"frameskip")) return "auto";

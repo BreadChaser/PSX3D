@@ -150,7 +150,7 @@ static void publish_status(void)
 	         : running         ? "playing"
 	         : load_pending    ? "loading"
 	                           : "library",
-	         title, sw_state, running ? (renderer_is_gpu() ? "gpu" : "sw") : "", settings, err, cmd_id,
+	         title, sw_state, running ? "gpu" : "", settings, err, cmd_id,
 	         command_result, batch_active ? "true" : "false", batch_id, run_index, run_count, samples);
 	devnet_status(json);
 	status_at = osGetTime();

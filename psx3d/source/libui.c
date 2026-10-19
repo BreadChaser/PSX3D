@@ -615,7 +615,7 @@ static void settings_run(void)
 					break;
 				}
 			}
-			// Renderer changes can remove a row; rebuild before the next input.
+			// Option changes can remove a row; rebuild before the next input.
 			int selected = st.items[st.sel];
 			st.nitems = settings_items(st.items);
 			st.sel = settings_find(st.items, st.nitems, selected, S_DISPLAY, S_ADVANCED);

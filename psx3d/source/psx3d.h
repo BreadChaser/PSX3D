@@ -82,7 +82,7 @@ const char *options_cycle(int i, int dir);
 bool video_init(void);
 bool video_game_begin(void);
 void video_game_end(void);
-bool renderer_is_gpu(void);   // active renderer, independent of pending settings
+bool renderer_is_gpu(void);   // GPU game buffers active; false in the library
 void video_exit(void);
 void *video_framebuffer(unsigned width, unsigned height, size_t *pitch);
 void video_frame(const void *data, unsigned width, unsigned height, size_t pitch);
@@ -283,12 +283,12 @@ u32 input_control_color(int row);
 void input_control_cycle(int i, int dir);
 
 // presets.c: curated per-console serial profiles. Boolean/policy fields use
-// -1 to inherit the uncurated console defaults. Renderer selects the per-console default.
+// -1 to inherit the uncurated console defaults.
 typedef struct {
 	int fast_forward, rewind, touch_controls;
 	int needs_l2r2, needs_l3r3, needs_right_stick;
 	int touch_bindings[INPUT_TOUCH_N]; // -2 inherits needs_* shorthand; -1 hides.
-	// Add future renderer/frameskip/clock parameters with explicit inheritance.
+	// Add future frameskip/clock parameters with explicit inheritance.
 } game_preset_options_t;
 typedef struct {
 	const char *serial;

@@ -97,7 +97,7 @@ static bool option_is(const char *key, const char *value)
 
 static bool is_hidden(const char *key)
 {
-	// Renderer already lives on the Performance page. The 3D switches are
+	// Renderer selection has been removed. The 3D switches are
 	// owned by the frontend, never exposed as duplicate raw core options.
 	if (!strcmp(key, RENDERER_KEY) || !strcmp(key, "pcsx_rearmed_psx3d_stereo") ||
 	    !strcmp(key, "pcsx_rearmed_psx3d_widescreen")) return true;
@@ -303,10 +303,6 @@ static const char *const player_names[][2] = {
 	{ "pcsx_rearmed_display_info", "Debug: core messages" },
 	{ "pcsx_rearmed_alt_flip", "Picture timing" },
 	{ "pcsx_rearmed_gpu_slow_llists", "Careful drawing order" },
-	{ "pcsx_rearmed_screen_centering", "Picture position" },
-	{ "pcsx_rearmed_screen_centering_x", "Move picture sideways" },
-	{ "pcsx_rearmed_screen_centering_y", "Move picture up or down" },
-	{ "pcsx_rearmed_screen_centering_h_adj", "Adjust picture height" },
 	{ "pcsx_rearmed_spu_reverb", "Sound echo" },
 	{ "pcsx_rearmed_nocdaudio", "Disc music" }, { "pcsx_rearmed_noxadecoding", "Disc voices and effects" },
 	{ "pcsx_rearmed_analog_axis_modifier", "Stick response" },
@@ -382,10 +378,6 @@ static const char *const notes[][3] = {
 	{ "pcsx_rearmed_dithering", "PS1 colour shading", "Adds the PS1's fine colour pattern to shaded polygons. On follows the game; Always also enables it when the game turns it off." },
 	{ "pcsx_rearmed_alt_flip", "Usually leave Auto", "Choose when to capture the game's picture. Try Early or Late only if a game shows incomplete pictures or flicker." },
 	{ "pcsx_rearmed_gpu_slow_llists", "May be slower", "Follow the game's drawing order more closely. Leave Auto unless a game needs this to draw correctly." },
-	{ "pcsx_rearmed_screen_centering", "Software renderer only", "Auto fixes uneven borders. Game-controlled follows the game's position. No borders crops the border. Manual enables the position adjustments below." },
-	{ "pcsx_rearmed_screen_centering_x", "Manual position only", "Move the game picture left or right." },
-	{ "pcsx_rearmed_screen_centering_y", "Manual position only", "Move the game picture up or down." },
-	{ "pcsx_rearmed_screen_centering_h_adj", "Manual position only", "Change the game picture's height." },
 	{ "pcsx_rearmed_spu_reverb", "Off can improve speed", "Play the PS1's echo effect. Off sounds drier and can help Old 3DS keep up." },
 	{ "pcsx_rearmed_nocdaudio", "Usually keep On", "Play music stored as audio tracks on the game disc." },
 	{ "pcsx_rearmed_noxadecoding", "Usually keep On", "Play compressed voices, music and effects stored on the game disc." },

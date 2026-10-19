@@ -388,10 +388,8 @@ static const char *const own_help[][3] = {
 	{ "Sound", NULL, "Set game audio smoothing, menu sounds and library music." },
 	{ "General", NULL, "Choose whether to continue games automatically, or restore defaults." },
 	{ "Advanced", NULL, "Extra choices for games that need help to run correctly." },
-	{ "Renderer", "Reopen the game to apply", "Default for games without an override or preset. Old 3DS uses GPU (experimental); New 3DS uses Software. GPU may draw some games incorrectly." },
 	{ "Screen mode", "Widescreen may be slower", "4:3 keeps the original shape. Stretch fills the screen. Widescreen shows a wider 3D view. Saved per game during play; library choices set the default." },
-	{ "3D", "New 3DS only", "Screen depth puts the picture behind the screen when you raise the 3D slider. Software has a Full 3D test with debug=1. Affects every game." },
-	{ "Half-height 3D (faster)", "Software renderer only", "Draw fewer lines in 3D scenes to improve speed. Text, menus and 2D pictures stay sharp. This is separate from the 3D slider. Affects every game." },
+	{ "3D", "New 3DS only", "Screen depth puts the picture behind the screen when you raise the 3D slider. Affects every game." },
 	{ "Smooth audio when slow", "Affects every game", "Keep audio flowing when a game runs slowly; music and voices slow down with it." },
 	{ "Smoothing", "Affects every game", "Soften enlarged pixels. Turn off for a sharper picture." },
 	{ "Show FPS", "Affects every game", "Off hides the frame rate. FPS shows it beside touch controls; Detailed shows speed measurements. Tap the bottom-screen footer to cycle views." },
@@ -409,10 +407,6 @@ static const char *const own_help[][3] = {
 
 void ui_help_for(float y0, const char *name)
 {
-	if (config_in_game() && !strcmp(name, "Renderer")) {
-		ui_help_panel(y0, name, "Reopen the game to apply", "Saved for this game. Software uses the CPU; GPU (experimental) uses the graphics chip and may draw some games incorrectly.");
-		return;
-	}
 	if (config_in_game() && !strcmp(name, "Reset to defaults")) {
 		ui_help_panel(y0, name, "This game only", "Remove this game's overrides and use its preset and library defaults again. Saves and cheats are kept. Shared settings are kept. Asks for confirmation.");
 		return;

@@ -25,7 +25,7 @@ const emu_frontend_sample *emu_frontend_stats(void) { static emu_frontend_sample
 bool sw_prof, sw_stats, sw_fs1, sw_fs3, sw_noskip, sw_nosputhread, sw_acap;
 bool sw_nogputhread, sw_aa, sw_showright, sw_sbs, sw_gpu_async, sw_gpu_flush;
 float sw_slider;
-int sw_state = -1, sw_renderer = -1, sw_pmu0 = -1, sw_pmu1 = -1, sw_gldbg, sw_vramdump;
+int sw_state = -1, sw_pmu0 = -1, sw_pmu1 = -1, sw_gldbg, sw_vramdump;
 char sw_opt[8][48], sw_cdra[8], sw_clock[8];
 static u64 mock_ms;
 static char wire[16384], response[512], status[4096];
@@ -66,8 +66,6 @@ void debug_parse_switch(const char *word)
 {
 	if (!strncmp(word, "state=", 6))
 		sw_state = atoi(word + 6);
-	if (!strcmp(word, "renderer=sw"))
-		sw_renderer = 1;
 	if (!strcmp(word, "rtt=old")) sw_gldbg = (sw_gldbg | 262144) & ~1048576;
 	if (!strcmp(word, "rtt=new")) sw_gldbg = (sw_gldbg & ~262144) | 1048576;
 	if (!strcmp(word, "rtt=auto")) sw_gldbg &= ~(262144 | 1048576);
@@ -84,8 +82,6 @@ void debug_parse_switch(const char *word)
 	if (!strcmp(word, "pica_prims_copy")) pica_prims |= 1;
 	if (!strcmp(word, "pica_prims_clip")) pica_prims |= 2;
 	if (!strcmp(word, "pica_prims_round")) pica_prims |= 4;
-	if (!strcmp(word, "renderer=gpu"))
-		sw_renderer = 0;
 }
 void covers_remote_enable(bool enabled) { (void)enabled; }
 void libui_select_title(const char *title) { (void)title; }
@@ -175,7 +171,7 @@ int main(void)
 	        "state=2 renderer=sw warmup=0 seconds=1 shot=0",
 	        false);
 	assert(batch_active && strstr(response, "started"));
-	assert(dev_next_game(path, save, title) && sw_renderer == 0 && sw_state == 2);
+	assert(dev_next_game(path, save, title) && sw_state == 2);
 	assert(!strcmp(save, "Crash Bandicoot (USA)"));
 	dev_game_started(title, true);
 	sample(1000, 1);
