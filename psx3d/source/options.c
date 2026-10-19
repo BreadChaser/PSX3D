@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "psx3d.h"
+#include "clip.h"
 
 #define MAX_OPTIONS 128
 #define MAX_VALUES  64
@@ -213,6 +214,12 @@ void options_fast_forward(bool on)
 
 const char *options_get(const char *key)
 {
+	// Developer clips use synchronous sound/CD. Keep normal defaults intact.
+	if ((clip_enabled || clip_requested >= 0) &&
+	    (!strcmp(key, "pcsx_rearmed_spu_thread") || !strcmp(key, "pcsx_rearmed_cd_readahead")))
+		return !strcmp(key, "pcsx_rearmed_spu_thread") ? "disabled" : "0";
+	const char *recorded = clip_option(key);
+	if (recorded) return recorded;
 	if (!g_new3ds && !strcmp(key, "pcsx_rearmed_psx3d_stereo"))
 		return "disabled";
 	if (!strcmp(key, "pcsx_rearmed_gpu_thread_rendering") && (!g_new3ds || sw_nogputhread))
@@ -416,4 +423,20 @@ const char *options_impact(int i)
 		if (!strcmp(notes[n][0], o->key))
 			return notes[n][1];
 	return NULL;
+}
+
+// Full effective option manifest, including hidden core options. Clip replay
+// restores determinism options; presentation options remain benchmark choices.
+bool options_clip_snapshot(char *out, size_t size)
+{
+    size_t used = 0;
+    out[0] = 0;
+    for (int i = 0; i < nopts; i++) {
+        const char *value = options_get(opts[i].key);
+        if (!value) continue;
+        int n = snprintf(out + used, size - used, "%s=%s\n", opts[i].key, value);
+        if (n < 0 || (size_t)n >= size - used) return false;
+        used += n;
+    }
+    return true;
 }

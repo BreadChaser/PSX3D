@@ -69,6 +69,20 @@ class Protocol(unittest.TestCase):
         with self.assertRaises(ControlError):
             self.client.request('set foo=1\nexit')
 
+    def test_recording_archive(self):
+        import psx3dctl
+        self.assertEqual(self.client.request('recordings Crash')['recordings'], [1])
+        self.assertEqual(self.client.request('get recordings/Crash/1.inp'), b'input fixture')
+        with patch.object(psx3dctl, 'MAX_RESPONSE', 8*1024*1024):
+            data = self.client.request('get recordings/Crash/1.state')
+        self.assertEqual(len(data), 4456448)
+        self.assertEqual(data, bytes([42])*4456448)
+        for name in ('recordings/../1.inp','recordings/Crash/../1.state','recordings/Crash/1.inp.tmp'):
+            with self.assertRaisesRegex(ControlError, 'invalid recording filename'):
+                self.client.request('get '+name)
+        with self.assertRaisesRegex(ControlError, 'invalid recording title'):
+            self.client.request('recordings ../config')
+
     def test_local_server_and_bench_template(self):
         with tempfile.TemporaryDirectory() as d:
             cia = Path(d) / 'test.cia'; cia.write_bytes(b'cia-example')

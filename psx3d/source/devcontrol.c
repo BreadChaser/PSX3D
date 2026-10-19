@@ -2,6 +2,7 @@
 #define _GNU_SOURCE
 #endif
 #include "devnet.h"
+#include "clip.h"
 #include <ctype.h>
 #include <malloc.h>
 #include <stdio.h>
@@ -39,7 +40,7 @@ void dev_authorize(void)
 	if (!dev_remote) dev_update_url[0] = 0;
 }
 bool dev_enabled(void) { return (dev_remote && dev_token[0]) || dev_bench; }
-bool dev_batch_active(void) { return batch_active; }
+bool dev_batch_active(void) { return batch_active || clip_active || clip_replay_session; }
 static void finish_batch(bool ok);
 static void report_run(const char *outcome);
 void dev_interrupt(void)
@@ -111,6 +112,30 @@ static unsigned linear_free(void)
 extern int psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay;
 extern int psx3d_dyn_lookup;
 
+/* Input replay integration: this block is self-contained for combined builds. */
+bool emu_record_start(void);
+static void clip_status_json(char *out, size_t size)
+{
+    snprintf(out,size,",\"record\":%s,\"record_seconds\":%d,\"replay\":%d,"
+        "\"replay_frame\":%u,\"replay_frames\":%u,\"replay_done\":%s,"
+        "\"replay_checks\":%u,\"replay_divergent\":%u,\"replay_checksum_interval\":60",
+        clip_enabled?"true":"false",clip_seconds,clip_requested,clip_status.frame,
+        clip_status.frames,clip_status.done?"true":"false",clip_status.checks,clip_status.first_divergent);
+}
+static bool clip_command(const char *command, const char *args, bool playing)
+{
+    if (strcmp(command,"record")) return false;
+    if (batch_active || clip_active) error_reply("clip/batch already active");
+    else if (!strcmp(args,"start")) {
+        if (playing && emu_record_start()) { ui_request=DEV_UI_RESUME; dev_reply("{\"ok\":true,\"recording\":true}"); }
+        else error_reply("record start requires game loaded with record=on");
+    } else if (!strcmp(args,"on") || !strcmp(args,"off")) {
+        if (playing) error_reply("enable recording in library, then load game");
+        else { clip_enabled=!strcmp(args,"on"); dev_reply("{\"ok\":true}"); }
+    } else error_reply("record on|off (library) or record start (game)");
+    return true;
+}
+/* End input replay integration. */
 static void publish_status(void)
 {
 	if (!dev_remote)
@@ -140,6 +165,7 @@ static void publish_status(void)
 	p += sprintf(p, ",\"skipgate\":\"%s\"", psx3d_skipgate ? "new" : "old");
 	p += sprintf(p, ",\"texmask\":\"%s\",\"texmemo\":\"%s\"",
 	             pica_texmask ? "new" : "old", pica_texmemo ? "new" : "old");
+	clip_status_json(p, sizeof(settings)-(size_t)(p-settings)); p+=strlen(p);
 	sprintf(p, ",\"rtt\":\"%s\",\"free_heap\":%u,\"free_linear\":%u",
 	        sw_gldbg & 262144 ? "old" : sw_gldbg & 1048576 ? "new" : "auto", heap_free(), linear_free());
 	snprintf(json, sizeof(json),
@@ -202,7 +228,8 @@ static void report_run(const char *outcome)
 		else
 			fputs("\tNA", tsv);
 	}
-	fprintf(tsv, "\t%s\n", runs[run_index]);
+	fprintf(tsv, "\t%u\t%u\t%u\t%s\n", clip_status.replay?clip_status.frame:0,
+	        clip_status.replay?clip_status.checks:0,clip_status.replay?clip_status.first_divergent:0,runs[run_index]);
 	fflush(tsv);
 	fprintf(markdown, "| %d | %s | %.2f | %.1f | %.2f | %.3f | %u |\n", run_index + 1, outcome,
 	        weights[0] ? sums[0] / weights[0] : 0, weights[1] ? sums[1] / weights[1] : 0,
@@ -254,7 +281,7 @@ static bool begin_batch(const char *text)
 	fputs("batch\trun\tstatus\tsamples\tblack_samples", tsv);
 	for (int i = 0; i < DEV_METRICS; i++)
 		fprintf(tsv, "\t%s", dev_columns[i]);
-	fputs("\trequest\n", tsv);
+	fputs("\treplay_frames\treplay_checks\treplay_divergent\trequest\n", tsv);
 	fflush(tsv);
 	fprintf(markdown,
 	        "# PSX3D batch %s (%s 3DS)\n\n| Run | Status | FPS | Speed %% | Emu ms | M cycles/frame | Black "
@@ -356,7 +383,9 @@ bool dev_tick(bool playing)
 				args++;
 		} else
 			args = command + strlen(command);
-		if (!strcmp(command, "ui")) {
+		if (clip_active && strcmp(command,"quit") && strcmp(command,"exit") && strcmp(command,"shot")) {
+			error_reply("clip active; quit to cancel before changing settings/UI");
+		} else if (!strcmp(command, "ui")) {
 			char *option = strchr(args, ' ');
 			if (option) *option++ = 0;
 			int screen = !strcmp(args, "library") ? DEV_UI_LIBRARY :
@@ -389,6 +418,7 @@ bool dev_tick(bool playing)
 				}
 				dev_reply("{\"ok\":true}");
 			}
+		} else if (clip_command(command,args,playing)) {
 		} else if (!strcmp(command, "load")) {
 			ui_request = DEV_UI_NONE;
 			covers_remote_enable(false);
@@ -422,14 +452,14 @@ bool dev_tick(bool playing)
 				}
 			}
 		} else if (!strcmp(command, "set")) {
-			if (batch_active || !playing || !runtime_set(args))
+			if (clip_active || batch_active || !playing || !runtime_set(args))
 				error_reply("setting requires load, or batch active/no game");
 			else
 				dev_reply("{\"ok\":true}");
 		} else if (!strcmp(command, "savestate") || !strcmp(command, "loadstate")) {
 			char *end;
 			long slot = strtol(args, &end, 10);
-			if (!playing || batch_active || !*args || *end || slot < 0 || slot > 9)
+			if (!playing || clip_active || batch_active || !*args || *end || slot < 0 || slot > 9)
 				error_reply("state requires game, idle batch, slot 0..9");
 			else if (!emu_debug_state(slot, !strcmp(command, "savestate")))
 				error_reply("state operation failed");
@@ -583,7 +613,7 @@ void dev_game_started(const char *title, bool state_ok)
 	snprintf(current_title, sizeof(current_title), "%s", title);
 	devnet_sample(NULL, true);
 	run_start = osGetTime();
-	sample_start = 0;
+	sample_start = clip_status.replay ? run_start : 0;
 	if (!state_ok) {
 		snprintf(last_error, sizeof(last_error), "requested state failed to load");
 		change = true;
@@ -702,14 +732,16 @@ void dev_sample(const statsview_sample *s, const char *probe, int top_lum, doubl
 	samples++;
 	if ((m.v[21] >= 0 && m.v[21] <= 1) || (top_lum >= 0 && top_lum <= 2))
 		black_samples++;
-	if (m.ms - sample_start >= (u64)seconds * 1000) {
+	if (clip_status.replay ? clip_status.done : m.ms - sample_start >= (u64)seconds * 1000) {
 		if (batch_shot) {
 			char path[PATH_LEN];
 			snprintf(path, sizeof(path), PSX3D_DIR "/bench/%s-%02d.png", batch_id, run_index + 1);
 			if (!devnet_shot(path, false))
 				snprintf(last_error, sizeof(last_error), "screenshot allocation failed");
 		}
-		report_run("ok");
+		bool replay_ok=!clip_status.replay || (!clip_status.failed && clip_status.done);
+		report_run(replay_ok?"ok":"replay_diverged");
+		if (!replay_ok) { finish_batch(false); change=true; publish_status(); return; }
 		run_index++;
 		if (run_index < run_count) {
 			strcpy(load_line, runs[run_index]);

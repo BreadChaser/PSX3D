@@ -2,6 +2,8 @@
 // thread. All sockets are nonblocking: libctru SOC shares an IPC session, so even
 // a blocking select/poll in this thread could stall another subsystem.
 #include "devnet.h"
+#include "clip.h"
+#include <dirent.h>
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -345,6 +347,44 @@ static void serve_client(int fd)
 		free(s);
 		return;
 	}
+	/* Recording archive commands are read-only and rooted in recordings/. */
+	if (!strncmp(command,"recordings ",11)) {
+		const char *title=command+11;
+		char probe[256]; snprintf(probe,sizeof(probe),"recordings/%s/1.inp",title);
+		if (!clip_archive_name(probe)) { send_json(fd,"{\"error\":\"invalid recording title\"}"); return; }
+		char path[PATH_LEN]; snprintf(path,sizeof(path),PSX3D_DIR "/recordings/%s",title);
+		DIR *dir=opendir(path);
+		if (!dir) { send_json(fd,"{\"error\":\"recording folder missing\"}"); return; }
+		char json[12288]="{\"ok\":true,\"recordings\":["; size_t used=strlen(json); unsigned count=0;
+		struct dirent *entry;
+		while ((entry=readdir(dir))) {
+			snprintf(probe,sizeof(probe),"recordings/%s/%s",title,entry->d_name);
+			if (!clip_archive_name(probe) || !strstr(entry->d_name,".inp")) continue;
+			if (used+32>=sizeof(json)) break;
+			used+=snprintf(json+used,sizeof(json)-used,"%s%u",count++?",":"",(unsigned)strtoul(entry->d_name,NULL,10));
+		}
+		closedir(dir);
+		snprintf(json+used,sizeof(json)-used,"],\"truncated\":%s}",entry?"true":"false");
+		send_json(fd,json); return;
+	}
+	if (!strncmp(command,"get recordings/",15)) {
+		const char *name=command+4;
+		if (!clip_archive_name(name)) { send_json(fd,"{\"error\":\"invalid recording filename\"}"); return; }
+		char path[PATH_LEN]; snprintf(path,sizeof(path),PSX3D_DIR "/%s",name);
+		FILE *f=fopen(path,"rb");
+		if (!f) { send_json(fd,"{\"error\":\"recording missing\"}"); return; }
+		fseek(f,0,SEEK_END); long size=ftell(f); rewind(f);
+		if (size<=0 || size>8*1024*1024) { fclose(f); send_json(fd,"{\"error\":\"invalid recording size\"}"); return; }
+		char header[64]; int n=snprintf(header,sizeof(header),"FILE %ld\n",size);
+		bool ok=transfer(fd,header,n,true); char buffer[8192];
+		while (ok && size>0) {
+			size_t chunk=size>(long)sizeof(buffer)?sizeof(buffer):(size_t)size;
+			ok=fread(buffer,1,chunk,f)==chunk && transfer(fd,buffer,chunk,true);
+			size-=chunk;
+		}
+		fclose(f); return;
+	}
+	/* End recording archive commands. */
 	if (!strncmp(command, "get ", 4)) {
 		const char *name = command + 4;
 		bool valid = !strcmp(name, "results.tsv") || !strcmp(name, "results.md");

@@ -88,6 +88,8 @@ void debug_parse_switch(const char *word)
 }
 void covers_remote_enable(bool enabled) { (void)enabled; }
 void libui_select_title(const char *title) { (void)title; }
+#include "../../source/clip.h"
+bool emu_record_start(void) { return false; }
 #include "../../source/devcontrol.c"
 #include "../../source/devswitch.c"
 const char *const dev_columns[DEV_METRICS] = {
@@ -282,6 +284,31 @@ int main(void)
 	assert(dev_tick(true));
 	assert(!batch_active);
 	dev_game_ended(true);
+	// Replay samples include the first interval and final partial interval,
+	// ignore wall-time seconds/warmup, and stop a batch on divergence.
+	command("quit", false); dev_next_game(path,save,title);
+	assert(switches_set("record=on") && clip_enabled);
+	assert(switches_set("record=off") && !clip_enabled);
+	assert(!switches_set("replay=-1") && !switches_set("record_seconds=0"));
+	char conflict[]="game=Crash_Bandicoot state=2 replay=1";
+	assert(!switches_run(conflict,game,sizeof(game),err,sizeof(err)));
+	command("bench game=Crash_Bandicoot replay=1 warmup=999 seconds=1 shot=0",false);
+	assert(dev_next_game(path,save,title) && clip_requested==1 && sw_state==-1);
+	clip_status=(clip_result){.replay=true,.frames=150}; clip_replay_session=true;
+	mock_ms=10000; dev_game_started(title,true);
+	sample(11000,50); assert(samples==1 && batch_active);
+	sample(12000,50); assert(samples==2 && batch_active);
+	clip_status.frame=150; clip_status.checks=3; clip_status.done=true;
+	sample(12900,50); assert(samples==3 && !batch_active);
+	dev_game_ended(true); clip_close();
+	command("quit",false); dev_next_game(path,save,title);
+	command("bench game=Crash_Bandicoot replay=1 shot=0;game=Crash_Bandicoot replay=1 shot=0",false);
+	assert(dev_next_game(path,save,title));
+	clip_status=(clip_result){.replay=true,.frames=120}; clip_replay_session=true;
+	mock_ms=20000; dev_game_started(title,true);
+	sample(21000,50); clip_status.done=clip_status.failed=true; clip_status.first_divergent=60;
+	sample(22000,50); assert(!batch_active && run_index==0 && !load_pending);
+	dev_game_ended(true); clip_close();
 	dev_shutdown();
 	puts("developer lifecycle, batch averaging, state validation and safe failures: PASS");
 }

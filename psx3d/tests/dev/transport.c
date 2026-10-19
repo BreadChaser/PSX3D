@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 typedef uint8_t u8;
@@ -159,9 +160,20 @@ bool dev_update(const char *args, char *out, size_t n)
 	snprintf(out, n, "{\"ok\":false,\"error\":\"mock update rejected\"}");
 	return false;
 }
+#include "../../source/clip.h"
 #include "../../source/devnet.c"
 int main(void)
 {
+    mkdir("sdmc:",0777); mkdir("sdmc:/3ds",0777); mkdir(PSX3D_DIR,0777);
+    mkdir(PSX3D_DIR "/recordings",0777); mkdir(PSX3D_DIR "/recordings/Crash",0777);
+    FILE *clip=fopen(PSX3D_DIR "/recordings/Crash/1.inp","wb");
+    if (!clip) return 1;
+    fputs("input fixture",clip); fclose(clip);
+    clip=fopen(PSX3D_DIR "/recordings/Crash/1.state","wb");
+    if (!clip) return 1;
+    char chunk[8192]; memset(chunk,42,sizeof(chunk));
+    for (int k=0;k<544;k++) fwrite(chunk,1,sizeof(chunk),clip);
+    fclose(clip);
 	devnet_init();
 	if (server < 0 || !worker)
 		return 1;

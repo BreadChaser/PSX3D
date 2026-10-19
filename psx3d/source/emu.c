@@ -10,6 +10,8 @@
 #include "settings_menu.h"
 #include "statsview.h"
 #include "devtools.h"
+#include "clip.h"
+#include <sys/stat.h>
 #include "../../core/plugins/gpulib/psx3d_frameskip.h"
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
 
@@ -28,6 +30,65 @@ static bool has_audio;
 static retro_audio_buffer_status_callback_t abuf_status_cb;
 static struct retro_disk_control_callback disk;   // multi-disc games (via .m3u)
 static bool have_disk;
+static bool clip_game_enabled;
+static char clip_base[PATH_LEN];
+extern char CdromId[];
+bool options_clip_snapshot(char *out, size_t size);
+static void clip_game_path(char *out, size_t size)
+{
+    char title[101]; unsigned n = 0;
+    for (const unsigned char *p=(const unsigned char *)game_title; *p && n<100; p++)
+        title[n++] = ((*p>='A'&&*p<='Z')||(*p>='a'&&*p<='z')||(*p>='0'&&*p<='9')||*p=='-') ? *p : '_';
+    if (!n) title[n++]='_';
+    title[n]=0;
+    snprintf(out,size,PSX3D_DIR "/recordings/%s",title);
+}
+static bool clip_start(void);
+static void osd(const char *fmt, ...);
+bool emu_record_start(void)
+{
+    if (!clip_game_enabled || clip_active || clip_replay_session) return false;
+    bool ok=clip_start();
+    if (ok) osd("Recording test clip: %d s",clip_seconds);
+    else osd("Clip failed: %s",clip_status.message);
+    return ok;
+}
+static bool clip_start(void)
+{
+    char dir[160], path[180];
+    static char settings[CLIP_META-256];
+    for (int i=0;i<cheats_count();i++)
+        if (cheats_on(i) || cheats_forced(i)) {
+            snprintf(clip_status.message,sizeof(clip_status.message),"Disable cheats/native widescreen before recording");
+            return false;
+        }
+    if (have_disk && disk.get_eject_state && disk.get_eject_state()) {
+        snprintf(clip_status.message,sizeof(clip_status.message),"Insert the game disc before recording");
+        return false;
+    }
+    clip_game_path(dir,sizeof(dir));
+    mkdir(PSX3D_DIR "/recordings",0777); mkdir(dir,0777);
+    unsigned id;
+    for (id=1;id<=999999;id++) {
+        struct stat st;
+        snprintf(path,sizeof(path),"%s/%u.state",dir,id);
+        if (!stat(path,&st)) continue;
+        snprintf(path,sizeof(path),"%s/%u.inp",dir,id);
+        if (stat(path,&st)) break;
+    }
+    if (id>999999 || !options_clip_snapshot(settings,sizeof(settings))) {
+        snprintf(clip_status.message,sizeof(clip_status.message),"Clip folder full or too many core options");
+        return false;
+    }
+    size_t used=strlen(settings);
+    extern int psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay;
+    snprintf(settings+used,sizeof(settings)-used,"idle=%d\nidleptr=%d\nidledelay=%d\nrenderer=%s\nconsole=%s\napp_version=" PSX3D_VERSION "\nhalf3d=%d\ngldbg=%d\ngpu_async=%d\n",
+        psx3d_idle_skip,psx3d_idle_pointer,psx3d_idle_delay,renderer_is_gpu()?"gpu":"sw",g_new3ds?"new":"old",
+        g_cfg.half3d,sw_gldbg,sw_gpu_async);
+    snprintf(clip_base,sizeof(clip_base),"%s/%u",dir,id);
+    rewind_stop(); input_fast_forward_off(); sw_ff=false;
+    return clip_record(clip_base,(unsigned)(clip_seconds*fps_target+0.5),(unsigned)(fps_target*1000+0.5),CdromId,settings);
+}
 
 static void core_log(enum retro_log_level level, const char *fmt, ...)
 {
@@ -62,6 +123,28 @@ static void osd(const char *fmt, ...)
 	osd_frames = 120;
 	osd_dirty = true;
 	log_printf("osd: %s\n", osd_msg);
+}
+
+static void clip_osd(const char *text)
+{
+    snprintf(osd_msg,sizeof(osd_msg),"%s",text);
+    osd_frames=120; osd_dirty=true;
+}
+static int16_t input_state_cb(unsigned port, unsigned device, unsigned index, unsigned id);
+static __attribute__((noinline)) void clip_frame(void)
+{
+    clip_run();
+    // Capture uses raw gameplay input; normal gameplay must retain the batch gate.
+    retro_set_input_state(input_state_cb);
+    if (clip_status.frame%60==0 || clip_status.done) {
+        char message[128];
+        if (clip_status.done) snprintf(message,sizeof(message),"%.127s",clip_status.message);
+        else snprintf(message,sizeof(message),"%s: %u s left",clip_status.replay?"Replaying":"Recording",
+            (unsigned)((clip_status.frames-clip_status.frame+fps_target-1)/fps_target));
+        clip_osd(message);
+    }
+    // Completed capture releases all buffers but keeps its result in status.
+    if (clip_status.done && !clip_status.replay) clip_close();
 }
 
 static bool environment(unsigned cmd, void *data)
@@ -294,7 +377,7 @@ static void srm_save(bool force)
 	void *mem = retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
 	size_t size = retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
 
-	if (!mem || !size)
+	if (!mem || !size || clip_replay_session)
 		return;
 	if (!force && srm_shadow && memcmp(srm_shadow, mem, size) == 0)
 		return;
@@ -395,7 +478,7 @@ static void state_load(void)
 
 // ---------------------------------------------------------------- menu
 
-enum { M_RESUME, M_SAVE, M_LOAD, M_DISC, M_CHEATS, M_SETTINGS, M_RESET, M_EXIT,
+enum { M_RESUME, M_CLIP, M_SAVE, M_LOAD, M_DISC, M_CHEATS, M_SETTINGS, M_RESET, M_EXIT,
        M_DISPLAY, M_PERFORMANCE, M_CONTROL_GROUP, M_SOUND, M_GENERAL, M_ADVANCED,
        M_SCREEN, M_SMOOTH, M_3D, M_FPS,
        M_CONTROLS, M_CLICK_SIDE, M_AUDIO, M_SOUNDS, M_MUSIC, M_AUTOSAVE, M_REWIND,
@@ -415,6 +498,7 @@ static int menu_items(int *items, bool settings)
 	int n = 0;
 	if (!settings) {
 		for (int i = 0; i < M_DISPLAY; i++) {
+			if (i == M_CLIP && (!clip_game_enabled || clip_active || clip_replay_session)) continue;
 			if (i == M_DISC && !(have_disk && disk.get_num_images() > 1)) continue;
 			items[n++] = i;
 		}
@@ -479,7 +563,7 @@ static void menu_draw_top(void *ud)
 }
 
 static const char *const menu_names[M_COUNT] = {
-	[M_RESUME] = "Resume", [M_SAVE] = "Save state", [M_LOAD] = "Load state", [M_DISC] = "Swap disc", [M_CHEATS] = "Cheats",
+	[M_RESUME] = "Resume", [M_CLIP] = "Record test clip", [M_SAVE] = "Save state", [M_LOAD] = "Load state", [M_DISC] = "Swap disc", [M_CHEATS] = "Cheats",
 	[M_SETTINGS] = "Settings", [M_RESET] = "Reset game", [M_EXIT] = "Exit to library",
 	[M_DISPLAY] = "DISPLAY", [M_PERFORMANCE] = "PERFORMANCE", [M_CONTROL_GROUP] = "CONTROLS",
 	[M_SOUND] = "SOUND", [M_GENERAL] = "GENERAL", [M_ADVANCED] = "ADVANCED",
@@ -752,6 +836,7 @@ static bool menu_run(int initial_screen)
 				sfx_play(SFX_MOVE);
 			if (dir) {
 				switch (m.items[m.sel]) {
+				case M_CLIP: if ((k & KEY_A) && emu_record_start()) goto resume; break;
 				case M_RESUME: if (k & KEY_A) goto resume; break;
 				case M_SAVE:
 				case M_LOAD:
@@ -1016,6 +1101,15 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	else
 		set_game_name(path);
 	snprintf(game_title, sizeof(game_title), "%s", title ? title : game_name);
+	clip_close();
+	memset(&clip_status,0,sizeof(clip_status));
+	clip_game_enabled=clip_enabled;
+	if (clip_requested>=0 && sw_state>=0) { log_printf("clip: replay= and state= are mutually exclusive\n"); return false; }
+	if (clip_requested>=0) {
+		char dir[160]; clip_game_path(dir,sizeof(dir));
+		snprintf(clip_base,sizeof(clip_base),"%s/%d",dir,clip_requested);
+		if (!clip_open(clip_base,NULL)) { log_printf("clip: %s\n",clip_status.message); return false; }
+	}
 	game_frames = 0;
 	memset(&psx3d_skip, 0, sizeof(psx3d_skip));
 	psx3d_skip.class_timing = sw_pmuclass;
@@ -1030,6 +1124,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	if (!video_game_begin()) {
 		log_printf("renderer initialization failed\n");
 		config_game_end();
+		clip_close();
 		return false;
 	}
 	config_sync_stereo();
@@ -1042,6 +1137,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		retro_deinit();
 		core_initialized = false;
 		video_game_end();
+		clip_close();
 		return false;
 	}
 	// DualShock: starts in digital mode, games switch it to analog themselves,
@@ -1052,19 +1148,32 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	fps_target = av.timing.fps;
 	has_audio = audio_init(av.timing.sample_rate);
 	srm_load();
-	cheats_load(game_name);
-	sync_widescreen();
+	if (clip_replay_session) {
+		cheats_unload();
+		retro_cheat_reset();
+		config_set_ws_native(false);
+	} else {
+		cheats_load(game_name);
+		sync_widescreen();
+	}
 	psx3d_prof_on = sw_prof;
 
 	{
 		char prefix[PATH_LEN];
 		make_path(prefix, sizeof(prefix), PSX3D_STATE_DIR, "");
-		if (!dev_enabled() && g_cfg.autosave && sw_state < 0 && states_resume_prompt(prefix) && state_load_from(STATE_AUTO))
+		if (clip_requested<0 && !dev_enabled() && g_cfg.autosave && sw_state < 0 && states_resume_prompt(prefix) && state_load_from(STATE_AUTO))
 			osd("Continuing where you left off");
 	}
-	if (game_capabilities().rewind && gamecfg_int("rewind", 0))
+	if (clip_requested<0 && game_capabilities().rewind && gamecfg_int("rewind", 0))
 		rewind_start();
 	bool initial_state_ok = true;
+	clip_set_live_input(input_poll_cb,input_state);
+	if (clip_requested>=0) {
+		char expected[64]; snprintf(expected,sizeof(expected),"serial=%s\n",CdromId);
+		initial_state_ok=!strncmp(clip_metadata(),expected,strlen(expected)) && clip_restore();
+		sw_ff=false; input_fast_forward_off();
+		log_printf("clip: replay %d %s\n",clip_requested,initial_state_ok?"loaded":clip_status.message);
+	}
 	if (sw_state >= 0) {
 		state_slot = sw_state;
 		log_printf("test: slot %d %s\n", sw_state, (initial_state_ok = state_load_from(sw_state)) ? "loaded" : "failed");
@@ -1091,7 +1200,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	u64 stats_deadline = next_deadline + SYSCLOCK_ARM11;
 	aptHookCookie apt_cookie;
 	aptHook(&apt_cookie, game_apt, NULL);
-	while (aptMainLoop()) {
+	while (initial_state_ok && aptMainLoop()) {
 		if (dev_enabled() && dev_tick(true)) break;
 		// A disc swap may revoke a capability. Free its history at a safe point.
 		if (!game_capabilities().rewind && rewind_active()) rewind_stop();
@@ -1179,7 +1288,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			}
 			audio_muted = ff;
 			pmu_begin();
-			retro_run();
+			if (clip_active) clip_frame(); else retro_run();
 			pmu_end();
 			emulated++;
 			statsview_frame();
@@ -1276,7 +1385,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		if (repaint_top || repaint || game_frames == 120) {
 			// Capability/layout changes invalidate the next shown frame.
 			if (!game_capabilities().rewind && rewind_active()) rewind_stop();
-			if (touch_buttons_active() || g_cfg.show_fps)
+			if (touch_buttons_active() || g_cfg.show_fps || osd_frames)
 				bottom_backlight(true);
 			else if (game_frames >= 120 && g_cfg.bottom_off)
 				bottom_backlight(false);
@@ -1291,7 +1400,8 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			misc_ticks += svcGetSystemTick() - work_start - frame_pace - run_ticks - compose_ticks;
 		u64 report_start = psx3d_skip.timing ? svcGetSystemTick() : 0;
 		u64 now = end_work >= stats_deadline ? osGetTime() : fps_t0;
-		if (now - fps_t0 >= 1000) {
+		if (now - fps_t0 >= 1000 || (clip_replay_session && clip_status.done)) {
+			if (clip_replay_session && clip_status.done) { now=osGetTime(); if (now<=fps_t0) now=fps_t0+1; }
 			fps_measured = fps_frames * 1000.0f / (now - fps_t0);
 			double per_frame_ms = 1.0 / (emulated ? emulated : 1) / CPU_TICKS_PER_MSEC;
 			frontend_sample = (emu_frontend_sample){
@@ -1433,6 +1543,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		else if (psx3d_skip.enabled)
 			(sw_rtfswindow ? psx3d_skip_observe_window : psx3d_skip_observe)(&skip_control, (svcGetSystemTick() - t0) / (double)CPU_TICKS_PER_MSEC,
 				1000.0 / fps_target);
+		if (clip_replay_session && clip_status.done) break;
 	}
 
 	psx3d_skip.enabled = 0;
@@ -1443,7 +1554,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	pmu_stop();
 	log_printf("game: leaving\n");
 	rewind_stop();
-	if (!dev_enabled() && g_cfg.autosave)
+	if (!clip_replay_session && !dev_enabled() && g_cfg.autosave)
 		log_printf("auto-save: %s\n", state_save_to(STATE_AUTO) ? "written" : "failed");
 	bottom_backlight(true);
 	srm_save(false);
@@ -1454,6 +1565,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	retro_deinit();
 	core_initialized = false;
 	video_game_end();
+	clip_close();
 	return true;
 }
 

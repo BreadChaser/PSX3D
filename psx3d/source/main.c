@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include "psx3d.h"
 #include "devtools.h"
+#include "clip.h"
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
 
 // Main thread stack; the core warns below 1MB (dynarec recursion).
@@ -149,6 +150,7 @@ static void parse_switches(int argc, char **argv)
 		else if (!strncmp(a, "slider=", 7)) sw_slider = strtof(a + 7, NULL);
 		else if (!strcmp(a, "showright")) sw_showright = true;
 		else if (!strcmp(a, "sbs")) sw_sbs = true;
+		else if (clip_switch(a)) {}
 		else if (!strcmp(a, "prof")) sw_prof = true;
 		else if (!strcmp(a, "stats")) sw_stats = true;
 		else if (!strcmp(a, "o3ds")) sw_o3ds = true;
