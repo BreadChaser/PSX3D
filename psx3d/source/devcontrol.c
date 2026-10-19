@@ -4,6 +4,7 @@
 #include "devnet.h"
 #include "clip.h"
 #include "benchstate.h"
+#include "widescreen.h"
 #include <ctype.h>
 #include <errno.h>
 #include <malloc.h>
@@ -165,6 +166,7 @@ static void publish_status(void)
 	p += sprintf(p, ",\"build\":\"heavy-scenes-1\",\"rtfs\":%s,\"ff\":%s,\"frontend\":%s,\"floataudio\":%s", sw_rtfs ? "true" : "false", sw_ff ? "true" : "false", sw_frontend ? "true" : "false", sw_floataudio ? "true" : "false");
 	p += sprintf(p, ",\"fsmart\":\"%s\"", sw_fsmart ? "new" : "old");
 	p += sprintf(p, ",\"remote_game\":%s", remote_game ? "true" : "false");
+	p += sprintf(p, ",\"wsbundle\":\"%s\",\"wsscreen\":%d,\"ws_identity\":\"%s\"", sw_wsbundle ? "on" : "off", running ? config_screen_mode() : sw_wsscreen, ws_identity());
 	p += sprintf(p, ",\"version\":\"%s\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
 	p += sprintf(p, ",\"pica_prims\":%u,\"idle\":%d,\"idleptr\":%d,\"idledelay\":%d", pica_prims, psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay);
 	p += sprintf(p, ",\"skipgate\":\"%s\"", psx3d_skipgate ? "new" : "old");

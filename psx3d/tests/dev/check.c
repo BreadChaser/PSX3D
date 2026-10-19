@@ -18,6 +18,10 @@ typedef struct {
 	char title[256], cover_key[256];
 } game_t;
 static bool g_new3ds;
+bool sw_wsbundle = true;
+int sw_wsscreen = -1;
+int config_screen_mode(void) { return sw_wsscreen < 0 ? 0 : sw_wsscreen; }
+const char *ws_identity(void) { return "gte"; }
 static bool ui_active;
 bool settings_ui_key(const char *name) { return ui_active && !strcmp(name,"down"); }
 int sw_rtfscap, sw_rtfslevel;

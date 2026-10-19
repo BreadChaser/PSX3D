@@ -12,6 +12,14 @@
 #include <strings.h>
 #include <sys/stat.h>
 #include "psx3d.h"
+#include "widescreen.h"
+extern char CdromId[10];
+extern uint32_t CdromExeHash;
+extern void (*psx3d_widescreen_hook)(void);
+extern void (*psx3d_widescreen_state_hook)(void);
+extern void psx3d_patch_clear(uint32_t address, unsigned bytes);
+void *ws_memory(void) { return retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM); }
+void ws_invalidate(uint32_t a, unsigned n) { psx3d_patch_clear(a, n); }
 
 #define USER_DIR PSX3D_DIR "/cheats"
 #define DB_DIR   "romfs:/cheats"
@@ -233,6 +241,9 @@ static void save_on(void)
 
 void cheats_unload(void)
 {
+	psx3d_widescreen_hook = NULL;
+	psx3d_widescreen_state_hook = NULL;
+	ws_unload();
 	for (int i = 0; i < ncheats; i++) {
 		free(cheats[i].desc);
 		free(cheats[i].code);
@@ -247,6 +258,8 @@ void cheats_load(const char *key)
 	char path[PATH_LEN];
 	cheats_unload();
 	snprintf(game, sizeof(game), "%s", key);
+	ws_load("romfs:/widescreen", CdromId, CdromExeHash, g_new3ds);
+	psx3d_widescreen_state_hook = ws_state_loaded;
 
 /* Bounded truncation is intentional; preserve the validated release code layout. */
 #pragma GCC diagnostic push
@@ -339,23 +352,24 @@ void cheats_load(const char *key)
 	apply();
 }
 
-// The game's own widescreen code, if it has one: it makes the game draw a
-// wider view itself, so nothing is culled at the edges (unlike the GTE
-// squeeze). Turned on and off with the Screen setting, not saved.
+// Identification also happens after a disc swap/reset. Retire the old disc's
+// bundle before another executable can run, then resolve its exact identity.
+void cheats_disc_changed(void)
+{
+	psx3d_widescreen_hook = NULL;
+	psx3d_widescreen_state_hook = NULL;
+	ws_load("romfs:/widescreen", CdromId, CdromExeHash, g_new3ds);
+	psx3d_widescreen_state_hook = ws_state_loaded;
+	config_ws_sync();
+}
+
+// The Screen setting owns the complete curated bundle, independently of
+// editable/user cheats. No name matching and no region guessing.
 bool cheats_widescreen(bool on)
 {
-	int found = -1;
-	for (int i = 0; i < ncheats && found < 0; i++)
-		if (strcasestr(cheats[i].desc, "widescreen"))
-			found = i;
-	if (found < 0)
-		return false;
-	if (cheats[found].forced != on) {
-		cheats[found].forced = on;
-		apply();
-		log_printf("cheats: widescreen code %s (%s)\n", on ? "on" : "off", cheats[found].desc);
-	}
-	return true;
+	bool found = ws_enable(on && sw_wsbundle);
+	psx3d_widescreen_hook = on && sw_wsbundle && found ? ws_frame : NULL;
+	return sw_wsbundle && found;
 }
 
 // "Add code": ask for a name and the codes with the system keyboard, append

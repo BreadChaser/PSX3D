@@ -6,6 +6,7 @@
 #include <string.h>
 #include <errno.h>
 #include "psx3d.h"
+#include "widescreen.h"
 
 #define MAX_OVERRIDES 128
 
@@ -324,7 +325,9 @@ bool config_ws_fix(void) { return ws_fix; }
 // After the game's cheats load and whenever its screen mode changes.
 void config_ws_sync(void)
 {
-	ws_fix = in_game && cheats_widescreen(config_widescreen());
+	// Preset or console can rule widescreen out (2D games; costly on Old).
+	bool ok = in_game && ws_available() && game_capabilities().widescreen;
+	ws_fix = cheats_widescreen(ok && config_widescreen()) && ok;
 }
 
 int config_screen_mode(void)

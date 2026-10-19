@@ -859,6 +859,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		retro_cheat_reset();
 	} else
 		cheats_load(game_name);
+	if (sw_wsscreen >= 0) config_set_screen_mode(sw_wsscreen);
 	config_ws_sync();
 	psx3d_prof_on = sw_prof;
 

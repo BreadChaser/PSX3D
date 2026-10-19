@@ -20,6 +20,10 @@ bool switches_set(const char *word)
 	}
 	/* Recorder options apply to both startup and remote loads. */
 	if (clip_switch(word)) return true;
+	if (!strcmp(word, "wsbundle=on") || !strcmp(word, "wsbundle=off") ||
+	    !strcmp(word, "wsscreen=4:3") || !strcmp(word, "wsscreen=stretch") || !strcmp(word, "wsscreen=wide")) {
+		debug_parse_switch(word); return true;
+	}
 	if (!strncmp(word, "rtfscap=", 8)) {
         char *end; long n = strtol(word+8, &end, 10);
         if (!word[8] || *end || n < 4 || n > 5) return false;
@@ -144,6 +148,7 @@ bool switches_run(char *line, char *game, size_t len, char *error, size_t error_
 		local.saved = true;
 	}
 	clip_reset_request();
+	sw_wsbundle = true; sw_wsscreen = -1;
 	psx3d_idle_skip = 1; psx3d_idle_pointer = psx3d_idle_delay = 0;
 	sw_rtfslevel = -1; sw_rtfscap = 4; pica_submit = 7;
 	sw_rtfsdense = sw_rtfsmodel = sw_rtfswindow = sw_rtfs = sw_ff = sw_floataudio = false;

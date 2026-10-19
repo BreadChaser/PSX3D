@@ -154,6 +154,11 @@ static void parse_switches(int argc, char **argv)
 		else if (clip_switch(a)) {}
 		else if (!strcmp(a, "prof")) sw_prof = true;
 		else if (!strcmp(a, "stats")) sw_stats = true;
+		else if (!strcmp(a, "wsbundle=on")) sw_wsbundle = true;
+		else if (!strcmp(a, "wsbundle=off")) sw_wsbundle = false;
+		else if (!strcmp(a, "wsscreen=4:3")) sw_wsscreen = 0;
+		else if (!strcmp(a, "wsscreen=stretch")) sw_wsscreen = 1;
+		else if (!strcmp(a, "wsscreen=wide")) sw_wsscreen = 2;
 		else if (!strcmp(a, "o3ds")) sw_o3ds = true;
 		else if (!strcmp(a, "fs1")) sw_fs1 = true;
 		else if (!strcmp(a, "pmuclass=on")) sw_pmuclass = true;
@@ -236,6 +241,9 @@ static void parse_switches(int argc, char **argv)
 			sw_nonet = sw_nosound = sw_noirrst = sw_noaa = sw_nolcd = sw_nocovers = true;
 	}
 }
+
+bool sw_wsbundle = true;
+int sw_wsscreen = -1;
 
 void debug_parse_switch(const char *word)
 {

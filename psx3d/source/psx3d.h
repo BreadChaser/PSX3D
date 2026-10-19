@@ -215,6 +215,9 @@ const char *cheats_desc(int i);
 bool cheats_on(int i);
 void cheats_toggle(int i);
 bool cheats_widescreen(bool on);
+void cheats_disc_changed(void);
+extern bool sw_wsbundle;
+extern int sw_wsscreen;
 const char *cheats_add_dialog(void);
 bool cheats_forced(int i);
 
@@ -307,6 +310,8 @@ typedef struct {
 	int needs_l2r2, needs_l3r3, needs_right_stick;
 	int touch_bindings[INPUT_TOUCH_N]; // -2 inherits needs_* shorthand; -1 hides.
 	int frameskip; // -1: console default Auto, 0: Off, 1: Auto.
+	int widescreen; // 0 inherits, 1 supported, -1 unsupported; per console.
+	// Add future frameskip/clock parameters with explicit inheritance.
 } game_preset_options_t;
 typedef struct {
 	const char *serial;

@@ -9,6 +9,7 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include "../../source/psx3d.h"
+void cheats_disc_changed(void) {}
 #include "../../source/presets.c"
 #include "../../source/input.c"
 #include "../../source/config.c"
@@ -462,6 +463,7 @@ static void serial_config_checks(void)
   input_touch_disc_log(msg);
   assert(current_preset == &game_presets[i] && input_map_raw(10)==-2);
   assert(game_capabilities().fast_forward == (game_presets[i].old3ds.fast_forward != 0));
+  if (game_presets[i].old3ds.widescreen < 0) { assert(!game_capabilities().widescreen); g_new3ds=true; assert(!game_capabilities().widescreen); g_new3ds=false; }
  }
  input_touch_disc_log("CD-ROM ID: scus_944.23\n"); assert(current_preset);
  input_touch_disc_log("CD-ROM ID: SCUS944230\n"); assert(!current_preset);

@@ -27,6 +27,7 @@ game_preset_options_t game_capabilities(void)
 		.needs_l3r3 = NEEDS_ANALOG,
 		.needs_right_stick = g_new3ds ? 0 : NEEDS_ANALOG,
 		.touch_bindings = {-2, -2, -2, -2, -2, -2},
+		.widescreen = 1,
 	};
 	if (current_preset) {
 		game_preset_options_t p = g_new3ds ? current_preset->new3ds : current_preset->old3ds;
@@ -40,6 +41,7 @@ game_preset_options_t game_capabilities(void)
 		RESOLVE(needs_l2r2);
 		RESOLVE(needs_l3r3);
 		RESOLVE(needs_right_stick);
+		if (p.widescreen) result.widescreen = p.widescreen > 0;
 		for (int i = 0; i < INPUT_TOUCH_N; i++)
 			if (p.touch_bindings[i] != INPUT_BIND_PRESET)
 				result.touch_bindings[i] = p.touch_bindings[i];
@@ -82,4 +84,5 @@ void game_presets_disc_log(const char *message)
 				current_preset = &game_presets[i];
 				break;
 			}
+	cheats_disc_changed();
 }

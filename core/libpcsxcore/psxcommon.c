@@ -25,6 +25,13 @@
 #include "ppf.h"
 
 PcsxConfig Config;
+// Frontend-owned curated patches run at the same vblank boundary as cheats.
+void (*psx3d_widescreen_hook)(void);
+void (*psx3d_widescreen_state_hook)(void);
+void psx3d_patch_clear(uint32_t address, unsigned bytes)
+{
+	psxCpu->Clear(0x80000000u | address, bytes / 4);
+}
 
 int EmuInit() {
 	return psxInit();
@@ -49,6 +56,7 @@ void EmuShutdown() {
 
 void EmuUpdate() {
 	ApplyCheats();
+	if (psx3d_widescreen_hook) psx3d_widescreen_hook();
 
 	// reamed hack
 	{

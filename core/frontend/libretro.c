@@ -1334,6 +1334,7 @@ bool retro_serialize(void *data, size_t size)
 
 static bool disk_set_image_index(unsigned int index);
 
+extern void (*psx3d_widescreen_state_hook)(void);
 bool retro_unserialize(const void *data, size_t size)
 {
    int ret;
@@ -1343,6 +1344,8 @@ bool retro_unserialize(const void *data, size_t size)
       return false;
    if (CdromFrontendId != -1 && CdromFrontendId != disk_current_index)
       disk_set_image_index(CdromFrontendId);
+   if (psx3d_widescreen_state_hook)
+      psx3d_widescreen_state_hook();
    return true;
 }
 

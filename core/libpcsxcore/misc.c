@@ -42,6 +42,7 @@
 #endif
 
 char CdromId[10] = "";
+uint32_t CdromExeHash;
 char CdromLabel[33] = "";
 int  CdromFrontendId; // for frontend use
 
@@ -430,6 +431,7 @@ int CheckCdrom() {
 	FreePPFCache();
 	memset(CdromLabel, 0, sizeof(CdromLabel));
 	memset(CdromId, 0, sizeof(CdromId));
+	CdromExeHash = 0;
 	memset(exename, 0, sizeof(exename));
 	Config.PsxRegion = PSX_REGION_US;
 
@@ -504,6 +506,29 @@ int CheckCdrom() {
 		strcpy(CdromId, "SLUS99999");
 	} else
 		return -1;		// SYSTEM.CNF and PSX.EXE not found
+
+	// Revision discriminator: FNV-1a of the EXE header and declared text.
+	// Hash disc bytes (not patched RAM), so loading a state cannot change it.
+	READTRACK();
+	if (!memcmp(buf + 12, "PS-X EXE", 8)) {
+		uint32_t bytes = (unsigned char)buf[12 + 28] |
+			((uint32_t)(unsigned char)buf[12 + 29] << 8) |
+			((uint32_t)(unsigned char)buf[12 + 30] << 16) |
+			((uint32_t)(unsigned char)buf[12 + 31] << 24);
+		if (bytes <= 0x200000) {
+			CdromExeHash = 2166136261u;
+			bytes += 2048;
+			while (bytes) {
+				unsigned chunk = bytes < 2048 ? bytes : 2048;
+				for (i = 0; i < chunk; i++)
+					CdromExeHash = (CdromExeHash ^ (unsigned char)buf[12 + i]) * 16777619u;
+				bytes -= chunk;
+				if (!bytes) break;
+				incTime();
+				READTRACK();
+			}
+		}
+	}
 
 	if (CdromId[0] == '\0') {
 		len = strlen(exename);

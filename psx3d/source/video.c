@@ -1,7 +1,9 @@
 // Video: GPU scanout presentation; RGB24 movies retain the CPU staging path.
 #include <string.h>
+#include <math.h>
 #include <stdlib.h>
 #include "psx3d.h"
+#include "widescreen.h"
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
 #include "pica_shbin.h"
 #include "../../core/libpcsxcore/psx3d_depth.h"
@@ -374,10 +376,10 @@ static void draw_game_tex(C3D_Tex *t, float eye_dx)
 	subtex.top = 1.0f;
 	subtex.bottom = 1.0f - (float)frame_h / TEX_H;
 
-	// 4:3 like a TV, or the full 400x240 when the widescreen hack makes
-	// 3D games draw a 5:3 view
-	dw = config_screen_mode() ? 400 : 320;   // stretch and widescreen fill the screen
-	dh = 240;
+	// 4:3 like a TV, full-screen Stretch/GTE fallback, or the native
+	// bundle aspect fitted into the 400x240 display.
+	dw = config_screen_mode() == 2 ? fminf(400, 240 * ws_aspect()) : config_screen_mode() ? 400 : 320;
+	dh = config_screen_mode() == 2 ? dw / ws_aspect() : 240;
 	x = (400 - dw) / 2 + eye_dx;
 	y = (240 - dh) / 2;
 
@@ -398,7 +400,8 @@ static void draw_game(float eye_dx)
 		return;   // (PICA_PIC_NONE: the display is off, the screen stays black)
 	Tex3DS_SubTexture st = { (u16)w, (u16)h, l, tp, r, b };
 	C2D_Image img = { t, &st };
-	float dw = config_screen_mode() ? 400 : 320, dh = 240;
+	float dw = config_screen_mode() == 2 ? fminf(400, 240 * ws_aspect()) : config_screen_mode() ? 400 : 320;
+	float dh = config_screen_mode() == 2 ? dw / ws_aspect() : 240;
 	C3D_TexSetFilter(t, g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST, g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST);
 	// the picture's alpha is the PS1 mask bit (0 for most pixels): copy it
 	// unblended and untested. The renderer leaves its own blending and alpha
