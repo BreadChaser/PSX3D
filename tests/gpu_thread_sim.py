@@ -180,6 +180,11 @@ def run(case):
         assert text.count("thread stress save/restore") == 6, path
         assert text.count("gpu thread: PICA enabled") >= 3, path
     content = content_frames(trace)
+    # Keep completed case evidence even if a later run fails or is interrupted.
+    (sim / f"thread-{state}-{mode}.json").write_text(json.dumps({
+        "state": state, "mode": mode, "draw_hash": hashed[1],
+        "frames": content,
+    }, indent=2) + "\n")
     trace.unlink()
     return state, mode, hashed[1], content
 
