@@ -912,6 +912,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		if (!game_frames) { // resume/suspend/menu: start a fresh timing estimate
 			memset(&skip_control, 0, sizeof(skip_control));
 			memset(&smart_control, 0, sizeof(smart_control));
+			picture_last = picture_intervals = 0; picture_sum = picture_square = 0;
 			psx3d_skip.phase = psx3d_skip.streak = 0;
 			next_deadline = now_t;
 		}
@@ -921,6 +922,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			next_deadline = now_t;
 			memset(&skip_control, 0, sizeof(skip_control));
 			memset(&smart_control, 0, sizeof(smart_control));
+			picture_last = picture_intervals = 0; picture_sum = picture_square = 0;
 			psx3d_skip.phase = psx3d_skip.streak = 0;
 		}
 		previous_special = (sw_ff || (!dev_batch_active() && input_fast_forward())) || input_rewind();
@@ -1044,6 +1046,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			stats_deadline = next_deadline + SYSCLOCK_ARM11;
 			memset(&skip_control, 0, sizeof(skip_control));
 			memset(&smart_control, 0, sizeof(smart_control));
+			picture_last = picture_intervals = 0; picture_sum = picture_square = 0;
 			psx3d_skip.phase = psx3d_skip.streak = 0;
 			held = presented = emulated = 0;
 			pace_ticks = audio_ticks = misc_ticks = 0;

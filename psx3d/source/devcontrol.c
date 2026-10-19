@@ -752,8 +752,11 @@ void dev_sample(const statsview_sample *s, const char *probe, int top_lum, doubl
 	}
 	for (int i = 0; i < DEV_METRICS; i++)
 		if (m.v[i] >= 0) {
-			sums[i] += m.v[i] * s->elapsed;
-			weights[i] += s->elapsed;
+			// Presentation moments are weighted by intervals, so variance is
+			// exact across a batch even when cadence changes between samples.
+			double weight = (i == 85 || i == 86) ? front->picture_intervals : s->elapsed;
+			sums[i] += m.v[i] * weight;
+			weights[i] += weight;
 		}
 	samples++;
 	if ((m.v[21] >= 0 && m.v[21] <= 1) || (top_lum >= 0 && top_lum <= 2))
