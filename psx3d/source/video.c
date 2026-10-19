@@ -171,8 +171,23 @@ bool video_game_begin(void)
 
 void video_game_end(void)
 {
+	// A pause-menu exit can abandon an open offscreen frame; a held frame
+	// can leave PICA's vertex layout/program bound without any C2D pass.
+	// Submit and retire all readers before releasing their game buffers.
+	if (hardware_active && gpu_frame) {
+		pica_prepare_present();
+		video_hold();
+	}
 	video_gpu_idle();
 	if (hardware_active) {
+		// Bind the UI while PICA's shader is still alive: citro3d compares
+		// the old program's DVLP when binding another shader. Library frames
+		// no longer enter the renderer_is_gpu() restore path below.
+		C2D_Prepare();
+		C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
+		C3D_AlphaTest(false, GPU_ALWAYS, 0);
+		C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
+			GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA);
 		pica_exit();
 		hardware_active = false;
 		music_reload();
