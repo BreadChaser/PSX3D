@@ -512,7 +512,9 @@ static const char *menu_label(int i, void *ud)
 static const char *menu_value(int i, void *ud)
 {
 	menu_t *m = ud;
-	return m->items[i] == M_DISC ? m->disc : m->items[i] == M_SETTINGS ? ">" : NULL;
+	int item = m->items[i];
+	// Every entry that opens another screen shows the same arrow.
+	return item == M_DISC ? m->disc : item == M_SAVE || item == M_LOAD || item == M_CHEATS || item == M_SETTINGS ? ">" : NULL;
 }
 static void menu_draw_bottom(void *ud)
 {
@@ -520,11 +522,13 @@ static void menu_draw_bottom(void *ud)
 	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
 	ui_menu_header("MENU", "this game");
 	if (have_disk && disk.get_num_images)
-		snprintf(m->disc, sizeof(m->disc), "disc %u of %u", menu_disc + 1, disk.get_num_images());
-	flist_draw(&m->fl, m->nitems, m->sel, 0, 40, 320, 24, 7, menu_label, menu_value, m,
+		snprintf(m->disc, sizeof(m->disc), "Disc %u of %u", menu_disc + 1, disk.get_num_images());
+	// Eight rows fit, so Exit stays visible when Swap disc is listed.
+	flist_draw(&m->fl, m->nitems, m->sel, 0, 40, 320, 22, 8, menu_label, menu_value, m,
 			   menu_accent_cols[m->sel & 3]);
 	ui_text_ex(NULL, 160, 222, 0.42f, C2D_Color32(110, 120, 160, 255), C2D_AlignCenter,
-			   "A select    B resume");
+			   m->items[m->sel] == M_DISC ? "Left/Right choose disc    A insert    B resume"
+										  : "A select    B resume");
 }
 static void sync_widescreen(void)
 {
@@ -580,8 +584,8 @@ static bool menu_run(int initial_screen)
 		if (k & KEY_TOUCH) {
 			touchPosition tp;
 			hidTouchRead(&tp);
-			int row = flist_row_at(&m.fl, 40, 24, tp.py);
-			if (tp.py >= 40 && tp.py < 208 && row >= 0 && row < m.nitems) {
+			int row = flist_row_at(&m.fl, 40, 22, tp.py);
+			if (tp.py >= 40 && tp.py < 216 && row >= 0 && row < m.nitems) {
 				if (row == m.sel)
 					k |= KEY_A;
 				else {
@@ -666,7 +670,7 @@ static bool menu_run(int initial_screen)
 				}
 				break;
 			}
-		flist_update(&m.fl, m.sel, m.nitems, 7);
+		flist_update(&m.fl, m.sel, m.nitems, 8);
 		ui_begin();
 		video_present_vsync(true, menu_draw_top, menu_draw_bottom, &m);
 	}
