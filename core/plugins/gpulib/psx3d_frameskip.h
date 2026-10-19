@@ -33,9 +33,9 @@ static inline unsigned psx3d_skip_period(unsigned level)
   static const unsigned n[] = {1, 4, 3, 2, 3, 4, 5, 6};
   return n[level < 8 ? level : 7];
 }
-static inline unsigned psx3d_skip_decide(psx3d_skip_state *s)
+/* Keep policy arithmetic out of the core/emu hot loops, especially Off. */
+static __attribute__((noinline, unused)) unsigned psx3d_smart_decide(psx3d_skip_state *s)
 {
-  if (s->smart) {
     unsigned skip = s->budget_debt > 0 && s->streak < s->max_skips &&
       s->picture_credit < 1000.0 / 15;
     if (skip) s->streak++; else s->streak = 0;
@@ -44,7 +44,10 @@ static inline unsigned psx3d_skip_decide(psx3d_skip_state *s)
       if (s->picture_credit < 0) s->picture_credit = 0;
     }
     return skip;
-  }
+}
+static inline unsigned psx3d_skip_decide(psx3d_skip_state *s)
+{
+  if (s->smart) return psx3d_smart_decide(s);
   unsigned period = s->denominator ? s->denominator : psx3d_skip_period(s->level);
   s->phase += s->denominator ? s->numerator : psx3d_skip_draw(s->level);
   unsigned skip = s->phase < period && s->streak < (s->max_skips ? s->max_skips : 4);
@@ -225,7 +228,7 @@ static inline void psx3d_skip_observe_dense(psx3d_skip_controller *c,
  * wall-time accumulator admits at least 15 pictures/s whenever game flips
  * allow it, accepting slower emulation when that floor cannot fit at 100%.
  * Surplus credit carries over to spread fractional picture cadences evenly. */
-static inline void psx3d_smart_observe(psx3d_skip_state *s,
+static __attribute__((noinline, unused)) void psx3d_smart_observe(psx3d_skip_state *s,
     double work, double budget, double wall)
 {
   if (!s->frame_budget) s->budget_debt = -2 * budget;

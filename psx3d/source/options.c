@@ -398,7 +398,7 @@ static const char *const notes[][3] = {
 	{ "pcsx_rearmed_memcard1", "Reopen the game to apply", "Game save uses PSX3D's usual per-game save file. Per disc keeps a separate card for each disc; Shared uses one card across games. Off removes this card." },
 	{ "pcsx_rearmed_memcard2", "Reopen the game to apply", "Choose a separate card per disc, a card shared across games, or Off for an empty second memory-card slot." },
 	{ "pcsx_rearmed_psxclock", "Lower may slow the game itself", "How fast the game's PS1 CPU runs. Lower values may raise the frame count while slowing the game itself or causing glitches. Usually leave Auto." },
-	{ "pcsx_rearmed_frameskip_type", "Auto keeps as many pictures as time allows", "Auto skips drawing only when needed to keep game speed and sound steady. Off draws every picture and can slow the game on a busy scene. Curated games choose this automatically." },
+	{ "pcsx_rearmed_frameskip_type", "Auto balances speed and smooth pictures", "Auto skips drawing to help game speed, while keeping at least 15 pictures a second when possible. Off draws every picture and can slow busy scenes. Curated games choose this automatically." },
 	{ "pcsx_rearmed_dithering", "PS1 colour shading", "Adds the PS1's fine colour pattern to shaded polygons. On follows the game; Always also enables it when the game turns it off." },
 	{ "pcsx_rearmed_alt_flip", "Usually leave Auto", "Choose when to capture the game's picture. Try Early or Late only if a game shows incomplete pictures or flicker." },
 	{ "pcsx_rearmed_gpu_slow_llists", "May be slower", "Follow the game's drawing order more closely. Leave Auto unless a game needs this to draw correctly." },

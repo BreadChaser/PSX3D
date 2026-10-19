@@ -27,6 +27,7 @@ static float fps_measured, emu_ms, present_ms;
 static bool core_initialized;
 static bool has_audio;
 static retro_audio_buffer_status_callback_t abuf_status_cb;
+static bool core_auto_frameskip;
 static struct retro_disk_control_callback disk;   // multi-disc games (via .m3u)
 static bool have_disk;
 static bool clip_game_enabled;
@@ -175,6 +176,8 @@ static bool environment(unsigned cmd, void *data)
 	case RETRO_ENVIRONMENT_GET_VARIABLE: {
 		struct retro_variable *v = data;
 		v->value = options_get(v->key);
+		if (!strcmp(v->key, "pcsx_rearmed_frameskip_type"))
+			core_auto_frameskip = v->value && !strcmp(v->value, "auto");
 		if (sw_prof) {
 			// each option once, so a hardware run can be replayed in the simulator
 			static char seen[2048];
@@ -804,6 +807,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		if (!clip_open(clip_base,NULL)) { log_printf("clip: %s\n",clip_status.message); return false; }
 	}
 	game_frames = 0;
+	core_auto_frameskip = false;
 	memset(&psx3d_skip, 0, sizeof(psx3d_skip));
 	psx3d_skip.class_timing = sw_pmuclass;
 	psx3d_skip.timing = dev_enabled() || sw_stats || sw_prof || log_linked();
@@ -937,9 +941,10 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			next_deadline = now_t;   // far behind (loading, menu): don't race to catch up
 		next_deadline += frame_ticks;
 
-		const char *skip_type = (sw_rtfs || sw_fsmart) && renderer_is_gpu() && !previous_special
-			? options_get("pcsx_rearmed_frameskip_type") : NULL;
-		psx3d_skip.enabled = skip_type && !strcmp(skip_type, "auto");
+		// The core queries this option on load and after options_mark_updated().
+		// Reuse its resolved value instead of walking option/config tables on
+		// every vblank (including Off) and evicting Old 3DS's hot core code.
+		psx3d_skip.enabled = (sw_rtfs || sw_fsmart) && !previous_special && core_auto_frameskip;
 		skip_control.max_level = sw_rtfscap == 5 ? 7 : 6;
 		psx3d_skip.max_skips = sw_rtfscap == 5 ? 5 : 4;
 		psx3d_skip.level = sw_rtfslevel >= 0 ? sw_rtfslevel : skip_control.level;
