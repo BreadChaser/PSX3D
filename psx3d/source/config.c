@@ -474,18 +474,23 @@ static bool forget_legacy_screen(void)
 	FILE *out = fopen(GAMES_INI ".tmp", "w");
 	if (!out) { fclose(in); return false; }
 	char line[PATH_LEN + 16];
-	bool ok = true;
+	bool ok = true, found = false;
 	while (fgets(line, sizeof(line), in)) {
 		char copy[sizeof(line)];
 		strcpy(copy, line);
 		char *eq = strrchr(copy, '=');
 		if (eq) *eq = 0;
-		if ((!eq || strcmp(trim(copy), cur_game)) && fputs(line, out) < 0) ok = false;
+		if (eq && !strcmp(trim(copy), cur_game)) found = true;
+		else if (fputs(line, out) < 0) ok = false;
 	}
 	if (ferror(in)) ok = false;
 	fclose(in);
 	if (fclose(out)) ok = false;
-	if (ok && rename(GAMES_INI ".tmp", GAMES_INI) == 0) return true;
+	// FAT can't rename over an existing file; leave games.ini alone without an entry.
+	if (ok && (!found || (remove(GAMES_INI) == 0 && rename(GAMES_INI ".tmp", GAMES_INI) == 0))) {
+		remove(GAMES_INI ".tmp");
+		return true;
+	}
 	remove(GAMES_INI ".tmp");
 	return false;
 }
