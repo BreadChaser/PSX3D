@@ -7,9 +7,10 @@
 #include <string.h>
 #include <unistd.h>
 int main(void) {
- const char *bad[]={"Crash Bandicoot (USA)","Silent Hill (USA)","R4 - Ridge Racer Type 4 (USA)","Gran Turismo 2 (USA) (Arcade Mode)","CTR - Crash Team Racing (USA)","Castlevania - Symphony of the Night (USA)","../Spyro","A/B","A\\B","A:B",""};
+ const char *bad[]={"../Spyro","A/B","A\\B","A:B",""};
  for(unsigned i=0;i<sizeof(bad)/sizeof(*bad);i++)assert(!bench_state_name(bad[i]));
  assert(bench_state_name("Spyro the Dragon (USA)"));
+ assert(bench_state_name("Silent Hill (USA)"));
  assert(bench_state_name("Crash Bandicoot 2 - Cortex Strikes Back (USA)"));
  unsigned char h[40]={0};memcpy(h,"STv4 PCSXra",11);h[32]=6;h[34]=0x41;h[35]=0x8b;h[36]=1;
  assert(bench_state_header(h,BENCH_STATE_BYTES));
@@ -22,5 +23,5 @@ int main(void) {
  FILE *f=fopen(dest,"r+b");assert(f);assert(fwrite("KEEP",1,4,f)==4);fclose(f);assert(!bench_state_commit(stage,dest));
  char b[4];f=fopen(dest,"rb");assert(fread(b,1,4,f)==4&&!memcmp(b,"KEEP",4));fclose(f);unlink(dest);
  assert(!truncate(stage,80));assert(!bench_state_commit(stage,dest));assert(access(dest,F_OK));
- unlink(stage);rmdir(dir);puts("benchmark state envelope/protection/exclusive-commit checks passed");
+ unlink(stage);rmdir(dir);puts("benchmark state envelope/name/exclusive-commit checks passed");
 }

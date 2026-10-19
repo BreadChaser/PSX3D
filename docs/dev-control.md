@@ -347,9 +347,10 @@ attempting recovery.
 
 `state-import TITLE slot=N size=4456448 sha256=HEX` accepts one native raw HLE
 state for a game already in the library. This command requires the on-card
-`remote` + token pair, an idle library and the console's benchmark slot (Old 2,
-New 0). The original six benchmark games are always rejected. Every existing
-state is preserved, including slots belonging to newly added games.
+`remote` + token pair, an idle library and a spare heavy-scene slot **5, 6 or
+7** (any game, including the original six). The benchmark slots (Old 2, New 0)
+and SotN slot 8 are outside that range, and every existing state is preserved:
+the destination must not exist.
 
 The client waits for a framed JSON `ready` response before sending exactly
 4,456,448 binary bytes. A second framed JSON response confirms the import.
@@ -367,7 +368,7 @@ and an explicit expected build identity, and archives status plus a library
 screenshot. Example (after the coordinator installs a build with this command):
 
 ```
-python3 tools/bench-pool/import-state.py new 'Spyro the Dragon' scene.st0 \
+python3 tools/bench-pool/import-state.py new 'Silent Hill' scene.st0 --slot 5 \
   --expected-build BUILD_ID --out /path/to/new-evidence
 ```
 

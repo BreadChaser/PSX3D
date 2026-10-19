@@ -490,8 +490,8 @@ bool dev_tick(bool playing)
             const game_t *picked = NULL;
             if (!dev_remote || playing || load_pending || batch_active || clip_replay_session ||
                 sscanf(args, "%255s slot=%u size=%u sha256=%64s %c", title, &slot, &size, hash, &extra) != 4 ||
-                slot != (g_new3ds ? 0u : 2u) || size != BENCH_STATE_BYTES || strlen(hash) != 64) {
-                error_reply("state-import TITLE slot=BENCHMARK_SLOT size=4456448 sha256=HASH requires idle library");
+                slot < 5 || slot > 7 || size != BENCH_STATE_BYTES || strlen(hash) != 64) {
+                error_reply("state-import TITLE slot=5..7 size=4456448 sha256=HASH requires idle library");
             } else {
                 bool valid = true;
                 for (unsigned i = 0; i < 64; i++) if (!isxdigit((unsigned char)hash[i])) valid = false;
@@ -502,7 +502,7 @@ bool dev_tick(bool playing)
                 char path[PATH_LEN];
                 struct stat st;
                 if (!valid || matches != 1 || !bench_state_name(picked->cover_key))
-                    error_reply("invalid/ambiguous game, protected original benchmark, or hash");
+                    error_reply("invalid/ambiguous game or hash");
                 else {
                     snprintf(path,sizeof(path),PSX3D_STATE_DIR "/%s.st%u",picked->cover_key,slot);
                     if (!stat(path,&st) || errno != ENOENT) error_reply("benchmark slot already exists or cannot be checked");

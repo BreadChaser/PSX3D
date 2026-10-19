@@ -26,7 +26,7 @@ def frame(reader):
     if value.get('ok') is not True:raise ControlError(value.get('error','import refused'))
     return value
 
-def import_state(client,title,path,console,rate=384*1024):
+def import_state(client,title,path,console,slot,rate=384*1024):
     path=Path(path)
     if any(c in title for c in '\r\n\x00'):raise ValueError('invalid title')
     if path.stat().st_size!=SIZE:raise ValueError('state must be exactly 4456448 bytes')
@@ -34,7 +34,7 @@ def import_state(client,title,path,console,rate=384*1024):
     if data[:9]!=b'STv4 PCSX' or struct.unpack_from('<II',data,32)!=(0x8b410006,1):
         raise ValueError('expected current native raw HLE state')
     digest=hashlib.sha256(data).hexdigest()
-    slot=2 if console=='old' else 0
+    if slot not in(5,6,7):raise ValueError('slot must be 5..7')
     command=f'state-import {title.replace(" ","_")} slot={slot} size={SIZE} sha256={digest}'
     line=(client.token+' '+command+'\n').encode()
     with socket.create_connection((client.host,client.port),timeout=client.timeout)as sock:
@@ -55,7 +55,7 @@ def import_state(client,title,path,console,rate=384*1024):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('console',choices=('old','new'));parser.add_argument('title');parser.add_argument('state',type=Path)
+    parser.add_argument('console',choices=('old','new'));parser.add_argument('title');parser.add_argument('state',type=Path);parser.add_argument('--slot',type=int,required=True,choices=(5,6,7))
     parser.add_argument('--expected-build',required=True,help='exact build identity supplied by coordinator')
     parser.add_argument('--out',type=Path,required=True,help='new evidence directory')
     args=parser.parse_args()
@@ -70,7 +70,7 @@ def main():
             raise ControlError('console handoff/build check failed; no file sent')
         args.out.mkdir(parents=True,exist_ok=False)
         (args.out/'before.json').write_text(json.dumps(status,indent=2))
-        result=import_state(client,args.title,args.state,args.console)
+        result=import_state(client,args.title,args.state,args.console,args.slot)
         (args.out/'import.json').write_text(json.dumps(result,indent=2))
         (args.out/'after.json').write_text(json.dumps(client.request('status'),indent=2))
         (args.out/'library.png').write_bytes(client.request('shot both'))

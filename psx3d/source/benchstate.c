@@ -1,27 +1,18 @@
-/* Developer benchmark provisioning. Never replace a numbered save state. */
+/* Developer benchmark provisioning into spare slots 5..7 (heavy scenes).
+   Never replaces an existing state: protected slots 0/2/8 are out of range. */
 #include "benchstate.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
-#include <strings.h>
 #include <unistd.h>
 
 bool bench_state_name(const char *name)
 {
-    /* Defense in depth: original six are load-only even when a slot is absent.
-       Prefixes cover regions/revisions and GT2's Arcade/Simulation discs. */
-    static const char *const protected[] = {
-        "Crash Bandicoot (", "CTR - Crash Team Racing", "Crash Team Racing",
-        "Gran Turismo 2", "Silent Hill", "R4 - Ridge Racer Type 4",
-        "Ridge Racer Type 4", "Castlevania - Symphony of the Night"
-    };
     if (!name || !*name || strlen(name) > 200 || strstr(name, "..")) return false;
     for (const unsigned char *p = (const unsigned char *)name; *p; p++)
         if (*p < 32 || *p == 127 || strchr("/\\:\"*?<>|", *p)) return false;
-    for (unsigned i = 0; i < sizeof(protected)/sizeof(*protected); i++)
-        if (!strncasecmp(name, protected[i], strlen(protected[i]))) return false;
-    return strcasecmp(name, "Crash Bandicoot") != 0;
+    return true;
 }
 bool bench_state_header(const unsigned char *data, size_t size)
 {
