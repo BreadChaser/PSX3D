@@ -44,8 +44,8 @@
 <text x="190.0" y="230.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Crash Team Racing</text>
 <path d="M210.0,216.0 H370.6 Q373.6,216.0 373.6,219.0 V224.0 Q373.6,227.0 370.6,227.0 H210.0 Z" fill="#3987e5"/>
 <text x="379.6" y="226.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">61%</text>
-<path d="M560.0,216.0 H639.8 Q642.8,216.0 642.8,219.0 V224.0 Q642.8,227.0 639.8,227.0 H560.0 Z" fill="#3987e5"/>
-<text x="648.8" y="226.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">18</text>
+<path d="M560.0,216.0 H639.4 Q642.4,216.0 642.4,219.0 V224.0 Q642.4,227.0 639.4,227.0 H560.0 Z" fill="#3987e5"/>
+<text x="648.4" y="226.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">18</text>
 <path d="M210.0,229.0 H391.4 Q394.4,229.0 394.4,232.0 V237.0 Q394.4,240.0 391.4,240.0 H210.0 Z" fill="#d95926"/>
 <text x="400.4" y="239.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">68%</text>
 <path d="M560.0,229.0 H625.9 Q628.9,229.0 628.9,232.0 V237.0 Q628.9,240.0 625.9,240.0 H560.0 Z" fill="#d95926"/>
@@ -74,8 +74,8 @@
 <text x="190.0" y="332.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Need for Speed: High Stakes</text>
 <path d="M210.0,318.0 H298.3 Q301.3,318.0 301.3,321.0 V326.0 Q301.3,329.0 298.3,329.0 H210.0 Z" fill="#3987e5"/>
 <text x="307.3" y="328.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">34%</text>
-<path d="M560.0,318.0 H627.6 Q630.6,318.0 630.6,321.0 V326.0 Q630.6,329.0 627.6,329.0 H560.0 Z" fill="#3987e5"/>
-<text x="636.6" y="328.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">16</text>
+<path d="M560.0,318.0 H605.6 Q608.6,318.0 608.6,321.0 V326.0 Q608.6,329.0 605.6,329.0 H560.0 Z" fill="#3987e5"/>
+<text x="614.6" y="328.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">11</text>
 <path d="M210.0,331.0 H295.8 Q298.8,331.0 298.8,334.0 V339.0 Q298.8,342.0 295.8,342.0 H210.0 Z" fill="#d95926"/>
 <text x="304.8" y="341.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">33%</text>
 <path d="M560.0,331.0 H602.0 Q605.0,331.0 605.0,334.0 V339.0 Q605.0,342.0 602.0,342.0 H560.0 Z" fill="#d95926"/>
@@ -88,19 +88,19 @@
 <text x="717.7" y="362.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">34</text>
 <path d="M210.0,365.0 H395.2 Q398.2,365.0 398.2,368.0 V373.0 Q398.2,376.0 395.2,376.0 H210.0 Z" fill="#d95926"/>
 <text x="404.2" y="375.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">70%</text>
-<path d="M560.0,365.0 H626.3 Q629.3,365.0 629.3,368.0 V373.0 Q629.3,376.0 626.3,376.0 H560.0 Z" fill="#d95926"/>
-<text x="635.3" y="375.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">15</text>
+<path d="M560.0,365.0 H625.4 Q628.4,365.0 628.4,368.0 V373.0 Q628.4,376.0 625.4,376.0 H560.0 Z" fill="#d95926"/>
+<text x="634.4" y="375.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">15</text>
 <line x1="830.0" y1="349" x2="830.0" y2="377" stroke="#f0f6fc" stroke-width="2" stroke-dasharray="3 2"/>
 <text x="190.0" y="400.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Final Fantasy VII</text>
 <path d="M210.0,386.0 H477.0 Q480.0,386.0 480.0,389.0 V394.0 Q480.0,397.0 477.0,397.0 H210.0 Z" fill="#3987e5"/>
 <text x="486.0" y="396.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,386.0 H827.0 Q830.0,386.0 830.0,389.0 V394.0 Q830.0,397.0 827.0,397.0 H560.0 Z" fill="#3987e5"/>
-<text x="836.0" y="396.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">60</text>
+<path d="M560.0,386.0 H624.5 Q627.5,386.0 627.5,389.0 V394.0 Q627.5,397.0 624.5,397.0 H560.0 Z" fill="#3987e5"/>
+<text x="633.5" y="396.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">15</text>
 <path d="M210.0,399.0 H477.0 Q480.0,399.0 480.0,402.0 V407.0 Q480.0,410.0 477.0,410.0 H210.0 Z" fill="#d95926"/>
 <text x="486.0" y="409.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,399.0 H625.4 Q628.4,399.0 628.4,402.0 V407.0 Q628.4,410.0 625.4,410.0 H560.0 Z" fill="#d95926"/>
-<text x="634.4" y="409.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">15</text>
-<line x1="830.0" y1="383" x2="830.0" y2="411" stroke="#f0f6fc" stroke-width="2" stroke-dasharray="3 2"/>
+<path d="M560.0,399.0 H624.5 Q627.5,399.0 627.5,402.0 V407.0 Q627.5,410.0 624.5,410.0 H560.0 Z" fill="#d95926"/>
+<text x="633.5" y="409.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">15</text>
+<line x1="627.5" y1="383" x2="627.5" y2="411" stroke="#f0f6fc" stroke-width="2" stroke-dasharray="3 2"/>
 <text x="190.0" y="434.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Klonoa</text>
 <path d="M210.0,420.0 H363.3 Q366.3,420.0 366.3,423.0 V428.0 Q366.3,431.0 363.3,431.0 H210.0 Z" fill="#3987e5"/>
 <text x="372.3" y="430.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">58%</text>
@@ -108,8 +108,8 @@
 <text x="724.9" y="430.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">35</text>
 <path d="M210.0,433.0 H373.6 Q376.6,433.0 376.6,436.0 V441.0 Q376.6,444.0 373.6,444.0 H210.0 Z" fill="#d95926"/>
 <text x="382.6" y="443.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">62%</text>
-<path d="M560.0,433.0 H633.0 Q636.0,433.0 636.0,436.0 V441.0 Q636.0,444.0 633.0,444.0 H560.0 Z" fill="#d95926"/>
-<text x="642.0" y="443.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">17</text>
+<path d="M560.0,433.0 H625.0 Q628.0,433.0 628.0,436.0 V441.0 Q628.0,444.0 625.0,444.0 H560.0 Z" fill="#d95926"/>
+<text x="634.0" y="443.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">15</text>
 <line x1="830.0" y1="417" x2="830.0" y2="445" stroke="#f0f6fc" stroke-width="2" stroke-dasharray="3 2"/>
 <text x="190.0" y="468.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Silent Hill (alley)</text>
 <path d="M210.0,454.0 H370.4 Q373.4,454.0 373.4,457.0 V462.0 Q373.4,465.0 370.4,465.0 H210.0 Z" fill="#3987e5"/>
@@ -124,8 +124,8 @@
 <text x="190.0" y="502.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Silent Hill (café)</text>
 <path d="M210.0,488.0 H373.9 Q376.9,488.0 376.9,491.0 V496.0 Q376.9,499.0 373.9,499.0 H210.0 Z" fill="#3987e5"/>
 <text x="382.9" y="498.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">62%</text>
-<path d="M560.0,488.0 H624.0 Q627.0,488.0 627.0,491.0 V496.0 Q627.0,499.0 624.0,499.0 H560.0 Z" fill="#3987e5"/>
-<text x="633.0" y="498.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">15</text>
+<path d="M560.0,488.0 H623.1 Q626.1,488.0 626.1,491.0 V496.0 Q626.1,499.0 623.1,499.0 H560.0 Z" fill="#3987e5"/>
+<text x="632.1" y="498.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">15</text>
 <path d="M210.0,501.0 H372.5 Q375.5,501.0 375.5,504.0 V509.0 Q375.5,512.0 372.5,512.0 H210.0 Z" fill="#d95926"/>
 <text x="381.5" y="511.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">61%</text>
 <path d="M560.0,501.0 H622.7 Q625.7,501.0 625.7,504.0 V509.0 Q625.7,512.0 622.7,512.0 H560.0 Z" fill="#d95926"/>
@@ -173,8 +173,8 @@
 <text x="190.0" y="708.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Crash Team Racing</text>
 <path d="M210.0,694.0 H477.0 Q480.0,694.0 480.0,697.0 V702.0 Q480.0,705.0 477.0,705.0 H210.0 Z" fill="#3987e5"/>
 <text x="486.0" y="704.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,694.0 H677.1 Q680.1,694.0 680.1,697.0 V702.0 Q680.1,705.0 677.1,705.0 H560.0 Z" fill="#3987e5"/>
-<text x="701.0" y="704.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">27</text>
+<path d="M560.0,694.0 H675.4 Q678.4,694.0 678.4,697.0 V702.0 Q678.4,705.0 675.4,705.0 H560.0 Z" fill="#3987e5"/>
+<text x="701.0" y="704.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">26</text>
 <path d="M210.0,707.0 H477.0 Q480.0,707.0 480.0,710.0 V715.0 Q480.0,718.0 477.0,718.0 H210.0 Z" fill="#d95926"/>
 <text x="486.0" y="717.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
 <path d="M560.0,707.0 H675.4 Q678.4,707.0 678.4,710.0 V715.0 Q678.4,718.0 675.4,718.0 H560.0 Z" fill="#d95926"/>
@@ -203,8 +203,8 @@
 <text x="190.0" y="810.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Need for Speed: High Stakes</text>
 <path d="M210.0,796.0 H470.5 Q473.5,796.0 473.5,799.0 V804.0 Q473.5,807.0 470.5,807.0 H210.0 Z" fill="#3987e5"/>
 <text x="479.5" y="806.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">98%</text>
-<path d="M560.0,796.0 H792.8 Q795.8,796.0 795.8,799.0 V804.0 Q795.8,807.0 792.8,807.0 H560.0 Z" fill="#3987e5"/>
-<text x="836.0" y="806.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">52</text>
+<path d="M560.0,796.0 H724.4 Q727.4,796.0 727.4,799.0 V804.0 Q727.4,807.0 724.4,807.0 H560.0 Z" fill="#3987e5"/>
+<text x="733.4" y="806.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">37</text>
 <path d="M210.0,809.0 H470.5 Q473.5,809.0 473.5,812.0 V817.0 Q473.5,820.0 470.5,820.0 H210.0 Z" fill="#d95926"/>
 <text x="479.5" y="819.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">98%</text>
 <path d="M560.0,809.0 H722.1 Q725.1,809.0 725.1,812.0 V817.0 Q725.1,820.0 722.1,820.0 H560.0 Z" fill="#d95926"/>
@@ -223,13 +223,13 @@
 <text x="190.0" y="878.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Final Fantasy VII</text>
 <path d="M210.0,864.0 H477.0 Q480.0,864.0 480.0,867.0 V872.0 Q480.0,875.0 477.0,875.0 H210.0 Z" fill="#3987e5"/>
 <text x="486.0" y="874.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,864.0 H827.0 Q830.0,864.0 830.0,867.0 V872.0 Q830.0,875.0 827.0,875.0 H560.0 Z" fill="#3987e5"/>
-<text x="836.0" y="874.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">60</text>
+<path d="M560.0,864.0 H624.5 Q627.5,864.0 627.5,867.0 V872.0 Q627.5,875.0 624.5,875.0 H560.0 Z" fill="#3987e5"/>
+<text x="633.5" y="874.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">15</text>
 <path d="M210.0,877.0 H477.0 Q480.0,877.0 480.0,880.0 V885.0 Q480.0,888.0 477.0,888.0 H210.0 Z" fill="#d95926"/>
 <text x="486.0" y="887.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,877.0 H625.0 Q628.0,877.0 628.0,880.0 V885.0 Q628.0,888.0 625.0,888.0 H560.0 Z" fill="#d95926"/>
-<text x="634.0" y="887.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">15</text>
-<line x1="830.0" y1="861" x2="830.0" y2="889" stroke="#f0f6fc" stroke-width="2" stroke-dasharray="3 2"/>
+<path d="M560.0,877.0 H624.5 Q627.5,877.0 627.5,880.0 V885.0 Q627.5,888.0 624.5,888.0 H560.0 Z" fill="#d95926"/>
+<text x="633.5" y="887.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">15</text>
+<line x1="627.5" y1="861" x2="627.5" y2="889" stroke="#f0f6fc" stroke-width="2" stroke-dasharray="3 2"/>
 <text x="190.0" y="912.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Klonoa</text>
 <path d="M210.0,898.0 H477.0 Q480.0,898.0 480.0,901.0 V906.0 Q480.0,909.0 477.0,909.0 H210.0 Z" fill="#3987e5"/>
 <text x="486.0" y="908.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
@@ -243,7 +243,7 @@
 <text x="190.0" y="946.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Silent Hill (alley)</text>
 <path d="M210.0,932.0 H477.0 Q480.0,932.0 480.0,935.0 V940.0 Q480.0,943.0 477.0,943.0 H210.0 Z" fill="#3987e5"/>
 <text x="486.0" y="942.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,932.0 H691.1 Q694.1,932.0 694.1,935.0 V940.0 Q694.1,943.0 691.1,943.0 H560.0 Z" fill="#3987e5"/>
+<path d="M560.0,932.0 H690.6 Q693.6,932.0 693.6,935.0 V940.0 Q693.6,943.0 690.6,943.0 H560.0 Z" fill="#3987e5"/>
 <text x="701.0" y="942.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">30</text>
 <path d="M210.0,945.0 H477.0 Q480.0,945.0 480.0,948.0 V953.0 Q480.0,956.0 477.0,956.0 H210.0 Z" fill="#d95926"/>
 <text x="486.0" y="955.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
@@ -253,8 +253,8 @@
 <text x="190.0" y="980.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Silent Hill (café)</text>
 <path d="M210.0,966.0 H477.0 Q480.0,966.0 480.0,969.0 V974.0 Q480.0,977.0 477.0,977.0 H210.0 Z" fill="#3987e5"/>
 <text x="486.0" y="976.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,966.0 H658.2 Q661.2,966.0 661.2,969.0 V974.0 Q661.2,977.0 658.2,977.0 H560.0 Z" fill="#3987e5"/>
-<text x="667.2" y="976.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">22</text>
+<path d="M560.0,966.0 H657.4 Q660.4,966.0 660.4,969.0 V974.0 Q660.4,977.0 657.4,977.0 H560.0 Z" fill="#3987e5"/>
+<text x="666.4" y="976.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">22</text>
 <path d="M210.0,979.0 H477.0 Q480.0,979.0 480.0,982.0 V987.0 Q480.0,990.0 477.0,990.0 H210.0 Z" fill="#d95926"/>
 <text x="486.0" y="989.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
 <path d="M560.0,979.0 H657.4 Q660.4,979.0 660.4,982.0 V987.0 Q660.4,990.0 657.4,990.0 H560.0 Z" fill="#d95926"/>

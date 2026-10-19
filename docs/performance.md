@@ -14,10 +14,14 @@ the HLE BIOS; the runs load save states. The lighter scenes used up to v0.4.0
 Exact values are in the [README table](../README.md#performance).
 
 Game speed measures emulated time against real time: 100% means normal speed.
-The FPS panel measures pictures shown per second (`top_count` in the benchmark),
-with separate bars for frameskip off and auto. Dashed markers show each game's
-own picture rate: 30 for most 3D games, 60 for Symphony of the Night, Tekken 3,
-Klonoa, Need for Speed and Final Fantasy VII battles. Busy scenes often draw
+The FPS panel measures new pictures shown per second, like the in-game FPS
+counter: drawn game pictures, capped by top-screen presentations
+(`min(drawn_count, top_count)` in the benchmark). `top_count` alone also counts
+repaints of an unchanged picture: with frameskip off a Final Fantasy VII battle
+repaints its 15 pictures a second 60 times. Separate bars show frameskip off
+and auto. Dashed markers show each game's own picture rate: 30 for most 3D
+games, 60 for Symphony of the Night, Tekken 3, Klonoa and Need for Speed, 15 for
+Final Fantasy VII battles. Busy scenes often draw
 fewer pictures than that at full speed (Silent Hill's café: 22). Automatic
 frameskip shows fewer pictures to improve game speed; 100% speed does not imply
 60 pictures per second. The New 3DS draws Crash Team Racing, Silent Hill,
