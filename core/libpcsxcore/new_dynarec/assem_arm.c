@@ -2092,6 +2092,10 @@ static void c2op_assemble(struct compile_state *st, int i, const struct regstat 
       case GTEOP_NCLIP:
         if (need_flags)
           handler = gteNCLIP_arm;
+#ifdef HAVE_ARMV6
+        else
+          handler = gteNCLIP_nf_armv6;
+#endif
         goto do_handler;
       case GTEOP_OP:
         c2op_prologue(st,c2op,i,i_regs,reglist);

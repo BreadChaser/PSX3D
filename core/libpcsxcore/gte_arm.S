@@ -16,6 +16,7 @@
 #define F(code...) code
 #endif
 #ifdef HAVE_ARMV6
+
 #define V6(code...) code
 #else
 #define V6(...)
@@ -925,6 +926,29 @@ FUNCTION(gteMAC123f_arm):
     pop      {r4-r11,pc}
 
 #endif /* HAVE_ARMV5 */
+
+#ifdef HAVE_ARMV6
+/* Flagless NCLIP: sum the three packed signed-16 cross products modulo 2^32.
+ * This is exactly the low MAC0 word of the full signed determinant. SMUSDX
+ * overflow only sets the host Q bit, which the dynarec does not consume.
+ * Match gteNCLIP_nf's zero FLAG write; do not use when GTE flags are needed.
+ * Only caller-saved r1-r3/ip are clobbered, and r0/lr are preserved.
+ */
+FUNCTION(gteNCLIP_nf_armv6):
+    ldr      r1, [r0, #4*12]
+    ldr      r2, [r0, #4*13]
+    ldr      r3, [r0, #4*14]
+    smusdx   r12, r1, r2
+    smusdx   r2, r2, r3
+    smusdx   r3, r3, r1
+    add      r12, r12, r2
+    add      r12, r12, r3
+    str      r12, [r0, #4*24]
+    mov      r1, #0
+    str      r1, [r0, #4*(32+31)]
+    bx       lr
+    .size    gteNCLIP_nf_armv6, .-gteNCLIP_nf_armv6
+#endif
 
 FUNCTION(gteNCLIP_arm): @ r0=CP2 (d,c),
     push        {r4-r6,lr}

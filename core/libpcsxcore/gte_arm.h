@@ -29,6 +29,7 @@ void gteRTPT_sf1lm0_arm(psxCP2Regs *cp2_regs, u32 opcode);
 void gteRTPS_sf1lm0_nf_arm(psxCP2Regs *cp2_regs, u32 opcode);
 void gteRTPT_sf1lm0_nf_arm(psxCP2Regs *cp2_regs, u32 opcode);
 void gteNCLIP_arm(psxCP2Regs *cp2_regs, u32 opcode);
+void gteNCLIP_nf_armv6(psxCP2Regs *cp2_regs, u32 opcode);
 
 // decomposed ops, nonstd calling convention (see asm)
 void gteMVMVA_part_sf0_arm(void *cp2_regs, u32 opcode);
