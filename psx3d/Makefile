@@ -68,7 +68,7 @@ ifeq ($(PICA_LAYOUT),section)
 PICA_SPECS := $(TOPDIR)/build/pica-hot.specs
 endif
 LDFLAGS	=	-specs=$(PICA_SPECS) -g $(ARCH) -Wl,-Map,$(notdir $*.map)
-LDFLAGS += -Wl,--wrap=GSPGPU_FlushDataCache,--wrap=C3D_DrawElements
+LDFLAGS += -Wl,--wrap=GSPGPU_FlushDataCache,--wrap=C3D_DrawElements,-z,noexecstack
 
 LIBS	:= $(CORELIB) -lcitro2d -lcitro3d -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lpng16 -lz -lctru -lm
 
