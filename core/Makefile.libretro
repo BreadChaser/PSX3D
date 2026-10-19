@@ -380,8 +380,7 @@ else ifeq ($(platform), ctr)
 	OBJS += frontend/3ds/utils.o
 
 	# PSX3D uses only the PICA renderer.
-	CTR_GPU := pica
-	BUILTIN_GPU = $(CTR_GPU)
+	BUILTIN_GPU = pica
 
 	DYNAREC = ari64
 	ARCH = arm
