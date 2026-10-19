@@ -563,7 +563,7 @@ static bool menu_run(int initial_screen)
 		int screen = dev_ui_take();
 		if (screen == DEV_UI_RESUME)
 			goto resume;
-		if (screen == DEV_UI_CONTINUE) {
+		if (screen == DEV_UI_CONTINUE || initial_screen == DEV_UI_CONTINUE) {
 			// Remote test of the continue prompt (normally shown only at game start).
 			char prefix[PATH_LEN];
 			make_path(prefix, sizeof(prefix), PSX3D_STATE_DIR, "");

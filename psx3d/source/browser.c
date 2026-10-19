@@ -278,6 +278,8 @@ bool browser_run(char *out_path, size_t out_len)
 	while (aptMainLoop()) {
 		if (dev_tick(false))
 			return false;
+		if (dev_ui_take() == DEV_UI_LIBRARY)
+			break;   // remote: back to the library
 		input_poll();
 		u32 k = input_keys_down(), h = input_keys_held();
 
