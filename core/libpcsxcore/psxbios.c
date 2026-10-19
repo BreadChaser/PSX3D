@@ -489,6 +489,10 @@ static u32  DeliverEvent(u32 class, u32 spec);
 static u32  UnDeliverEvent(u32 class, u32 spec);
 static void CloseEvent(u32 ev);
 
+/* Card transfers are infrequent; keep their chain walk small for ARM11 I-cache. */
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((optimize("Os")))
+#endif
 static int card_buf_io(int is_write, int port, void *buf, u32 size)
 {
 	char *mcdptr = port ? Mcd2Data : Mcd1Data;
@@ -509,17 +513,16 @@ static int card_buf_io(int is_write, int port, void *buf, u32 size)
 
 	/* File offsets are logical: directory links need not be adjacent. */
 	{
-		u32 block = desc->mcfile, skip = desc->offset / 8192;
-		u32 within = desc->offset % 8192, left = size;
+		u32 block = desc->mcfile, within = desc->offset, left = size;
 		u32 visited = 0;
 		u8 *p = buf;
-		while (block > 0 && block < 16 && skip && visited++ < 15) {
+		while (block > 0 && block < 16 && left && visited++ < 15) {
 			const u8 *entry = (u8 *)mcdptr + block * 128;
-			block = (entry[8] | (entry[9] << 8)) + 1u;
-			skip--;
-		}
-		while (block > 0 && block < 16 && !skip && left && visited++ < 15) {
-			const u8 *entry = (u8 *)mcdptr + block * 128;
+			if (within >= 8192) {
+				within -= 8192;
+				block = (entry[8] | (entry[9] << 8)) + 1u;
+				continue;
+			}
 			u32 count = 8192 - within;
 			if (count > left) count = left;
 			offset = block * 8192 + within;
@@ -2671,7 +2674,8 @@ static void buopen(int mcd, char *ptr, char *cfg)
 	int i;
 	char *mcd_data = ptr;
 
-	snprintf(FDesc[1 + mcd].name, sizeof(FDesc[1 + mcd].name), "%.20s", (char *)Ra0 + 5);
+	strncpy(FDesc[1 + mcd].name, (char *)Ra0 + 5, 20);
+	FDesc[1 + mcd].name[20] = 0;
 	FDesc[1 + mcd].offset = 0;
 	FDesc[1 + mcd].mode   = a1;
 
@@ -2705,8 +2709,7 @@ static void buopen(int mcd, char *ptr, char *cfg)
 				entry[4] = (nblk * 8192) & 0xff;
 				entry[5] = (nblk * 8192) >> 8;
 				entry[6] = (nblk * 8192) >> 16;
-				memcpy(entry + 10, FDesc[1 + mcd].name,
-					strnlen(FDesc[1 + mcd].name, 20));
+				memcpy(entry + 10, FDesc[1 + mcd].name, 20);
 			}
 			for (j = 0; j < 127; j++)
 				entry[127] ^= entry[j];
