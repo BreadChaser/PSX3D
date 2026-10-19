@@ -58,7 +58,7 @@ def analyze(root):
     for phase in ['auto', 'sotn']:
         report[phase] = [dict(game=settings(row)['game'], frameskip=settings(row)['frameskip'],
             fps=float(row['fps']), speed_pct=float(row['speed_pct']),
-            drawn_fraction=float(row['draw_fraction']), black_samples=int(row['black_samples']),
+            black_samples=int(row['black_samples']),
             audio_underruns=float(row['audio_underruns'])) for row in batches[phase]]
     report['replay'] = json.loads((root / 'archived-replay-acceptance.json').read_text())
     report['restoration'] = json.loads((root / 'complete.json').read_text())
@@ -85,8 +85,8 @@ def markdown(report):
           'remove_sw_delta_pct', 'candidate_fps', 'delta_pct', 'incremental_pct', 'verdict']),
         ('Nearest SPU: on versus adjacent off mean', report['nearest'],
          ['game', 'before', 'on', 'after', 'gain_pct', 'drift_pct', 'cycles_delta_pct']),
-        ('Frameskip auto', report['auto'], ['game', 'fps', 'speed_pct', 'drawn_fraction']),
-        ('SotN GPU', report['sotn'], ['game', 'frameskip', 'fps', 'speed_pct', 'drawn_fraction'])]
+        ('Frameskip auto (emulation FPS)', report['auto'], ['game', 'fps', 'speed_pct']),
+        ('SotN GPU (emulation FPS)', report['sotn'], ['game', 'frameskip', 'fps', 'speed_pct'])]
     for title, rows, columns in tables:
         text += ['## ' + title, '', '| ' + ' | '.join(columns) + ' |',
                  '| ' + ' | '.join('---' for _ in columns) + ' |']

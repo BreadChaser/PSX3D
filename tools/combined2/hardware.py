@@ -285,7 +285,7 @@ def main():
                 'No retries/recovery/contact until maintainer checks with the user.\n'
                 'Evidence: ' + str(out) + '\n')
             raise
-        print('Exact RC2 restored. Review restored-final.png and fill RESULTS-TEMPLATE.md.')
+        print('Exact RC2 restored; final screenshot reviewed. Lock releases on driver exit.')
 
 
 if __name__ == '__main__':
