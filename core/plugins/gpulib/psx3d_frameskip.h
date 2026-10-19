@@ -7,14 +7,15 @@
 typedef struct {
   unsigned enabled, level, phase, streak, max_skips;
   unsigned numerator, denominator;
-  unsigned smart;
-  double budget_debt, frame_budget;
   unsigned timing, spu_main_ticks, spu_wait_ticks;
   unsigned gpu_main_ticks;
   unsigned phase_ticks[8], render_prims;
   unsigned spu_stolen;
   unsigned flips_drawn, flips_skipped, words_drawn, words_skipped, pictures;
   unsigned class_timing, dma_ticks;
+  /* Append developer policy state without moving existing hot counters. */
+  unsigned smart;
+  double budget_debt, frame_budget, picture_credit;
 } psx3d_skip_state;
 extern psx3d_skip_state psx3d_skip;
 /* Written by the SPU worker, read atomically; keep out of main-thread snapshots. */
@@ -35,8 +36,13 @@ static inline unsigned psx3d_skip_period(unsigned level)
 static inline unsigned psx3d_skip_decide(psx3d_skip_state *s)
 {
   if (s->smart) {
-    unsigned skip = s->budget_debt > 0 && s->streak < s->max_skips;
+    unsigned skip = s->budget_debt > 0 && s->streak < s->max_skips &&
+      s->picture_credit < 1000.0 / 15;
     if (skip) s->streak++; else s->streak = 0;
+    if (!skip) {
+      s->picture_credit -= 1000.0 / 15;
+      if (s->picture_credit < 0) s->picture_credit = 0;
+    }
     return skip;
   }
   unsigned period = s->denominator ? s->denominator : psx3d_skip_period(s->level);
@@ -215,15 +221,19 @@ static inline void psx3d_skip_observe_dense(psx3d_skip_controller *c,
  * let a 30fps heavy/idle pair share its budget, and absorb scheduler jitter.
  * At each GAME flip, drawing is admitted unless previous work owes time.
  * Skipped drawing repays exactly the time it saves; there is no guessed
- * render-cost slope, coarse level or audio/late-vblank threshold. Constant
- * work converges to evenly distributed, minimum-needed picture skips. */
+ * render-cost slope, coarse level or audio/late-vblank threshold. A separate
+ * wall-time accumulator admits at least 15 pictures/s whenever game flips
+ * allow it, accepting slower emulation when that floor cannot fit at 100%.
+ * Surplus credit carries over to spread fractional picture cadences evenly. */
 static inline void psx3d_smart_observe(psx3d_skip_state *s,
-    double work, double budget)
+    double work, double budget, double wall)
 {
   if (!s->frame_budget) s->budget_debt = -2 * budget;
   s->frame_budget = budget;
+  s->picture_credit += wall;
+  if (s->picture_credit > 2000.0 / 15) s->picture_credit = 2000.0 / 15;
   if (work > budget * 8) return; // blocking load/menu, not a scene cost
-  s->budget_debt += work - budget;
+  s->budget_debt += work - budget * .99; // reserve for scheduler/loop tails
   if (s->budget_debt < -2 * budget) s->budget_debt = -2 * budget;
   if (s->budget_debt > 4 * budget) s->budget_debt = 4 * budget;
 }

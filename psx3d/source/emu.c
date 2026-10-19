@@ -894,6 +894,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	int previous_speed_icon = 0;
 	u64 next_deadline = svcGetSystemTick();
 	u64 stats_deadline = next_deadline + SYSCLOCK_ARM11;
+	u64 smart_clock = next_deadline;
 	aptHookCookie apt_cookie;
 	aptHook(&apt_cookie, game_apt, NULL);
 	while (initial_state_ok && aptMainLoop()) {
@@ -910,19 +911,21 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		u64 now_t = svcGetSystemTick();
 		if (!game_frames) { // resume/suspend/menu: start a fresh timing estimate
 			memset(&skip_control, 0, sizeof(skip_control));
-			psx3d_skip.budget_debt = psx3d_skip.frame_budget = 0;
+			psx3d_skip.budget_debt = psx3d_skip.frame_budget = psx3d_skip.picture_credit = 0;
 			picture_last = picture_intervals = 0; picture_sum = picture_square = 0;
 			psx3d_skip.phase = psx3d_skip.streak = 0;
 			next_deadline = now_t;
+			smart_clock = now_t;
 		}
 		bool late = now_t > next_deadline + frame_ticks / 8;   // last frame overran its slot
 		late_frames += late;
 		if (previous_special != ((sw_ff || (!dev_batch_active() && input_fast_forward())) || input_rewind())) {
 			next_deadline = now_t;
 			memset(&skip_control, 0, sizeof(skip_control));
-			psx3d_skip.budget_debt = psx3d_skip.frame_budget = 0;
+			psx3d_skip.budget_debt = psx3d_skip.frame_budget = psx3d_skip.picture_credit = 0;
 			picture_last = picture_intervals = 0; picture_sum = picture_square = 0;
 			psx3d_skip.phase = psx3d_skip.streak = 0;
+			smart_clock = now_t;
 		}
 		previous_special = (sw_ff || (!dev_batch_active() && input_fast_forward())) || input_rewind();
 		if (!(sw_ff || (!dev_batch_active() && input_fast_forward())) && now_t < next_deadline) {
@@ -1042,9 +1045,10 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			dup_frames = late_frames = 0;
 			statsview_begin(game_title);
 			next_deadline = svcGetSystemTick();
+			smart_clock = next_deadline;
 			stats_deadline = next_deadline + SYSCLOCK_ARM11;
 			memset(&skip_control, 0, sizeof(skip_control));
-			psx3d_skip.budget_debt = psx3d_skip.frame_budget = 0;
+			psx3d_skip.budget_debt = psx3d_skip.frame_budget = psx3d_skip.picture_credit = 0;
 			picture_last = picture_intervals = 0; picture_sum = picture_square = 0;
 			psx3d_skip.phase = psx3d_skip.streak = 0;
 			held = presented = emulated = 0;
@@ -1252,9 +1256,12 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			stats_deadline = end_work + SYSCLOCK_ARM11;
 		}
 		if (psx3d_skip.timing) misc_ticks += svcGetSystemTick() - report_start;
-		if (psx3d_skip.enabled && sw_fsmart && !sw_rtfs)
-			psx3d_smart_observe(&psx3d_skip, (svcGetSystemTick() - t0) / (double)CPU_TICKS_PER_MSEC,
-				1000.0 / fps_target);
+		if (psx3d_skip.enabled && sw_fsmart && !sw_rtfs) {
+			u64 end = svcGetSystemTick(), wall = end - smart_clock;
+			smart_clock = end;
+			psx3d_smart_observe(&psx3d_skip, (wall - frame_pace) / (double)CPU_TICKS_PER_MSEC,
+				1000.0 / fps_target, wall / (double)CPU_TICKS_PER_MSEC);
+		}
 		else if (psx3d_skip.enabled && sw_rtfsdense)
 			psx3d_skip_observe_dense(&skip_control, (svcGetSystemTick() - t0) / (double)CPU_TICKS_PER_MSEC,
 				1000.0 / fps_target, psx3d_skip.render_prims != prims_before ? 0 :
