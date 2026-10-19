@@ -10,7 +10,7 @@ sys.path.insert(0,str(D))
 import psx3dctl,fastbench
 from psx3dctl import Client,ControlError
 psx3dctl.MAX_RESPONSE=8*1024*1024
-BASELINE='release-v040-rc1-split'; FINAL='release-v040-final'
+BASELINE='release-v040-rc1-split'; FINAL='release-v040-final2'
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('console',choices=['old','new']);p.add_argument('--label',required=True);p.add_argument('--wait-lock',action='store_true');a=p.parse_args()
 marker=D/'fastloop'/f'{a.console.upper()}_UNAVAILABLE'
 def clearance():
@@ -35,7 +35,7 @@ with (D/'fastloop'/('lock.'+a.console)).open('a') as lock:
    return value
  c=GuardedClient(a.console,secret,timeout=600);fastbench.Client=GuardedClient
  s=c.request('status');save('initial-status',s)
- if s['settings']['build'] not in (BASELINE,FINAL) or s['mode']!='library' or s['bench']['active']:
+ if s['settings']['build'] not in (BASELINE,FINAL,'release-v040-final','frameskip-smart-06') or s['mode']!='library' or s['bench']['active']:
   print('BUSY handoff '+json.dumps(s),flush=True);sys.exit(2)
  save('initial-library',c.request('shot both'));print('READY '+str(out),flush=True)
  expected=s['settings']['build']
