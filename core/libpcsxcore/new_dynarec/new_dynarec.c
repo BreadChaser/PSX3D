@@ -3457,13 +3457,7 @@ static void *emit_fastpath_cmp_jump(struct compile_state *st, int i,
   {
     emit_cmpimm(addr,RAM_SIZE);
     jaddr = out;
-    #ifdef CORTEX_A8_BRANCH_PREDICTION_HACK
-    // Hint to branch predictor that the branch is unlikely to be taken
-    if (dops[i].rs1 >= 28)
-      emit_jno_unlikely(0);
-    else
-    #endif
-      emit_jno(0);
+    emit_jno(0);
     if (ram_offset != 0)
       *offset_reg = get_ro_reg(i_regs, 0);
   }
@@ -6184,9 +6178,6 @@ static void rjump_assemble(struct compile_state *st, int i, const struct regstat
   {
     do_jump_vaddr(rs);
   }
-  #ifdef CORTEX_A8_BRANCH_PREDICTION_HACK
-  if(dops[i].rt1!=31&&i<st->slen-2&&(((u_int)out)&7)) emit_mov(13,13);
-  #endif
 }
 
 int psx3d_idle_pointer = 0; // opt-in: runtime-checked pointer-chasing RAM polls
@@ -6728,9 +6719,6 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
   int vsync1 = !idle && dops[i].ooo && vsync1_loop_check(st, i);
   int vpoll = !idle && !vsync1 && dops[i].ooo && vpoll_loop_check(st, i);
   if ((idle || vsync1 || delay || vpoll) && dops[i].ooo) invert=1;
-  #ifdef CORTEX_A8_BRANCH_PREDICTION_HACK
-  if(i>(cinfo[i].ba-st->start)>>2) invert=1;
-  #endif
   #ifdef __aarch64__
   invert=1; // because of near cond. branches
   #endif
@@ -6796,9 +6784,6 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
           add_to_linker(st, out, cinfo[i].ba, internal);
           emit_jmp(0);
         }
-        #ifdef CORTEX_A8_BRANCH_PREDICTION_HACK
-        if(((u_int)out)&7) emit_addnop(0);
-        #endif
       }
     }
     else if(nop) {
@@ -6872,18 +6857,6 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
           vsync1_loop_assemble(i, cc);
         if (vpoll)
           vpoll_loop_assemble(i, cc);
-        #ifdef CORTEX_A8_BRANCH_PREDICTION_HACK
-        if (match && (!internal || !dops[(cinfo[i].ba-st->start)>>2].is_ds)) {
-          if(adj) {
-            emit_addimm(cc,-adj,cc);
-            add_to_linker(st,out,cinfo[i].ba,internal);
-          }else{
-            emit_addnop(13);
-            add_to_linker(st,out,cinfo[i].ba,internal*2);
-          }
-          emit_jmp(0);
-        }else
-        #endif
         {
           if(adj) emit_addimm(cc,-adj,cc);
           store_regs_bt(st,branch_regs[i].regmap,branch_regs[i].dirty,cinfo[i].ba);
@@ -7033,9 +7006,6 @@ static void sjump_assemble(struct compile_state *st, int i, const struct regstat
   int internal=internal_branch(st,cinfo[i].ba);
   if(i==(cinfo[i].ba-st->start)>>2) assem_debug("idle loop\n");
   if(!match) invert=1;
-  #ifdef CORTEX_A8_BRANCH_PREDICTION_HACK
-  if(i>(cinfo[i].ba-st->start)>>2) invert=1;
-  #endif
   #ifdef __aarch64__
   invert=1; // because of near cond. branches
   #endif
@@ -7107,9 +7077,6 @@ static void sjump_assemble(struct compile_state *st, int i, const struct regstat
           add_to_linker(st,out,cinfo[i].ba,internal);
           emit_jmp(0);
         }
-        #ifdef CORTEX_A8_BRANCH_PREDICTION_HACK
-        if(((u_int)out)&7) emit_addnop(0);
-        #endif
       }
     }
     else if(nevertaken) {
@@ -7149,18 +7116,6 @@ static void sjump_assemble(struct compile_state *st, int i, const struct regstat
       }
 
       if(invert) {
-        #ifdef CORTEX_A8_BRANCH_PREDICTION_HACK
-        if (match && (!internal || !dops[(cinfo[i].ba - st->start) >> 2].is_ds)) {
-          if(adj) {
-            emit_addimm(cc,-adj,cc);
-            add_to_linker(st,out,cinfo[i].ba,internal);
-          }else{
-            emit_addnop(13);
-            add_to_linker(st,out,cinfo[i].ba,internal*2);
-          }
-          emit_jmp(0);
-        }else
-        #endif
         {
           if(adj) emit_addimm(cc,-adj,cc);
           store_regs_bt(st,branch_regs[i].regmap,branch_regs[i].dirty,cinfo[i].ba);

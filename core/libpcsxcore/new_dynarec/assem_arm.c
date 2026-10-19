@@ -561,13 +561,6 @@ static void emit_addimm_and_set_flags(int imm, u_int rt)
   emit_addimm_and_set_flags3(rt, imm, rt);
 }
 
-static void emit_addnop(u_int r)
-{
-  assert(r<16);
-  assem_debug("add %s,%s,#0 (nop)\n",regname[r],regname[r]);
-  output_w32(0xe2800000|rd_rn_rm(r,r,0));
-}
-
 static void emit_andimm(int rs,int imm,int rt)
 {
   u_int armval;
@@ -1432,14 +1425,6 @@ static attr_unused void emit_addpl_imm(int rs,int imm,int rt)
   genimm_checked(imm,&armval);
   assem_debug("addpl %s,%s,#%d\n",regname[rt],regname[rs],imm);
   output_w32(0x52800000|rd_rn_rm(rt,rs,0)|armval);
-}
-
-static void emit_jno_unlikely(void *a_)
-{
-  //emit_jno(a_);
-  assert(a_ == NULL);
-  assem_debug("addvc pc,pc,#? (%p)\n", /*a-(int)out-8,*/ log_addr(a_));
-  output_w32(0x72800000|rd_rn_rm(15,15,0));
 }
 
 static void save_regs_all(u_int reglist)
@@ -2387,11 +2372,6 @@ static void do_miniht_load(int ht,int rh) {
 static void do_miniht_jump(int rs,int rh,int ht) {
   emit_cmp(rh,rs);
   emit_ldreq_indexed(ht,4,15);
-  #ifdef CORTEX_A8_BRANCH_PREDICTION_HACK
-  if(rs!=7)
-    emit_mov(rs,7);
-  rs=7;
-  #endif
   do_jump_vaddr(rs);
 }
 
