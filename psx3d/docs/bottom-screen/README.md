@@ -1,3 +1,5 @@
+> Current renderer policy: GPU only. See [Software removal](../../../docs/remove-sw.md).
+
 # Dynamic bottom-screen slots and curated presets
 
 Branch `t3/bottom-screen-main`, based on released software-renderer main
@@ -119,10 +121,8 @@ slots; Off hides all touch slots and the stick. Auto requires no migration.
 
 ## Release v0.3.0 integration
 
-Software is the factory renderer on both consoles. The per-console renderer
-field now participates in startup selection; DEFAULT inherits global and no
-seeded entry enables GPU. Explicit game choices and testing switches take
-precedence. See [release validation](../../../docs/release-v0.3.0.md).
+GPU is the only renderer on both consoles. Legacy renderer config keys are
+ignored. Presets describe controls and capabilities, with no renderer field.
 
 MENU, side slots and brand/FPS start 12px from the left edge; New Left
 placement mirrors them to the right edge. Side slots remain vertically centered.
@@ -184,16 +184,15 @@ profile, and stops rewind. Global Settings reset restores console defaults
 including core options and all controls, retaining paths/game files/saves/cheats.
 All resets ask for a fresh A; B cancels.
 
-## Preset structure and renderer extension
+## Preset structure
 
 `source/presets.c` resolves `source/game_presets.h`. Every record contains
-separate `old3ds` and `new3ds` option records, including renderer:
+separate `old3ds` and `new3ds` option records:
 
 ```c
 typedef struct {
     int fast_forward, rewind, touch_controls;
     int needs_l2r2, needs_l3r3, needs_right_stick;
-    int renderer;
     int touch_bindings[INPUT_TOUCH_N];
 } game_preset_options_t;
 typedef struct {
@@ -214,10 +213,7 @@ omitted C array members are zero (Cross), not inherited. New uses BL/BR indices
 for its top/bottom click slots, retaining the old map keys. `needs_right_stick` supplies
 the stick's preset binding. An explicit Old user stick value overrides it.
 
-Renderer values: `PRESET_RENDERER_INHERIT` (-1), `DEFAULT` (0), `SOFTWARE` (1),
-`GPU` (2), all with the `PRESET_RENDERER_` prefix. This main build resolves the
-field as metadata only; renderer selection is for the later integration.
-Software remains a permanent supported renderer.
+GPU rendering is automatic for every serial, including SotN.
 
 `GAME_PRESET_SAME` duplicates a complete initializer for both console records:
 
@@ -227,7 +223,6 @@ GAME_PRESET_SAME("ABCD12345", {
     .fast_forward = 0, .rewind = 0,
     .touch_controls = TOUCH_CONTROLS_AUTO,
     .needs_l2r2 = 0, .needs_l3r3 = 0, .needs_right_stick = 0,
-    .renderer = PRESET_RENDERER_DEFAULT,
     .touch_bindings = { 12, 13, -1, -1, -1, -1 },
 }),
 ```
@@ -235,7 +230,7 @@ GAME_PRESET_SAME("ABCD12345", {
 For different consoles, use `{ .serial="...", .old3ds={...}, .new3ds={...} }`.
 `INHERIT_SLOTS` and `CLICKS` in the table keep entries short. A commented-only
 Old FF example remains; do not enable it without measurement. For future
-frameskip/clock/renderer parameters add explicit inheritance, uncurated defaults,
+frameskip/clock parameters add explicit inheritance, uncurated defaults,
 resolver assignments, initializers/shorthands and validation. Keep source and
 confidence beside each serial. No per-frame serial lookup: the existing core
 `CD-ROM ID: <serial>` log is normalized/validated once and caches the record.
@@ -328,7 +323,7 @@ each target and non-overlap, curved merges and full-ring ownership, the action p
 the Controls callback, stick bind/hide/range/centering, zero/one/two side slots,
 New Right/Left and all zero/one/two click masks (every column pixel and gap), all allowed actions on every slot,
 hotkeys/toggle latch/cache/menu blocking, disallowed-combo passthrough,
-capability revocation, per-console preset/renderer/serial resolution,
+capability revocation, per-console preset/serial resolution,
 global/per-game persistence and every reset, raw inheritance and legacy
 migration, symbol/text ink centers and fresh-A/cancel confirmation.
 

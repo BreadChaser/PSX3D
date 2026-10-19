@@ -1,7 +1,7 @@
 # PSX3D
 
 PSX3D is a standalone PlayStation emulator for Nintendo 3DS by **BreadChaser**,
-built around our modified fork of PCSX-ReARMed. It runs without RetroArch.
+built around our vendored PCSX-ReARMed core and the gpu_pica GPU renderer. It runs without RetroArch.
 This project is a work in progress.
 
 **The first PS1 emulator for the 3DS that draws on the 3DS GPU.** On an Old 3DS
@@ -10,12 +10,8 @@ other 3DS PS1 emulators (Crash Bandicoot: 49.1 FPS on GPU vs 22.8 on Software),
 and automatic frameskip brings games like Crash Bandicoot, Ridge Racer Type 4
 and Symphony of the Night to full game speed on the original 3DS.
 
-> **The GPU renderer is experimental and still has many issues.** Some games
-> show drawing errors, missing effects or flicker, and it is not yet as
-> accurate as the software renderer. The New 3DS uses the software renderer by
-> default. If a game looks wrong on the Old 3DS, switch it to **Software** in
-> the game's settings (Performance → Renderer), and please report it with the
-> game name and `log.txt`.
+> **The GPU renderer is experimental and still has drawing errors and missing effects.**
+> Both console models now use GPU rendering exclusively.
 
 <p align="center">
   <img src="docs/screenshots/library.png" alt="Old 3DS game library" width="300">
@@ -35,8 +31,7 @@ and Symphony of the Night to full game speed on the original 3DS.
 
 ## Features
 
-- **Old 3DS defaults to GPU (experimental); New 3DS defaults to Software.**
-  Both renderers are included, with global and per-game selection.
+- **GPU rendering on both Old and New 3DS.** No renderer setup is needed.
 - Per-console game presets choose defaults and available features. Uncurated
   games expose all options supported by the console.
 - Library with box art, clean titles, multi-disc grouping and large SD support
@@ -57,6 +52,9 @@ BootNTR loaded with a low quality 30 / 128 KiB/s stream; New 3DS had no NTR.
 Frameskip-off numbers are emulated frames per second. Full speed is 60 FPS,
 or 100% game speed; automatic frameskip shows fewer pictures to improve speed.
 
+**Historical v0.3.1 measurements:** Software columns describe the previous release;
+Software rendering is no longer included.
+
 | Game | Old GPU, off (FPS) | Old GPU, auto (game speed) | New Software, off (FPS) |
 |---|---:|---:|---:|
 | Ridge Racer Type 4 | 58.5 | 100.0% | 60.0 |
@@ -67,7 +65,7 @@ or 100% game speed; automatic frameskip shows fewer pictures to improve speed.
 | Gran Turismo 2 | 31.1 | 68.5% | 60.0 |
 
 New 3DS Software also averaged 100% with automatic frameskip in all six scenes.
-Symphony of the Night's default **Software** preset on Old 3DS measured 51.8 FPS
+The previous Symphony of the Night **Software** preset on Old 3DS measured 51.8 FPS
 with frameskip off and 100.0% game speed with auto. Its New 3DS GPU spot check
 averaged 60.0 FPS off and 100.0% with auto.
 
@@ -87,8 +85,8 @@ Changes: [v0.3.1 release notes](docs/release-notes-v0.3.1.md).
 Games are recognised by their disc, and a built-in preset picks the best
 settings for each game separately on Old and New 3DS. Games without a preset
 show every option the console supports. Your own choices override the preset,
-and **Reset to defaults** (global or per game) brings it back. In v0.3.1,
-Castlevania: Symphony of the Night uses the software renderer on both consoles.
+and **Reset to defaults** (global or per game) brings it back.
+Castlevania: Symphony of the Night now uses GPU rendering on both consoles.
 
 The library's **X** button opens the global settings; **Settings** in the pause
 menu applies to the current game. Settings are one list grouped into Display,
@@ -153,7 +151,7 @@ filename. Internet is needed only for initial downloads.
 
 - **The GPU renderer still has many issues:** drawing errors, missing effects
   and flicker in some games; one mask-checking blend mode is approximate.
-  Use the Software renderer for games that look wrong.
+  Report affected games so the GPU renderer can be improved.
 - Display centering and interlaced modes are not implemented.
 - Demanding 3D games run below full speed on Old 3DS.
 - Heavy Wi-Fi traffic and slow cover downloads can cause audio clicks.
@@ -163,7 +161,7 @@ When reporting a problem, include the affected session's `log.txt`.
 ## Building
 
 Requires devkitPro/devkitARM, libctru, citro2d, citro3d, makerom and bannertool.
-Both renderers and all core dependencies are included; no submodule, patch step
+The GPU renderer and all core dependencies are included; no submodule, patch step
 or renderer build flag is needed. Core changes are committed directly under
 `core/`. See [core ownership and verification](docs/vendor-core.md).
 
@@ -177,8 +175,8 @@ make cia    # psx3d/PSX3D.cia
 ## Credits
 
 - **BreadChaser** — PSX3D author.
-- [PCSX-ReARMed](https://github.com/libretro/pcsx_rearmed): notaz, Exophase,
-  senquack and libretro contributors; based on PCSX, PCSX-Reloaded and P.E.Op.S.
+- [PCSX-ReARMed](https://github.com/libretro/pcsx_rearmed): notaz, Exophase
+  and libretro contributors; based on PCSX, PCSX-Reloaded and P.E.Op.S.
 - The authors of the PCSX-ReARMed 3DS port.
 - devkitPro: libctru, citro2d and citro3d.
 - [DSP1](https://github.com/zoogie/DSP1) by zoogie: firmware-copying method.

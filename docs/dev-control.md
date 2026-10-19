@@ -107,11 +107,8 @@ one library game. Absolute `sdmc:/...` paths also work; encode path spaces as
 ```text
 # {state} is expanded by fastbench.py only: Old=2, New=0.
 game=Crash_Bandicoot state={state} renderer=gpu frameskip=off warmup=5 seconds=20 pmu=0x11,0x00 shot=1
-game=Crash_Bandicoot state={state} renderer=sw frameskip=off warmup=5 seconds=20 pmu=0x11,0x00 shot=1
 game=Crash_Team_Racing state={state} renderer=gpu frameskip=off warmup=5 seconds=20 pmu=0x11,0x00
-game=Crash_Team_Racing state={state} renderer=sw frameskip=off warmup=5 seconds=20 pmu=0x11,0x00
 game=Gran_Turismo_2 state={state} renderer=gpu frameskip=off warmup=5 seconds=20 pmu=0x11,0x00
-game=Gran_Turismo_2 state={state} renderer=sw frameskip=off warmup=5 seconds=20 pmu=0x11,0x00
 ```
 
 Defaults: `warmup=5`, `seconds=20`, `shot=1`. Bounds: warmup 0..3600, seconds
@@ -131,7 +128,7 @@ save path. Resume prompts and automatic save-state writes are disabled while
 this developer facility is enabled. Explicit `savestate` is available outside
 an active batch and writes only the requested slot.
 
-Supported run switches include `renderer=sw|gpu`, `frameskip=off|auto|on`, `state=N`,
+Supported run switches include `renderer=gpu` (legacy `renderer=sw` is accepted and ignored), `frameskip=off|auto|on`, `state=N`,
 `pmu=AA,BB` (hex events), `clock=N`, `cdra=N`, up to eight `o:key=value`, `stats`,
 `prof`, `noskip`, `fs1`, `fs3`, `gputhread`/`nogputhread`, `nosputhread`, `acap`,
 `gldbg=N`, `vramdump=N`, stereo diagnostic switches and GPU submission switches.
@@ -158,7 +155,7 @@ samples, near-black samples, FPS, emulated game speed %, emulation/present/wait/
 GPU/xfer/heap-flush/queue-wait/gap ms, main-thread M cycles/frame and two PMU
 counter averages (in thousands), and PICA batch/primitive/texture/eviction/
 invalidation/upload/sync/readback counters. PICA activity counters are rates per
-second. `NA` means unavailable (e.g. PMU service failure or software PICA counters).
+second. `NA` means unavailable (e.g. PMU service failure).
 Live JSON uses `null`. Raw audio diagnostics, all PICA text counters and the
 picture probe are retained in the live history. `results.md` summarizes each run.
 Screenshots are `bench/<batch-id>-<run-number>.png` (400x240 top left eye).
@@ -214,7 +211,7 @@ are serviced, but nested system keyboard/confirmation applets are not.
 
 `set` currently allows `frameskip=...`, `clock=...`, `o:frameskip_*=...`,
 `slider=N`, and `gldbg=N`. `set rtt=auto|old|new` repeats the previous load cleanly.
-Renderer, thread and other options require a new `load`;
+Thread and other options require a new `load`;
 unsafe live changes are rejected. Use `load` with the same game/state to compare
 those. Per-run `o:` values use the existing core option mechanism.
 
