@@ -22,6 +22,7 @@ p.add_argument('--frames', type=int, default=600)
 p.add_argument('--jobs', type=int, default=2)
 p.add_argument('--switch', default='0')
 p.add_argument('--interpreter', action='store_true')
+p.add_argument('--game', help='One state key or exact boot directory name')
 a = p.parse_args()
 a.sim = a.sim.resolve()
 a.out = a.out.resolve()
@@ -33,6 +34,8 @@ if a.interpreter:
     options = options.replace('pcsx_rearmed_drc=enabled', 'pcsx_rearmed_drc=disabled')
 (a.out / 'options.ini').write_text(options)
 games = GAMES if a.mode != 'boot' else {d.name: d.name for d in sorted((DEV / 'roms/psx').iterdir()) if d.is_dir()}
+if a.game:
+    games = {a.game: games[a.game]}
 tasks = [(k, n) for k in games for n in ([300, 600] if a.mode == 'profile' else [a.frames])]
 
 def run(item):

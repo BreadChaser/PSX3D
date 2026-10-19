@@ -55,8 +55,8 @@ static bool env(unsigned cmd, void *data)
 {
 	switch (cmd) {
 	case RETRO_ENVIRONMENT_GET_CAN_DUPE: *(bool *)data = true; return true;
-	case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
-	case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: *(const char **)data = getenv("BIOSDIR") ? getenv("BIOSDIR") : "."; return true;
+	case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: *(const char **)data = getenv("BIOSDIR") ? getenv("BIOSDIR") : "."; return true;
+	case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: *(const char **)data = "."; return true;
 	case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
 		return *(enum retro_pixel_format *)data == RETRO_PIXEL_FORMAT_RGB565;
 	case RETRO_ENVIRONMENT_GET_VARIABLE: {
@@ -145,9 +145,22 @@ int main(int argc, char **argv)
 	retro_set_input_poll(poll);
 	retro_set_input_state(state);
 	retro_init();
- { extern int psx3d_dyn_lookup; if(getenv("DYNAREC_SPEED")) psx3d_dyn_lookup=atoi(getenv("DYNAREC_SPEED"))&1; }
+ {
+  extern int psx3d_dyn_lookup __attribute__((weak));
+  extern int psx3d_dyn_gtecode __attribute__((weak));
+  extern int psx3d_dyn_nclip __attribute__((weak));
+  extern int psx3d_dyn_regpair __attribute__((weak));
+  unsigned m=getenv("DYNAREC_SPEED") ? atoi(getenv("DYNAREC_SPEED")) : 0;
+  if (&psx3d_dyn_lookup) psx3d_dyn_lookup=!!(m&1);
+  if (&psx3d_dyn_gtecode) psx3d_dyn_gtecode=!!(m&2);
+  if (&psx3d_dyn_nclip) psx3d_dyn_nclip=!!(m&4);
+  if (&psx3d_dyn_regpair) psx3d_dyn_regpair=!!(m&8);
+ }
 	struct retro_game_info gi = { .path = argv[1] };
 	if (!retro_load_game(&gi)) { fprintf(stderr, "load failed\n"); return 1; }
+#ifdef DYNAREC_MICROTEST
+	{ void dynarec_microtest(void); dynarec_microtest(); return 0; }
+#endif
 #ifdef GLES
 	glc3d_init();
 	psx3d_gles_open(400, 240);
