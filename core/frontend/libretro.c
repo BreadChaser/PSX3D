@@ -2183,6 +2183,18 @@ bool retro_load_game(const struct retro_game_info *info)
    return true;
 }
 
+/* Clip replays must never persist simulated card writes to the user's cards.
+ * Config paths are initialized anew by the next retro_load_game(). */
+void psx3d_clip_prepare(int replay)
+{
+   // Only disc swaps use wall time. Clips disallow swaps and begin with a
+   // closed tray, so eliminate the host-time-dependent lid grace period.
+   SetCdOpenCaseTime(0);
+   if (!replay) return;
+   snprintf(Config.Mcd1, sizeof(Config.Mcd1), "none");
+   snprintf(Config.Mcd2, sizeof(Config.Mcd2), "none");
+}
+
 unsigned retro_get_region(void)
 {
    return is_pal_mode ? RETRO_REGION_PAL : RETRO_REGION_NTSC;

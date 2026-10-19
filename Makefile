@@ -25,6 +25,7 @@ export PICA_LAYOUT PICA_LAYOUT_CFLAGS PICA_OPT
 EXTERN_SYMS := psx3d_depth_get psx3d_depth_frame psx3d_overlay_get psx3d_ov_seq psx3d_set_strength \
 	psx3d_right_get psx3d_stats psx3d_set_half3d psx3d_prof_t psx3d_prof_c psx3d_prof_on new_dynarec_print_stats \
 	psx3d_irq_t psx3d_irq_c CdromId
+EXTERN_SYMS += Mcd1Data Mcd2Data psx3d_clip_prepare
 EXTERN_SYMS += psx3d_idle_skip psx3d_idle_pointer psx3d_idle_delay
 EXTERN_SYMS += psx3d_dyn_lookup
 EXTERN_SYMS += psx3d_spu_worker_ticks psx3d_spu_worker_items psx3d_skip pica_display_changed
