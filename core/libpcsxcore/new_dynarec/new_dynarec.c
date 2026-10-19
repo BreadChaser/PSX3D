@@ -3160,6 +3160,7 @@ static int get_ptr_mem_type(struct compile_state *st, u_int a)
 // 1 scratchpad translation as one immediate add (off: two adds, the cost of
 //   the previous 0x0fddf000 mapping), 2 no SMC check after the proven
 //   scratchpad store path (its slow stub keeps the check), 4 group guards,
+//   8 unrolled OT-clear DMA (psxdma.c),
 //   0x100 (tests only) every group guard fails into its cold copy
 unsigned psx3d_dynr2 = 0;
 static int last_fastpath_type;

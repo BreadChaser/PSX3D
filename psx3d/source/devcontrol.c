@@ -167,8 +167,8 @@ static void publish_status(void)
 	p += sprintf(p, ",\"version\":\"%s\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
 	p += sprintf(p, ",\"pica_prims\":%u,\"idle\":%d,\"idleptr\":%d,\"idledelay\":%d", pica_prims, psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay);
 	p += sprintf(p, ",\"skipgate\":\"%s\"", psx3d_skipgate ? "new" : "old");
-	p += sprintf(p, ",\"dynr2_spad\":%d,\"dynr2_spsmc\":%d,\"dynr2_group\":%d",
-	             !!(psx3d_dynr2 & 1), !!(psx3d_dynr2 & 2), !!(psx3d_dynr2 & 4));
+	p += sprintf(p, ",\"dynr2_spad\":%d,\"dynr2_spsmc\":%d,\"dynr2_group\":%d,\"dynr2_otc\":%d",
+	             !!(psx3d_dynr2 & 1), !!(psx3d_dynr2 & 2), !!(psx3d_dynr2 & 4), !!(psx3d_dynr2 & 8));
 	p += sprintf(p, ",\"texmask\":\"%s\",\"texmemo\":\"%s\"",
 	             pica_texmask ? "new" : "old", pica_texmemo ? "new" : "old");
 	clip_status_json(p, sizeof(settings)-(size_t)(p-settings)); p+=strlen(p);

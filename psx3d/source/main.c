@@ -190,6 +190,8 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "dynr2_spsmc=off")) psx3d_dynr2 &= ~2u;
 		else if (!strcmp(a, "dynr2_group=on")) psx3d_dynr2 |= 4;
 		else if (!strcmp(a, "dynr2_group=off")) psx3d_dynr2 &= ~4u;
+		else if (!strcmp(a, "dynr2_otc=on")) psx3d_dynr2 |= 8;
+		else if (!strcmp(a, "dynr2_otc=off")) psx3d_dynr2 &= ~8u;
 		else if (!strcmp(a, "noskip")) sw_noskip = true;
 		else if (!strcmp(a, "nogputhread")) sw_nogputhread = true;
 		else if (!strcmp(a, "gputhread")) sw_nogputhread = false;

@@ -85,6 +85,7 @@ void debug_parse_switch(const char *word)
 	if (!strcmp(word, "dynr2_spsmc=on")) psx3d_dynr2 |= 2;
 	if (!strcmp(word, "dynr2_group=on")) psx3d_dynr2 |= 4;
 	if (!strcmp(word, "dynr2_group=off")) psx3d_dynr2 &= ~4u;
+	if (!strcmp(word, "dynr2_otc=on")) psx3d_dynr2 |= 8;
 	if (!strcmp(word, "pica_prims_old")) pica_prims = 0;
 	if (!strcmp(word, "pica_prims_fast")) pica_prims = 7;
 	if (!strcmp(word, "pica_prims_copy")) pica_prims |= 1;
@@ -241,8 +242,9 @@ int main(void)
 	assert(switches_set("idledelay=on") && psx3d_idle_delay);
 	assert(switches_set("dynr2_spad=on") && switches_set("dynr2_spsmc=on") && switches_set("dynr2_group=on") && psx3d_dynr2 == 7);
 	assert(switches_set("dynr2_group=off") && psx3d_dynr2 == 3 && !switches_set("dynr2_group=maybe"));
+	assert(switches_set("dynr2_otc=on") && psx3d_dynr2 == 11);
 	command("set dynr2_group=on", true);
-	assert(strstr(response, "false") && psx3d_dynr2 == 3);
+	assert(strstr(response, "false") && psx3d_dynr2 == 11);
 	command("set idleptr=off", true);
 	assert(strstr(response, "false") && psx3d_idle_pointer);
 	command("set pica_prims_fast", true);
