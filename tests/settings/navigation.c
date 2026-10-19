@@ -98,8 +98,8 @@ int main(void)
 					config_game_begin("navigation");
 				settings_ui_t s = {.game = game};
 				open_page(&s, CAT_HOME);
-				assert(s.count == (game ? 8 : 7));
-				assert(has_row(&s, CATEGORY_ROW + CAT_CHEATS) == game);
+				assert(s.count == 7);
+				assert(!has_row(&s, CATEGORY_ROW + CAT_CHEATS)); // pause menu only
 				int seen[MAX_OPTIONS] = {0}, n = options_count();
 				for (int page = CAT_DISPLAY; page < CAT_COUNT; page++)
 					if (page != CAT_RESET) {

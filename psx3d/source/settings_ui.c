@@ -150,8 +150,9 @@ static void rebuild(settings_ui_t *s)
 {
 	s->count = 0;
 	if (s->page == CAT_HOME) {
+		// Cheats live in the pause menu only (settings_ui_cheats).
 		for (int i = CAT_DISPLAY; i <= CAT_RESET; i++)
-			if (i != CAT_CHEATS || s->game)
+			if (i != CAT_CHEATS)
 				add(s, CATEGORY_ROW + i);
 	} else if (s->page == CAT_ADVANCED) {
 		add(s, CATEGORY_ROW + CAT_CPU);
@@ -317,7 +318,9 @@ static void draw_settings(void *ud)
 		ui_text_ex(NULL, 12, 199, .4f, white, 0, text);
 	}
 	ui_text_ex(NULL, 160, 222, .39f, muted, C2D_AlignCenter,
-			   s->page == CAT_HOME ? "A open    B back" : "Left/Right change    L/R category    B back");
+			   s->page == CAT_HOME ? "A open    B back"
+			   : s->page == CAT_CHEATS ? "A on/off    X add code    B back"
+									   : "Left/Right change    L/R category    B back");
 }
 static void change(settings_ui_t *s, int item, int dir)
 {
@@ -413,7 +416,8 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 		u32 k = input_keys_down() | dev_ui_keys_take();
 		if (k & KEY_B) {
 			sfx_play(SFX_BACK);
-			if (s->page == CAT_HOME)
+			// Cheats is opened from the pause menu: B returns there.
+			if (s->page == CAT_HOME || s->page == CAT_CHEATS)
 				break;
 			open_page(s, parent(s->page));
 			k = 0;
@@ -423,7 +427,7 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 			*sel = (*sel + (k & KEY_DOWN ? 1 : s->count - 1)) % s->count;
 			sfx_play(SFX_MOVE);
 		}
-		if (s->page != CAT_HOME && (k & (KEY_L | KEY_R))) {
+		if (s->page != CAT_HOME && s->page != CAT_CHEATS && (k & (KEY_L | KEY_R))) {
 			int page = s->page;
 			if (page >= CAT_CPU && page <= CAT_HACKS)
 				page = CAT_ADVANCED;
@@ -435,7 +439,7 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 					page = CAT_ADVANCED;
 				if (page > CAT_ADVANCED)
 					page = CAT_DISPLAY;
-			} while (page == CAT_CHEATS && !game);
+			} while (page == CAT_CHEATS);
 			open_page(s, page);
 			sel = &s->selected[s->page];
 			k = 0;

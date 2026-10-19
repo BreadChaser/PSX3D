@@ -2,8 +2,9 @@
 
 Press **X** in the library for global settings, or choose **Settings** in the
 pause menu for the current game. The top level groups Display, Performance,
-Sound, Controls, Cheats (in game), Saves & general, Advanced and Reset to defaults.
-The paused game stays visible on the top screen.
+Sound, Controls, Saves & general, Advanced and Reset to defaults.
+The paused game stays visible on the top screen. Cheats are per game and open
+from the pause menu; **B** there returns to the pause menu.
 
 **A** opens a category or changes a row; **B** returns one level. **L/R** cycles
 categories. Touch a row to select it and again to activate it. Each page remembers
