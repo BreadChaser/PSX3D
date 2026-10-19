@@ -487,7 +487,7 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 		} else if ((k & KEY_X) && game && item >= CONTROL_ROW && item < CHEAT_ROW) {
 			config_control_clear(item - CONTROL_ROW);
 		} else if ((k & (KEY_X | KEY_Y)) && s->page == CAT_BINDINGS) {
-			if (ui_confirm("RESET CONTROLS?",
+			if (ui_confirm("Reset controls?",
 						   game ? "Use the inherited button and touch mappings for this game?"
 								: "Restore this console's default button and touch mappings?",
 						   game))
@@ -501,7 +501,7 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 		int dir = k & KEY_LEFT ? -1 : k & (KEY_RIGHT | KEY_A) ? 1 : 0;
 		if (item >= 0 && dir && (item < CATEGORY_ROW || (k & KEY_A))) {
 			if (item == CATEGORY_ROW + CAT_RESET) {
-				if (ui_confirm(game ? "RESET THIS GAME?" : "RESET ALL SETTINGS?",
+				if (ui_confirm(game ? "Reset this game?" : "Reset all settings?",
 							   game ? "Remove this game's settings and control overrides. Return to its "
 									  "preset and inherited defaults. Saves and cheats are kept."
 									: "Restore this console's defaults and control mappings. Game overrides "

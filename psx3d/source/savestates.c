@@ -185,6 +185,8 @@ static void draw_top(void *ud)
 	when_text(when, sizeof(when), s->saved);
 	if (b->saving && !s->used)
 		snprintf(line, sizeof(line), "Slot %d  -  new save", b->sel);
+	else if (s->used && !s->saved)   // copied in without a date
+		snprintf(line, sizeof(line), "Slot %d", b->sel);
 	else if (s->used)
 		snprintf(line, sizeof(line), "Slot %d  -  %s", b->sel, when);
 	else
@@ -199,7 +201,7 @@ static void draw_bottom(void *ud)
 	u32 white = C2D_Color32(235, 238, 255, 255), dim = C2D_Color32(110, 120, 160, 255);
 
 	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
-	ui_text_ex(font, 10, 6, 0.5f, white, 0, b->saving ? "SAVE STATE" : "LOAD STATE");
+	ui_text_ex(font, 10, 6, 0.5f, white, 0, b->saving ? "Save state" : "Load state");
 	ui_text_ex(NULL, 310, 9, 0.42f, dim, C2D_AlignRight, b->title);
 	for (int i = 0; i < 4; i++)
 		C2D_DrawRectSolid(10 + i * 18, 26, 0.2f, 16, 2, accent[i]);
@@ -240,6 +242,8 @@ static void draw_bottom(void *ud)
 	if (b->confirm)
 		snprintf(line, sizeof(line), b->confirm_delete ? "Delete slot %d? Press X again" :
 			"Overwrite slot %d? Press A again", b->sel);
+	else if (s->used && !s->saved)
+		snprintf(line, sizeof(line), "Saved state (no date)");
 	else if (s->used)
 		snprintf(line, sizeof(line), "Saved %s", when);
 	else
