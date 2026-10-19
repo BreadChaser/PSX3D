@@ -19,6 +19,9 @@ static void sim_tag_restore(int *old) { sim_tag = *old; }
 '''
 s = s.replace('#include "assem_arm.c"', metadata + '\n#include "assem_arm.c"')
 s = s.replace('  st.start = addr;', '  st.start = addr; sim_guest = addr;')
+# stubs belong to the instruction that created them
+assert '  for(i = 0; i < stubcount; i++)\n  {\n' in s
+s = s.replace('  for(i = 0; i < stubcount; i++)\n  {\n', '  for(i = 0; i < stubcount; i++)\n  {\n    sim_guest = st.start + (u_int)stubs[i].a*4;\n', 1)
 s = s.replace('    speculate_register_values(&st, i);', '    sim_guest = st.start + i*4;\n      speculate_register_values(&st, i);')
 s += r'''
 void sim_codegen_dump(const char *path) {
