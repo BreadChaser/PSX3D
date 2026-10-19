@@ -520,7 +520,7 @@ static void menu_draw_bottom(void *ud)
 {
 	menu_t *m = ud;
 	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
-	ui_menu_header("MENU", "this game");
+	ui_menu_header("Menu", "this game");
 	if (have_disk && disk.get_num_images)
 		snprintf(m->disc, sizeof(m->disc), "Disc %u of %u", menu_disc + 1, disk.get_num_images());
 	// Eight rows fit, so Exit stays visible when Swap disc is listed.
@@ -881,7 +881,9 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		state_slot = sw_state;
 		log_printf("test: slot %d %s\n", sw_state, (initial_state_ok = state_load_from(sw_state)) ? "loaded" : "failed");
 	}
-	osd("%s", __ctr_svchax ? "Dynarec enabled" : "Interpreter mode (no Luma SVC access) - slow");
+	// Only the slow case is worth a message on the clean game screen.
+	if (!__ctr_svchax)
+		osd("Interpreter mode (no Luma SVC access) - slow");
 
 	if (sw_pmu0 >= 0)
 		pmu_start(sw_pmu0, sw_pmu1 >= 0 ? sw_pmu1 : 0);
