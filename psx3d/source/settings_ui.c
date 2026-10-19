@@ -313,7 +313,7 @@ static void draw_settings(void *ud)
 	if (item >= CATEGORY_ROW)
 		tip = category_tips[item - CATEGORY_ROW];
 	else if (item >= CHEAT_ROW)
-		tip = "This game: A on/off    X add code";
+		tip = "X add a GameShark code";
 	else if (item >= CONTROL_ROW)
 		tip =
 			s->game ? "X use inherited mapping    Y reset controls" : "X reset all button and touch mappings";
