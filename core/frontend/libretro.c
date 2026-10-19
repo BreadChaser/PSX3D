@@ -116,6 +116,10 @@ static void *vout_buf;
 static void *vout_buf_ptr;
 static int vout_width = 256, vout_height = 240, vout_pitch_b = 256*2;
 static int vout_fb_dirty;
+/* CPU scanout also presents 24-bit movies with gpu_pica. The 3DS host
+ * alternates two output buffers; invalidate both on display-range changes. */
+static void *vout_cleared;
+static bool vout_clear_other;
 static int psx_w, psx_h;
 static bool vout_can_dupe;
 static int display_internal_fps;
@@ -342,6 +346,8 @@ static void vout_set_mode(int w, int h, int raw_w, int raw_h, int bpp)
    static unsigned int current_height;
    vout_width = w;
    vout_height = h;
+   vout_cleared = NULL;
+   vout_clear_other = true;
    psx_w = raw_w;
    psx_h = raw_h;
 
@@ -427,10 +433,18 @@ static void vout_flip(const void *vram_, int vram_ofs, int bgr24,
    int port = 0, hwrapped;
    int sstride = 2048;
 
-   if (vram == NULL || dims_changed || (in_enable_crosshair[0] + in_enable_crosshair[1]) > 0)
+   if (vram == NULL || dims_changed ||
+       (vout_clear_other && dest != vout_cleared) ||
+       (in_enable_crosshair[0] + in_enable_crosshair[1]) > 0)
    {
       unsigned char *dest2 = dest;
-      int h2 = h, ll = vout_width * bytes_pp;
+      int h2 = vout_height, ll = vout_width * bytes_pp;
+      if (vram == NULL || dims_changed || vout_cleared == NULL) {
+         vout_cleared = dest;
+         vout_clear_other = true;
+      }
+      else if (dest != vout_cleared)
+         vout_clear_other = false;
       if (dstride == ll)
          memset(dest2, 0, dstride * vout_height);
       else
