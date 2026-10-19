@@ -72,7 +72,7 @@ const char *input_ps1_name(int id)
 	case INPUT_FF_HOLD: return "Fast forward (hold)";
 	case INPUT_REWIND_HOLD: return "Rewind (hold)";
 	}
-	return "none";
+	return "None";
 }
 
 static void remap_defaults(void)
@@ -751,11 +751,13 @@ const char *input_control_value(int row, void *ud)
 		return "";
 	if (i == INPUT_REMAP_N)
 		return input_stick_binding() ? "Right stick" : "Hide";
-	if (i > INPUT_REMAP_N)
-		return input_hotkey_combo_name(input_hotkey_get(i - INPUT_REMAP_N - 1));
+	if (i > INPUT_REMAP_N) {
+		const char *combo = input_hotkey_combo_name(input_hotkey_get(i - INPUT_REMAP_N - 1));
+		return strcmp(combo, "off") ? combo : "Off";   // "off" is also the saved name
+	}
 	int id = input_map_get(i);
 	if (i>=INPUT_PHYSICAL_N && !touch_map_enabled(id)) return "Hide";
-	if (id >= INPUT_FF_TOGGLE && !touch_map_enabled(id)) return "none";
+	if (id >= INPUT_FF_TOGGLE && !touch_map_enabled(id)) return "None";
 	if (id == INPUT_FF_TOGGLE)
 		return "Fast fwd (toggle)";
 	if (id == INPUT_FF_HOLD)

@@ -364,6 +364,8 @@ const char *options_value(int i)
 		{ "hle", "Built-in" }, { "libretro", "Game save" }, { "serial", "Per disc" },
 		{ "shared", "Shared" }, { "none", "Off" },
 		{ "square", "Square" }, { "circle", "Round" },
+		{ "l1+r1+select", "L1+R1+Select" }, { "l1+r1+start", "L1+R1+Start" },
+		{ "l1+r1+l3", "L1+R1+L3" }, { "l1+r1+r3", "L1+R1+R3" }, { "l3+r3", "L3+R3" },
 	};
 	if (!v) return "";
 	for (size_t j = 0; j < sizeof(labels) / sizeof(labels[0]); j++)
@@ -399,7 +401,7 @@ static const char *const notes[][3] = {
 	{ "pcsx_rearmed_memcard2", "Reopen the game to apply", "Choose a separate card per disc, a card shared across games, or Off for an empty second memory-card slot." },
 	{ "pcsx_rearmed_psxclock", "Lower may slow the game itself", "How fast the game's PS1 CPU runs. Lower values may raise the frame count while slowing the game itself or causing glitches. Usually leave Auto." },
 	{ "pcsx_rearmed_frameskip_type", "Auto balances speed and smooth pictures", "Auto skips drawing to help game speed, while keeping at least 15 pictures a second when possible. Off draws every picture and can slow busy scenes. Curated games choose this automatically." },
-	{ "pcsx_rearmed_dithering", "PS1 colour shading", "Adds the PS1's fine colour pattern to shaded polygons. On follows the game; Always also enables it when the game turns it off." },
+	{ "pcsx_rearmed_dithering", "Smoother colour gradients", "Adds the PS1's fine colour pattern to shaded polygons. On follows the game; Always also enables it when the game turns it off." },
 	{ "pcsx_rearmed_alt_flip", "Usually leave Auto", "Choose when to capture the game's picture. Try Early or Late only if a game shows incomplete pictures or flicker." },
 	{ "pcsx_rearmed_gpu_slow_llists", "May be slower", "Follow the game's drawing order more closely. Leave Auto unless a game needs this to draw correctly." },
 	{ "pcsx_rearmed_spu_reverb", "Off can improve speed", "Play the PS1's echo effect. Off sounds drier and can help Old 3DS keep up." },
