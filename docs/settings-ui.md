@@ -1,6 +1,6 @@
 # Settings categories
 
-Implementation commits `05e32fb` and `2f237a3` on `t3/settings-ui`, based on `main` `9417930`. Not merged or pushed.
+Implementation commits `05e32fb`, `2f237a3`, `55d9528`, and `c8b674b` on `t3/settings-ui`, based on `main` `9417930`. Not merged or pushed.
 Evidence: `/home/tony/Development/PS1_3ds/devtools/settings-ui/`.
 
 ## Navigation and appearance
@@ -125,8 +125,8 @@ console/renderer inventory (`host/inventory.tsv`).
 
 - CIA and 3DSX build with devkitARM GCC 16.1, default split layout, title counter
   **3076**, semantic version unchanged at **0.3.1**. Remote identity:
-  `settings-ui-2-split`. CIA SHA256:
-  `d6b54737507a05390227af65a9e977a7aaecb768868e0647c48d21da1d50b345`.
+  `settings-ui-4-split`. CIA SHA256:
+  `feeb97737acbfd466212ae950b12f3cdd148695da6e2c78e9248168843640f4f`.
 - ASan/UBSan settings tests compile the actual navigator, config, input, options
   and drawing code. They check every visible core option appears exactly once,
   both console models/renderers/scopes, conditional child options, debug gating,
@@ -138,12 +138,21 @@ console/renderer inventory (`host/inventory.tsv`).
   outside settings. Renderer/config persistence regression passes.
 - Host render output is labelled offline and kept separately in `host/` and
   `host-bottom/`; it is never presented as real hardware screenshots.
-- `.text`: main **2,146,052 B** → candidate **2,144,388 B**, **−1,664 B**.
+- `.text`: main **2,146,052 B** → candidate **2,144,452 B**, **−1,600 B**.
   The large old settings lists were removed from emu.c/libui.c and replaced by
   one cold UI module. No setting lookup, input poll, core, audio, renderer or
   emulation frame-loop work was added. UI-key polling occurs only inside the
   settings/confirmation modals. Link layout can still differ; no hardware FPS
   improvement is claimed from code size.
+
+## Integration with the GPU-only follow-up
+
+The subsequent product decision removes the Software renderer in a separate
+branch. This navigation change preserves the options and persistence of its
+requested base, rather than adding software features. When integrating that
+removal, drop the Renderer/Half-height rows, software Picture position category,
+and software-only accuracy rows; keep the shared category/scope/reset behavior.
+Net-benefit fixes should not acquire new settings here.
 
 ## Developer capture commands
 
