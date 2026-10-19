@@ -25,6 +25,7 @@ static float clock_s;              // seconds since the screen opened
 static float fade = 1;             // 1 = black, eases to 0 on open
 static float launch_t = -1;        // >= 0 while the launch zoom plays
 static int rep_l, rep_r, rep_u, rep_d, rep_pl, rep_pr;
+static int rescan_frames;          // > 0 while "Library updated" shows
 
 // What the list shows: the top level (series and the games not in one), or
 // the games of one open series. Entries >= 0 are games, < 0 are series -(s+1).
@@ -151,14 +152,24 @@ static void draw_cover(int e, float cx, float cy, float size, float dim, float z
 	if (!g)
 		return;
 	float x = cx - size / 2, y = cy - size / 2;
-	if (entry_series(e) >= 0) {
-		// a series: a stack of cards behind its cover
+	int s = entry_series(e);
+	if (s >= 0) {
+		// a series: the next games' covers stacked behind its first one
+		// (plain cards until their art has loaded)
 		for (int k = 2; k >= 1; k--) {
-			float o = k * size * 0.06f;
+			float o = k * size * 0.06f, bx = x + o + ui_depth(0.3f * k), bz = z - 0.004f * k;
+			C3D_Tex *t = k < library_series_size(s) && dim < 0.6f ? covers_get(library_series_game(s, k)) : NULL;
+			if (t) {
+				Tex3DS_SubTexture st = { COVER_SIZE, COVER_SIZE, 0.0f, 1.0f, 1.0f, 0.0f };
+				C2D_ImageTint tint;
+				C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim + 0.2f * k);
+				C2D_DrawImageAt((C2D_Image){ t, &st }, bx, y - o, bz, &tint, size / COVER_SIZE, size / COVER_SIZE);
+				continue;
+			}
 			u8 c = (u8)(40 - k * 8);
-			C2D_DrawRectSolid(x + o + ui_depth(0.3f * k), y - o, z - 0.004f * k, size, size,
+			C2D_DrawRectSolid(bx, y - o, bz, size, size,
 				C2D_Color32(c, c + 6, c + 30, (u8)(255 * (1 - dim * 0.6f))));
-			C2D_DrawRectSolid(x + o + ui_depth(0.3f * k), y - o, z - 0.004f * k + 0.001f, size, 2,
+			C2D_DrawRectSolid(bx, y - o, bz + 0.001f, size, 2,
 				(*accent(e + k) & 0x00ffffff) | ((u32)(200 * (1 - dim)) << 24));
 		}
 	}
@@ -404,10 +415,15 @@ static void draw_bottom(void *ud)
 		float h = 216.0f * ROWS / n, y = 4 + 216.0f * lst.scroll / n;
 		C2D_DrawRectSolid(315, y, 0.3f, 3, h, C2D_Color32(60, 80, 140, 255));
 	}
-	ui_text_ex(NULL, 8, 222, 0.4f, C2D_Color32(90, 100, 135, 255), 0,
-		open_series >= 0 ? "A play    B back    X settings    START quit" :
-		entry_series(sel) >= 0 ? "A open    X settings    Y folders    START quit" :
-		"A play    X settings    Y folders    START quit");
+	if (rescan_frames > 0) {
+		char msg[48];
+		snprintf(msg, sizeof(msg), "Library updated: %d games", library_count());
+		ui_text_ex(NULL, 8, 222, 0.4f, C2D_Color32(255, 210, 120, 255), 0, msg);
+	} else
+		ui_text_ex(NULL, 8, 223, 0.36f, C2D_Color32(90, 100, 135, 255), 0,
+			open_series >= 0 ? "A play   B back   X settings   SELECT rescan   START quit" :
+			entry_series(sel) >= 0 ? "A open   X settings   Y folders   SELECT rescan   START quit" :
+			"A play   X settings   Y folders   SELECT rescan   START quit");
 }
 
 static bool repeat(u32 down, u32 held, u32 key, int *c)
@@ -573,6 +589,8 @@ int libui_run(char *out_path, size_t len)
 			library_load(g_cfg.games_dir, true);
 			enter_view(-1, 0);
 			n = nview;
+			rescan_frames = 150;
+			sfx_play(SFX_SELECT);
 		}
 		if (n) {
 			if (repeat(k, h, KEY_DRIGHT | KEY_CPAD_RIGHT, &rep_r) || repeat(k, h, KEY_DDOWN | KEY_CPAD_DOWN, &rep_d))
@@ -655,6 +673,7 @@ int libui_run(char *out_path, size_t len)
 		pop += pop_v * dt;
 		if (title_t < 1) title_t = fminf(1, title_t + dt * 5);
 		if (fade > 0) fade = fmaxf(0, fade - dt * 3);
+		if (rescan_frames > 0) rescan_frames--;
 		// the selection first, then outward: what's on screen loads first
 		covers_focus(entry_game(sel));
 		for (int d = 0; d <= 4; d++) {
