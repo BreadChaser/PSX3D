@@ -14,6 +14,10 @@ void debug_parse_switch(const char *word);
 // remain startup-only: changing SOC/audio allocation mid-session is unsafe.
 bool switches_set(const char *word)
 {
+	/* Development A/B only; never persisted as a user setting. */
+	if (!strcmp(word, "fsmart=old") || !strcmp(word, "fsmart=new")) {
+		sw_fsmart = !strcmp(word, "fsmart=new"); return true;
+	}
 	/* Recorder options apply to both startup and remote loads. */
 	if (clip_switch(word)) return true;
 	if (!strncmp(word, "rtfscap=", 8)) {
@@ -97,7 +101,7 @@ bool switches_run(char *line, char *game, size_t len, char *error, size_t error_
 	psx3d_idle_skip = 1; psx3d_idle_pointer = psx3d_idle_delay = 0;
 	sw_rtfslevel = -1; sw_rtfscap = 4; pica_submit = 7;
 	sw_rtfsdense = sw_rtfsmodel = sw_rtfswindow = sw_rtfs = sw_ff = sw_floataudio = false;
-	sw_frontend = true;
+	sw_frontend = sw_fsmart = true;
 	sw_prof = sw_stats = sw_fs1 = sw_fs3 = sw_noskip = sw_nosputhread = sw_acap = false;
 	sw_nogputhread = sw_aa = sw_showright = sw_sbs = false;
 	sw_gpu_async = sw_gpu_flush = true;

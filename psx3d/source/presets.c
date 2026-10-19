@@ -4,6 +4,7 @@
 #include <string.h>
 #include "game_presets.h"
 static const game_preset_t *current_preset;
+bool game_preset_curated(void) { return current_preset != NULL; }
 void game_presets_reset(void)
 {
 	current_preset = NULL;
@@ -17,6 +18,7 @@ game_preset_options_t game_capabilities(void)
 		return cached;
 	// Uncurated games expose every available feature and touch control.
 	game_preset_options_t result = {
+		.frameskip = 1,
 		.fast_forward = 1,
 		.rewind = g_new3ds,
 		.touch_controls = TOUCH_CONTROLS_AUTO,
@@ -30,6 +32,7 @@ game_preset_options_t game_capabilities(void)
 #define RESOLVE(field)                                                                                       \
 	if (p.field >= 0)                                                                                        \
 	result.field = p.field
+		RESOLVE(frameskip);
 		RESOLVE(fast_forward);
 		RESOLVE(rewind);
 		RESOLVE(touch_controls);

@@ -157,7 +157,8 @@ static void publish_status(void)
 	        running && !strcmp(opt("pcsx_rearmed_gpu_thread_rendering"), "enabled") ? "true" : "false",
 	        sw_nosputhread ? "true" : "false");
 	p += strlen(p);
-	p += sprintf(p, ",\"build\":\"release-v040-final\",\"rtfs\":%s,\"ff\":%s,\"frontend\":%s,\"floataudio\":%s", sw_rtfs ? "true" : "false", sw_ff ? "true" : "false", sw_frontend ? "true" : "false", sw_floataudio ? "true" : "false");
+	p += sprintf(p, ",\"build\":\"frameskip-smart-06\",\"rtfs\":%s,\"ff\":%s,\"frontend\":%s,\"floataudio\":%s", sw_rtfs ? "true" : "false", sw_ff ? "true" : "false", sw_frontend ? "true" : "false", sw_floataudio ? "true" : "false");
+	p += sprintf(p, ",\"fsmart\":\"%s\"", sw_fsmart ? "new" : "old");
 	p += sprintf(p, ",\"version\":\"%s\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
 	p += sprintf(p, ",\"pica_prims\":%u,\"idle\":%d,\"idleptr\":%d,\"idledelay\":%d", pica_prims, psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay);
 	p += sprintf(p, ",\"skipgate\":\"%s\"", psx3d_skipgate ? "new" : "old");
@@ -707,6 +708,8 @@ void dev_sample(const statsview_sample *s, const char *probe, int top_lum, doubl
  pmu_renderer(&m.v[59]);
  pmu_category_detail(&m.v[63]);
  m.v[84] = front->draw_fraction;
+ m.v[85] = front->picture_mean; m.v[86] = front->picture_square;
+ m.v[87] = front->picture_intervals;
  for (int k=0; k<3; k++) { m.v[53+k] = category_cycles[k]; m.v[56+k] = category_count[k]; }
 	const char *ap = s->audio ? strstr(s->audio, "underruns=") : NULL;
 	unsigned au, ad;
@@ -749,8 +752,11 @@ void dev_sample(const statsview_sample *s, const char *probe, int top_lum, doubl
 	}
 	for (int i = 0; i < DEV_METRICS; i++)
 		if (m.v[i] >= 0) {
-			sums[i] += m.v[i] * s->elapsed;
-			weights[i] += s->elapsed;
+			// Presentation moments are weighted by intervals, so variance is
+			// exact across a batch even when cadence changes between samples.
+			double weight = (i == 85 || i == 86) ? front->picture_intervals : s->elapsed;
+			sums[i] += m.v[i] * weight;
+			weights[i] += weight;
 		}
 	samples++;
 	if ((m.v[21] >= 0 && m.v[21] <= 1) || (top_lum >= 0 && top_lum <= 2))

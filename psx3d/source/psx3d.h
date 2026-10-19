@@ -107,6 +107,8 @@ typedef struct {
 	float run_ms, present_ms, audio_ms, misc_ms, pace_ms;
 	float spu_ms, spu_wait_ms, pica_ms;
 	float phase_ms[8], draw_fraction;
+	double picture_mean, picture_square;
+	unsigned picture_intervals;
 	unsigned skip_level, drawn, skipped;
 } emu_frontend_sample;
 const emu_frontend_sample *emu_frontend_stats(void);
@@ -151,6 +153,7 @@ extern int psx3d_prof_on;
 void new_dynarec_print_stats(void);
 extern bool sw_frontend, sw_floataudio, sw_ff;
 extern int sw_rtfscap, sw_rtfslevel;
+extern bool sw_fsmart;
 extern bool sw_rtfs, sw_rtfswindow, sw_rtfsmodel;
 extern bool sw_prof, sw_stats, sw_o3ds, sw_fs1, sw_fs3, sw_noskip, sw_nosputhread, sw_acap;
 extern int sw_state, sw_gldbg, sw_vramdump;
@@ -299,7 +302,7 @@ typedef struct {
 	int fast_forward, rewind, touch_controls;
 	int needs_l2r2, needs_l3r3, needs_right_stick;
 	int touch_bindings[INPUT_TOUCH_N]; // -2 inherits needs_* shorthand; -1 hides.
-	// Add future frameskip/clock parameters with explicit inheritance.
+	int frameskip; // -1: console default Auto, 0: Off, 1: Auto.
 } game_preset_options_t;
 typedef struct {
 	const char *serial;
@@ -308,6 +311,7 @@ typedef struct {
 // Variadic initializer allows designated fields and comma-separated values.
 #define GAME_PRESET_SAME(disc, ...) { .serial = disc, .old3ds = __VA_ARGS__, .new3ds = __VA_ARGS__ }
 game_preset_options_t game_capabilities(void);
+bool game_preset_curated(void);
 void game_presets_reset(void);
 void game_presets_disc_log(const char *message);
 

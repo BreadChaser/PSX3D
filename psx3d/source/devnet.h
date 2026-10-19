@@ -3,7 +3,7 @@
 #include "devtools.h"
 #define DEV_COMMAND_MAX 16384
 #define DEV_HISTORY 60
-#define DEV_METRICS 85
+#define DEV_METRICS 88
 /* Numeric JSON/TSV columns, kept in one order for live and batch output. */
 extern const char *const dev_columns[DEV_METRICS];
 typedef struct {

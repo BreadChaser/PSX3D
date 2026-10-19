@@ -24,6 +24,7 @@ const char *input_hotkey_combo_name(int i) { return "off"; }
 void input_touch_begin(void) {}
 void input_touch_reset(void) {}
 game_preset_options_t game_capabilities(void) { return (game_preset_options_t){0}; }
+bool game_preset_curated(void) { return false; }
 bool renderer_is_gpu(void) { return true; }
 bool settings_ui_debug_capture(void) { return false; }
 const char *input_control_key(int row) { (void)row;return NULL; }

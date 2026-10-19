@@ -155,7 +155,20 @@ int main(void)
  config_set_core_override("pcsx_rearmed_frameskip_type","disabled");open_page(&conditional,CAT_PERFORMANCE);
  int base_count=conditional.count;
  config_set_core_override("pcsx_rearmed_frameskip_type","auto_threshold");open_page(&conditional,CAT_PERFORMANCE);
- assert(conditional.count==base_count+2);
+ assert(conditional.count==base_count);
+ for(int model=0;model<2;model++) {
+  g_new3ds=model;
+  config_game_begin("Castlevania - Symphony of the Night");
+  settings_ui_t curated={.game=true};open_page(&curated,CAT_PERFORMANCE);
+  int unlisted_count=curated.count;
+  input_touch_disc_log("CD-ROM ID: SLUS00067\n");open_page(&curated,CAT_PERFORMANCE);
+  assert(curated.count==unlisted_count-1);
+  shot(model?"new-curated-Performance":"old-curated-Performance");
+  flist_snap(&curated.list,0,curated.count,VISIBLE_ROWS);draw_settings(&curated);shot_end();
+  config_game_end();
+ }
+ g_new3ds=true;
+ assert(!strcmp(options_get("pcsx_rearmed_frameskip_type"),"auto"));
  open_page(&conditional,CAT_ADVANCED);assert(!has_row(&conditional,CATEGORY_ROW+CAT_DEBUG));
  g_cfg.debug=1;open_page(&conditional,CAT_ADVANCED);assert(has_row(&conditional,CATEGORY_ROW+CAT_DEBUG));
  g_cfg.debug=0;

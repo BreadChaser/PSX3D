@@ -3,18 +3,18 @@
 // Existing evidence covers stick clicks only;
 // other Old 3DS touch requirements remain at the full safe default.
 #define INHERIT_SLOTS { -2, -2, -2, -2, -2, -2 }
-#define INHERIT_OPTIONS { -1, -1, -1, -1, -1, -1, INHERIT_SLOTS }
-// GAME_PRESET_SAME("ABCD12345", { ff, rw, policy, l2r2, l3r3, stick, INHERIT_SLOTS })
+#define INHERIT_OPTIONS { -1, -1, -1, -1, -1, -1, INHERIT_SLOTS, -1 }
+// GAME_PRESET_SAME("ABCD12345", { ff, rw, policy, l2r2, l3r3, stick, INHERIT_SLOTS, -1 })
 // is shorthand for equal Old/New options (technical limits still apply).
 #define CLICKS(disc) { .serial = disc, \
- .old3ds = { 0, 0, -1, -1, -1, -1, INHERIT_SLOTS }, \
- .new3ds = { -1, -1, TOUCH_CONTROLS_AUTO, 0, 1, 0, INHERIT_SLOTS } }
+ .old3ds = { 0, 0, -1, -1, -1, -1, INHERIT_SLOTS, -1 }, \
+ .new3ds = { -1, -1, TOUCH_CONTROLS_AUTO, 0, 1, 0, INHERIT_SLOTS, -1 } }
 // Future TESTED Old FF example (not enabled):
-// { "ABCD12345", { 1, -1, -1, -1, -1, -1, INHERIT_SLOTS }, INHERIT_OPTIONS },
+// { "ABCD12345", { 1, -1, -1, -1, -1, -1, INHERIT_SLOTS, -1 }, INHERIT_OPTIONS },
 // Sources and regional coverage: docs/bottom-screen/README.md.
 // Confidence below describes L3/R3 use, not serial identity. All IDs checked
 // against PlayStation DataCenter. Add a source before extending this list.
-#define SOTN(disc) GAME_PRESET_SAME(disc, { -1, -1, -1, -1, -1, -1, INHERIT_SLOTS })
+#define SOTN(disc) GAME_PRESET_SAME(disc, { -1, -1, -1, -1, -1, -1, INHERIT_SLOTS, -1 })
 static const game_preset_t game_presets[] = {
 	// SotN: GPU rendering verified in the USA prologue fight.
 	// GPU is used on both models.
