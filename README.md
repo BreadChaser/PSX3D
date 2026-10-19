@@ -21,6 +21,8 @@ missing effects. New 3DS runs the tested scenes at full speed; demanding games
 remain slower on Old 3DS. See the [release notes](docs/release-notes-v0.4.0.md)
 for current limits.
 
+Stereoscopic 3D is temporarily unavailable in v0.4.0 (the 3D slider shows a flat picture); GPU 3D is in development.
+
 ## Screenshots
 
 Captured from v0.4.0 on real hardware.
@@ -53,7 +55,7 @@ Captured from v0.4.0 on real hardware.
 - Box art, clean game titles, multi-disc grouping and support for large SD cards.
 - Save states with picture previews, per-game memory cards, cheats and disc swapping.
 - Remappable buttons, touch controls and fast-forward; optional rewind on New 3DS.
-- Display modes, New 3DS screen-depth effects and smooth audio when games run slowly.
+- Display modes and smooth audio when games run slowly.
 - Built-in HLE BIOS: no separate BIOS file required. DSP firmware is copied on first start.
 
 ## Performance
