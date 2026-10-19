@@ -89,8 +89,10 @@ and **Reset to defaults** (global or per game) brings it back.
 Castlevania: Symphony of the Night now uses GPU rendering on both consoles.
 
 The library's **X** button opens the global settings; **Settings** in the pause
-menu applies to the current game. Settings are one list grouped into Display,
-Performance, Controls, Sound, General and Advanced.
+menu opens settings in the current game. Category pages group Display,
+Performance, Sound, Controls, Saves & general, and Advanced options. Each row
+shows whether it affects this game or all games; game overrides can be cleared
+individually, and reset confirmations state what will be kept.
 
 The bottom screen shows only what a game needs: on the Old 3DS a right stick
 and L2/R2/L3/R3, on the New 3DS stick-click buttons for games that use them
@@ -104,7 +106,8 @@ the corner, or detailed statistics.
   still run below full speed, even with frameskip.
 - Your game images: `.cue/.bin`, `.chd`, `.pbp`, `.iso` or `.m3u`. No games included.
 - Optional BIOS (for example `scph1001.bin`) in `sdmc:/3ds/PSX3D/bios/`.
-  The core uses its HLE BIOS otherwise; some games need a real BIOS.
+  The built-in HLE BIOS is the normal configuration and needs no BIOS file.
+  Compatibility varies; a real BIOS can help with some games.
 
 ## Install
 
@@ -135,7 +138,9 @@ Hotkeys are remappable. Rewind needs a New 3DS and is turned on per game.
 ## Box art and files
 
 Box art downloads from [libretro-thumbnails](https://github.com/libretro-thumbnails/libretro-thumbnails)
-and is cached in `sdmc:/3ds/PSX3D/covers/`. Custom PNGs can use the matching
+and is cached in `sdmc:/3ds/PSX3D/covers/`. Covers load automatically on both
+console models, including developer remote sessions; downloads pause before
+gameplay. Custom PNGs can use the matching
 filename. Internet is needed only for initial downloads.
 
 | Under `sdmc:/3ds/PSX3D/` | Contents |
@@ -153,6 +158,8 @@ filename. Internet is needed only for initial downloads.
   and flicker in some games; one mask-checking blend mode is approximate.
   Report affected games so the GPU renderer can be improved.
 - Display centering and interlaced modes are not implemented.
+- Real per-object 3D currently falls back to depth-mesh screen 3D on New 3DS
+  until GPU stereoscopic rendering lands.
 - Demanding 3D games run below full speed on Old 3DS.
 - Heavy Wi-Fi traffic and slow cover downloads can cause audio clicks.
 
