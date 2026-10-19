@@ -11,6 +11,7 @@ typedef struct { uint32_t op, value, original, last; bool touched; } code_t;
 static code_t codes[MAX_CODES];
 static unsigned count;
 static bool enabled, allowed = true;
+static int policy = -1;
 static unsigned aspect_n = 5, aspect_d = 3;
 static char identity[48];
 
@@ -70,7 +71,7 @@ static void restore(void)
 void ws_unload(void)
 {
 	if (enabled) restore();
-	enabled = false; count = 0; allowed = true; identity[0] = 0;
+	enabled = false; count = 0; allowed = true; policy = -1; identity[0] = 0;
 	aspect_n = 5; aspect_d = 3;
 }
 bool ws_load(const char *directory, const char *serial, uint32_t fingerprint, bool new3ds)
@@ -101,8 +102,9 @@ bool ws_load(const char *directory, const char *serial, uint32_t fingerprint, bo
 		}
 		used = 0;
 		if (sscanf(line, "models=%d,%d%n", &old, &newer, &used) == 2 && !line[used]) {
-			if ((old != 0 && old != 1) || (newer != 0 && newer != 1)) { valid = false; break; }
-			allowed = new3ds ? newer : old; model = true; continue;
+			if (old < WS_HIDDEN || old > WS_TOO_SLOW || newer < WS_HIDDEN || newer > WS_TOO_SLOW) { valid = false; break; }
+			policy = new3ds ? newer : old;
+			allowed = policy == WS_OFFERED || policy == WS_COSTLY; model = true; continue;
 		}
 		unsigned op, val;
 		used = 0;
@@ -137,6 +139,7 @@ bool ws_enable(bool on)
 	return count && allowed;
 }
 bool ws_available(void) { return allowed; }
+int ws_console_policy(void) { return count ? policy : -1; }
 const char *ws_identity(void) { return identity[0] ? identity : "gte"; }
 float ws_aspect(void) { return enabled ? (float)aspect_n / aspect_d : 5.0f / 3.0f; }
 void ws_frame(void)

@@ -7,6 +7,11 @@ bool ws_load(const char *directory, const char *serial, uint32_t fingerprint, bo
 void ws_unload(void);
 bool ws_enable(bool enabled);
 bool ws_available(void);
+// A bundle's models=<old>,<new> value for this console. Speed decisions stay
+// visible to the user: a costly bundle is offered with a warning, and one
+// held back for speed is explained instead of called missing.
+enum { WS_HIDDEN, WS_OFFERED, WS_COSTLY, WS_TOO_SLOW };
+int ws_console_policy(void);   // -1 when the game has no bundle
 const char *ws_identity(void);
 float ws_aspect(void);
 void ws_frame(void);

@@ -2,6 +2,7 @@
 #include "devtools.h"
 #include "psx3d.h"
 #include "statsview.h"
+#include "widescreen.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -283,6 +284,19 @@ static void open_page(settings_ui_t *s, int page)
 	s->list.init = false;
 }
 static void sync_picture(void) { config_ws_sync(); }
+// In a game, why Widescreen is missing or what it costs on this console.
+static const char *screen_note(void)
+{
+	int policy = ws_console_policy();
+	if (config_ws_fix())
+		return policy != WS_COSTLY ? NULL
+			: g_new3ds ? "Widescreen can lower the speed on New 3DS."
+			: "Widescreen can lower the speed on Old 3DS.";
+	if (policy == WS_TOO_SLOW)
+		return g_new3ds ? "Widescreen is off on New 3DS to keep the speed up."
+			: "Widescreen is off on Old 3DS to keep the speed up.";
+	return "This game has no widescreen fix.";
+}
 static void draw_settings(void *ud)
 {
 	settings_ui_t *s = ud;
@@ -313,8 +327,8 @@ static void draw_settings(void *ud)
 			s->game ? "X use inherited mapping    Y reset controls" : "X reset all button and touch mappings";
 	else if (item >= CORE_ROW)
 		tip = options_impact(item - CORE_ROW);
-	else if (item == F_SCREEN && s->game && !config_ws_fix())
-		tip = "This game has no widescreen fix.";
+	else if (item == F_SCREEN && s->game && screen_note())
+		tip = screen_note();
 	else if (item >= 0)
 		tip = tips[item];
 	if (message_frames > 0)
@@ -427,7 +441,7 @@ static void draw_help(void *ud)
 		ui_help_panel(150, options_desc(item - CORE_ROW), options_impact(item - CORE_ROW),
 					  options_info(item - CORE_ROW));
 	else
-		ui_help_panel(150, labels[item], NULL, helps[item]);
+		ui_help_panel(150, labels[item], item == F_SCREEN && s->game ? screen_note() : NULL, helps[item]);
 }
 static bool run_settings(bool game, int page, void (*draw_top)(void *))
 {

@@ -70,6 +70,39 @@ static void check_rows(settings_ui_t *s)
 		assert(lw + vw <= 284);
 	}
 }
+// Screen-mode notes: missing fix, held back for speed, offered with a warning.
+static void screen_note_checks(void)
+{
+	bool was_in_game = in_game;
+	int was_mode = config_screen_mode();
+	in_game = true;
+	config_set_screen_mode(2);
+	for (int model = 0; model < 2; model++) {
+		g_new3ds = model;
+		game_presets_reset();
+		test_ws_policy = -1;
+		config_ws_sync();
+		assert(!config_ws_fix() && !strcmp(screen_note(), "This game has no widescreen fix."));
+		test_ws_policy = WS_HIDDEN;
+		config_ws_sync();
+		assert(!config_ws_fix() && !strcmp(screen_note(), "This game has no widescreen fix."));
+		test_ws_policy = WS_TOO_SLOW;
+		config_ws_sync();
+		assert(!config_ws_fix() && !strcmp(screen_note(), model ? "Widescreen is off on New 3DS to keep the speed up."
+								: "Widescreen is off on Old 3DS to keep the speed up."));
+		test_ws_policy = WS_COSTLY;
+		config_ws_sync();
+		assert(config_ws_fix() && !strcmp(screen_note(), model ? "Widescreen can lower the speed on New 3DS."
+							     : "Widescreen can lower the speed on Old 3DS."));
+		test_ws_policy = WS_OFFERED;
+		config_ws_sync();
+		assert(config_ws_fix() && !screen_note());
+	}
+	test_ws_policy = -1;
+	in_game = was_in_game;
+	config_set_screen_mode(was_mode);
+	config_ws_sync();
+}
 int main(void)
 {
 	mkdir("sdmc:", 0700);
@@ -212,6 +245,8 @@ int main(void)
 	FT_Done_Face(title_face);
 	FT_Done_Face(body_face);
 	FT_Done_FreeType(ft);
+	screen_note_checks();
+	puts("PASS: widescreen notes (no fix, held back for speed, costly warning) on both consoles");
 	puts("PASS: category inventory, visibility, cursor memory, scope, individual override/reset, production "
 		 "drawing and remote UI key gate");
 }

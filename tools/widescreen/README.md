@@ -41,8 +41,10 @@ models=1,1
 A7012340 10000C00
 ```
 
-`models=Old,New` accepts only 0/1. A zero hides Widescreen on that console;
-it does not silently substitute GTE. Presets may independently hide the
+`models=Old,New` takes one value per console: 0 hides Widescreen (no usable
+fix), 1 offers it, 2 offers it with a "can lower the speed" warning in
+Settings, and 3 holds it back to keep the speed up (Settings says so instead
+of "no widescreen fix"). Hidden values never silently substitute GTE. Presets may independently hide the
 feature. Both permissions must allow it. Aspect is fitted into 400×240.
 
 The interpreter accepts `30` byte, `80` halfword and `90` word writes;

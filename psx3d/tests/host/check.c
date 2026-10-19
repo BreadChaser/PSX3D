@@ -11,7 +11,9 @@
 #include "../../source/psx3d.h"
 void cheats_disc_changed(void) {}
 int padAnalogMode(unsigned int index) { (void)index; return 1; } // touch L3/R3 follow analog mode
-bool ws_available(void) { return false; }
+int test_ws_policy = -1;   // bundle models= value for this console, -1 = none
+bool ws_available(void) { return test_ws_policy == 1 || test_ws_policy == 2; }
+int ws_console_policy(void) { return test_ws_policy; }
 #ifndef SETTINGS_NAV_TEST
 bool cheats_widescreen(bool on) { (void)on; return false; }
 #endif

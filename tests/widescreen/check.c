@@ -36,6 +36,12 @@ int main(int argc, char **argv) {
  file("PSX3D-WS-1\naspect=16:9\nmodels=0,1\n80000020 00000099\n");
  assert(ws_load("ws","SLUS12345",0x01020304,0));assert(!ws_available());assert(!ws_enable(1));ws_frame();assert(ram[32]==0x66);
  assert(ws_load("ws","SLUS12345",0x01020304,1));assert(ws_available());assert(ws_enable(1));ws_frame();assert(ram[32]==0x99);ws_unload();assert(ram[32]==0x66);
+ // Costly: offered with a warning. Too slow: held back and explained. Unknown values reject.
+ file("PSX3D-WS-1\naspect=16:9\nmodels=2,3\n80000020 00000099\n");
+ assert(ws_load("ws","SLUS12345",0x01020304,0));assert(ws_available());assert(ws_console_policy()==WS_COSTLY);
+ assert(ws_load("ws","SLUS12345",0x01020304,1));assert(!ws_available());assert(ws_console_policy()==WS_TOO_SLOW);assert(!ws_enable(1));
+ file("PSX3D-WS-1\naspect=16:9\nmodels=4,1\n80000020 00000099\n");
+ assert(!ws_load("ws","SLUS12345",0x01020304,0));assert(ws_console_policy()==-1);assert(ws_available());
  file(HEAD "A7000010 12345678\n");ram[16]=0x78;ram[17]=0x56;
  assert(ws_load("ws","SLUS12345",0x01020304,1));ws_enable(1);ws_frame();ws_enable(0);assert(ram[16]==0x34 && ram[17]==0x12);
  // A patched state loaded with Widescreen off must not retain its patches.

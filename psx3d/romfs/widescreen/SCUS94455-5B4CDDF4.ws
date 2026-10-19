@@ -9,7 +9,8 @@ PSX3D-WS-1
 # HUD/2D: Car selection, prerace, results, trophy and GT-mode 2D fixes included
 # Issues: 16:9 uses 400x225 letterboxing; scene-limited verification only.
 aspect=16:9
-models=1,1
+# Old 3DS: offered with a speed warning (models 2); it costs Old 3DS speed.
+models=2,1
 [complete bundle]
 A4052A64 801EF8EF
 A705D598 A5B40000
