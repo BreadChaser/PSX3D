@@ -69,6 +69,7 @@ void config_set_screen_mode(int mode);
 void config_game_begin(const char *game);
 void config_game_set_screen(int mode);
 void config_game_end(void);
+void config_game_store(void);
 bool config_in_game(void);
 bool config_ws_fix(void);
 void config_ws_sync(void);

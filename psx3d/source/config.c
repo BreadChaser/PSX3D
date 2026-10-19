@@ -38,6 +38,11 @@ static void game_fields_store(void)
 		else gamecfg_set_int(game_field_keys[i], *game_fields[i]);
 	}
 }
+void config_game_store(void)
+{
+	if (in_game)
+		game_fields_store();
+}
 static void game_fields_restore(void)
 {
 	for (int i = 0; i < GAME_FIELDS; i++) *game_fields[i] = default_fields[i];

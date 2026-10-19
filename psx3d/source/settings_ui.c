@@ -212,8 +212,6 @@ static bool overridden(settings_ui_t *s, int item)
 {
 	if (!s->game)
 		return false;
-	if (item >= CONTROL_ROW && item < CHEAT_ROW)
-		return config_control_overridden(item - CONTROL_ROW);
 	const char *key = override_key(item);
 	return key && config_game_overridden(key);
 }
@@ -327,7 +325,7 @@ static void draw_settings(void *ud)
 	else if (tip && s->page != CAT_HOME)
 		ui_text_ex(NULL, 12, 183, .39f, muted, 0, tip);
 	// In a game every value belongs to that game; unchanged ones follow all games.
-	if (s->game && item >= 0 && item < CHEAT_ROW && item != F_REWIND && (item >= CORE_ROW || override_key(item)))
+	if (s->game && item >= 0 && item < CONTROL_ROW && item != F_REWIND && (item >= CORE_ROW || override_key(item)))
 		ui_text_ex(NULL, 12, 199, .4f, white, 0,
 				   overridden(s, item) ? "* Changed for this game    X use all-games value" : "Same as all games");
 	// Category rows open with A; Left/Right only changes values.
@@ -532,8 +530,10 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 						music_play(true);
 					}
 				}
-			} else
+			} else {
 				change(s, item, dir);
+				config_game_store();   // so the row shows its * at once
+			}
 			sfx_play(SFX_SELECT);
 		}
 		if (message_frames > 0)

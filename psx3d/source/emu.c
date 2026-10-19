@@ -521,7 +521,7 @@ static void menu_draw_bottom(void *ud)
 {
 	menu_t *m = ud;
 	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
-	ui_menu_header("Menu", "this game");
+	ui_menu_header("Menu", ui_fit(game_title, .42f, 150));
 	if (have_disk && disk.get_num_images)
 		snprintf(m->disc, sizeof(m->disc), "Disc %u of %u", menu_disc + 1, disk.get_num_images());
 	// Eight rows fit, so Exit stays visible when Swap disc is listed.
