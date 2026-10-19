@@ -22,6 +22,7 @@ p.add_argument('--frames', type=int, default=600)
 p.add_argument('--jobs', type=int, default=2)
 p.add_argument('--switch', default='0')
 p.add_argument('--interpreter', action='store_true')
+p.add_argument('--hle', action='store_true', help='boot mode with the built-in HLE BIOS (the shipping configuration)')
 p.add_argument('--detail', action='store_true')
 p.add_argument('--game', help='One state key or exact boot directory name')
 a = p.parse_args()
@@ -30,7 +31,7 @@ a.out = a.out.resolve()
 a.out.mkdir(parents=True, exist_ok=True)
 options = (a.sim / 'o3hw_off.ini').read_text()
 if a.mode == 'boot':
-    options += '\npcsx_rearmed_bios=auto\n'
+    options = options.replace('pcsx_rearmed_bios=auto', 'pcsx_rearmed_bios=HLE' if a.hle else 'pcsx_rearmed_bios=auto')
 if a.interpreter:
     options = options.replace('pcsx_rearmed_drc=enabled', 'pcsx_rearmed_drc=disabled')
 (a.out / 'options.ini').write_text(options)
@@ -56,7 +57,7 @@ def run(item):
         cmd += ['-plugin', str(plugin)]
     else:
         env.update(CHECKPOINTS='1', HASHEVERY='1', STATEOUT=str(work / 'state.bin'))
-    if a.mode == 'boot':
+    if a.mode == 'boot' and not a.hle:
         env['BIOSDIR'] = str(DEV / 'bios')
     state = '-' if a.mode == 'boot' else str(DEV / 'sim/states' / (key + '.st0'))
     cmd += [str(a.sim / a.runner), str(cue), str(n), state, str(a.out / 'options.ini')]

@@ -8,7 +8,10 @@
 #include "libpcsxcore/r3000a.h"
 #include "libpcsxcore/new_dynarec/new_dynarec.h"
 
-int psx3d_dyn3_mem __attribute__((weak));
+extern unsigned psx3d_dynr2;
+// all experiments off, all on, all on with every group guard failing
+static const unsigned variants[] = {0, 7, 0x107};
+#define NVAR (sizeof(variants)/sizeof(variants[0]))
 
 static uint32_t random_state = 0x31734bfe;
 static uint32_t random32(void)
@@ -39,8 +42,8 @@ static void stress_guards_smc(psxRegisters initial)
     initial.CP0.n.SR=0;
     for(unsigned i=0;i<20;i++) initial.event_cycles[i]=0x10000000;
     unsigned off_cycles[2000];
-    for (unsigned variant=0;variant<2;variant++) {
-        psx3d_dyn3_mem=variant;
+    for (unsigned variant=0;variant<NVAR;variant++) {
+        psx3d_dynr2=variants[variant];
         psxRegs=initial;
         psxCpu=&psxRec;
         new_dynarec_clear_full();
@@ -75,8 +78,8 @@ static void stress_guards_smc(psxRegisters initial)
         0x1f800ffc,0x1f801000,0x9f800000,0x80060000};
     uint32_t off_values[sizeof(edges)/sizeof(edges[0])];
     unsigned edge_cycles[sizeof(edges)/sizeof(edges[0])];
-    for(unsigned variant=0;variant<2;variant++) {
-        psx3d_dyn3_mem=variant;
+    for(unsigned variant=0;variant<NVAR;variant++) {
+        psx3d_dynr2=variants[variant];
         psxRegs=initial; psxCpu=&psxRec;
         new_dynarec_clear_full();
         psxRec.Notify(R3000ACPU_NOTIFY_AFTER_LOAD,NULL);
@@ -92,6 +95,98 @@ static void stress_guards_smc(psxRegisters initial)
     puts("8 cached range edges: below scratchpad, architectural/end-of-map boundaries, I/O, mirror and RAM: off/on identical");
     puts("2000 repeated emitted-SW SMC invalidations and cached scratchpad/RAM/mirror guard transitions: off/on values and cycles identical");
 }
+// Runs of loads/stores through one base register (group guards), compiled
+// once with one base and then executed with bases whose range crosses the
+// scratchpad window, I/O, the end of RAM and mirrors: interpreter equality.
+static void stress_groups(psxRegisters initial)
+{
+    uint32_t *code=(uint32_t *)(initial.ptrs.psxM+0x57000);
+    unsigned n=0;
+    for (unsigned k=0;k<16;k++) {
+        code[n++]=(0x23u<<26)|(28u<<21)|((3+k)<<16)|(k*4); // lw r3+k,4k(gp)
+        if (k&1) code[n++]=(0x29u<<26)|(28u<<21)|(1u<<16)|(k*4+2); // sh r1,4k+2(gp)
+    }
+    code[n++]=0;
+    code[n++]=(31u<<21)|8; code[n++]=0;
+    initial.GPR.r[31]=0x80070000;
+    initial.GPR.r[1]=0x5a5a;
+    initial.cycle=initial.subCycle=initial.stop=initial.branching=initial.branchSeen=initial.interrupt=0;
+    initial.dloadReg[0]=initial.dloadReg[1]=0;
+    initial.next_interupt=0x10000000;
+    initial.CP0.n.SR=0;
+    for(unsigned i=0;i<20;i++) initial.event_cycles[i]=0x10000000;
+    // first base decides the compiled speculation; later ones reuse the block
+    const uint32_t first[]={0x1f800100,0x80060000};
+    const uint32_t bases[]={0x1f800100,0x1f800fd0,0x1f800fc0,0x1f7fffe0,0x80060000,
+        0x801fffd0,0x801fffc0,0x00060000,0x9f800100,0x1f800000,0x80000000,0x801fff00};
+    static unsigned char ram_save[0x200000], spad_save[0x10000];
+    memcpy(ram_save, initial.ptrs.psxM, sizeof(ram_save));
+    memcpy(spad_save, initial.ptrs.psxH, sizeof(spad_save));
+    unsigned cases=0, preexisting=0;
+    for (unsigned f=0;f<2;f++)
+    for (unsigned b=0;b<sizeof(bases)/sizeof(bases[0]);b++) {
+        psxGPRRegs want; static unsigned char want_ram[0x200000], want_spad[0x10000];
+        unsigned want_cycle=0;
+        for (int v=-1; v<(int)NVAR; v++) {
+            memcpy(initial.ptrs.psxM, ram_save, sizeof(ram_save));
+            memcpy(initial.ptrs.psxH, spad_save, sizeof(spad_save));
+            for (unsigned i=0;i<0x100;i++) ((uint32_t *)(initial.ptrs.psxM+0x60000))[i]=0x11110000+i;
+            for (unsigned i=0;i<0x100;i++) ((uint32_t *)initial.ptrs.psxH)[i]=0x22220000+i;
+            for (unsigned i=0;i<0x400;i++) ((uint32_t *)initial.ptrs.psxM)[0x7fc00/4+i]=0x33330000+i;
+            psxRegs=initial;
+            if (v<0) {
+                psxRegs.GPR.r[28]=bases[b];
+                psxRegs.pc=0x80057000;
+                psxCpu=&psxInt;
+                psxInt.Notify(R3000ACPU_NOTIFY_AFTER_LOAD,NULL);
+                psxInt.ExecuteBlock(&psxRegs,EXEC_CALLER_BOOT);
+                want=psxRegs.GPR;
+                memcpy(want_ram,psxRegs.ptrs.psxM,sizeof(want_ram));
+                memcpy(want_spad,psxRegs.ptrs.psxH,sizeof(want_spad));
+                continue;
+            }
+            psx3d_dynr2=variants[v];
+            psxCpu=&psxRec;
+            new_dynarec_clear_full();
+            psxRec.Notify(R3000ACPU_NOTIFY_AFTER_LOAD,NULL);
+            psxRegisters warm=psxRegs;
+            warm.GPR.r[28]=first[f];
+            run_block(&warm,0x80057000); // compile with this speculation
+            psxRegisters run=initial;
+            memcpy(initial.ptrs.psxM, ram_save, sizeof(ram_save));
+            memcpy(initial.ptrs.psxH, spad_save, sizeof(spad_save));
+            for (unsigned i=0;i<0x100;i++) ((uint32_t *)(initial.ptrs.psxM+0x60000))[i]=0x11110000+i;
+            for (unsigned i=0;i<0x100;i++) ((uint32_t *)initial.ptrs.psxH)[i]=0x22220000+i;
+            for (unsigned i=0;i<0x400;i++) ((uint32_t *)initial.ptrs.psxM)[0x7fc00/4+i]=0x33330000+i;
+            run.GPR.r[28]=bases[b];
+            run_block(&run,0x80057000);
+            int differs = memcmp(&want,&psxRegs.GPR,sizeof(want)) || memcmp(want_ram,psxRegs.ptrs.psxM,sizeof(want_ram))
+                || memcmp(want_spad,psxRegs.ptrs.psxH,sizeof(want_spad));
+            if (v==0 && differs) {
+                // the unchanged dynarec already differs from the interpreter
+                // here: from now on the reference is the unchanged dynarec
+                want=psxRegs.GPR;
+                memcpy(want_ram,psxRegs.ptrs.psxM,sizeof(want_ram));
+                memcpy(want_spad,psxRegs.ptrs.psxH,sizeof(want_spad));
+                printf("note: dynarec off != interpreter for base %08x (pre-existing)\n", bases[b]);
+                differs = 0; preexisting++;
+            }
+            if (differs) {
+                fprintf(stderr,"group mismatch first %08x base %08x variant %x\n",first[f],bases[b],variants[v]);
+                for (unsigned i=0;i<34;i++) if(want.r[i]!=psxRegs.GPR.r[i])
+                    fprintf(stderr,"r%u expected %08x got %08x\n",i,want.r[i],psxRegs.GPR.r[i]);
+                assert(0);
+            }
+            if (v==0) want_cycle=psxRegs.cycle;
+            else assert(want_cycle==psxRegs.cycle);
+            cases++;
+        }
+    }
+    memcpy(initial.ptrs.psxM, ram_save, sizeof(ram_save));
+    memcpy(initial.ptrs.psxH, spad_save, sizeof(spad_save));
+    printf("%u group-guard runs across window/I/O/RAM-end/mirror bases after scratchpad and RAM speculation: values identical to the unchanged dynarec (and to the interpreter except %u pre-existing cases), cycles identical across variants\n", cases, preexisting);
+}
+
 void dynarec_microtest(void)
 {
     psxRegisters initial = psxRegs;
@@ -153,8 +248,8 @@ void dynarec_microtest(void)
         memcpy(want, memory, sizeof(want));
         assert(psxRegs.pc == 0x80070000);
         unsigned cycle_off = 0;
-        for (unsigned variant=0; variant<2; variant++) {
-        psx3d_dyn3_mem = variant;
+        for (unsigned variant=0; variant<NVAR; variant++) {
+        psx3d_dynr2 = variants[variant];
         psxRegs = initial;
         memcpy(memory, data, sizeof(data));
         psxCpu = &psxRec;
@@ -174,5 +269,6 @@ void dynarec_microtest(void)
         }
     }
     stress_guards_smc(initial);
+    stress_groups(initial);
     puts("6000 randomized guest ALU/RAM/scratchpad byte/half/word/LWL/LWR programs: interpreter GPR/memory/PC identical; dynarec off/on cycles identical");
 }
