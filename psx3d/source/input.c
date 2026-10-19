@@ -405,7 +405,8 @@ static int touch_default_binding(int slot)
 		return remap_default[INPUT_PHYSICAL_N + slot];
 	if (c.touch_bindings[slot] != INPUT_BIND_PRESET)
 		return c.touch_bindings[slot];
-	bool need = slot < 2 ? c.needs_l2r2 : slot < 4 ? needed(c.needs_l3r3) : slot == 4 ? c.fast_forward : c.rewind;
+	// Fast forward and rewind have hotkeys; their touch buttons appear only when mapped.
+	bool need = slot < 2 ? c.needs_l2r2 : slot < 4 && needed(c.needs_l3r3);
 	return need ? remap_default[INPUT_PHYSICAL_N + slot] : INPUT_BIND_HIDE;
 }
 int input_stick_binding(void)
