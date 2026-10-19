@@ -250,6 +250,14 @@ FUNCTION(jump_vaddr_fast):
 	bx	r0
 	.size	jump_vaddr_fast, .-jump_vaddr_fast
 
+/* Indexed by assem_arm.c; each entry is exactly two ARM instructions. */
+FUNCTION(jump_vaddr_fast_r1):
+.irp reg,1,2,3,4,5,6,7,8,9,10,11,12
+	mov	r0, r\reg
+	b	jump_vaddr_fast
+.endr
+	.size	jump_vaddr_fast_r1, .-jump_vaddr_fast_r1
+
 	.align	2
 FUNCTION(cc_interrupt):
 	ldr	r0, [fp, #LO_last_count]

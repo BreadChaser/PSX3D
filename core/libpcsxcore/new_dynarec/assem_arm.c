@@ -2360,9 +2360,12 @@ static void do_jump_vaddr(int rs)
 {
   if (psx3d_dyn_lookup) {
     extern void jump_vaddr_fast(void);
-    if (rs != 0)
-      emit_mov(rs, 0);
-    emit_far_jump(jump_vaddr_fast);
+    extern char jump_vaddr_fast_r1[];
+    // Shared eight-byte input shims keep every generated exit one branch,
+    // exactly like the original jump_vaddr_reg table.
+    assert(rs >= 0 && rs < HOST_REGS && rs != EXCLUDE_REG);
+    emit_far_jump(rs ? (void *)(jump_vaddr_fast_r1 + (rs - 1) * 8) :
+                       (void *)jump_vaddr_fast);
     return;
   }
   emit_far_jump(jump_vaddr_reg[rs]);
