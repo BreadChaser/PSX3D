@@ -244,6 +244,10 @@ int main(void)
 	assert(!switches_set("pica_prims_invalid"));
 	char defaults[] = "game=Crash_Bandicoot";
 	assert(switches_run(defaults, game, sizeof(game), err, sizeof(err)));
+	assert(sw_fsmart);
+	assert(switches_set("fsmart=old") && !sw_fsmart);
+	assert(switches_set("fsmart=new") && sw_fsmart);
+	assert(!switches_set("fsmart=invalid"));
 	assert(sw_frontend && !sw_floataudio && !sw_rtfs && !sw_rtfsdense && sw_rtfscap == 4);
 	assert(pica_submit == 7 && pica_prims == 7 && pica_texmask && pica_texmemo && psx3d_skipgate);
 	assert(!psx3d_idle_pointer && !psx3d_idle_delay);

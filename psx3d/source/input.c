@@ -459,6 +459,7 @@ void input_touch_disc_log(const char *message)
 		return;
 	game_preset_options_t before = game_capabilities();
 	game_presets_disc_log(message);
+	options_mark_updated(); // a curated profile can change the effective frameskip policy
 	game_preset_options_t after = game_capabilities();
 	if (memcmp(&before, &after, sizeof(before))) {
 		input_gameplay(gameplay);

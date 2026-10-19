@@ -104,10 +104,8 @@ static bool is_hidden(const char *key)
 	    !strcmp(key, "pcsx_rearmed_psx3d_widescreen")) return true;
 	if (!strncmp(key, "pcsx_rearmed_screen_centering", sizeof("pcsx_rearmed_screen_centering") - 1)) return true;
 	if (!strcmp(key, "pcsx_rearmed_display_info") && !g_cfg.debug && !settings_ui_debug_capture()) return true;
-	if (!strcmp(key, "pcsx_rearmed_frameskip_threshold") &&
-	    !option_is("pcsx_rearmed_frameskip_type", "auto_threshold")) return true;
-	if (!strcmp(key, "pcsx_rearmed_frameskip_interval") &&
-	    option_is("pcsx_rearmed_frameskip_type", "disabled")) return true;
+	if (!strcmp(key, "pcsx_rearmed_frameskip_type") &&
+	    config_in_game() && game_preset_curated()) return true;
 	if ((!strcmp(key, "pcsx_rearmed_screen_centering_x") ||
 	     !strcmp(key, "pcsx_rearmed_screen_centering_y") ||
 	     !strcmp(key, "pcsx_rearmed_screen_centering_h_adj")) &&
@@ -138,12 +136,18 @@ static void options_clear(void)
 	nopts = 0;
 }
 
+static bool retired_frameskip(const char *key)
+{
+	return !strcmp(key, "pcsx_rearmed_frameskip_threshold") ||
+	       !strcmp(key, "pcsx_rearmed_frameskip_interval");
+}
 static void finish_register(void);
 
 void options_register(const struct retro_variable *vars)
 {
 	options_clear();
 	for (; vars && vars->key && nopts < MAX_OPTIONS; vars++) {
+		if (retired_frameskip(vars->key)) continue;
 		option_t *o = &opts[nopts];
 		const char *semi = strstr(vars->value, "; ");
 		if (!semi)
@@ -167,6 +171,15 @@ void options_register(const struct retro_variable *vars)
 
 static void finish_register(void)
 {
+	for (int i = 0; i < nopts; i++) {
+		option_t *o = &opts[i];
+		if (!strcmp(o->key, "pcsx_rearmed_frameskip_type")) {
+			for (int j = 0; j < o->nvalues; j++) free(o->values[j]);
+			o->values[0] = strdup("disabled"); o->values[1] = strdup("auto");
+			o->nvalues = 2;
+			free(o->def); o->def = strdup("auto");
+		}
+	}
 	nvisible = 0;
 	for (int i = 0; i < nopts; i++)
 		if (!is_hidden(opts[i].key))
@@ -179,6 +192,7 @@ void options_register_v1(const struct retro_core_option_definition *defs)
 {
 	options_clear();
 	for (; defs && defs->key && nopts < MAX_OPTIONS; defs++) {
+		if (retired_frameskip(defs->key)) continue;
 		option_t *o = &opts[nopts];
 		o->key = strdup(defs->key);
 		o->desc = strdup(defs->desc ? defs->desc : defs->key);
@@ -250,14 +264,22 @@ const char *options_get(const char *key)
 	if (sw_fs3 && !g_new3ds && !strcmp(key, "pcsx_rearmed_frameskip_interval"))
 		return "3";
 
+	if (!strcmp(key, "pcsx_rearmed_frameskip_type")) {
+		// Curated profiles inherit the console default, independently of globals.
+		if (config_in_game() && game_preset_curated())
+			return game_capabilities().frameskip ? "auto" : "disabled";
+		const char *saved = config_core_override(key);
+		return saved && !strcmp(saved, "disabled") ? "disabled" : "auto";
+	}
+	// Core-only legacy/fast-forward policy knobs; never read saved values.
+	if (!strcmp(key, "pcsx_rearmed_frameskip_interval")) return "2";
+	if (!strcmp(key, "pcsx_rearmed_frameskip_threshold")) return "33";
 	if (!ov)
 		ov = config_core_override(key);
 	// Old 3DS: one 268MHz core runs the CPU, GPU and sound. Defaults that
 	// trade a little accuracy for speed (all still changeable in the menu).
 	if (!ov && !g_new3ds) {
 		static const char *const o3ds[][2] = {
-			{ "pcsx_rearmed_frameskip_type", "auto" },        // skip drawing, keep game speed
-			{ "pcsx_rearmed_frameskip_interval", "2" },       // at most 2 skipped in a row
 			{ "pcsx_rearmed_dithering", "disabled" },
 			{ "pcsx_rearmed_spu_reverb", "disabled" },
 			// GTE speed hacks: rare glitches, measurable gain on a 268MHz core
@@ -305,8 +327,6 @@ static const char *const player_names[][2] = {
 	{ "pcsx_rearmed_cd_readahead", "Read disc ahead" }, { "pcsx_rearmed_psxclock", "Game CPU speed" },
 	{ "pcsx_rearmed_dithering", "PS1 colour shading" },
 	{ "pcsx_rearmed_frameskip_type", "Skip frames when slow" },
-	{ "pcsx_rearmed_frameskip_threshold", "Start skipping below" },
-	{ "pcsx_rearmed_frameskip_interval", "Frames to skip at most" },
 	{ "pcsx_rearmed_display_info", "Debug: core messages" },
 	{ "pcsx_rearmed_alt_flip", "Picture timing" },
 	{ "pcsx_rearmed_gpu_slow_llists", "Careful drawing order" },
@@ -338,7 +358,6 @@ const char *options_value(int i)
 	const char *v = options_get(options_key(i));
 	static const char *const labels[][2] = {
 		{ "enabled", "On" }, { "disabled", "Off" }, { "auto", "Auto" },
-		{ "auto_threshold", "Audio limit" }, { "fixed_interval", "Always" },
 		{ "manual", "Manual" }, { "game", "Game-controlled" },
 		{ "borderless", "No borders" }, { "force", "Always" },
 		{ "early", "Early" }, { "late", "Late" },
@@ -379,9 +398,7 @@ static const char *const notes[][3] = {
 	{ "pcsx_rearmed_memcard1", "Reopen the game to apply", "Game save uses PSX3D's usual per-game save file. Per disc keeps a separate card for each disc; Shared uses one card across games. Off removes this card." },
 	{ "pcsx_rearmed_memcard2", "Reopen the game to apply", "Choose a separate card per disc, a card shared across games, or Off for an empty second memory-card slot." },
 	{ "pcsx_rearmed_psxclock", "Lower may slow the game itself", "How fast the game's PS1 CPU runs. Lower values may raise the frame count while slowing the game itself or causing glitches. Usually leave Auto." },
-	{ "pcsx_rearmed_frameskip_type", "A smoother sound, fewer pictures", "Skip drawing frames to keep game speed when the 3DS falls behind. Auto skips as needed; Audio limit uses the sound-buffer limit below; Always skips regularly." },
-	{ "pcsx_rearmed_frameskip_threshold", "Higher skips sooner", "For Audio limit mode: start skipping pictures when the sound buffer falls below this percentage." },
-	{ "pcsx_rearmed_frameskip_interval", "Higher can look choppier", "The most pictures to skip in a row. Always mode skips this many between displayed pictures." },
+	{ "pcsx_rearmed_frameskip_type", "Auto keeps as many pictures as time allows", "Auto skips drawing only when needed to keep game speed and sound steady. Off draws every picture and can slow the game on a busy scene. Curated games choose this automatically." },
 	{ "pcsx_rearmed_dithering", "PS1 colour shading", "Adds the PS1's fine colour pattern to shaded polygons. On follows the game; Always also enables it when the game turns it off." },
 	{ "pcsx_rearmed_alt_flip", "Usually leave Auto", "Choose when to capture the game's picture. Try Early or Late only if a game shows incomplete pictures or flicker." },
 	{ "pcsx_rearmed_gpu_slow_llists", "May be slower", "Follow the game's drawing order more closely. Leave Auto unless a game needs this to draw correctly." },

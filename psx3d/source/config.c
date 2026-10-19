@@ -205,6 +205,11 @@ const char *config_core_override(const char *key)
 
 void config_set_core_override(const char *key, const char *value)
 {
+	// Retired settings never influence Auto or get written back to config.ini.
+	if (!strcmp(key, "pcsx_rearmed_frameskip_threshold") ||
+	    !strcmp(key, "pcsx_rearmed_frameskip_interval")) return;
+	if (!strcmp(key, "pcsx_rearmed_frameskip_type") &&
+	    (!strcmp(value, "auto_threshold") || !strcmp(value, "fixed_interval"))) value = "auto";
 	for (int i = 0; i < novr; i++) {
 		if (strcmp(ovr[i].key, key) == 0) {
 			free(ovr[i].value);

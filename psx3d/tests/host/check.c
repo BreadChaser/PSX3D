@@ -468,8 +468,8 @@ static void serial_config_checks(void)
  input_touch_disc_log("CD-ROM ID: SLUS99999\n"); assert(game_capabilities().fast_forward);
  // Explicit preset assignments, separate consoles and shorthand inheritance.
  static const game_preset_t assigned={"TEST00004",
-  {0,0,0,0,0,0,{12,13,-1,-1,-1,-1}},
-  {1,1,0,0,0,0,{-1,-1,9,-1,16,18}}};
+  {0,0,0,0,0,0,{12,13,-1,-1,-1,-1},-1},
+  {1,1,0,0,0,0,{-1,-1,9,-1,16,18},-1}};
  current_preset=&assigned; assert(input_map_get(10)==12 && input_map_get(12)==-1);
  input_map_set(12,9); config_save(); config_load(); assert(input_map_get(12)==9);
  config_game_begin("Dynamic slots"); current_preset=&l2_fixture;
@@ -552,6 +552,39 @@ static void fps_mockups(void)
  assert(!touch_buttons_active());
  g_cfg.show_fps=0;
 }
+static void frameskip_checks(void)
+{
+ const struct retro_variable fsvars[] = {
+  {"pcsx_rearmed_frameskip_type", "Frameskip; disabled|auto|auto_threshold|fixed_interval"},
+  {"pcsx_rearmed_frameskip_threshold", "Threshold; 33|50"},
+  {"pcsx_rearmed_frameskip_interval", "Interval; 2|4"}, {NULL,NULL}};
+ static const game_preset_t fs_fixture={.serial="TEST00005",
+  .old3ds={.frameskip=-1}, .new3ds={.frameskip=0}};
+ for(int model=0;model<2;model++) {
+  clean_input(model); config_game_end(); config_reset_defaults(); options_register(fsvars);
+  assert(options_count()==1 && !strcmp(options_value(0),"Auto"));
+  assert(!strcmp(options_cycle(0,1),"disabled"));
+  assert(!strcmp(options_cycle(0,1),"auto"));
+  assert(!strcmp(options_cycle(0,-1),"disabled"));
+  for(int mode=0;mode<2;mode++) {
+   config_set_core_override("pcsx_rearmed_frameskip_type",mode?"fixed_interval":"auto_threshold");
+   config_set_core_override("pcsx_rearmed_frameskip_threshold","80");
+   config_set_core_override("pcsx_rearmed_frameskip_interval","9");
+   assert(!strcmp(options_get("pcsx_rearmed_frameskip_type"),"auto"));
+   config_save();config_load();
+   assert(!contains(PSX3D_CONFIG,"frameskip_threshold") && !contains(PSX3D_CONFIG,"frameskip_interval"));
+   assert(!contains(PSX3D_CONFIG,"auto_threshold") && !contains(PSX3D_CONFIG,"fixed_interval"));
+  }
+  config_set_core_override("pcsx_rearmed_frameskip_type","disabled");
+  config_game_begin("Frameskip fixture");current_preset=&fs_fixture;
+  assert(game_preset_curated() && !options_count());
+  assert(game_capabilities().frameskip==(model?0:1));
+  assert(!strcmp(options_get("pcsx_rearmed_frameskip_type"),model?"disabled":"auto"));
+  config_game_end(); assert(options_count()==1);
+  assert(!strcmp(options_get("pcsx_rearmed_frameskip_type"),"disabled"));
+ }
+ puts("PASS: Off/Auto cycle, retired-config migration, per-console preset inheritance and curated hiding");
+}
 int main(void)
 {
  assert(!mkdir("sdmc:",0700)); assert(!mkdir("sdmc:/3ds",0700)); assert(!mkdir(PSX3D_DIR,0700));
@@ -564,6 +597,7 @@ int main(void)
  g_new3ds=true;
  assert(!strcmp(options_get("pcsx_rearmed_spu_interpolation"),"gaussian"));
  config_load(); layout_checks(); curved_fill_checks(); side_and_new_checks(); action_checks(); serial_config_checks(); symbol_checks(); stats_input_checks();
+ frameskip_checks();
  fps_mockups();
  confirm_accept=false; confirm_step=0; assert(!ui_confirm("RESET?","Cancel test",false));
  confirm_accept=true; confirm_step=0; assert(ui_confirm("RESET?","Accept test",false));

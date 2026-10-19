@@ -941,10 +941,8 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		psx3d_skip.level = sw_rtfslevel >= 0 ? sw_rtfslevel : skip_control.level;
 		psx3d_skip.numerator = sw_rtfsdense ? (skip_control.dense_numerator ? skip_control.dense_numerator : 60) : 0;
 		psx3d_skip.denominator = sw_rtfsdense ? 60 : 0;
-		if (sw_fsmart && !sw_rtfs) {
-			const char *cap = options_get("pcsx_rearmed_frameskip_interval");
-			psx3d_skip.max_skips = cap ? strtoul(cap, NULL, 10) : 2;
-			if (!psx3d_skip.max_skips) psx3d_skip.max_skips = 1;
+		if (psx3d_skip.enabled && sw_fsmart && !sw_rtfs) {
+			psx3d_skip.max_skips = 4; // internal fairness bound, never a user setting
 			psx3d_skip.numerator = smart_control.numerator ? smart_control.numerator : 120;
 			psx3d_skip.denominator = 120;
 		}
