@@ -86,7 +86,10 @@ void debug_parse_switch(const char *word)
 	if (!strcmp(word, "pica_prims_clip")) pica_prims |= 2;
 	if (!strcmp(word, "pica_prims_round")) pica_prims |= 4;
 }
-void covers_remote_enable(bool enabled) { (void)enabled; }
+void covers_stop_wait(void) {}
+void covers_resume(void) {}
+bool covers_refresh(int game) { return game >= 0; }
+void covers_debug(char *out, size_t len) { snprintf(out, len, "{\"ok\":true}"); }
 void libui_select_title(const char *title) { (void)title; }
 #include "../../source/clip.h"
 bool emu_record_start(void) { return false; }

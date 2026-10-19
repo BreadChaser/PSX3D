@@ -21,9 +21,10 @@ There are no new menu entries. A `3dslink` argument cannot enable the server.
    BootNTR/NTR-HR running** (reboot if necessary). Pausing a PC viewer alone does
    not stop an already-active console-side NTR stream.
 
-Delete `remote` and restart PSX3D to turn the server off. Cover loading starts
-paused during remote sessions. `ui library` explicitly enables it for UI
-captures; a remote load, batch or update pauses and closes cover transfers first.
+Delete `remote` and restart PSX3D to turn the server off. Cover loading runs automatically in the library, including remote sessions.
+A remote load, batch or update pauses the workers and closes their connections
+first. They resume when the library becomes idle; gameplay never downloads covers.
+The curl loop uses zero-timeout SOC polls and sleeps outside the socket service.
 The ordinary library, controller inputs and game menu still work. Batch runs
 ignore gameplay/touch inputs, fast-forward and rewind. Physical HOME/sleep can
 still interrupt a run; do not use them during measurements or installation.
@@ -88,7 +89,7 @@ or inject controller inputs. An active benchmark rejects UI commands.
 ./psx3dctl.py old ui resume
 ```
 
-`ui library [select=<exact title>]` returns to the library and enables covers.
+`ui library [select=<exact title>]` returns to the library.
 Use underscores for title spaces. `ui pause`, `ui states [slot=0..9]` and
 `ui resume` require a loaded game. `ui settings` opens the current context's
 settings list. Commands acknowledge the request before the next UI frame is
@@ -106,6 +107,14 @@ continue servicing the mailbox; capture before confirming or cancel with `b`.
 `ui-key debug-on` exposes the diagnostic settings page for capture only;
 `debug-off` hides it. This inspection flag is volatile, never saved, and cleared
 when settings closes. It does not enable core debug output.
+
+The token-gated `covers` command reports worker, transfer, retry and cache counts,
+last curl/HTTP result, and last/maximum stop latency in milliseconds. Cache counts
+inspect only expected cover `.bin` files (valid files are exactly 65,536 bytes),
+without arbitrary SD access. `covers refresh=<exact_title_or_library_index>`
+queues a fresh HTTPS fetch in the idle library, bypassing its cached image for
+that attempt. It preserves the on-disk cache unless a replacement decodes
+successfully. It is a developer diagnostic, not a user setting.
 
 ## Batch format and output
 

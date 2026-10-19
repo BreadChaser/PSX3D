@@ -11,12 +11,14 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <curl/curl.h>
-#include <png.h>
+#include "covers_png.h"
 #include "psx3d.h"
 #include "devtools.h"
 
 #define COVER_DIR PSX3D_DIR "/covers"
+#ifndef THUMB_URL
 #define THUMB_URL "https://thumbnails.libretro.com/Sony%20-%20PlayStation/Named_Boxarts/"
+#endif
 #define SLOTS 24
 
 typedef struct {
@@ -25,8 +27,10 @@ typedef struct {
 	u32 *pixels;         // COVER_SIZE^2, texture byte order
 	C3D_Tex tex;
 	bool tex_ok;
+	bool refresh;        // developer-requested HTTPS refresh; keep disk cache until success
 	u32 *staging;        // linear copy the GPU reads from (kept for reuse)
 	u32 last_used;
+	u64 retry_at;        // transient failures retry without scrolling away
 	u32 rank;            // order the UI asked for it in its latest frame (0 = selected)
 } slot_t;
 
@@ -37,8 +41,13 @@ static LightLock lock;
 static LightEvent wake;
 static volatile bool quit;
 static u64 net_retry_at;   // after a network failure, wait before trying again
-static bool remote_covers;
-static volatile bool paused; // HOME menu / sleep: don't start new downloads
+static bool apt_was_paused;
+static unsigned apt_suspended;
+static unsigned attempts, downloaded, cache_hits, aborted_count, failures;
+static int last_curl;
+static long last_http;
+static unsigned stop_ms, max_stop_ms;
+static volatile bool paused; // gameplay / HOME / sleep: do not start work
 static volatile int busy;    // workers currently fetching/decoding a cover
 static aptHookCookie apt_cookie;
 void covers_stop_wait(void);
@@ -54,11 +63,15 @@ static void on_apt(APT_HookType hook, void *param)
 	switch (hook) {
 	case APTHOOK_ONSUSPEND:
 	case APTHOOK_ONSLEEP:
+		if (!apt_suspended) apt_was_paused = paused;
+		apt_suspended |= hook == APTHOOK_ONSUSPEND ? 1 : 2;
 		covers_stop_wait();
 		break;
 	case APTHOOK_ONRESTORE:
 	case APTHOOK_ONWAKEUP:
-		paused = dev_remote && !remote_covers;
+		apt_suspended &= ~(hook == APTHOOK_ONRESTORE ? 1u : 2u);
+		if (apt_suspended) break;
+		paused = apt_was_paused;
 		net_retry_at = osGetTime() + 1000;   // the network needs a moment back
 		LightEvent_Signal(&wake);
 		LightEvent_Signal(&wake);
@@ -81,7 +94,7 @@ static bool soc_started;
 // socket calls share one session with the 3DS socket service, and a thread
 // blocked in poll() there holds up every other socket call, ours and, while
 // suspended, the HOME Menu's. That froze the 3DS on HOME. So curl is driven
-// by hand with short polls, aborts within ~50ms of a pause, and every socket
+// by hand with nonblocking polls and 10ms sleeps, and every socket
 // is closed (net_close) before HOME or sleep.
 static LightLock net_lock;
 static CURL *easy;
@@ -125,76 +138,24 @@ static void cache_path(const char *key, const char *ext, char *out, size_t len)
 
 // ---------------------------------------------------------------- decode
 
-static u32 *shrink(const u8 *rgba, int w, int h)
-{
-	u32 *out = malloc(COVER_SIZE * COVER_SIZE * 4);
-	if (!out)
-		return NULL;
-	// box filter into COVER_SIZE x COVER_SIZE, stretched to fill
-	for (int y = 0; y < COVER_SIZE; y++) {
-		int y0 = y * h / COVER_SIZE, y1 = (y + 1) * h / COVER_SIZE;
-		if (y1 <= y0) y1 = y0 + 1;
-		for (int x = 0; x < COVER_SIZE; x++) {
-			int x0 = x * w / COVER_SIZE, x1 = (x + 1) * w / COVER_SIZE;
-			if (x1 <= x0) x1 = x0 + 1;
-			u32 r = 0, g = 0, b = 0, a = 0, n = 0;
-			for (int yy = y0; yy < y1; yy++)
-				for (int xx = x0; xx < x1; xx++) {
-					const u8 *p = rgba + (yy * w + xx) * 4;
-					r += p[0]; g += p[1]; b += p[2]; a += p[3];
-					n++;
-				}
-			// GPU RGBA8: bytes A,B,G,R
-			out[y * COVER_SIZE + x] = ((r / n) << 24) | ((g / n) << 16) | ((b / n) << 8) | (a / n);
-		}
-	}
-	return out;
-}
-
 static u32 *decode_png(const void *data, size_t size, const char *file)
 {
-	png_image img;
-	memset(&img, 0, sizeof(img));
-	img.version = PNG_IMAGE_VERSION;
-	int ok = file ? png_image_begin_read_from_file(&img, file)
-		: png_image_begin_read_from_memory(&img, data, size);
-	if (!ok)
-		return NULL;
-	img.format = PNG_FORMAT_RGBA;
-	u8 *rgba = malloc(PNG_IMAGE_SIZE(img));
-	if (!rgba) {
-		png_image_free(&img);
-		return NULL;
-	}
-	u32 *out = NULL;
-	if (png_image_finish_read(&img, NULL, rgba, 0, NULL))
-		out = shrink(rgba, img.width, img.height);
-	free(rgba);
-	return out;
+	return covers_png_decode(data, size, file, COVER_SIZE);
 }
 
 // ---------------------------------------------------------------- download
 
-typedef struct { u8 *data; size_t len, cap; } membuf_t;
-
+// Stage the compressed file on SD rather than retaining another 0.5 MiB in
+// Old 3DS's small library heap while TLS and decoded covers are resident.
+typedef struct { FILE *file; size_t len; } cover_file_t;
 static size_t on_data(void *p, size_t sz, size_t n, void *ud)
 {
-	membuf_t *m = ud;
+	cover_file_t *m = ud;
+	if (sz && n > (4 * 1024 * 1024 - m->len) / sz) return 0;
 	size_t add = sz * n;
-	if (m->len + add > 4 * 1024 * 1024)
-		return 0;   // not a cover
-	if (m->len + add > m->cap) {
-		size_t cap = m->cap ? m->cap * 2 : 256 * 1024;
-		while (cap < m->len + add) cap *= 2;
-		u8 *d = realloc(m->data, cap);
-		if (!d)
-			return 0;
-		m->data = d;
-		m->cap = cap;
-	}
-	memcpy(m->data + m->len, p, add);
-	m->len += add;
-	return add;
+	size_t wrote = fwrite(p, 1, add, m->file);
+	m->len += wrote;
+	return wrote;
 }
 
 // close every connection (caller holds net_lock)
@@ -207,7 +168,14 @@ static void net_close(void)
 }
 
 // caller holds net_lock
-static u32 *download(const char *key)
+static int transfer_progress(void *unused, curl_off_t total, curl_off_t now,
+                             curl_off_t up_total, curl_off_t up_now)
+{
+	(void)unused; (void)total; (void)now; (void)up_total; (void)up_now;
+	return quit || paused;
+}
+
+static u32 *download(const char *key, bool *retry)
 {
 	char name[256], esc[768], url[1024];
 	thumb_name(key, name, sizeof(name));
@@ -217,13 +185,16 @@ static u32 *download(const char *key)
 	CURL *c = easy;
 	if (!c || (!multi && !(multi = curl_multi_init())))
 		return NULL;
-	membuf_t m = { 0 };
+	cover_file_t m = { .file = fopen(COVER_DIR "/download.tmp", "wb") };
+	if (!m.file) return NULL;
 	long code = 0;
 	curl_easy_setopt(c, CURLOPT_URL, url);
 	curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, on_data);
 	curl_easy_setopt(c, CURLOPT_WRITEDATA, &m);
 	curl_easy_setopt(c, CURLOPT_CAINFO, "romfs:/certs.pem");
-	curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT, 6L);
+	curl_easy_setopt(c, CURLOPT_NOPROGRESS, 0L);
+	curl_easy_setopt(c, CURLOPT_XFERINFOFUNCTION, transfer_progress);
+	curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT, 15L);
 	curl_easy_setopt(c, CURLOPT_TIMEOUT, 30L);
 	curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
 	curl_easy_setopt(c, CURLOPT_USERAGENT, "PSX3D/" PSX3D_VERSION);
@@ -238,20 +209,25 @@ static u32 *download(const char *key)
 	int running = 1;
 	curl_multi_add_handle(multi, c);
 	net_open = true;
+	__atomic_add_fetch(&attempts, 1, __ATOMIC_RELAXED);
 	for (;;) {
-		if (curl_multi_perform(multi, &running) != CURLM_OK || !running)
-			break;
 		if (quit || paused) {   // HOME, sleep or exit: retried later
 			aborted = true;
 			break;
 		}
-		curl_multi_poll(multi, NULL, 0, 50, NULL);
+		if (curl_multi_perform(multi, &running) != CURLM_OK || !running)
+			break;
+		// Never wait inside SOC: a blocking poll monopolizes its shared IPC
+		// session, including the developer server and HOME socket calls.
+		curl_multi_poll(multi, NULL, 0, 0, NULL);
+		svcSleepThread(10000000LL);
 	}
 	CURLMsg *msg;
 	int left;
 	while (!aborted && (msg = curl_multi_info_read(multi, &left)))
 		if (msg->msg == CURLMSG_DONE)
 			rc = msg->data.result;
+	if (rc == CURLE_ABORTED_BY_CALLBACK && (quit || paused)) aborted = true;
 	curl_multi_remove_handle(multi, c);
 	if (aborted)
 		net_close();
@@ -265,11 +241,16 @@ static u32 *download(const char *key)
 		log_printf("covers: http %ld %uKB connect %.2fs tls %.2fs total %.2fs (%.0fKB/s)\n",
 			code, (unsigned)(m.len / 1024), tc, ta, tt, sp / 1024);
 	}
+	if (fclose(m.file) && rc == CURLE_OK) rc = CURLE_WRITE_ERROR;
+	last_curl = rc;
+	last_http = code;
+	*retry = aborted || rc != CURLE_OK || code != 404;
+	if (aborted) __atomic_add_fetch(&aborted_count, 1, __ATOMIC_RELAXED);
 	u64 td = osGetTime();
 
 	u32 *px = NULL;
 	if (rc == CURLE_OK && code == 200) {
-		px = decode_png(m.data, m.len, NULL);
+		px = decode_png(NULL, 0, COVER_DIR "/download.tmp");
 		log_printf("covers: decode %llums\n", osGetTime() - td);
 	}
 	else if (rc == CURLE_COULDNT_CONNECT || rc == CURLE_COULDNT_RESOLVE_HOST ||
@@ -279,24 +260,27 @@ static u32 *download(const char *key)
 	} else {
 		log_printf("covers: %s -> %d / HTTP %ld\n", name, rc, code);
 	}
-	free(m.data);
+	if (px) __atomic_add_fetch(&downloaded, 1, __ATOMIC_RELAXED);
+	else if (!aborted) __atomic_add_fetch(&failures, 1, __ATOMIC_RELAXED);
+	remove(COVER_DIR "/download.tmp");
 	return px;
 }
 
 // ---------------------------------------------------------------- worker
 
-static u32 *load_cover(const game_t *g)
+static u32 *load_cover(const game_t *g, bool *retry, bool refresh)
 {
 	char path[PATH_LEN];
 	u32 *px;
 
 	// 1. our cache (already shrunk, texture byte order)
 	cache_path(g->cover_key, ".bin", path, sizeof(path));
-	FILE *f = fopen(path, "rb");
+	FILE *f = refresh ? NULL : fopen(path, "rb");
 	if (f) {
 		px = malloc(COVER_SIZE * COVER_SIZE * 4);
 		if (px && fread(px, 4, COVER_SIZE * COVER_SIZE, f) == COVER_SIZE * COVER_SIZE) {
 			fclose(f);
+			__atomic_add_fetch(&cache_hits, 1, __ATOMIC_RELAXED);
 			return px;
 		}
 		free(px);
@@ -304,14 +288,12 @@ static u32 *load_cover(const game_t *g)
 	}
 	// 2. the user's own PNG, 3. download
 	cache_path(g->cover_key, ".png", path, sizeof(path));
-	px = decode_png(NULL, 0, path);
+	px = refresh ? NULL : decode_png(NULL, 0, path);
 	if (!px) {
-		while (!quit && osGetTime() < net_retry_at)
-			svcSleepThread(200000000LL);
 		if (!quit && !sw_nonet) {
 			LightLock_Lock(&net_lock);
-			if (!quit && !paused)
-				px = download(g->cover_key);
+			if (!quit && !paused && osGetTime() >= net_retry_at)
+				px = download(g->cover_key, retry);
 			LightLock_Unlock(&net_lock);
 		}
 	}
@@ -337,9 +319,10 @@ static void worker_main(void *arg)
 			while (paused && !quit)
 				svcSleepThread(100000000LL);
 			int pick = -1, game = -1, best = 1 << 30;
+			bool refresh = false;
 			LightLock_Lock(&lock);
 			for (int i = 0; i < SLOTS; i++) {
-				if (slots[i].state != 1)
+				if (slots[i].state != 1 || osGetTime() < slots[i].retry_at)
 					continue;
 				// not asked for in the last few frames: scrolled away
 				if (slots[i].last_used + 40 < use_clock) {
@@ -354,28 +337,33 @@ static void worker_main(void *arg)
 					game = slots[i].game;
 				}
 			}
-			if (pick >= 0)
+			if (pick >= 0 && !quit && !paused) {
+				__atomic_add_fetch(&busy, 1, __ATOMIC_SEQ_CST);
+				refresh = slots[pick].refresh;
 				slots[pick].state = 5;   // ours: the other worker skips it
+			} else pick = -1;
 			LightLock_Unlock(&lock);
-			if (pick < 0 || quit)
+			if (pick < 0)
 				break;
 			const game_t *g = library_get(game);
 			u64 t0 = osGetTime();
 			log_printf("covers: start #%d\n", game);
-			__atomic_add_fetch(&busy, 1, __ATOMIC_SEQ_CST);
-			u32 *px = g ? load_cover(g) : NULL;
-			__atomic_sub_fetch(&busy, 1, __ATOMIC_SEQ_CST);
+			bool retry = true;
+			u32 *px = g ? load_cover(g, &retry, refresh) : NULL;
 			log_printf("covers: #%d %s -> %s in %llums\n", game, g ? g->cover_key : "?",
 				px ? "ok" : "none", osGetTime() - t0);
 			LightLock_Lock(&lock);
 			if (slots[pick].game == game && slots[pick].state == 5) {
 				slots[pick].pixels = px;
+				if (px) slots[pick].refresh = false;
 				// interrupted by HOME/sleep: try again later, not "no cover"
-				slots[pick].state = px ? 2 : (paused ? 1 : 4);
+				slots[pick].retry_at = paused ? 0 : osGetTime() + 15000;
+				slots[pick].state = px ? 2 : (retry ? 1 : 4);
 			} else {
 				free(px);
 			}
 			LightLock_Unlock(&lock);
+			__atomic_sub_fetch(&busy, 1, __ATOMIC_SEQ_CST);
 		}
 	}
 }
@@ -385,7 +373,7 @@ static void worker_main(void *arg)
 void covers_init(void)
 {
 	mkdir(COVER_DIR, 0777);
-	paused = dev_remote;
+	paused = true; // library entry explicitly resumes after SOC/control init
 	for (int i = 0; i < SLOTS; i++)
 		slots[i].game = -1;
 	LightLock_Init(&lock);
@@ -466,7 +454,7 @@ void covers_exit(void)
 // Texture for game i if it's ready; otherwise queue it and return NULL.
 C3D_Tex *covers_get(int game)
 {
-	if (sw_nocovers || (dev_remote && !remote_covers))
+	if (sw_nocovers)
 		return NULL;
 	slot_t *s = NULL;
 	use_clock++;
@@ -487,6 +475,8 @@ C3D_Tex *covers_get(int game)
 			s->pixels = NULL;
 			s->game = game;
 			s->state = 1;
+			s->retry_at = 0;
+			s->refresh = false;
 			LightEvent_Signal(&wake);
 		}
 	}
@@ -553,6 +543,27 @@ void covers_pump(void)
 	video_pre_draw = covers_pump_in_frame;   // runs at the next frame start
 }
 
+// Developer-only refresh of a library cover, without deleting any SD files.
+bool covers_refresh(int game)
+{
+	if (sw_nocovers || sw_nonet || game < 0 || game >= library_count()) return false;
+	covers_get(game);
+	bool ok = false;
+	LightLock_Lock(&lock);
+	for (int i = 0; i < SLOTS; i++) if (slots[i].game == game && slots[i].state != 5) {
+		free(slots[i].pixels);
+		slots[i].pixels = NULL;
+		slots[i].refresh = true;
+		slots[i].retry_at = 0;
+		slots[i].state = 1;
+		ok = true;
+		break;
+	}
+	LightLock_Unlock(&lock);
+	LightEvent_Signal(&wake);
+	return ok;
+}
+
 // true while a cover is loading or a connection is open: HOME must wait
 bool covers_busy(void)
 {
@@ -562,29 +573,37 @@ bool covers_busy(void)
 }
 
 // Pause the workers and close the network. Doesn't block: call it each
-// frame until it returns true (a transfer aborts within ~50ms).
+// frame until it returns true (the network loop checks pause every 10ms).
 bool covers_stop(void)
 {
 	if (sw_nocovers)
 		return true;
+	// Serialize pause with worker claims: no worker may start between the
+	// busy check and returning success to a game load or APT.
+	LightLock_Lock(&lock);
 	paused = true;
-	if (busy > 0 || LightLock_TryLock(&net_lock) != 0)
+	bool active = busy > 0;
+	LightLock_Unlock(&lock);
+	if (active || LightLock_TryLock(&net_lock) != 0)
 		return false;
 	net_close();
 	LightLock_Unlock(&net_lock);
 	return true;
 }
 
-// covers_stop, waiting (up to 3s) until it's done
+// Wait for actual quiescence. Never enter gameplay/update with a worker alive.
 void covers_stop_wait(void)
 {
-	for (int i = 0; i < 300 && !covers_stop(); i++)
+	u64 start = osGetTime();
+	while (!covers_stop())
 		svcSleepThread(10000000LL);
+	stop_ms = osGetTime() - start;
+	if (stop_ms > max_stop_ms) max_stop_ms = stop_ms;
 }
 
 void covers_resume(void)
 {
-	if (sw_nocovers || (dev_remote && !remote_covers))
+	if (sw_nocovers || apt_suspended || dev_covers_blocked())
 		return;
 	paused = false;
 	LightEvent_Signal(&wake);
@@ -639,12 +658,32 @@ void covers_reset(void)
 	LightLock_Unlock(&lock);
 }
 
-// Explicit developer UI capture opt-in. Keep the control server's SOC
-// session; the curl worker uses short polls and closes before game/update.
-void covers_remote_enable(bool enable)
+// Token-gated developer diagnostics. No arbitrary SD reads; report only this
+// subsystem's cache files and bounded slot/counter snapshots.
+void covers_debug(char *out, size_t len)
 {
-	if (!dev_remote || sw_nocovers) return;
-	remote_covers = enable;
-	if (enable) covers_resume();
-	else covers_stop_wait();
+	int ready = 0, wanted = 0, missing = 0, cached = 0, invalid = 0;
+	for (int i = 0; i < library_count(); i++) {
+		char path[PATH_LEN];
+		struct stat st;
+		cache_path(library_get(i)->cover_key, ".bin", path, sizeof(path));
+		if (stat(path, &st)) missing++;
+		else if (st.st_size == COVER_SIZE * COVER_SIZE * 4) cached++;
+		else invalid++;
+	}
+	if (!sw_nocovers) {
+		LightLock_Lock(&lock);
+		for (int i = 0; i < SLOTS; i++) {
+			ready += slots[i].state == 3;
+			wanted += slots[i].state == 1;
+		}
+		LightLock_Unlock(&lock);
+	}
+	snprintf(out, len, "{\"ok\":true,\"paused\":%s,\"busy\":%d,\"net_open\":%s,"
+	         "\"attempts\":%u,\"downloaded\":%u,\"cache_hits\":%u,\"aborted\":%u,"
+	         "\"failures\":%u,\"curl\":%d,\"http\":%ld,\"stop_ms\":%u,\"max_stop_ms\":%u,"
+	         "\"ready\":%d,\"wanted\":%d,\"cached\":%d,\"missing\":%d,\"invalid_cache\":%d}",
+	         paused ? "true" : "false", busy, net_open ? "true" : "false", attempts,
+	         downloaded, cache_hits, aborted_count, failures, last_curl, last_http,
+	         stop_ms, max_stop_ms, ready, wanted, cached, missing, invalid);
 }

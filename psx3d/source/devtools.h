@@ -12,7 +12,9 @@ enum { DEV_UI_NONE, DEV_UI_LIBRARY, DEV_UI_PAUSE, DEV_UI_SETTINGS, DEV_UI_STATES
 int dev_ui_pending(void);
 int dev_ui_take(void);
 extern int dev_ui_slot;
-void covers_remote_enable(bool enable);
+bool dev_covers_blocked(void);
+bool covers_refresh(int game);
+void covers_debug(char *out, size_t len);
 void dev_init(void);
 void dev_shutdown(void);
 bool dev_tick(bool playing); /* main thread, after pica_thread_sync */

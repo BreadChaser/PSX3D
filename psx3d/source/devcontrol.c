@@ -21,6 +21,7 @@ int dev_ui_take(void) { int request = ui_request; ui_request = DEV_UI_NONE; retu
 bool dev_bench_home;
 static char load_line[2048], current_title[PATH_LEN], last_error[160];
 static char update_pending[1024];
+bool dev_covers_blocked(void) { return update_pending[0] || batch_active || load_pending || running; }
 static u64 boot_ms, sample_seq, status_at;
 static FILE *tsv, *markdown;
 static char (*runs)[2048];
@@ -416,19 +417,38 @@ bool dev_tick(bool playing)
 				ui_request = screen;
 				dev_ui_slot = slot;
 				if (screen == DEV_UI_LIBRARY) {
-					covers_remote_enable(true);
 					change = playing;
 				}
 				dev_reply("{\"ok\":true}");
 			}
 		} else if (clip_command(command,args,playing)) {
+		} else if (!strcmp(command, "covers")) {
+			if (!*args) {
+				char info[1024];
+				covers_debug(info, sizeof(info));
+				dev_reply(info);
+			} else {
+				int game = -1;
+				if (!playing && !batch_active && !strncmp(args, "refresh=", 8)) {
+					char *name = args + 8, *end;
+					long index = strtol(name, &end, 10);
+					if (*name && !*end && index >= 0 && index < library_count()) game = index;
+					else {
+						for (char *p = name; *p; p++) if (*p == '_') *p = ' ';
+						for (int i = 0; i < library_count(); i++)
+							if (!strcasecmp(library_get(i)->title, name)) game = i;
+					}
+				}
+				if (game >= 0 && covers_refresh(game)) dev_reply("{\"ok\":true}");
+				else error_reply("covers [refresh=title_or_index] requires idle library");
+			}
 		} else if (!strcmp(command, "load")) {
 			ui_request = DEV_UI_NONE;
-			covers_remote_enable(false);
 			if (batch_active)
 				error_reply("batch active; quit to cancel first");
 			else if (!*args || !load_request(args))
 				error_reply("load requires a game or path (max 675 bytes)");
+			else covers_stop_wait();
 			// load reply is sent only once loading + initial state have completed.
 		} else if (!strcmp(command, "ff")) {
 			if (!playing || batch_active || (strcmp(args, "on") && strcmp(args, "off"))) error_reply("ff on|off requires game and idle batch");
@@ -477,7 +497,6 @@ bool dev_tick(bool playing)
 				dev_reply("{\"ok\":true}"); // worker sends PNG instead of JSON
 		} else if (!strcmp(command, "bench")) {
 			ui_request = DEV_UI_NONE;
-			covers_remote_enable(false);
 			if (batch_active) {
 				error_reply("batch already active");
 				publish_status();
@@ -487,8 +506,10 @@ bool dev_tick(bool playing)
 				bench_file();
 			else if (!begin_batch(args))
 				error_reply("invalid batch; max 32 runs/2047 bytes each");
-			if (batch_active)
+			if (batch_active) {
+				covers_stop_wait();
 				dev_reply("{\"ok\":true,\"bench\":\"started\"}");
+			}
 			else
 				error_reply("batch did not start");
 		} else if (!strcmp(command, "batch-id")) {
@@ -514,10 +535,10 @@ bool dev_tick(bool playing)
 			dev_reply("{\"ok\":true}");
 		} else if (!strcmp(command, "update")) {
 			ui_request = DEV_UI_NONE;
-			covers_remote_enable(false);
 			if (batch_active || !*args || strlen(args) >= sizeof(update_pending))
 				error_reply("update requires URL and no active batch");
 			else {
+				covers_stop_wait();
 				strcpy(update_pending, args);
 				change = true;
 				if (!playing)
@@ -525,6 +546,7 @@ bool dev_tick(bool playing)
 			}
 		} else if (!strcmp(command, "_update_failed")) {
 			update_pending[0] = 0;
+			covers_resume();
 			snprintf(last_error, sizeof(last_error), "update failed; see host response or log");
 			devnet_notification_done();
 		} else if (!strcmp(command, "_updated")) {
