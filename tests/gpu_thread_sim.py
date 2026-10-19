@@ -185,12 +185,18 @@ def run(case):
 
 with ThreadPoolExecutor(max_workers=args.jobs) as pool:
     results = list(pool.map(run, [(s, m) for s in games for m in ("off", "on", "on2", "stress")]))
+(sim / "results.json").write_text(json.dumps({state: {
+    mode: {"draw_hash": hashed, "frame_content_sha256": hashlib.sha256("".join(content).encode()).hexdigest()}
+    for s, mode, hashed, content in results if s == state} for state in games}, indent=2) + "\n")
+
+failed = []
 for state in games:
     hashes = [(m, h) for s, m, h, _ in results if s == state]
     print(state, hashes, flush=True)
     contents = [content for s, _, _, content in results if s == state]
-    assert all(content == contents[0] for content in contents), state
-    print(state, "600 per-frame triangle/state/texel checks match", flush=True)
-(sim / "results.json").write_text(json.dumps({state: {
-    mode: {"draw_hash": hashed, "frame_content_sha256": hashlib.sha256("".join(content).encode()).hexdigest()}
-    for s, mode, hashed, content in results if s == state} for state in games}, indent=2) + "\n")
+    if all(content == contents[0] for content in contents):
+        print(state, "600 per-frame triangle/state/texel checks match", flush=True)
+    else:
+        failed.append(state)
+        print(state, "per-frame content mismatch", flush=True)
+assert not failed, failed
