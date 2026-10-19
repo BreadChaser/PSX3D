@@ -1,7 +1,11 @@
 /* gpu_pica: PS1 GPU on the 3DS GPU. Frontend interface (PSX3D). */
 #ifndef GPU_PICA_H
 #define GPU_PICA_H
+
 #include <stdbool.h>
+extern bool pica_g1sync;
+// CPU VRAM byte offset and RGB24 pixel dimensions.
+void pica_prepare_cpu_scanout(int offset, int w, int h);
 #include "gpu_pica_thread.h"
 #include <citro3d.h>
 bool pica_init(const void *shbin, unsigned size);   // the frontend's compiled pica.v.pica

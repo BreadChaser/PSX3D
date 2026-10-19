@@ -205,6 +205,8 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "pica_prims_round")) pica_prims |= 4;
 		else if (!strcmp(a, "skipgate=old")) psx3d_skipgate = 0;
 		else if (!strcmp(a, "skipgate=new")) psx3d_skipgate = 1;
+		else if (!strcmp(a, "g1sync=on")) pica_g1sync = true;
+		else if (!strcmp(a, "g1sync=off")) pica_g1sync = false;
 		else if (!strcmp(a, "texmemo=old")) pica_texmemo = false;
 		else if (!strcmp(a, "texmemo=new")) pica_texmemo = true;
 		else if (!strcmp(a, "texmask=old")) pica_texmask = false;

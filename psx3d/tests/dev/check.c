@@ -39,7 +39,7 @@ bool sw_pmuphase, sw_pmuclass, sw_rtfsdense;
 void pmu_category_detail(double values[21]) { for (int k=0;k<21;k++) values[k]=-1; }
 void pmu_renderer(double values[4]) { for (int k=0;k<4;k++) values[k]=-1; }
 int psx3d_skipgate = 1;
-bool pica_texmask = true, pica_texmemo = true;
+bool pica_texmask = true, pica_texmemo = true, pica_g1sync = true;
 static bool state_ok = true;
 static game_t games[] = {{"Crash Bandicoot", "Crash Bandicoot (USA)"}, {"Crash Team Racing", "CTR"}};
 u64 osGetTime(void) { return mock_ms; }
@@ -239,7 +239,7 @@ int main(void)
 	assert(!switches_set("pica_prims_invalid"));
 	char defaults[] = "game=Crash_Bandicoot";
 	assert(switches_run(defaults, game, sizeof(game), err, sizeof(err)));
-	assert(pica_submit == 7 && pica_prims == 7 && pica_texmask && pica_texmemo && psx3d_skipgate);
+	assert(pica_g1sync && pica_submit == 7 && pica_prims == 7 && pica_texmask && pica_texmemo && psx3d_skipgate);
 	assert(sw_frontend && !sw_floataudio && !sw_rtfs && !sw_rtfsdense && sw_rtfscap == 4);
 	assert(!psx3d_idle_pointer && !psx3d_idle_delay);
 	assert(!psx3d_dyn_lookup);

@@ -153,9 +153,35 @@ long GPUclose(void)
   return 0;
 }
 
+#ifdef GPU_PICA
+// Decorate only CPU scanout callbacks; vout_update's GPU fast path is unchanged.
+static struct rearmed_cbs scanout_cbs;
+static const struct rearmed_cbs *cpu_cbs;
+static noinline __attribute__((cold)) void cpu_scanout_flip(const void *vram,
+    int offset, int rgb24, int x, int y, int w, int h, int changed)
+{
+  if (vram && rgb24 && psx3d_renderer_is_pica()) {
+    void pica_prepare_cpu_scanout(int, int, int);
+    pica_prepare_cpu_scanout(offset, w, h);
+  }
+  cpu_cbs->pl_vout_flip(vram, offset, rgb24, x, y, w, h, changed);
+}
+#endif
+
 void vout_set_config(const struct rearmed_cbs *cbs_)
 {
+#ifdef GPU_PICA
+  if (!psx3d_renderer_is_pica()) {
+    cbs = cbs_;
+    return;
+  }
+  cpu_cbs = cbs_;
+  scanout_cbs = *cbs_;
+  scanout_cbs.pl_vout_flip = cpu_scanout_flip;
+  cbs = &scanout_cbs;
+#else
   cbs = cbs_;
+#endif
 }
 
 // vim:shiftwidth=2:expandtab

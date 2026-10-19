@@ -39,6 +39,10 @@ static void ppm(const char *dir,int *info)
         if(!keep)return;
     }
     if(w<=0||h<=0)return;
+#ifdef PICA
+    if(info[1]&PSX_GPU_STATUS_RGB24)
+        pica_prepare_cpu_scanout(y*2048+x*2,w,h);
+#endif
     char path[4096]; snprintf(path,sizeof(path),"%s/frame-%04d.ppm",dir,frame);
     FILE *f=fopen(path,"wb"); assert(f); fprintf(f,"P6\n%d %d\n255\n",w,h);
     for(int r=0;r<h;r++)for(int c=0;c<w;c++) {
@@ -68,6 +72,7 @@ int main(int argc,char **argv)
     renderer_init();
     struct rearmed_cbs cbs={0}; cbs.dithering=getenv("GPU_DITHER") ? atoi(getenv("GPU_DITHER")) : 1; renderer_set_config(&cbs);
 #ifdef PICA
+    if(getenv("G1SYNC"))pica_g1sync=atoi(getenv("G1SYNC"))!=0;
     unsigned shader=0; assert(pica_init(&shader,4)); assert(pica_game_begin(true));
     if(getenv("PICA_DEBUG"))pica_debug=atoi(getenv("PICA_DEBUG"));
     if(getenv("PICA_SUBMIT"))pica_submit=strtoul(getenv("PICA_SUBMIT"),NULL,0);

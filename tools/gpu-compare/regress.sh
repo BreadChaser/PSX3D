@@ -12,8 +12,8 @@ a=s.index('const unsigned char cmd_lengths[256]');b=s.index('};',a)+2
 PY
 # gpu_pica imports command lengths from gpulib; provide them separately.
 printf '#include "commands.h"\n' > "$build/regress-commands.c"
-cc -O1 -g -fno-strict-aliasing -fsanitize=address,undefined -DPSX3D_SIM \
+cc -O1 -g -fno-strict-aliasing -fsanitize=address,undefined -DPSX3D_SIM -DGPU_PICA \
     -I "$repo/core" -I "$build" -I "$here" \
     "$here/regress.c" "$here/raster.c" "$repo/core/plugins/gpu_pica/gpu_pica.c" \
-    "$build/regress-commands.c" -lm -o "$build/regress"
+    "$repo/core/plugins/gpulib/vout_pl.c" "$build/regress-commands.c" -lm -o "$build/regress"
 "$build/regress"

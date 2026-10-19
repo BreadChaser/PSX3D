@@ -14,6 +14,10 @@ void debug_parse_switch(const char *word);
 // remain startup-only: changing SOC/audio allocation mid-session is unsafe.
 bool switches_set(const char *word)
 {
+	if (!strcmp(word, "g1sync=on") || !strcmp(word, "g1sync=off")) {
+		pica_g1sync = !strcmp(word, "g1sync=on");
+		return true;
+	}
 	if (!strncmp(word, "rtfscap=", 8)) {
         char *end; long n = strtol(word+8, &end, 10);
         if (!word[8] || *end || n < 4 || n > 5) return false;
@@ -94,6 +98,7 @@ bool switches_set(const char *word)
 
 bool switches_run(char *line, char *game, size_t len, char *error, size_t error_len)
 {
+	pica_g1sync = true;
 	psx3d_idle_skip = 1; psx3d_idle_pointer = psx3d_idle_delay = 0;
 	psx3d_dyn_lookup = 0;
 	sw_rtfslevel = -1; sw_rtfscap = 4; pica_submit = 7;

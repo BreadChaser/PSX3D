@@ -17,6 +17,9 @@ void pica_flip(void);
 void pica_readback_rect(int x,int y,int w,int h);
 void pica_drop_fills(void);
 
+static void movie_mode(int a,int b,int c,int d,int e) { (void)a;(void)b;(void)c;(void)d;(void)e; }
+static void movie_flip(const void *a,int b,int c,int d,int e,int f,int g,int h)
+{ (void)a;(void)b;(void)c;(void)d;(void)e;(void)f;(void)g;(void)h; }
 static u32 xy(int x, int y) { return (u16)x | ((u32)(u16)y << 16); }
 static void commands(u32 *p, int n)
 {
@@ -59,6 +62,41 @@ int main(void)
     unsigned shader=0;
     assert(pica_init(&shader,4) && pica_game_begin(true));
     pica_frame_started();
+
+    // CPU movie scanout must see deferred fills AND newer GPU primitives.
+    void vout_set_config(const struct rearmed_cbs *);
+    int vout_update(struct psx_gpu *,int,int);
+    struct rearmed_cbs movie_cbs={0};
+    movie_cbs.pl_vout_set_mode=movie_mode; movie_cbs.pl_vout_flip=movie_flip;
+    vout_set_config(&movie_cbs);
+    gpu.status=PSX_GPU_STATUS_RGB24;
+    gpu.screen.w=gpu.screen.hres=320; gpu.screen.h=gpu.screen.vres=240;
+    memset(vram, 0x55, sizeof(vram));
+    renderer_update_caches(0,0,1024,512,1);
+    area(0,0,1024,512,0,0);
+    u32 movie[]={0x02000000,xy(0,0),xy(480,240),
+        0x600000ff,xy(32,32),xy(16,16)};
+    commands(movie,6);
+    pica_g1sync=false;
+    assert(vout_update(&gpu,0,0)==1);
+    assert(vram[10*1024+10]==0x5555); // negative control: off preserves stale CPU data
+    pica_g1sync=true;
+    assert(vout_update(&gpu,0,0)==1);
+    assert(vram[10*1024+10]==0);
+    assert(vram[36*1024+36]==31);
+    assert(vout_update(&gpu,0,0)==1);
+    assert(vram[36*1024+36]==31); // no old fill may overwrite newer RGB
+
+    // Left-clipping one RGB pixel advances three bytes: the CPU scanout
+    // begins on the high byte of word 32 and must also settle word 33.
+    u32 clipped_movie[]={0x600000ff,xy(32,6),xy(2,1)};
+    commands(clipped_movie,3);
+    vram[6*1024+32]=vram[6*1024+33]=0x5555;
+    gpu.screen.x=-1; gpu.screen.w=2; gpu.screen.h=1;
+    assert(vout_update(&gpu,31,6)==1);
+    assert(vram[6*1024+32]==31 && vram[6*1024+33]==31);
+    gpu.screen.x=0; gpu.screen.w=320; gpu.screen.h=240;
+    gpu.status=0; pica_drop_fills();
 
     // A blocked skip must return at E3 so gpulib can reconsider the area.
     // Preserve the entire batch when its presentation is still pending.
