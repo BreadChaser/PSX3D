@@ -858,7 +858,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	{
 		char prefix[PATH_LEN];
 		make_path(prefix, sizeof(prefix), PSX3D_STATE_DIR, "");
-		if (clip_requested<0 && !dev_enabled() && g_cfg.autosave && sw_state < 0 && states_resume_prompt(prefix) && state_load_from(STATE_AUTO))
+		if (clip_requested<0 && !dev_remote_game() && g_cfg.autosave && sw_state < 0 && states_resume_prompt(prefix) && state_load_from(STATE_AUTO))
 			osd("Continuing where you left off");
 	}
 	if (clip_requested<0 && game_capabilities().rewind && gamecfg_int("rewind", 0))
@@ -1289,7 +1289,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	pmu_stop();
 	log_printf("game: leaving\n");
 	rewind_stop();
-	if (!clip_replay_session && !dev_enabled() && g_cfg.autosave)
+	if (!clip_replay_session && !dev_remote_game() && g_cfg.autosave)
 		log_printf("auto-save: %s\n", state_save_to(STATE_AUTO) ? "written" : "failed");
 	bottom_backlight(true);
 	srm_save(false);
