@@ -29,7 +29,8 @@ options and mappings, while retaining the library location and other games'
 overrides. Neither action deletes saves or cheats. Confirm with a fresh **A**
 press; **B** cancels.
 
-Both consoles use GPU rendering. Old 3DS has no rewind or stereo display.
+Both consoles use GPU rendering. Rewind requires New 3DS; stereoscopic 3D is
+temporarily unavailable in v0.4.0.
 Uncurated games show every option supported by the console; presets can hide
 features unsuitable for a particular game. Speed hacks can affect game timing
 or graphics, so use the defaults unless testing a specific compatibility issue.

@@ -37,7 +37,7 @@ for measured scenes and [methodology](performance.md).
 - GPU rendering can show incorrect effects, flicker and other drawing errors.
   A thin blue line at the top of Crash Bandicoot's picture still reproduces.
 - Stereoscopic 3D is temporarily unavailable in v0.4.0 (the 3D slider shows a flat picture); GPU 3D is in development.
-  Old 3DS has no stereoscopic display or rewind.
+- Rewind requires New 3DS.
 - Widescreen behaviour is unchanged in this release; improvements are planned for v0.4.1.
 - Display centering and interlaced modes are not implemented.
 - Performance and compatibility vary by game. A real BIOS may help compatibility.
