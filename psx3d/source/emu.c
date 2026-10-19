@@ -650,7 +650,9 @@ static bool menu_run(int initial_screen)
 					goto resume;
 				break;
 			case M_RESET:
-				if (k & KEY_A) {
+				if ((k & KEY_A) && ui_confirm_action("Reset game?",
+						"Restart the game from the beginning. Progress since your last save is lost.",
+						"A  Reset game", true)) {
 					retro_reset();
 					rewind_reset();
 					goto resume;

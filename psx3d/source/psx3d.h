@@ -322,6 +322,7 @@ void ui_text(float x, float y, float size, u32 color, const char *fmt, ...);
 void ui_rect(float x, float y, float w, float h, u32 color);
 void ui_begin(void);
 bool ui_confirm(const char *title, const char *message, bool show_game);
+bool ui_confirm_action(const char *title, const char *message, const char *action, bool show_game);
 void ui_text_ex(C2D_Font font, float x, float y, float size, u32 color, u32 flags, const char *s);
 void ui_text_pixels(C2D_Font font, float x, float baseline, float pixels, float spacing,
 	float width, u32 color, u32 align, const char *s);

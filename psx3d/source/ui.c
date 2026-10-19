@@ -420,27 +420,34 @@ void ui_help_for(float y0, const char *name)
 }
 
 // Destructive settings actions require a fresh A press. B always cancels.
-typedef struct { const char *title, *message; } confirm_t;
+typedef struct { const char *title, *message, *action; } confirm_t;
 static void confirm_draw(void *ud)
 {
 	confirm_t *c = ud;
-	ui_rect(0, 0, 320, 240, C2D_Color32(6, 9, 24, 255));
+	// Behind the header's colour rule, like the other menus.
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
 	ui_menu_header(c->title, config_in_game() ? "this game" : "all games");
 	C2D_Text t;
 	if (C2D_TextParse(&t, textbuf, c->message))
 		C2D_DrawText(&t, C2D_WithColor | C2D_WordWrap, 16.0f, 62.0f, 0.7f, 0.5f, 0.5f,
 			C2D_Color32(170, 185, 220, 255), 288.0f);
-	ui_text_ex(NULL, 160, 183, 0.5f, C2D_Color32(235, 238, 255, 255), C2D_AlignCenter, "A  Reset to defaults");
+	ui_text_ex(NULL, 160, 183, 0.5f, C2D_Color32(235, 238, 255, 255), C2D_AlignCenter, c->action);
 	ui_text_ex(NULL, 160, 213, 0.45f, C2D_Color32(130, 150, 190, 255), C2D_AlignCenter, "B  Cancel");
 }
 
 bool ui_confirm(const char *title, const char *message, bool show_game)
 {
-	confirm_t c = { title, message };
+	return ui_confirm_action(title, message, "A  Reset to defaults", show_game);
+}
+
+bool ui_confirm_action(const char *title, const char *message, const char *action, bool show_game)
+{
+	confirm_t c = { title, message, action };
 	bool released = false;
 	while (aptMainLoop()) {
 		input_poll();
-		if (settings_ui_active() && (dev_tick(show_game) || dev_ui_pending())) return false;
+		// The pause menu also keeps answering the remote loop while this is open.
+		if ((settings_ui_active() || show_game) && (dev_tick(show_game) || dev_ui_pending())) return false;
 		u32 held = input_keys_held(), k = input_keys_down() | (settings_ui_active() ? dev_ui_keys_take() : 0);
 		if (released && (k & KEY_B)) return false;
 		if (released && (k & KEY_A)) return true;
