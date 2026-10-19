@@ -166,8 +166,24 @@ when the modal closes. See `docs/dev-control.md`.
 
 ## Hardware evidence
 
-Hardware capture is pending the shared Old 3DS lock. The prepared driver checks
-OLD_UNAVAILABLE before and after acquiring the lock, installs via the existing
-self-updater, captures real bottom/top frames, restores exact RC2, then verifies
-the library and remote identity before releasing the lock. On uncertain relaunch
-it marks OLD_UNAVAILABLE and stops without retries/recovery. New 3DS is untouched.
+The initial v3 hardware pass installed source `55d9528` (`settings-ui-3-split`),
+captured the global root, Display, Performance, Sound, Controls, Button mappings,
+Saves & general, Advanced, and CPU & compatibility pages, then restored exact
+RC2 successfully. Both remote identity/library status and a real `shot both`
+verified that restoration before releasing the lock. Initial real PNGs and a
+clearly labelled preliminary gallery are in `devtools/settings-ui/screens/`.
+
+That pass exposed unfinished library cover uploads/title fade while settings
+was open. Commit `c8b674b` fixes the menu-only callback. The final v4 package
+listed above builds and passes the sanitizer suite, but is **not installed or
+hardware-validated**. Its per-game screens, reset confirmations, remaining
+Advanced children, override-clear demonstration and final gallery remain pending.
+
+The final capture driver later acquired the lock and stopped before contact
+because `OLD_UNAVAILABLE` existed: the gpu-stereo worker reported a Crash
+candidate-batch crash at **2026-10-19 03:59:52 UTC**. That later outage supersedes
+our historical RC2 restoration; no current RC2/library claim is made. No recovery
+or retry was attempted, and no settings driver remains running. Resume only
+after the maintainer clears the marker; the prepared driver still requires
+exact RC2/library/inactive batch under lock. See the evidence directory's
+`PENDING-HARDWARE.md`, `console.jsonl`, and `final-status.json`. New 3DS untouched.
