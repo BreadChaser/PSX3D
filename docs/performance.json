@@ -1,5 +1,5 @@
 {
-  "title": "PSX3D on Old 3DS and New 3DS",
+  "title": "PSX3D performance",
   "subtitle": "GPU renderer, each game's benchmark scene. Game speed = how fast the game runs (100% = normal). FPS = new pictures you actually see per second.",
   "version": "v0.4.0",
   "games": [

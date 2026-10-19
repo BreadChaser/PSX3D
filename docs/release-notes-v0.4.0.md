@@ -41,6 +41,8 @@ for measured scenes and [methodology](performance.md).
 - Widescreen behaviour is unchanged in this release; improvements are planned for v0.4.1.
 - Display centering and interlaced modes are not implemented.
 - Performance and compatibility vary by game. A real BIOS may help compatibility.
+- Automatic frameskip can skip more pictures than necessary, reducing visible
+  smoothness even when game speed reaches 100%.
 - Heavy Wi-Fi traffic and slow cover downloads can cause audio clicks.
 
 ## Install

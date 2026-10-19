@@ -47,7 +47,12 @@ def svg(d, c):
         out.append(f'<rect x="{24 + k*150}" y="{y-10}" width="12" height="12" rx="2" fill="{col}"/>')
         t(24 + k * 150 + 18, y, label, 12.5, c["ink2"])
     y += 10
-    for console, title in (("old", "Old 3DS"), ("new", "New 3DS")):
+    def at_full(console):
+        return all(g[console]["off_speed"] >= 99.5 and g[console]["auto_speed"] >= 99.5 and
+                   g[console]["off_fps"] >= g["native_fps"] - 1 and g[console]["auto_fps"] >= g["native_fps"] - 1
+                   for g in games)
+    shown = [(k, n) for k, n in (("old", "Old 3DS"), ("new", "New 3DS")) if not at_full(k)]
+    for console, title in shown:
         y += 34
         t(24, y, title, 16, weight="600")
         t(P1, y, "Game speed", 13, c["ink2"], weight="600")
@@ -80,10 +85,14 @@ def svg(d, c):
             out.insert(0, f'<line x1="{x:.1f}" y1="{top-2}" x2="{x:.1f}" y2="{bottom}" stroke="{c["axis"] if v == 0 else c["grid"]}"/>')
             t(x, bottom + 15, str(v), 10.5, c["muted"], "middle")
         y = bottom + 22
-    y += 18
+    for console, title in (("old", "Old 3DS"), ("new", "New 3DS")):
+        if at_full(console):
+            y += 30
+            t(24, y, f"{title}: every game above runs at full speed with every picture shown, frameskip off or Auto.", 13.5, weight="600")
+    y += 26
     t(24, y, "Dashed line = the most pictures per second the game itself draws (most PS1 3D games draw 30).", 12, c["ink2"])
     y += 17
-    t(24, y, "Auto frameskip can improve game speed by showing fewer pictures.", 12, c["ink2"])
+    t(24, y, "Auto frameskip trades pictures for game speed: it skips drawing some pictures to help the game run faster.", 12, c["ink2"])
     H = y + 18
     head = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" font-family="{FONT}" role="img" aria-label="{escape(d["title"], quote=True)}">',
             f'<title>{escape(d["title"])}</title>']

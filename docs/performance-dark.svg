@@ -1,18 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="900" height="697" viewBox="0 0 900 697" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" role="img" aria-label="PSX3D on Old 3DS and New 3DS">
-<title>PSX3D on Old 3DS and New 3DS</title>
-<line x1="830.0" y1="416" x2="830.0" y2="622" stroke="#30363d"/>
-<line x1="695.0" y1="416" x2="695.0" y2="622" stroke="#30363d"/>
-<line x1="560.0" y1="416" x2="560.0" y2="622" stroke="#6e7681"/>
-<line x1="480.0" y1="416" x2="480.0" y2="622" stroke="#30363d"/>
-<line x1="345.0" y1="416" x2="345.0" y2="622" stroke="#30363d"/>
-<line x1="210.0" y1="416" x2="210.0" y2="622" stroke="#6e7681"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="461" viewBox="0 0 900 461" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" role="img" aria-label="PSX3D performance">
+<title>PSX3D performance</title>
 <line x1="830.0" y1="142" x2="830.0" y2="348" stroke="#30363d"/>
 <line x1="695.0" y1="142" x2="695.0" y2="348" stroke="#30363d"/>
 <line x1="560.0" y1="142" x2="560.0" y2="348" stroke="#6e7681"/>
 <line x1="480.0" y1="142" x2="480.0" y2="348" stroke="#30363d"/>
 <line x1="345.0" y1="142" x2="345.0" y2="348" stroke="#30363d"/>
 <line x1="210.0" y1="142" x2="210.0" y2="348" stroke="#6e7681"/>
-<text x="24.0" y="34.0" font-size="20" fill="#f0f6fc" text-anchor="start" font-weight="600">PSX3D on Old 3DS and New 3DS</text>
+<text x="24.0" y="34.0" font-size="20" fill="#f0f6fc" text-anchor="start" font-weight="600">PSX3D performance</text>
 <text x="24.0" y="56.0" font-size="12.5" fill="#c9d1d9" text-anchor="start" font-weight="normal">GPU renderer, each game&#x27;s benchmark scene. Game speed = how fast the game runs (100% = normal). FPS = new pictures you actually see per second.</text>
 <rect x="24" y="76" width="12" height="12" rx="2" fill="#3987e5"/>
 <text x="42.0" y="86.0" font-size="12.5" fill="#c9d1d9" text-anchor="start" font-weight="normal">Frameskip off</text>
@@ -87,75 +81,7 @@
 <text x="560.0" y="363.0" font-size="10.5" fill="#8b949e" text-anchor="middle" font-weight="normal">0</text>
 <text x="695.0" y="363.0" font-size="10.5" fill="#8b949e" text-anchor="middle" font-weight="normal">30</text>
 <text x="830.0" y="363.0" font-size="10.5" fill="#8b949e" text-anchor="middle" font-weight="normal">60</text>
-<text x="24.0" y="404.0" font-size="16" fill="#f0f6fc" text-anchor="start" font-weight="600">New 3DS</text>
-<text x="210.0" y="404.0" font-size="13" fill="#c9d1d9" text-anchor="start" font-weight="600">Game speed</text>
-<text x="560.0" y="404.0" font-size="13" fill="#c9d1d9" text-anchor="start" font-weight="600">FPS you see</text>
-<text x="190.0" y="436.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Crash Bandicoot</text>
-<path d="M210.0,422.0 H477.0 Q480.0,422.0 480.0,425.0 V430.0 Q480.0,433.0 477.0,433.0 H210.0 Z" fill="#3987e5"/>
-<text x="486.0" y="432.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,422.0 H692.0 Q695.0,422.0 695.0,425.0 V430.0 Q695.0,433.0 692.0,433.0 H560.0 Z" fill="#3987e5"/>
-<text x="701.0" y="432.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">30</text>
-<path d="M210.0,435.0 H477.0 Q480.0,435.0 480.0,438.0 V443.0 Q480.0,446.0 477.0,446.0 H210.0 Z" fill="#d95926"/>
-<text x="486.0" y="445.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,435.0 H692.0 Q695.0,435.0 695.0,438.0 V443.0 Q695.0,446.0 692.0,446.0 H560.0 Z" fill="#d95926"/>
-<text x="701.0" y="445.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">30</text>
-<line x1="695.0" y1="419" x2="695.0" y2="447" stroke="#f0f6fc" stroke-width="2" stroke-dasharray="3 2"/>
-<text x="190.0" y="470.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Crash Team Racing</text>
-<path d="M210.0,456.0 H477.0 Q480.0,456.0 480.0,459.0 V464.0 Q480.0,467.0 477.0,467.0 H210.0 Z" fill="#3987e5"/>
-<text x="486.0" y="466.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,456.0 H692.0 Q695.0,456.0 695.0,459.0 V464.0 Q695.0,467.0 692.0,467.0 H560.0 Z" fill="#3987e5"/>
-<text x="701.0" y="466.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">30</text>
-<path d="M210.0,469.0 H477.0 Q480.0,469.0 480.0,472.0 V477.0 Q480.0,480.0 477.0,480.0 H210.0 Z" fill="#d95926"/>
-<text x="486.0" y="479.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,469.0 H692.0 Q695.0,469.0 695.0,472.0 V477.0 Q695.0,480.0 692.0,480.0 H560.0 Z" fill="#d95926"/>
-<text x="701.0" y="479.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">30</text>
-<line x1="695.0" y1="453" x2="695.0" y2="481" stroke="#f0f6fc" stroke-width="2" stroke-dasharray="3 2"/>
-<text x="190.0" y="504.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Gran Turismo 2</text>
-<path d="M210.0,490.0 H477.0 Q480.0,490.0 480.0,493.0 V498.0 Q480.0,501.0 477.0,501.0 H210.0 Z" fill="#3987e5"/>
-<text x="486.0" y="500.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,490.0 H692.0 Q695.0,490.0 695.0,493.0 V498.0 Q695.0,501.0 692.0,501.0 H560.0 Z" fill="#3987e5"/>
-<text x="701.0" y="500.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">30</text>
-<path d="M210.0,503.0 H477.0 Q480.0,503.0 480.0,506.0 V511.0 Q480.0,514.0 477.0,514.0 H210.0 Z" fill="#d95926"/>
-<text x="486.0" y="513.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,503.0 H692.0 Q695.0,503.0 695.0,506.0 V511.0 Q695.0,514.0 692.0,514.0 H560.0 Z" fill="#d95926"/>
-<text x="701.0" y="513.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">30</text>
-<line x1="695.0" y1="487" x2="695.0" y2="515" stroke="#f0f6fc" stroke-width="2" stroke-dasharray="3 2"/>
-<text x="190.0" y="538.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Silent Hill</text>
-<path d="M210.0,524.0 H477.0 Q480.0,524.0 480.0,527.0 V532.0 Q480.0,535.0 477.0,535.0 H210.0 Z" fill="#3987e5"/>
-<text x="486.0" y="534.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,524.0 H692.0 Q695.0,524.0 695.0,527.0 V532.0 Q695.0,535.0 692.0,535.0 H560.0 Z" fill="#3987e5"/>
-<text x="701.0" y="534.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">30</text>
-<path d="M210.0,537.0 H477.0 Q480.0,537.0 480.0,540.0 V545.0 Q480.0,548.0 477.0,548.0 H210.0 Z" fill="#d95926"/>
-<text x="486.0" y="547.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,537.0 H692.0 Q695.0,537.0 695.0,540.0 V545.0 Q695.0,548.0 692.0,548.0 H560.0 Z" fill="#d95926"/>
-<text x="701.0" y="547.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">30</text>
-<line x1="695.0" y1="521" x2="695.0" y2="549" stroke="#f0f6fc" stroke-width="2" stroke-dasharray="3 2"/>
-<text x="190.0" y="572.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Ridge Racer Type 4</text>
-<path d="M210.0,558.0 H477.0 Q480.0,558.0 480.0,561.0 V566.0 Q480.0,569.0 477.0,569.0 H210.0 Z" fill="#3987e5"/>
-<text x="486.0" y="568.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,558.0 H692.0 Q695.0,558.0 695.0,561.0 V566.0 Q695.0,569.0 692.0,569.0 H560.0 Z" fill="#3987e5"/>
-<text x="701.0" y="568.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">30</text>
-<path d="M210.0,571.0 H477.0 Q480.0,571.0 480.0,574.0 V579.0 Q480.0,582.0 477.0,582.0 H210.0 Z" fill="#d95926"/>
-<text x="486.0" y="581.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,571.0 H692.0 Q695.0,571.0 695.0,574.0 V579.0 Q695.0,582.0 692.0,582.0 H560.0 Z" fill="#d95926"/>
-<text x="701.0" y="581.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">30</text>
-<line x1="695.0" y1="555" x2="695.0" y2="583" stroke="#f0f6fc" stroke-width="2" stroke-dasharray="3 2"/>
-<text x="190.0" y="606.0" font-size="13" fill="#f0f6fc" text-anchor="end" font-weight="normal">Symphony of the Night</text>
-<path d="M210.0,592.0 H477.0 Q480.0,592.0 480.0,595.0 V600.0 Q480.0,603.0 477.0,603.0 H210.0 Z" fill="#3987e5"/>
-<text x="486.0" y="602.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,592.0 H827.0 Q830.0,592.0 830.0,595.0 V600.0 Q830.0,603.0 827.0,603.0 H560.0 Z" fill="#3987e5"/>
-<text x="836.0" y="602.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">60</text>
-<path d="M210.0,605.0 H477.0 Q480.0,605.0 480.0,608.0 V613.0 Q480.0,616.0 477.0,616.0 H210.0 Z" fill="#d95926"/>
-<text x="486.0" y="615.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">100%</text>
-<path d="M560.0,605.0 H827.0 Q830.0,605.0 830.0,608.0 V613.0 Q830.0,616.0 827.0,616.0 H560.0 Z" fill="#d95926"/>
-<text x="836.0" y="615.0" font-size="11.5" fill="#f0f6fc" text-anchor="start" font-weight="600">60</text>
-<line x1="830.0" y1="589" x2="830.0" y2="617" stroke="#f0f6fc" stroke-width="2" stroke-dasharray="3 2"/>
-<text x="210.0" y="637.0" font-size="10.5" fill="#8b949e" text-anchor="middle" font-weight="normal">0%</text>
-<text x="345.0" y="637.0" font-size="10.5" fill="#8b949e" text-anchor="middle" font-weight="normal">50%</text>
-<text x="480.0" y="637.0" font-size="10.5" fill="#8b949e" text-anchor="middle" font-weight="normal">100%</text>
-<text x="560.0" y="637.0" font-size="10.5" fill="#8b949e" text-anchor="middle" font-weight="normal">0</text>
-<text x="695.0" y="637.0" font-size="10.5" fill="#8b949e" text-anchor="middle" font-weight="normal">30</text>
-<text x="830.0" y="637.0" font-size="10.5" fill="#8b949e" text-anchor="middle" font-weight="normal">60</text>
-<text x="24.0" y="662.0" font-size="12" fill="#c9d1d9" text-anchor="start" font-weight="normal">Dashed line = the most pictures per second the game itself draws (most PS1 3D games draw 30).</text>
-<text x="24.0" y="679.0" font-size="12" fill="#c9d1d9" text-anchor="start" font-weight="normal">Auto frameskip can improve game speed by showing fewer pictures.</text>
+<text x="24.0" y="400.0" font-size="13.5" fill="#f0f6fc" text-anchor="start" font-weight="600">New 3DS: every game above runs at full speed with every picture shown, frameskip off or Auto.</text>
+<text x="24.0" y="426.0" font-size="12" fill="#c9d1d9" text-anchor="start" font-weight="normal">Dashed line = the most pictures per second the game itself draws (most PS1 3D games draw 30).</text>
+<text x="24.0" y="443.0" font-size="12" fill="#c9d1d9" text-anchor="start" font-weight="normal">Auto frameskip trades pictures for game speed: it skips drawing some pictures to help the game run faster.</text>
 </svg>
