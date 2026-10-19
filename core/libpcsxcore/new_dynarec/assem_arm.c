@@ -777,6 +777,14 @@ static void emit_cmpimm(int rs,int imm)
   }
 }
 
+static void emit_cmpvsimm(int rs, int imm)
+{
+  u_int armval;
+  genimm_checked(imm, &armval);
+  assem_debug("cmpvs %s,#%d\n", regname[rs], imm);
+  output_w32(0x63500000|rd_rn_rm(0,rs,0)|armval);
+}
+
 static void emit_cmovne_imm(int imm,int rt)
 {
   assem_debug("movne %s,#%d\n",regname[rt],imm);

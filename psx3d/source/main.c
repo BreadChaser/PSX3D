@@ -141,6 +141,7 @@ bool sw_aa;              // test: Old 3DS: gameplay supersampled too
 bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 
 extern int psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay;
+extern unsigned psx3d_dynr2;
 
 static void parse_switches(int argc, char **argv)
 {
@@ -182,6 +183,13 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "idleptr=on")) psx3d_idle_pointer = 1;
 		else if (!strcmp(a, "idledelay=off")) psx3d_idle_delay = 0;
 		else if (!strcmp(a, "idledelay=on")) psx3d_idle_delay = 1;
+		// Old 3DS dynarec experiments, compiled in at a clean load
+		else if (!strcmp(a, "dynr2_spad=on")) psx3d_dynr2 |= 1;
+		else if (!strcmp(a, "dynr2_spad=off")) psx3d_dynr2 &= ~1u;
+		else if (!strcmp(a, "dynr2_spsmc=on")) psx3d_dynr2 |= 2;
+		else if (!strcmp(a, "dynr2_spsmc=off")) psx3d_dynr2 &= ~2u;
+		else if (!strcmp(a, "dynr2_group=on")) psx3d_dynr2 |= 4;
+		else if (!strcmp(a, "dynr2_group=off")) psx3d_dynr2 &= ~4u;
 		else if (!strcmp(a, "noskip")) sw_noskip = true;
 		else if (!strcmp(a, "nogputhread")) sw_nogputhread = true;
 		else if (!strcmp(a, "gputhread")) sw_nogputhread = false;

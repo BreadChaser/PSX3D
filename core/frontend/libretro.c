@@ -500,6 +500,7 @@ out:
 #ifdef _3DS
 static u32 mapped_addrs[8];
 static u32 mapped_ram, mapped_ram_src;
+static u32 mapped_spad, mapped_spad_src;
 static void *vram_mem;
 
 // http://3dbrew.org/wiki/Memory_layout#ARM11_User-land_memory_regions
@@ -570,6 +571,18 @@ static void *pl_3ds_mmap(unsigned long addr, size_t size,
             ret = (void *)mapped_ram;
          }
       }
+      // likewise the scratchpad: one ARM immediate, so the dynarec
+      // translates a guarded scratchpad address with a single add
+      else if (tag == MAP_TAG_OTHER && addr == 0x1f800000 && !mapped_spad) {
+         u32 target = 0x13400000;
+         if ((r = svcControlMemory(&mapped_spad, target, mapped_addrs[i], size, MEMOP_MAP, MEMPERM_READWRITE)) < 0)
+            LogErr("could not map scratchpad %08x -> %08x: %d\n", mapped_addrs[i], target, r);
+         else {
+            mapped_spad_src = mapped_addrs[i];
+            mapped_spad = target;
+            ret = (void *)mapped_spad;
+         }
+      }
       memset(ret, 0, size);
       return ret;
    }
@@ -597,6 +610,11 @@ static void pl_3ds_munmap(void *ptr, size_t size, enum psxMapTag tag)
          svcControlMemory(&tmp, mapped_ram, mapped_ram_src, size, MEMOP_UNMAP, 0);
          ptr = (void *)mapped_ram_src;
          mapped_ram = mapped_ram_src = 0;
+      }
+      else if (ptr == (void *)mapped_spad) {
+         svcControlMemory(&tmp, mapped_spad, mapped_spad_src, size, MEMOP_UNMAP, 0);
+         ptr = (void *)mapped_spad_src;
+         mapped_spad = mapped_spad_src = 0;
       }
       for (i = 0; i < sizeof(mapped_addrs) / sizeof(mapped_addrs[0]); i++) {
          if (ptr == (void *)mapped_addrs[i]) {

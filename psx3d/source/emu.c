@@ -82,8 +82,9 @@ static bool clip_start(void)
     }
     size_t used=strlen(settings);
     extern int psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay;
-    snprintf(settings+used,sizeof(settings)-used,"idle=%d\nidleptr=%d\nidledelay=%d\nrenderer=%s\nconsole=%s\napp_version=" PSX3D_VERSION "\ngldbg=%d\ngpu_async=%d\n",
-        psx3d_idle_skip,psx3d_idle_pointer,psx3d_idle_delay,"gpu",g_new3ds?"new":"old",
+    extern unsigned psx3d_dynr2;
+    snprintf(settings+used,sizeof(settings)-used,"dynr2=%u\nidle=%d\nidleptr=%d\nidledelay=%d\nrenderer=%s\nconsole=%s\napp_version=" PSX3D_VERSION "\ngldbg=%d\ngpu_async=%d\n",
+        psx3d_dynr2,psx3d_idle_skip,psx3d_idle_pointer,psx3d_idle_delay,"gpu",g_new3ds?"new":"old",
         sw_gldbg,sw_gpu_async);
     snprintf(clip_base,sizeof(clip_base),"%s/%u",dir,id);
     rewind_stop(); input_fast_forward_off(); sw_ff=false;

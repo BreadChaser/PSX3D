@@ -181,6 +181,10 @@ enum stub_type {
   INVCODE_STUB = 14,
   OVERFLOW_STUB = 15,
   ALIGNMENT_STUB = 16,
+  STOREB_SMC_STUB = 17, // as STOREB_STUB, plus the SMC check skipped inline
+  STOREH_SMC_STUB = 18,
+  STOREW_SMC_STUB = 19,
+  DYNR2_COLD_STUB = 20, // group guard failed: rerun the run fully guarded
 };
 
 // regmap_pre[i]    - regs before [i] insn starts; dirty things here that
@@ -3152,6 +3156,26 @@ static int get_ptr_mem_type(struct compile_state *st, u_int a)
   return MTYPE_8000;
 }
 
+// PSX3D Old 3DS experiments, selected at a clean game load (bits):
+// 1 scratchpad translation as one immediate add (off: two adds, the cost of
+//   the previous 0x0fddf000 mapping), 2 no SMC check after the proven
+//   scratchpad store path (its slow stub keeps the check), 4 group guards,
+//   0x100 (tests only) every group guard fails into its cold copy
+unsigned psx3d_dynr2 = 0;
+static int last_fastpath_type;
+
+static void emit_spad_translate(int r)
+{
+  uintptr_t base = (uintptr_t)psxRegs.ptrs.psxH;
+  u_int armval;
+  if (!(psx3d_dynr2 & 1) && genimm(base, &armval) && (base & 0x00ffffff)) {
+    emit_addimm(r, base & 0xff000000, r);
+    emit_addimm(r, base & 0x00ffffff, r);
+  }
+  else
+    emit_addimm_ptr(r, base, r);
+}
+
 static int get_ro_reg(const struct regstat *i_regs, int host_tempreg_free)
 {
   int r = get_reg(i_regs->regmap, ROREG);
@@ -3162,6 +3186,194 @@ static int get_ro_reg(const struct regstat *i_regs, int host_tempreg_free)
   if (r < 0)
     abort();
   return r;
+}
+
+// Group guards (bit 4): plain loads/stores through one base register that
+// nothing writes in a straight run share one range guard on the first
+// access. If that guard fails, a cold copy of the run with the usual
+// per-access guards takes over and returns to the hot code after the run.
+#define DYNR2_RUN 32
+#define DYNR2_SPAN 64
+#define DYNR2_MAXCOLD 64
+static short dynr2_head[MAXBLOCK]; // group head index of a member, else -1
+static short dynr2_last[MAXBLOCK]; // head: last member
+static short dynr2_cover[MAXBLOCK]; // head: last insn of its cold copy
+static short dynr2_lo[MAXBLOCK], dynr2_hi[MAXBLOCK]; // head: imm range
+static char dynr2_active[MAXBLOCK]; // head emitted its range guard
+static void *dynr2_resume[MAXBLOCK];
+static int dynr2_cold, dynr2_cold_pending, dynr2_nsnap;
+static struct dynr2_snap {
+  u_int strong, weak, strong_next, weak_next;
+  u_int regs[32];
+  int lc_first, lc_count, lc_ofs; // regs[].loadedconst of the copied run
+} dynr2_snaps[DYNR2_MAXCOLD];
+static u_int dynr2_lc[MAXBLOCK + DYNR2_MAXCOLD], dynr2_nlc;
+
+static void dynr2_snap_save(struct dynr2_snap *sn)
+{
+  sn->strong = smrv_strong; sn->weak = smrv_weak;
+  sn->strong_next = smrv_strong_next; sn->weak_next = smrv_weak_next;
+  memcpy(sn->regs, ndrc_smrv_regs, sizeof(sn->regs));
+}
+
+static void dynr2_snap_restore(const struct dynr2_snap *sn)
+{
+  smrv_strong = sn->strong; smrv_weak = sn->weak;
+  smrv_strong_next = sn->strong_next; smrv_weak_next = sn->weak_next;
+  memcpy(ndrc_smrv_regs, sn->regs, sizeof(sn->regs));
+}
+
+static int dynr2_plain_mem(int i)
+{
+  return (dops[i].itype == LOAD || dops[i].itype == STORE) && !dops[i].is_ds;
+}
+
+// Form candidate groups for a block; emission decides which are used.
+static void dynr2_plan(const struct compile_state *st)
+{
+  int i, j;
+  for (i = 0; i < st->slen; i++) {
+    dynr2_head[i] = -1;
+    dynr2_last[i] = dynr2_cover[i] = -1;
+    dynr2_active[i] = 0;
+  }
+  dynr2_nsnap = dynr2_nlc = 0;
+  if (!(psx3d_dynr2 & 4))
+    return;
+  for (i = 0; i < st->slen; i++) {
+    int b = dops[i].rs1, lo, hi, n = 0, last = -1;
+    if (!dynr2_plain_mem(i) || dynr2_head[i] >= 0 || b == 0
+        || (dops[i].itype == LOAD && dops[i].rt1 == b))
+      continue;
+    lo = hi = cinfo[i].imm;
+    for (j = i + 1; j < st->slen && j <= i + DYNR2_RUN; j++) {
+      if (dops[j].bt || dops[j].is_jump || dops[j].is_ds || dops[j].is_exception
+          || dops[j].itype == COP0 || dops[j].itype == RFE
+          || dops[j].itype == SYSCALL || dops[j].itype == HLECALL
+          || dops[j].itype == INTCALL)
+        break;
+      if (dynr2_plain_mem(j) && dops[j].rs1 == b && dynr2_head[j] < 0
+          && !(dops[j].itype == LOAD && dops[j].rt1 == b)) {
+        int nlo = cinfo[j].imm < lo ? cinfo[j].imm : lo;
+        int nhi = cinfo[j].imm > hi ? cinfo[j].imm : hi;
+        if (nhi - nlo <= DYNR2_SPAN) {
+          lo = nlo; hi = nhi;
+          dynr2_head[j] = i;
+          last = j; n++;
+        }
+      }
+      if (dops[j].rt1 == b || dops[j].rt2 == b)
+        break;
+    }
+    if (n) {
+      dynr2_last[i] = last;
+      dynr2_lo[i] = lo - cinfo[i].imm;
+      dynr2_hi[i] = hi - cinfo[i].imm;
+    }
+  }
+  // A cold copy must also cover every group starting inside it.
+  for (i = st->slen - 1; i >= 0; i--) {
+    int c = dynr2_last[i];
+    if (c < 0)
+      continue;
+    for (j = i + 1; j <= c; j++)
+      if (dynr2_cover[j] > c)
+        c = dynr2_cover[j];
+    dynr2_cover[i] = c;
+  }
+}
+
+// Called with the fast path type known; emits a group's guard or a
+// member's translation and reports which it did.
+static int dynr2_fastpath(struct compile_state *st, int i, int type, int addr,
+  int *offset_reg, int *addr_reg_override, const struct regstat *i_regs, void **jaddr)
+{
+  int spad = type == MTYPE_1F80 && psxRegs.ptrs.psxH != (void *)0x1f800000;
+  if (dynr2_cold || !(psx3d_dynr2 & 4) || (type != 0 && !spad) || !dynr2_plain_mem(i))
+    return 0;
+  int h = dynr2_head[i];
+  if (h >= 0) {
+    // member of an emitted group of the same kind
+    if (!dynr2_active[h] || (dynr2_active[h] == 2) != spad)
+      return 0;
+    if (spad) {
+      uintptr_t k = 0x1f800000 - (uintptr_t)psxRegs.ptrs.psxH;
+      u_int armval;
+      host_tempreg_acquire();
+      if (genimm(-k, &armval) || genimm(k, &armval))
+        emit_addimm(addr, -k, HOST_TEMPREG);
+      else {
+        emit_xorimm(addr, 0x1f800000, HOST_TEMPREG);
+        emit_spad_translate(HOST_TEMPREG);
+      }
+      *addr_reg_override = HOST_TEMPREG;
+    }
+    else if (ram_offset != 0)
+      *offset_reg = get_ro_reg(i_regs, 0);
+    *jaddr = NULL;
+    return 2;
+  }
+  if (dynr2_last[i] < 0 || dynr2_nsnap >= DYNR2_MAXCOLD
+      || dynr2_nlc + dynr2_cover[i] - i + 2 > ARRAY_SIZE(dynr2_lc))
+    return 0;
+  int lo = dynr2_lo[i], hi = dynr2_hi[i], members = 0, j;
+  for (j = i + 1; j <= dynr2_last[i]; j++)
+    members += dynr2_head[j] == i;
+  if (!spad && 2 * members <= (hi ? 2 : 0) + (lo ? 1 : 0))
+    return 0;
+  host_tempreg_acquire();
+  if (spad) {
+    // [addr+lo, addr+hi] inside the 4K window
+    u_int n = 0x1000 - (hi - lo), armval;
+    while (!genimm(n, &armval))
+      n &= n - 1;
+    if (lo)
+      emit_addimm(addr, lo, HOST_TEMPREG);
+    emit_xorimm(lo ? HOST_TEMPREG : addr, 0x1f800000, HOST_TEMPREG);
+    emit_cmpimm(HOST_TEMPREG, n);
+    *jaddr = out;
+    if (psx3d_dynr2 & 0x100) emit_jmp(0); // test: always take the cold copy
+    else emit_jc(0);
+    if (lo)
+      emit_xorimm(addr, 0x1f800000, HOST_TEMPREG);
+    emit_spad_translate(HOST_TEMPREG);
+    *addr_reg_override = HOST_TEMPREG;
+  }
+  else {
+    // both ends in RAM, the cmp/V trick of the plain RAM check twice
+    if (hi) {
+      emit_addimm(addr, hi, HOST_TEMPREG);
+      emit_cmpimm(HOST_TEMPREG, RAM_SIZE);
+    }
+    if (lo)
+      emit_addimm(addr, lo, HOST_TEMPREG);
+    if (hi)
+      emit_cmpvsimm(lo ? HOST_TEMPREG : addr, RAM_SIZE);
+    else
+      emit_cmpimm(lo ? HOST_TEMPREG : addr, RAM_SIZE);
+    host_tempreg_release();
+    *jaddr = out;
+    if (psx3d_dynr2 & 0x100) emit_jmp(0);
+    else emit_jno(0);
+    if (ram_offset != 0)
+      *offset_reg = get_ro_reg(i_regs, 0);
+  }
+  dynr2_active[i] = spad ? 2 : 1;
+  struct dynr2_snap *sn = &dynr2_snaps[dynr2_nsnap];
+  dynr2_snap_save(sn);
+  // emission accumulates loaded-constant flags; the copy needs them as now
+  sn->lc_first = i; sn->lc_ofs = dynr2_nlc;
+  sn->lc_count = dynr2_cover[i] - i + 1 + (dynr2_cover[i] + 1 < st->slen);
+  for (j = 0; j < sn->lc_count; j++)
+    dynr2_lc[dynr2_nlc++] = regs[i + j].loadedconst;
+  dynr2_cold_pending = 1;
+  return 1;
+}
+
+static void dynr2_add_cold(void *jaddr, int i)
+{
+  add_stub(DYNR2_COLD_STUB, jaddr, NULL, i, dynr2_cover[i], dynr2_nsnap++, 0, 0);
+  dynr2_cold_pending = 0;
 }
 
 static void *emit_fastpath_cmp_jump(struct compile_state *st, int i,
@@ -3192,6 +3404,15 @@ static void *emit_fastpath_cmp_jump(struct compile_state *st, int i,
     jaddr2 = out;
     emit_jne(0);
     add_stub_r(ALIGNMENT_STUB, jaddr2, out, i, addr, i_regs, ccadj_, 0);
+  }
+
+  {
+    int g = dynr2_fastpath(st, i, type, addr, offset_reg, addr_reg_override,
+      i_regs, &jaddr);
+    if (g) {
+      last_fastpath_type = type;
+      return jaddr;
+    }
   }
 
   if(type==MTYPE_8020) { // RAM 80200000+ mirror
@@ -3229,11 +3450,12 @@ static void *emit_fastpath_cmp_jump(struct compile_state *st, int i,
       emit_cmpimm(HOST_TEMPREG, 0x1000);
       jaddr = out;
       emit_jc(0);
-      emit_addimm_ptr(HOST_TEMPREG, (uintptr_t)psxRegs.ptrs.psxH, HOST_TEMPREG);
+      emit_spad_translate(HOST_TEMPREG);
       *addr_reg_override = HOST_TEMPREG;
     }
   }
 
+  last_fastpath_type = type;
   if (type == 0) // need ram check
   {
     emit_cmpimm(addr,RAM_SIZE);
@@ -3510,7 +3732,9 @@ static void load_assemble(struct compile_state *st, int i,
   }
   if (addr_hr_io == HOST_TEMPREG || offset_reg == HOST_TEMPREG)
     host_tempreg_release();
-  if (jaddr)
+  if (jaddr && dynr2_cold_pending)
+    dynr2_add_cold(jaddr, i);
+  else if (jaddr)
     add_stub_r(type, jaddr, out, i, addr_hr, i_regs, ccadj_,reglist);
   if (inline_slow_io)
     do_read_slow(st, i, i_regs, type, NULL, addr_hr, ccadj_, reglist);
@@ -3702,12 +3926,18 @@ static void store_assemble(struct compile_state *st, int i,
   assert(addr_hr >= 0);
   if(i_regs->regmap[HOST_CCREG]==CCREG) reglist&=~(1<<HOST_CCREG);
   reglist |= 1u << addr_hr;
+  int spad_smc = 0;
   if (inline_slow_io)
     /* no direct write */;
   else if (!c) {
     addr_hr_io = addr_hr;
+    last_fastpath_type = -1;
     jaddr = emit_fastpath_cmp_jump(st, i, i_regs, addr_hr,
               &offset_reg, &addr_hr_io, ccadj_);
+    // Code is only compiled from RAM and BIOS, so a store that passed the
+    // scratchpad guard can't hit it. The slow stub still checks.
+    spad_smc = (psx3d_dynr2 & 2) && last_fastpath_type == MTYPE_1F80
+      && !HACK_ENABLED(NDHACK_NO_SMC_CHECK);
   }
   else if (c && ram80x_io) {
     addr_hr_io = addr_hr;
@@ -3736,13 +3966,16 @@ static void store_assemble(struct compile_state *st, int i,
   }
   if (addr_hr_io == HOST_TEMPREG || offset_reg == HOST_TEMPREG)
     host_tempreg_release();
-  if (jaddr)
-    add_stub_r(type, jaddr, out, i, addr_hr, i_regs, ccadj_, reglist);
+  if (jaddr && dynr2_cold_pending)
+    dynr2_add_cold(jaddr, i);
+  else if (jaddr)
+    add_stub_r(spad_smc ? STOREW_SMC_STUB + (type - STOREW_STUB) : type,
+      jaddr, out, i, addr_hr, i_regs, ccadj_, reglist);
   else if (inline_slow_io)
     do_write_slow(st, i, i_regs, type, NULL, addr_hr, ccadj_, reglist, 1);
 
   if (!inline_slow_io) {
-    if (!c || is_ram_addr(saddr_const))
+    if ((!c || is_ram_addr(saddr_const)) && !spad_smc)
       do_store_smc_check(st, i, i_regs, reglist, addr_hr);
     if (c && !ram80x_io)
       inline_writestub(type, i, saddr_const, i_regs->regmap, dops[i].rs2, ccadj_, reglist);
@@ -4422,6 +4655,26 @@ static void do_writestub(struct compile_state *st, int n)
   assem_debug("do_writestub %x\n", st->start + i*4);
   set_jump_target(stubs[n].addr, out);
   do_write_slow(st, i, i_regs, stubs[n].type, stubs[n].retaddr, rs, adj, reglist, 0);
+}
+
+// Slow path of a store whose fast path is proven scratchpad: run the SMC
+// check the fast path omits, then return past the access.
+static void do_writestub_smc(struct compile_state *st, int n)
+{
+  int i = stubs[n].a;
+  int rs = stubs[n].b;
+  struct regstat *i_regs = (struct regstat *)stubs[n].c;
+  int adj = stubs[n].d;
+  u_int reglist = stubs[n].e;
+  enum stub_type type = STOREB_STUB + (stubs[n].type - STOREB_SMC_STUB);
+  literal_pool(256);
+  assem_debug("do_writestub_smc %x\n", st->start + i*4);
+  set_jump_target(stubs[n].addr, out);
+  do_write_slow(st, i, i_regs, type, NULL, rs, adj, reglist, 1);
+  emit_jmp(stubs[n].retaddr);
+  // Its SMC check may queue INVCODE stubs, whose own pool check assumes a
+  // short distance; leave no literal behind.
+  literal_pool(0);
 }
 
 static void do_unalignedwritestub(struct compile_state *st, int n)
@@ -5386,6 +5639,67 @@ static void drc_dbg_emit_wb_dirtys(int i, const struct regstat *i_regs)
 #define drc_dbg_emit_do_cmp(st, x, y)
 #define drc_dbg_emit_wb_dirtys(x, y)
 #endif
+
+// The run [head, cover] again with every access guarded as usual, entered
+// from the head's failed group guard, mid-instruction after its address
+// generation. Repeats the main loop's emission and speculation exactly.
+static void do_dynr2_cold_stub(struct compile_state *st, int n)
+{
+  int head = stubs[n].a, cover = stubs[n].b, j;
+  struct dynr2_snap end;
+  dynr2_snap_save(&end);
+  literal_pool(256);
+  assem_debug("do_dynr2_cold_stub %x-%x\n", st->start + head*4, st->start + cover*4);
+  set_jump_target(stubs[n].addr, out);
+  const struct dynr2_snap *sn = &dynr2_snaps[stubs[n].c];
+  u_int lc_end[sn->lc_count];
+  for (j = 0; j < sn->lc_count; j++) {
+    lc_end[j] = regs[sn->lc_first + j].loadedconst;
+    regs[sn->lc_first + j].loadedconst = dynr2_lc[sn->lc_ofs + j];
+  }
+  dynr2_cold = 1;
+  dynr2_snap_restore(sn);
+  assemble(st, head, &regs[head], cinfo[head].ccadj);
+  drc_dbg_emit_wb_dirtys(head, &regs[head]);
+  literal_pool_jumpover(256);
+  for (j = head + 1; j <= cover; j++) {
+    assert(!dops[j].bt && !dops[j].is_jump && !dops[j].is_ds && !dops[j-1].is_jump);
+    speculate_register_values(st, j);
+    if (j < 2 || !dops[j-2].is_ujump) {
+      wb_valid(regmap_pre[j], regs[j].regmap_entry, regs[j-1].dirty, regs[j].wasdirty, st->unneeded_reg[j]);
+      wb_invalidate(regmap_pre[j], regs[j].regmap_entry, regs[j].wasdirty, st->unneeded_reg[j]);
+      loop_preload(regmap_pre[j], regs[j].regmap_entry);
+    }
+    drc_dbg_emit_do_cmp(st, j, cinfo[j].ccadj);
+    if (regs[j].regmap_entry[HOST_CCREG] == CCREG && regs[j].regmap[HOST_CCREG] != CCREG)
+      wb_register(CCREG, regs[j].regmap_entry, regs[j].wasdirty);
+    load_regs(regs[j].regmap_entry, regs[j].regmap, dops[j].rs1, dops[j].rs2);
+    address_generation(j, &regs[j], regs[j].regmap_entry);
+    load_consts(st, regmap_pre[j], regs[j].regmap, j);
+    if (j + 1 < st->slen) {
+      if (dops[j+1].rs1 != dops[j].rs1 && dops[j+1].rs1 != dops[j].rs2)
+        if (dops[j+1].rs1 != dops[j].rt1 && dops[j+1].rs1 != dops[j].rt2)
+          load_regs(regs[j].regmap_entry, regs[j].regmap, dops[j+1].rs1, dops[j+1].rs1);
+      if (dops[j+1].rs2 != dops[j+1].rs1 && dops[j+1].rs2 != dops[j].rs1 && dops[j+1].rs2 != dops[j].rs2)
+        if (dops[j+1].rs2 != dops[j].rt1 && dops[j+1].rs2 != dops[j].rt2)
+          load_regs(regs[j].regmap_entry, regs[j].regmap, dops[j+1].rs2, dops[j+1].rs2);
+    }
+    load_reg(regs[j].regmap_entry, regs[j].regmap, CCREG);
+    if (ram_offset && (dops[j].is_load || dops[j].is_store))
+      load_reg(regs[j].regmap_entry, regs[j].regmap, ROREG);
+    if (dops[j].is_store)
+      load_reg(regs[j].regmap_entry, regs[j].regmap, INVCP);
+    assemble(st, j, &regs[j], cinfo[j].ccadj);
+    drc_dbg_emit_wb_dirtys(j, &regs[j]);
+    literal_pool_jumpover(256);
+  }
+  emit_jmp(dynr2_resume[cover]);
+  literal_pool(0);
+  dynr2_cold = 0;
+  dynr2_snap_restore(&end);
+  for (j = 0; j < sn->lc_count; j++)
+    regs[sn->lc_first + j].loadedconst = lc_end[j];
+}
 
 // Used when a branch jumps into the delay slot of another branch
 static void ds_assemble_entry(struct compile_state *st, int i)
@@ -10149,6 +10463,7 @@ static int noinline new_recompile_block_(u_int addr)
   stubcount = 0;
   st.is_delayslot = 0;
   st.maybe_cache_isolated = 0;
+  dynr2_plan(&st);
   u_int dirty_pre = 0;
   u_char *beginning = start_block(MAX_OUTPUT_BLOCK_SIZE);
   void *instr_addr0_override = NULL;
@@ -10283,6 +10598,7 @@ static int noinline new_recompile_block_(u_int addr)
         load_reg(regs[i].regmap_entry,regs[i].regmap,INVCP);
 
       ds = assemble(&st, i, &regs[i], cinfo[i].ccadj);
+      dynr2_resume[i] = out;
 
       drc_dbg_emit_wb_dirtys(i, &regs[i]);
       if (dops[i].is_ujump)
@@ -10345,6 +10661,14 @@ static int noinline new_recompile_block_(u_int addr)
       case STOREH_STUB:
       case STOREW_STUB:
         do_writestub(&st, i);
+        break;
+      case DYNR2_COLD_STUB:
+        do_dynr2_cold_stub(&st, i);
+        break;
+      case STOREB_SMC_STUB:
+      case STOREH_SMC_STUB:
+      case STOREW_SMC_STUB:
+        do_writestub_smc(&st, i);
         break;
       case CC_STUB:
         do_ccstub(&st, i);
