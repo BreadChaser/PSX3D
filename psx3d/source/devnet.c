@@ -1,9 +1,13 @@
 // Debug-only, single-client TCP transport. SOC calls never run on the emulator
 // thread. All sockets are nonblocking: libctru SOC shares an IPC session, so even
 // a blocking select/poll in this thread could stall another subsystem.
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE /* strcasestr, memmem */
+#endif
 #include "devnet.h"
 #include "clip.h"
 #include <dirent.h>
+#include <sys/stat.h>
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -289,10 +293,483 @@ static bool encode_shot(int client)
 	return response;
 }
 
+/* Remote file and diagnostics API: token-gated, LAN-only like every command.
+ * Runs on this worker thread, never on the emulator thread. While a game or
+ * batch runs, SD access here could delay the emulator's own CD/save reads, so
+ * every file command waits for the library. */
+static volatile bool files_busy;
+void devnet_busy(bool busy) { files_busy = busy; }
+static bool files_allowed(int fd)
+{
+	if (!dev_token[0]) {
+		send_json(fd, "{\"error\":\"unauthorized\"}");
+		return false;
+	}
+	if (files_busy) {
+		send_json(fd, "{\"error\":\"busy: a game or batch is running; quit to the library first\"}");
+		return false;
+	}
+	return true;
+}
+/* Normalise "sdmc:/a//b/" to "sdmc:/a/b". "." and ".." are refused, not resolved. */
+static bool sd_path(const char *in, char *out, size_t len)
+{
+	if (strncmp(in, "sdmc:/", 6) || len < 8)
+		return false;
+	size_t o = 6;
+	memcpy(out, "sdmc:/", 6);
+	for (const char *p = in + 6; *p;) {
+		while (*p == '/')
+			p++;
+		const char *e = p;
+		while (*e && *e != '/')
+			e++;
+		size_t n = e - p;
+		if (!n)
+			break;
+		if ((n == 1 && *p == '.') || (n == 2 && p[0] == '.' && p[1] == '.'))
+			return false;
+		for (const char *c = p; c < e; c++)
+			if ((unsigned char)*c < 32 || *c == '\\' || *c == ':' || *c == 127)
+				return false;
+		if (o + (o > 6) + n + 1 > len)
+			return false;
+		if (o > 6)
+			out[o++] = '/';
+		memcpy(out + o, p, n);
+		o += n;
+		p = e;
+	}
+	out[o] = 0;
+	return true;
+}
+static size_t json_quote(char *out, size_t len, const char *s)
+{
+	size_t o = 0;
+	if (len < 3)
+		return 0;
+	out[o++] = '"';
+	for (; *s && o + 8 < len; s++) {
+		unsigned char c = *s;
+		if (c == '"' || c == '\\')
+			o += snprintf(out + o, len - o, "\\%c", c);
+		else if (c < 32)
+			o += snprintf(out + o, len - o, "\\u%04x", c);
+		else
+			out[o++] = c;
+	}
+	out[o++] = '"';
+	out[o] = 0;
+	return o;
+}
+/* Streams in 8 KiB chunks: any size, never held in memory. */
+static void stream_file(int fd, const char *path)
+{
+	FILE *f = fopen(path, "rb");
+	struct stat st;
+	if (!f || fstat(fileno(f), &st) || S_ISDIR(st.st_mode)) {
+		if (f)
+			fclose(f);
+		send_json(fd, "{\"error\":\"file missing\"}");
+		return;
+	}
+	if (fseek(f, 0, SEEK_END)) {
+		fclose(f);
+		send_json(fd, "{\"error\":\"file read failed\"}");
+		return;
+	}
+	long long size = ftell(f);
+	rewind(f);
+	char header[64];
+	static char buffer[8192];
+	int n = snprintf(header, sizeof(header), "FILE %lld\n", size);
+	bool ok = size >= 0 && transfer(fd, header, n, true);
+	while (ok && size > 0) {
+		size_t chunk = size > (long long)sizeof(buffer) ? sizeof(buffer) : (size_t)size;
+		ok = fread(buffer, 1, chunk, f) == chunk && transfer(fd, buffer, chunk, true);
+		size -= chunk;
+	}
+	fclose(f);
+}
+static u64 file_mtime(const char *path)
+{
+	u64 t = 0;
+	return R_SUCCEEDED(archive_getmtime(path, &t)) ? t : 0;
+}
+/* JSON {"ok":true,"path":..,"entries":[{name,dir,size,mtime}]}; filter keeps a name. */
+static void list_dir(int fd, const char *path, bool (*filter)(const char *))
+{
+	DIR *dir = opendir(path);
+	if (!dir) {
+		send_json(fd, "{\"error\":\"folder missing\"}");
+		return;
+	}
+	size_t cap = 64 * 1024, used = 0;
+	char *json = malloc(cap);
+	if (!json) {
+		closedir(dir);
+		send_json(fd, NULL);
+		return;
+	}
+	used += snprintf(json, cap, "{\"ok\":true,\"path\":");
+	used += json_quote(json + used, cap - used, path);
+	used += snprintf(json + used, cap - used, ",\"entries\":[");
+	unsigned count = 0;
+	bool truncated = false;
+	struct dirent *e;
+	char full[PATH_LEN];
+	while ((e = readdir(dir))) {
+		if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..") || (filter && !filter(e->d_name)))
+			continue;
+		if (used + 600 > cap) {
+			truncated = true;
+			break;
+		}
+		snprintf(full, sizeof(full), "%s%s%s", path, path[strlen(path) - 1] == '/' ? "" : "/", e->d_name);
+		struct stat st;
+		bool have = !stat(full, &st), is_dir = have ? S_ISDIR(st.st_mode) : e->d_type == DT_DIR;
+		used += snprintf(json + used, cap - used, "%s{\"name\":", count++ ? "," : "");
+		used += json_quote(json + used, cap - used, e->d_name);
+		used += snprintf(json + used, cap - used, ",\"dir\":%s,\"size\":%lld,\"mtime\":%llu}",
+		                 is_dir ? "true" : "false", have && !is_dir ? (long long)st.st_size : 0LL,
+		                 (unsigned long long)file_mtime(full));
+	}
+	closedir(dir);
+	snprintf(json + used, cap - used, "],\"truncated\":%s}", truncated ? "true" : "false");
+	send_json(fd, json);
+	free(json);
+}
+static bool log_name(const char *n)
+{
+	return !strcmp(n, "log.txt") || (!strncmp(n, "log.", 4) && n[4] >= '1' && n[4] <= '9' && !strcmp(n + 5, ".txt"));
+}
+/* put targets: user data folders and the frontend's own config files only. */
+static bool put_allowed(const char *path)
+{
+	static const char *const dirs[] = {"states/", "cheats/", "saves/", "covers/", "recordings/", "games/"};
+	static const char *const files[] = {"switches.txt", "config.ini", "games.ini"};
+	const char *base = PSX3D_DIR "/";
+	size_t n = strlen(base);
+	if (strncmp(path, base, n))
+		return false;
+	const char *rest = path + n;
+	for (unsigned i = 0; i < sizeof(files) / sizeof(*files); i++)
+		if (!strcmp(rest, files[i]))
+			return true;
+	for (unsigned i = 0; i < sizeof(dirs) / sizeof(*dirs); i++) {
+		size_t d = strlen(dirs[i]);
+		if (!strncmp(rest, dirs[i], d) && rest[d])
+			return strlen(rest + d) < 4 || strcmp(rest + strlen(rest) - 4, ".tmp");
+	}
+	return false;
+}
+/* Receive into <path>.tmp, then swap it in. 3DS FAT rename does not replace an
+ * existing file, so keep the old one as <path>.bak until the new one is in
+ * place, and put it back if that fails (the updater's switches pattern). */
+/* extra: bytes the command reader already received past the '\n'. */
+static void put_file(int fd, const char *args, const u8 *extra, size_t extra_len)
+{
+	char raw[PATH_LEN], path[PATH_LEN];
+	long long size = -1;
+	const char *space = strrchr(args, ' ');
+	if (!space || space == args || (size_t)(space - args) >= sizeof(raw)) {
+		send_json(fd, "{\"error\":\"usage: put <sdmc:/path> <size>, then the bytes\"}");
+		return;
+	}
+	char *end;
+	size = strtoll(space + 1, &end, 10);
+	memcpy(raw, args, space - args);
+	raw[space - args] = 0;
+	if (!space[1] || *end || size < 0 || size > 8 * 1024 * 1024) {
+		send_json(fd, "{\"error\":\"put size must be 0..8388608 bytes\"}");
+		return;
+	}
+	if (!sd_path(raw, path, sizeof(path) - 8) || !put_allowed(path)) {
+		send_json(fd, "{\"error\":\"put only writes sdmc:/3ds/PSX3D/{states,cheats,saves,covers,recordings,games}/ "
+		              "and switches.txt, config.ini, games.ini\"}");
+		return;
+	}
+	/* Create missing folders below the allowed root (e.g. recordings/<Game>/). */
+	char dir[PATH_LEN];
+	strcpy(dir, path);
+	for (char *c = dir + strlen(PSX3D_DIR) + 1; (c = strchr(c, '/')); c++) {
+		*c = 0;
+		mkdir(dir, 0777);
+		*c = '/';
+	}
+	char tmp[PATH_LEN + 8], backup[PATH_LEN + 8];
+	snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+	snprintf(backup, sizeof(backup), "%s.bak", path);
+	FILE *f = fopen(tmp, "wb");
+	if (!f) {
+		send_json(fd, "{\"error\":\"cannot create temporary file\"}");
+		return;
+	}
+	static u8 buffer[8192];
+	long long left = size;
+	bool ok = true;
+	size_t take = extra_len < (unsigned long long)left ? extra_len : (size_t)left;
+	if (take)
+		ok = fwrite(extra, 1, take, f) == take;
+	left -= take;
+	while (ok && left > 0) {
+		size_t chunk = left > (long long)sizeof(buffer) ? sizeof(buffer) : (size_t)left;
+		u64 deadline = osGetTime() + 15000;
+		size_t got = 0;
+		while (!got && !devnet_stopping()) {
+			int n = recv(fd, buffer, chunk, 0);
+			if (n > 0)
+				got = n;
+			else if (n == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) ||
+			         osGetTime() > deadline)
+				break;
+			else
+				svcSleepThread(2000000);
+		}
+		ok = got && fwrite(buffer, 1, got, f) == got;
+		left -= got;
+	}
+	ok = !fclose(f) && ok;
+	if (!ok) {
+		remove(tmp);
+		send_json(fd, "{\"error\":\"put transfer or write failed; target unchanged\"}");
+		return;
+	}
+	struct stat st;
+	bool existed = !stat(path, &st);
+	remove(backup);
+	if (existed && rename(path, backup)) {
+		remove(tmp);
+		send_json(fd, "{\"error\":\"cannot move the existing file aside; target unchanged\"}");
+		return;
+	}
+	if (rename(tmp, path)) {
+		if (existed)
+			rename(backup, path);
+		remove(tmp);
+		send_json(fd, "{\"error\":\"cannot install the new file; previous file restored\"}");
+		return;
+	}
+	if (existed)
+		remove(backup);
+	char json[PATH_LEN + 64];
+	size_t used = snprintf(json, sizeof(json), "{\"ok\":true,\"path\":");
+	used += json_quote(json + used, sizeof(json) - used, path);
+	snprintf(json + used, sizeof(json) - used, ",\"size\":%lld,\"replaced\":%s}", size, existed ? "true" : "false");
+	send_json(fd, json);
+}
+static bool file_command(int fd, const char *command, const u8 *extra, size_t extra_len)
+{
+	char path[PATH_LEN];
+	if (!strcmp(command, "crashes") || !strcmp(command, "logs") || !strncmp(command, "ls ", 3) ||
+	    !strncmp(command, "get sdmc:", 9) || !strncmp(command, "put ", 4)) {
+		if (!files_allowed(fd))
+			return true;
+	} else
+		return false;
+	if (!strcmp(command, "crashes")) {
+		/* Luma writes ARM11/ARM9 exception dumps here; fetch with get. */
+		char json[16384] = "{\"ok\":true,\"dumps\":[";
+		size_t used = strlen(json);
+		unsigned count = 0;
+		static const char *const dirs[] = {"sdmc:/luma/dumps/arm11", "sdmc:/luma/dumps/arm9"};
+		for (unsigned i = 0; i < 2; i++) {
+			DIR *dir = opendir(dirs[i]);
+			struct dirent *e;
+			while (dir && (e = readdir(dir))) {
+				size_t n = strlen(e->d_name);
+				if (n < 4 || strcmp(e->d_name + n - 4, ".dmp") || used + PATH_LEN + 96 > sizeof(json))
+					continue;
+				snprintf(path, sizeof(path), "%s/%s", dirs[i], e->d_name);
+				struct stat st;
+				long long size = stat(path, &st) ? -1 : (long long)st.st_size;
+				used += snprintf(json + used, sizeof(json) - used, "%s{\"path\":", count++ ? "," : "");
+				used += json_quote(json + used, sizeof(json) - used, path);
+				used += snprintf(json + used, sizeof(json) - used, ",\"size\":%lld,\"mtime\":%llu}", size,
+				                 (unsigned long long)file_mtime(path));
+			}
+			if (dir)
+				closedir(dir);
+		}
+		snprintf(json + used, sizeof(json) - used, "]}");
+		send_json(fd, json);
+	} else if (!strcmp(command, "logs"))
+		list_dir(fd, PSX3D_DIR, log_name);
+	else if (!strncmp(command, "put ", 4))
+		put_file(fd, command + 4, extra, extra_len);
+	else if (!sd_path(command + (command[0] == 'l' ? 3 : 4), path, sizeof(path)))
+		send_json(fd, "{\"error\":\"path must be sdmc:/..., without . or .. components\"}");
+	else if (command[0] == 'l')
+		list_dir(fd, path, NULL);
+	else
+		stream_file(fd, path);
+	return true;
+}
+/* Save-state archive commands: token-gated and read-only. Names come from the
+ * states/ directory listing itself, so a request cannot form any other path. */
+static bool state_name_ok(const char *s, size_t n)
+{
+	if (!n || n > 100)
+		return false;
+	for (size_t i = 0; i < n; i++) {
+		char c = s[i];
+		if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == ' ' ||
+		      c == '_' || c == '-' || c == '(' || c == ')' || c == '.' || c == ',' || c == '\'' || c == '!' ||
+		      c == '&' || c == '+'))
+			return false;
+	}
+	return !memmem(s, n, "..", 2);
+}
+/* Base name and slot of "<game>.stN", "<game>.sta" or their ".thm"; slot -1 = auto. */
+static bool state_entry(const char *name, size_t *base, int *slot, bool *thm)
+{
+	size_t n = strlen(name);
+	*thm = n > 4 && !strcmp(name + n - 4, ".thm");
+	if (*thm)
+		n -= 4;
+	if (n < 5 || memcmp(name + n - 4, ".st", 3))
+		return false;
+	char c = name[n - 1];
+	if (c == 'a')
+		*slot = -1;
+	else if (c >= '0' && c <= '9')
+		*slot = c - '0';
+	else
+		return false;
+	*base = n - 4;
+	return state_name_ok(name, *base);
+}
+/* Exact title (case-insensitive, '_' = space) wins; otherwise one unique substring. */
+static bool state_game(const char *want_title, char *game, size_t len, char *error, size_t error_len)
+{
+	char want[104];
+	size_t wn = strlen(want_title);
+	if (!state_name_ok(want_title, wn)) {
+		snprintf(error, error_len, "{\"error\":\"invalid game title\"}");
+		return false;
+	}
+	memcpy(want, want_title, wn + 1);
+	for (char *c = want; *c; c++)
+		if (*c == '_')
+			*c = ' ';
+	DIR *dir = opendir(PSX3D_STATE_DIR);
+	if (!dir) {
+		snprintf(error, error_len, "{\"error\":\"states folder missing\"}");
+		return false;
+	}
+	char found[104] = "";
+	int matches = 0;
+	bool exact = false;
+	struct dirent *e;
+	while ((e = readdir(dir))) {
+		size_t base;
+		int slot;
+		bool thm;
+		if (!state_entry(e->d_name, &base, &slot, &thm) || base >= sizeof(found))
+			continue;
+		char name[104];
+		memcpy(name, e->d_name, base);
+		name[base] = 0;
+		if (!strcasecmp(name, want)) {
+			if (!exact)
+				strcpy(found, name);
+			exact = true;
+		} else if (!exact && strcasestr(name, want) && strcmp(name, found)) {
+			strcpy(found, name);
+			matches++;
+		}
+	}
+	closedir(dir);
+	if (!exact && matches != 1) {
+		snprintf(error, error_len, matches ? "{\"error\":\"game title ambiguous; use the exact title\"}"
+		                                   : "{\"error\":\"no save states for that game\"}");
+		return false;
+	}
+	snprintf(game, len, "%s", found);
+	return true;
+}
+static bool state_command(int fd, const char *command)
+{
+	bool list = !strncmp(command, "states ", 7), get = !strncmp(command, "get state ", 10);
+	if (!list && !get)
+		return false;
+	if (!files_allowed(fd))
+		return true;
+	char title[104], slot_text[8] = "", extra[8] = "", game[104], error[96];
+	const char *args = command + (list ? 7 : 10);
+	int fields = sscanf(args, "%103s %7s %7s", title, slot_text, extra);
+	if (fields < 1 || (list && fields != 1) || (get && fields < 2) ||
+	    (fields == 3 && strcmp(extra, "thm"))) {
+		send_json(fd, list ? "{\"error\":\"usage: states <Game_Title>\"}"
+		                   : "{\"error\":\"usage: get state <Game_Title> <0-9|auto> [thm]\"}");
+		return true;
+	}
+	int want_slot = -2;
+	if (get) {
+		if (!strcmp(slot_text, "auto"))
+			want_slot = -1;
+		else if (slot_text[0] >= '0' && slot_text[0] <= '9' && !slot_text[1])
+			want_slot = slot_text[0] - '0';
+		else {
+			send_json(fd, "{\"error\":\"slot must be 0..9 or auto\"}");
+			return true;
+		}
+	}
+	if (!state_game(title, game, sizeof(game), error, sizeof(error))) {
+		send_json(fd, error);
+		return true;
+	}
+	char path[PATH_LEN];
+	if (get) {
+		bool thm = fields == 3;
+		if (want_slot < 0)
+			snprintf(path, sizeof(path), PSX3D_STATE_DIR "/%s.sta%s", game, thm ? ".thm" : "");
+		else
+			snprintf(path, sizeof(path), PSX3D_STATE_DIR "/%s.st%d%s", game, want_slot, thm ? ".thm" : "");
+		stream_file(fd, path);
+		return true;
+	}
+	char json[2048];
+	size_t used = snprintf(json, sizeof(json), "{\"ok\":true,\"game\":\"%s\",\"slots\":[", game);
+	unsigned count = 0;
+	for (int slot = -1; slot <= 9; slot++) {
+		for (int thm = 0; thm < 2; thm++) {
+			if (slot < 0)
+				snprintf(path, sizeof(path), PSX3D_STATE_DIR "/%s.sta%s", game, thm ? ".thm" : "");
+			else
+				snprintf(path, sizeof(path), PSX3D_STATE_DIR "/%s.st%d%s", game, slot, thm ? ".thm" : "");
+			FILE *f = fopen(path, "rb");
+			if (!f) {
+				if (!thm)
+					break;
+				used += snprintf(json + used, sizeof(json) - used, ",\"thm_size\":0}");
+				continue;
+			}
+			fseek(f, 0, SEEK_END);
+			long size = ftell(f);
+			/* Thumbnail header: magic, w/h, save time (seconds, 3DS clock). */
+			u32 header[3] = {0};
+			rewind(f);
+			bool have_time = thm && fread(header, 1, sizeof(header), f) == sizeof(header);
+			fclose(f);
+			if (!thm) {
+				char name[8];
+				snprintf(name, sizeof(name), slot < 0 ? "auto" : "%d", slot);
+				used += snprintf(json + used, sizeof(json) - used, "%s{\"slot\":\"%s\",\"size\":%ld", count++ ? "," : "",
+				                 name, size);
+			} else
+				used += snprintf(json + used, sizeof(json) - used, ",\"thm_size\":%ld,\"saved\":%u}", size,
+				                 have_time ? (unsigned)header[2] : 0);
+		}
+	}
+	snprintf(json + used, sizeof(json) - used, "]}");
+	send_json(fd, json);
+	return true;
+}
 static void serve_client(int fd)
 {
 	char line[DEV_COMMAND_MAX];
-	size_t used = 0;
+	size_t used = 0, extra_len = 0;
 	u64 deadline = osGetTime() + 15000;
 	while (used < sizeof(line) - 1 && !devnet_stopping()) {
 		int n = recv(fd, line + used, sizeof(line) - 1 - used, 0);
@@ -300,6 +777,7 @@ static void serve_client(int fd)
 			used += n;
 			char *newline = memchr(line, '\n', used);
 			if (newline) {
+				extra_len = line + used - (newline + 1);
 				used = newline - line + 1;
 				break;
 			}
@@ -347,6 +825,8 @@ static void serve_client(int fd)
 		free(s);
 		return;
 	}
+	if (file_command(fd, command, (const u8 *)line + used, extra_len) || state_command(fd, command))
+		return;
 	/* Recording archive commands are read-only and rooted in recordings/. */
 	if (!strncmp(command,"recordings ",11)) {
 		const char *title=command+11;

@@ -112,6 +112,8 @@ bool devnet_take(char *out)
 }
 void devnet_reply(const char *json) { snprintf(response, sizeof(response), "%s", json); }
 void devnet_status(const char *json) { snprintf(status, sizeof(status), "%s", json); }
+static bool files_busy_mock __attribute__((unused));
+void devnet_busy(bool busy) { files_busy_mock = busy; }
 static dev_measurement captured;
 void devnet_sample(const dev_measurement *s, bool reset)
 {

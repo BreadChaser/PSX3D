@@ -83,6 +83,69 @@ class Protocol(unittest.TestCase):
         with self.assertRaisesRegex(ControlError, 'invalid recording title'):
             self.client.request('recordings ../config')
 
+    def test_file_api(self):
+        c = self.client
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            # Save states: list, fetch the slot, thumbnail and auto slot.
+            listing = c.request('states Silent_Hill')
+            self.assertEqual(listing['game'], 'Silent Hill (USA)')
+            slots = {s['slot']: s for s in listing['slots']}
+            self.assertEqual(slots['2']['size'], 4456448)
+            self.assertEqual(slots['2']['saved'], 1792400000)
+            self.assertEqual(slots['auto']['thm_size'], 0)
+            self.assertEqual(c.get_state('Silent_Hill', 2, d / 'sh.st2'), 4456448)
+            self.assertEqual((d / 'sh.st2').read_bytes(), bytes([42]) * 4456448)
+            self.assertEqual(c.get_state('Silent_Hill', 2, d / 'sh.thm', True), 12)
+            self.assertEqual(c.get_state('silent hill (usa)', 'auto', d / 'a'), 4)
+            for bad, err in (('get state ../x 2', 'invalid game title'), ('get state Silent_Hill 10', 'slot'),
+                             ('get state Nothing 2', 'no save states'), ('states Silent_Hill 2', 'usage')):
+                with self.assertRaisesRegex(ControlError, err):
+                    c.request(bad)
+            # Any SD file, streamed past the in-memory response limit.
+            self.assertEqual(c.get('sdmc:/roms//big.bin', d / 'big'), 2048 * 8192)
+            names = {e['name']: e for e in c.request('ls sdmc:/')['entries']}
+            self.assertTrue(names['roms']['dir'])
+            self.assertEqual(c.request('ls sdmc:/roms')['entries'][0]['size'], 2048 * 8192)
+            for bad in ('get sdmc:/roms/../3ds/PSX3D/config.ini', 'ls sdmc:/./roms', 'ls /etc', 'get sdmc:/a\\b'):
+                with self.assertRaisesRegex(ControlError, 'path must be'):
+                    c.request(bad)
+            with self.assertRaisesRegex(ControlError, 'file missing'):
+                c.get('sdmc:/roms', d / 'x')
+            # Crash dumps and rotated logs.
+            dumps = c.request('crashes')['dumps']
+            self.assertEqual(dumps[0]['path'], 'sdmc:/luma/dumps/arm11/crash_dump_00000004.dmp')
+            self.assertEqual(c.get(dumps[0]['path'], d / 'dump'), 4)
+            self.assertEqual(sorted(e['name'] for e in c.request('logs')['entries']), ['log.1.txt', 'log.txt'])
+            # put: atomic replace in allowed places only.
+            (d / 'cfg').write_bytes(b'new=2\n')
+            r = c.put(d / 'cfg', 'sdmc:/3ds/PSX3D/config.ini')
+            self.assertTrue(r['replaced'])
+            c.get('sdmc:/3ds/PSX3D/config.ini', d / 'back')
+            self.assertEqual((d / 'back').read_bytes(), b'new=2\n')
+            big = d / 'state'; big.write_bytes(bytes(range(256)) * 20000)
+            self.assertFalse(c.put(big, 'sdmc:/3ds/PSX3D/recordings/New Game/1.state')['replaced'])
+            c.get('sdmc:/3ds/PSX3D/recordings/New Game/1.state', d / 'state2')
+            self.assertEqual((d / 'state2').read_bytes(), big.read_bytes())
+            self.assertEqual([e['name'] for e in c.request('ls sdmc:/3ds/PSX3D/recordings/New Game')['entries']],
+                             ['1.state'])
+            for target in ('sdmc:/luma/config.ini', 'sdmc:/roms/x.bin', 'sdmc:/Nintendo 3DS/x',
+                           'sdmc:/3ds/PSX3D/log.txt', 'sdmc:/3ds/PSX3D/states/../log.txt',
+                           'sdmc:/3ds/PSX3D/states/', 'sdmc:/3ds/PSX3D/states/x.tmp'):
+                with self.assertRaisesRegex(ControlError, 'put only writes'):
+                    c.put(d / 'cfg', target)
+            with self.assertRaisesRegex(ControlError, 'put size'):
+                c.request('put sdmc:/3ds/PSX3D/config.ini 9000000')
+            # Busy: a running game or batch refuses every file command.
+            c.request('busy on')
+            try:
+                for command in ('ls sdmc:/', 'logs', 'crashes', 'states Silent_Hill', 'get sdmc:/roms/big.bin'):
+                    with self.assertRaisesRegex(ControlError, 'busy'):
+                        c.request(command)
+            finally:
+                c.request('busy off')
+            self.assertEqual(c.request('status')['game'], 'Crash')
+
     def test_local_server_and_bench_template(self):
         with tempfile.TemporaryDirectory() as d:
             cia = Path(d) / 'test.cia'; cia.write_bytes(b'cia-example')

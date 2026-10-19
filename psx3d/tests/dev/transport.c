@@ -26,6 +26,7 @@ typedef struct {
 } *Thread;
 #define PATH_LEN 512
 #define PSX3D_DIR "sdmc:/3ds/PSX3D"
+#define PSX3D_STATE_DIR PSX3D_DIR "/states"
 #define CUR_THREAD_HANDLE 0
 #define U64_MAX UINT64_MAX
 #define R_FAILED(x) ((x) < 0)
@@ -160,6 +161,14 @@ bool dev_update(const char *args, char *out, size_t n)
 	snprintf(out, n, "{\"ok\":false,\"error\":\"mock update rejected\"}");
 	return false;
 }
+int archive_getmtime(const char *name, u64 *mtime)
+{
+	struct stat st;
+	if (stat(name, &st))
+		return -1;
+	*mtime = st.st_mtime;
+	return 0;
+}
 #include "../../source/clip.h"
 #include "../../source/devnet.c"
 int main(void)
@@ -174,6 +183,26 @@ int main(void)
     char chunk[8192]; memset(chunk,42,sizeof(chunk));
     for (int k=0;k<544;k++) fwrite(chunk,1,sizeof(chunk),clip);
     fclose(clip);
+	/* File API fixtures: states, Luma dumps, rotated logs, a large file. */
+	mkdir(PSX3D_STATE_DIR, 0777);
+	FILE *f = fopen(PSX3D_STATE_DIR "/Silent Hill (USA).st2", "wb");
+	for (int k = 0; f && k < 544; k++) fwrite(chunk, 1, sizeof(chunk), f);
+	if (f) fclose(f);
+	f = fopen(PSX3D_STATE_DIR "/Silent Hill (USA).st2.thm", "wb");
+	u32 thm[3] = {0x48543350, 256 | 192 << 16, 1792400000};
+	if (f) { fwrite(thm, 1, sizeof(thm), f); fclose(f); }
+	f = fopen(PSX3D_STATE_DIR "/Silent Hill (USA).sta", "wb");
+	if (f) { fputs("auto", f); fclose(f); }
+	mkdir("sdmc:/luma", 0777); mkdir("sdmc:/luma/dumps", 0777); mkdir("sdmc:/luma/dumps/arm11", 0777);
+	f = fopen("sdmc:/luma/dumps/arm11/crash_dump_00000004.dmp", "wb");
+	if (f) { fputs("DUMP", f); fclose(f); }
+	f = fopen(PSX3D_DIR "/log.txt", "w"); if (f) { fputs("now\n", f); fclose(f); }
+	f = fopen(PSX3D_DIR "/log.1.txt", "w"); if (f) { fputs("crashed\n", f); fclose(f); }
+	f = fopen(PSX3D_DIR "/config.ini", "w"); if (f) { fputs("old=1\n", f); fclose(f); }
+	mkdir("sdmc:/roms", 0777);
+	f = fopen("sdmc:/roms/big.bin", "wb");
+	for (int k = 0; f && k < 2048; k++) fwrite(chunk, 1, sizeof(chunk), f);
+	if (f) fclose(f);
 	devnet_init();
 	if (server < 0 || !worker)
 		return 1;
@@ -195,6 +224,12 @@ int main(void)
 		if (devnet_take(command)) {
 			if (!strcmp(command, "shot both")) {
 				devnet_shot(NULL, true);
+				devnet_reply("{\"ok\":true}");
+			} else if (!strcmp(command, "busy on")) {
+				devnet_busy(true);
+				devnet_reply("{\"ok\":true}");
+			} else if (!strcmp(command, "busy off")) {
+				devnet_busy(false);
 				devnet_reply("{\"ok\":true}");
 			} else if (!strcmp(command, "update mock"))
 				devnet_update_reply("mock");

@@ -234,10 +234,54 @@ unsafe live changes are rejected. Use `load` with the same game/state to compare
 those. Per-run `o:` values use the existing core option mechanism.
 
 The server rejects peers outside the console's attached IPv4 subnet. It does not
-implement internet discovery, port forwarding, shell execution, arbitrary SD
-reads or arbitrary file writes. `get` accepts only results.tsv/results.md and
-safe PNG basenames inside the bench folder. Removing the opt-in is the normal
-way to disable it; normal users see no debug UI.
+implement internet discovery, port forwarding or shell execution. Plain `get NAME`
+accepts only results.tsv/results.md and safe PNG basenames inside the bench
+folder. Removing the opt-in is the normal way to disable it; normal users see no
+debug UI.
+
+## Files, save states, crash dumps and logs
+
+After a crash, reboot and start PSX3D: everything below works from the library,
+without ftpd. All file commands need the token and run on the network worker.
+They are refused (`busy`) while a game, load or batch runs, so SD access never
+competes with the emulator's own CD or save reads; `quit` to the library first.
+
+```sh
+./psx3dctl.py new ls sdmc:/3ds/PSX3D/states
+./psx3dctl.py new get sdmc:/3ds/PSX3D/config.ini -o config.ini
+./psx3dctl.py new put my-cheats.cht "sdmc:/3ds/PSX3D/cheats/Crash Bandicoot (USA).cht"
+./psx3dctl.py new states Silent_Hill
+./psx3dctl.py new get-state Silent_Hill 2 -o sh.st2 --thm   # also writes sh.st2.thm
+./psx3dctl.py new crashes                                   # Luma dumps
+./psx3dctl.py new logs                                      # log.txt .. log.4.txt
+devtools/luma-decode.py dump.dmp --elf PSX3D.elf            # decode, symbolise PC/LR
+```
+
+- `ls <sdmc:/path>` lists name, `dir`, size and FAT `mtime` (seconds), up to
+  about 64 KiB of JSON (`truncated` says if more exist).
+- `get <sdmc:/path>` reads **any** file on the SD card, read-only, streamed in
+  8 KiB chunks (any size; the host writes `<out>.part` and renames when complete).
+- Paths must start with `sdmc:/`; repeated slashes are folded, `.`/`..`,
+  backslashes and `:` in components are refused, so nothing outside the card is
+  reachable.
+- `put <sdmc:/path> <size>` followed by exactly `size` raw bytes (at most 8 MiB)
+  writes only below `sdmc:/3ds/PSX3D/{states,cheats,saves,covers,recordings,games}/`
+  or to `switches.txt`, `config.ini` and `games.ini`. Never `Nintendo 3DS/`,
+  `luma/`, `roms/` or anything else. It writes `<path>.tmp`, moves an existing
+  file to `<path>.bak`, renames the new file in (FAT cannot rename over a file),
+  restores the backup if that fails, then deletes it. Missing folders below the
+  allowed root are created.
+- `states <Game_Title>` lists slots 0-9 and `auto` with size, thumbnail size and
+  the thumbnail's save time. `get state <Game_Title> <0-9|auto> [thm]` returns
+  `<game>.stN`/`.sta` or its `.thm`. Titles use `_` for spaces and match the
+  states folder's file names: exact (case-insensitive) first, else one unique
+  substring. The host tool converts spaces itself.
+- `crashes` lists `sdmc:/luma/dumps/arm11` and `arm9` `.dmp` files; fetch them with
+  `get`. `devtools/luma-decode.py` runs the Luma parser and resolves PC and LR with
+  `arm-none-eabi-addr2line` against the ELF of the build that crashed.
+- Every PSX3D start rotates the log: `log.txt` is the current session,
+  `log.1.txt` the previous one (the crashed session after a reboot), up to
+  `log.4.txt`. `logs` lists them.
 
 ## LAN CIA update and recovery
 

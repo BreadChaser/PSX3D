@@ -139,6 +139,7 @@ static void publish_status(void)
 {
 	if (!dev_remote)
 		return;
+	devnet_busy(running || batch_active || clip_active || command_loading);
 	char title[PATH_LEN * 6], err[sizeof(last_error) * 6], json[12288], settings[4096], *p = settings;
 	char fs[256], clock[256];
 	quote(fs, sizeof(fs), running ? opt("pcsx_rearmed_frameskip_type") : "");
