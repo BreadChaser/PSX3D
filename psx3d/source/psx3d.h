@@ -298,6 +298,8 @@ void input_control_cycle(int i, int dir);
 
 // presets.c: curated per-console serial profiles. Boolean/policy fields use
 // -1 to inherit the uncurated console defaults.
+// needs_l3r3/needs_right_stick: shown only while the game uses analog mode.
+#define NEEDS_ANALOG 2
 typedef struct {
 	int fast_forward, rewind, touch_controls;
 	int needs_l2r2, needs_l3r3, needs_right_stick;

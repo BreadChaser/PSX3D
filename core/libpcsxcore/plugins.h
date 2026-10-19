@@ -135,6 +135,7 @@ unsigned char PAD2_poll(unsigned char, int *);
 
 int padFreeze(void *f, int Mode);
 int padToggleAnalog(unsigned int index);
+int padAnalogMode(unsigned int index);
 void padReset(void);
 void padChanged(void);
 

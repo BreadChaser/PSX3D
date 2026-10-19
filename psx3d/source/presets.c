@@ -16,15 +16,16 @@ game_preset_options_t game_capabilities(void)
 	static int cached_model = -1;
 	if (cached_model == g_new3ds && cached_preset == current_preset)
 		return cached;
-	// Uncurated games expose every available feature and touch control.
+	// Uncurated games expose every available feature; stick clicks and the
+	// touch stick appear when the game switches the pad to analog.
 	game_preset_options_t result = {
 		.frameskip = 1,
 		.fast_forward = 1,
 		.rewind = g_new3ds,
 		.touch_controls = TOUCH_CONTROLS_AUTO,
 		.needs_l2r2 = !g_new3ds,
-		.needs_l3r3 = 1,
-		.needs_right_stick = !g_new3ds,
+		.needs_l3r3 = NEEDS_ANALOG,
+		.needs_right_stick = g_new3ds ? 0 : NEEDS_ANALOG,
 		.touch_bindings = {-2, -2, -2, -2, -2, -2},
 	};
 	if (current_preset) {

@@ -620,6 +620,12 @@ int padToggleAnalog(unsigned int index)
 	return r;
 }
 
+// PSX3D: touch L3/R3 and the touch stick follow the pad's analog mode.
+int padAnalogMode(unsigned int index)
+{
+	return index < sizeof(g.pads) / sizeof(g.pads[0]) && g.pads[index].ds.padMode;
+}
+
 void padChanged(void)
 {
 	padReset();

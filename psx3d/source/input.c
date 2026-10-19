@@ -17,6 +17,8 @@ static bool touch_map_enabled(int id);
 static void touch_menu_update(void);
 static int stick_x, stick_y;
 static unsigned touch_revision;
+static bool pad_analog;   // the game has the pad in analog mode
+int padAnalogMode(unsigned int index);
 
 static touchPosition touch;
 
@@ -256,6 +258,10 @@ void input_poll(void)
 	held = hidKeysHeld();
 	down = hidKeysDown() | (gameplay ? 0 : remote_key);
 	remote_key = 0;
+	if (gameplay && pad_analog != (bool)padAnalogMode(0)) {
+		pad_analog = !pad_analog;   // the game switched the pad: show/hide stick buttons
+		touch_revision++;
+	}
 	hidCircleRead(&cpad);
 	irrstCstickRead(&cstick);
 	hidTouchRead(&touch);
@@ -383,6 +389,7 @@ static const tbutton_t new_tbuttons[] = {
 #define STICK_X 200
 #define STICK_Y 120
 static int touch_hit = -1;
+static bool needed(int need) { return need == NEEDS_ANALOG ? pad_analog : need; }
 static bool touch_blocked;
 static bool menu_pending, stats_pending;
 
@@ -398,8 +405,8 @@ static int touch_default_binding(int slot)
 		return remap_default[INPUT_PHYSICAL_N + slot];
 	if (c.touch_bindings[slot] != INPUT_BIND_PRESET)
 		return c.touch_bindings[slot];
-	bool needed = slot < 2 ? c.needs_l2r2 : slot < 4 ? c.needs_l3r3 : slot == 4 ? c.fast_forward : c.rewind;
-	return needed ? remap_default[INPUT_PHYSICAL_N + slot] : INPUT_BIND_HIDE;
+	bool need = slot < 2 ? c.needs_l2r2 : slot < 4 ? needed(c.needs_l3r3) : slot == 4 ? c.fast_forward : c.rewind;
+	return need ? remap_default[INPUT_PHYSICAL_N + slot] : INPUT_BIND_HIDE;
 }
 int input_stick_binding(void)
 {
@@ -409,7 +416,7 @@ int input_stick_binding(void)
 		return g_cfg.touch_stick;
 	game_preset_options_t c = game_capabilities();
 	int mode = c.touch_controls;
-	return mode == TOUCH_CONTROLS_ON || (mode != TOUCH_CONTROLS_OFF && c.needs_right_stick);
+	return mode == TOUCH_CONTROLS_ON || (mode != TOUCH_CONTROLS_OFF && needed(c.needs_right_stick));
 }
 void input_stick_set(int binding)
 {
@@ -423,13 +430,15 @@ static unsigned touch_parts(void)
 	static game_preset_options_t previous_caps;
 	static unsigned revision, cached;
 	static int model = -1, stick;
+	static bool analog;
 	game_preset_options_t caps = game_capabilities();
-	if (model == g_new3ds && stick == g_cfg.touch_stick && revision == touch_revision &&
+	if (model == g_new3ds && stick == g_cfg.touch_stick && revision == touch_revision && analog == pad_analog &&
 		!memcmp(&previous_caps, &caps, sizeof(caps)))
 		return cached;
 	previous_caps = caps;
 	model = g_new3ds;
 	stick = g_cfg.touch_stick;
+	analog = pad_analog;
 	revision = touch_revision;
 	unsigned parts = input_stick_binding() ? 1u << INPUT_TOUCH_N : 0;
 	for (int i = 0; i < INPUT_TOUCH_N; i++) {
@@ -458,6 +467,7 @@ bool touch_buttons_active(void)
 void input_touch_begin(void)
 {
 	game_presets_reset();
+	pad_analog = false;
 	int legacy = gamecfg_int("touch_controls", TOUCH_CONTROLS_AUTO);
 	// Migrate the removed shortcut into explicit independent slot bindings.
 	if (legacy == TOUCH_CONTROLS_OFF || legacy == TOUCH_CONTROLS_ON) {
