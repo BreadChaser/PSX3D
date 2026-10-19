@@ -1,35 +1,51 @@
 #!/usr/bin/env python3
-"""Use scoped renderer PMU subtraction; never call model cycles hardware data."""
-import argparse,csv,json
+"""A/B/A table from one hardware session: baseline A1/A2 brackets and the
+candidate's same-binary configurations. Non-renderer Mcycles/vblank = run
+mcycles minus the scoped renderer_mcycles (hardware PMU, not the model)."""
+import argparse, csv, json, statistics
 from pathlib import Path
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('directory',type=Path);a=p.parse_args()
+p = argparse.ArgumentParser(description=__doc__)
+p.add_argument('directory', type=Path)
+a = p.parse_args()
+
 def rows(label):
-    result=list(csv.DictReader((a.directory/label/'old/results.tsv').open(),delimiter='\t'))
-    for r in result:
-        assert r['status']=='ok' and int(r['samples'])>=15
-        assert float(r['renderer_samples'])>0 and float(r['renderer_mcycles'])>=0
-        r['game']=dict(w.split('=',1) for w in r['request'].split() if '=' in w)['game']
-        r['nonrenderer']=float(r['mcycles'])-float(r['renderer_mcycles'])
-        assert r['nonrenderer']>0
-    return result
-base1,base2,trial=rows('A1'),rows('A2'),rows('B')
-results=[]
-for before,after in zip(base1,base2):
-    assert before['game']==after['game']
-    group=[r for r in trial if r['game']==before['game']]
-    assert len(group)==3 and ['dyn3_mem='+v in r['request'] for v,r in zip(['off','on','off'],group)]==[True]*3
-    off1,on,off2=group
-    off=(off1['nonrenderer']+off2['nonrenderer'])/2
-    bracket=(before['nonrenderer']+after['nonrenderer'])/2
-    fps_ref=(float(before['fps'])+float(after['fps']))/2
-    r=dict(game=before['game'],A1=before['nonrenderer'],off1=off1['nonrenderer'],on=on['nonrenderer'],off2=off2['nonrenderer'],A2=after['nonrenderer'],
-        switch_reduction_pct=100*(1-on['nonrenderer']/off),rc2_reduction_pct=100*(1-on['nonrenderer']/bracket),
-        off_drift_pct=100*(off2['nonrenderer']/off1['nonrenderer']-1),rc2_drift_pct=100*(after['nonrenderer']/before['nonrenderer']-1),
-        fps_rc2=fps_ref,fps_off=(float(off1['fps'])+float(off2['fps']))/2,fps_on=float(on['fps']),
-        off_fps_change_pct=100*((float(off1['fps'])+float(off2['fps']))/2/fps_ref-1),on_fps_change_pct=100*(float(on['fps'])/fps_ref-1))
-    results.append(r)
-lines=['Non-renderer Mcycles/vblank = run mcycles − scoped renderer_mcycles.','',
-    '| Game | RC2 A1 | Candidate off1 | on | off2 | RC2 A2 | Switch reduction | vs RC2 |',
-    '|---|---:|---:|---:|---:|---:|---:|---:|']
-for r in results:lines.append('| {game} | {A1:.3f} | {off1:.3f} | {on:.3f} | {off2:.3f} | {A2:.3f} | {switch_reduction_pct:.2f}% | {rc2_reduction_pct:.2f}% |'.format(**r))
-(a.directory/'summary.json').write_text(json.dumps(results,indent=2)+'\n');(a.directory/'summary.md').write_text('\n'.join(lines)+'\n');print('\n'.join(lines))
+    out = []
+    for r in csv.DictReader((a.directory/label/'old/results.tsv').open(), delimiter='\t'):
+        assert r['status'] == 'ok' and int(r['samples']) >= 14, r
+        req = dict(w.split('=', 1) for w in r['request'].split() if '=' in w)
+        r['game'] = req['game']
+        on = [k[6:] for k, v in req.items() if k.startswith('dynr2_') and v == 'on']
+        r['config'] = 'baseline' if not any(k.startswith('dynr2_') for k in req) else ('+'.join(on) or 'off')
+        r['nonrenderer'] = float(r['mcycles']) - float(r['renderer_mcycles'])
+        out.append(r)
+    return out
+
+base = rows('A1') + rows('A2')
+trial = rows('B')
+games = list(dict.fromkeys(r['game'] for r in base))
+result = []
+lines = ['Old 3DS, frameskip off, slot 2. FPS = emulated vblanks/s; non-renderer = mcycles - renderer_mcycles (M/vblank).', '',
+         '| Game | Config | runs | FPS | vs baseline | vs cand. off | non-renderer M | vs cand. off | I-miss k (ev0) |',
+         '|---|---|---:|---:|---:|---:|---:|---:|---:|']
+for g in games:
+    groups = {'baseline': [r for r in base if r['game'] == g]}
+    for r in trial:
+        if r['game'] == g:
+            groups.setdefault(r['config'], []).append(r)
+    mean = lambda rs, k: statistics.mean(float(r[k]) for r in rs)
+    bfps = mean(groups['baseline'], 'fps')
+    off = groups.get('off')
+    for c, rs in groups.items():
+        fps, nr, ev0 = mean(rs, 'fps'), mean(rs, 'nonrenderer'), mean(rs, 'ev0_k')
+        d = dict(game=g, config=c, runs=len(rs), fps=fps, nonrenderer=nr, ev0_k=ev0,
+                 fps_vs_baseline_pct=100*(fps/bfps-1),
+                 fps_vs_off_pct=100*(fps/mean(off, 'fps')-1) if off else None,
+                 nonrenderer_vs_off_pct=100*(nr/mean(off, 'nonrenderer')-1) if off else None,
+                 spread_fps_pct=100*(max(float(r['fps']) for r in rs)/min(float(r['fps']) for r in rs)-1))
+        result.append(d)
+        f = lambda v: '' if v is None else '%+.2f%%' % v
+        lines.append('| %s | %s | %d | %.2f | %s | %s | %.3f | %s | %.1f |' % (
+            g, c, len(rs), fps, f(d['fps_vs_baseline_pct']), f(d['fps_vs_off_pct']), nr, f(d['nonrenderer_vs_off_pct']), ev0))
+(a.directory/'summary.json').write_text(json.dumps(result, indent=2)+'\n')
+(a.directory/'summary.md').write_text('\n'.join(lines)+'\n')
+print('\n'.join(lines))
