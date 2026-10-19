@@ -2,7 +2,7 @@
 # Host coverage for the paths moved out of renderer hot functions.
 set -euo pipefail
 repo=$(cd "$(dirname "$0")/../.." && pwd)
-out=${PICA_LAYOUT_CHECK_OUT:-/home/tony/Development/PS1_3ds/devtools/pica-layout/host-check}
+out=${PICA_LAYOUT_CHECK_OUT:-${TMPDIR:-/tmp}/psx3d-pica-layout}
 mkdir -p "$out"
 cd "$repo"
 python3 - "$out" <<'PY'
