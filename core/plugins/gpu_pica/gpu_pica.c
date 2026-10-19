@@ -3570,6 +3570,24 @@ static void PICA_COLD pica_stats_local(char *buf, int n)
 	if (len < n)
 		snprintf(buf + len, n - len, "; atlas cells %u (%u decoded) recent %u (%u decoded) entries %u %u %u %u win %u",
 			used, tiles, recent, rtiles, nactive[0], nactive[1], nactive[2], nactive[3], win);
+#ifdef PSX3D_SIM
+	if (getenv("PICA_DUPS")) {   // page tiles held by more than one entry of the same key
+		unsigned dup = 0;
+		for (unsigned i = 0; i < NENTRIES; i++) {
+			const tcache *a = &cache[i];
+			if (!a->valid) continue;
+			for (unsigned j = 0; j < i; j++) {
+				const tcache *b = &cache[j];
+				if (!b->valid || a->depth != b->depth || a->page != b->page || a->clut != b->clut || a->win != b->win) continue;
+				int x0 = a->rx > b->rx ? a->rx : b->rx, x1 = a->rx + 32 * a->cw < b->rx + 32 * b->cw ? a->rx + 32 * a->cw : b->rx + 32 * b->cw;
+				int y0 = a->ry > b->ry ? a->ry : b->ry, y1 = a->ry + 32 * a->ch < b->ry + 32 * b->ch ? a->ry + 32 * a->ch : b->ry + 32 * b->ch;
+				if (x1 > x0 && y1 > y0) dup += ((x1 - x0) >> 5) * ((y1 - y0) >> 5);
+			}
+		}
+		len = strlen(buf);
+		if (len < n) snprintf(buf + len, n - len, " dup %u", dup);
+	}
+#endif
 }
 
 // test (stats): what was shown in the last second, and how bright the shown
