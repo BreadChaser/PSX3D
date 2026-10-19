@@ -92,6 +92,23 @@ static const char *const tips[] = {
  [F_AUTO]="Keep your place when leaving a game.", [F_REWIND]="Hold the rewind shortcut to go back.",
  [F_RECORD]="Capture 30 seconds for troubleshooting.", [F_TONE]="Play a tone to check audio output."
 };
+static const char *const category_tips[] = {
+ [CAT_DISPLAY]="Picture shape, smoothing, 3D and the FPS counter.",
+ [CAT_PERFORMANCE]="Frame skipping and disc reading.",
+ [CAT_SOUND]="Game audio, menu sounds and library music.",
+ [CAT_CONTROLS]="Buttons, touch buttons and the analog stick.",
+ [CAT_CHEATS]="Turn this game's cheat codes on or off.",
+ [CAT_SAVES]="Continue where you left off, rewind and memory cards.",
+ [CAT_ADVANCED]="Options for games that need help to run correctly.",
+ [CAT_RESET]="Restore defaults; asks for confirmation.",
+ [CAT_CPU]="Region, BIOS and accuracy options for games that misbehave.",
+ [CAT_PICTURE]="Options for games that draw incorrectly.",
+ [CAT_DEBUG]="Troubleshooting tools.",
+ [CAT_HACKS]="Faster but less accurate; may break some games.",
+ [CAT_BINDINGS]="Change physical buttons, touch buttons and hotkeys.",
+};
+static char message[64];    // result of Add code, shown in the tip line
+static int message_frames;
 #define CORE_ROW 1000
 #define CONTROL_ROW 2000
 #define CHEAT_ROW 3000
@@ -201,9 +218,7 @@ static const char *row_label(int i, void *ud)
 	if (item >= CATEGORY_ROW)
 		return categories[item - CATEGORY_ROW];
 	if (item >= CHEAT_ROW) {
-		static char cheat[48];
-		snprintf(cheat, sizeof(cheat), "%.30s", cheats_desc(item - CHEAT_ROW));
-		return cheat;
+		return ui_fit(cheats_desc(item - CHEAT_ROW), 0.5f, 250);
 	}
 	if (item >= CONTROL_ROW) {
 		static char control[80];
@@ -296,8 +311,7 @@ static void draw_settings(void *ud)
 	int item = s->count ? s->items[sel] : -1;
 	const char *tip = "A open category";
 	if (item >= CATEGORY_ROW)
-		tip = item == CATEGORY_ROW + CAT_RESET ? "Restore defaults; asks for confirmation."
-											   : "A open    L/R next category";
+		tip = category_tips[item - CATEGORY_ROW];
 	else if (item >= CHEAT_ROW)
 		tip = "This game: A on/off    X add code";
 	else if (item >= CONTROL_ROW)
@@ -307,7 +321,9 @@ static void draw_settings(void *ud)
 		tip = options_impact(item - CORE_ROW);
 	else if (item >= 0)
 		tip = tips[item];
-	if (tip && s->page != CAT_HOME)
+	if (message_frames > 0)
+		ui_text_ex(NULL, 12, 183, .39f, C2D_Color32(255, 210, 120, 255), 0, message);
+	else if (tip && s->page != CAT_HOME)
 		ui_text_ex(NULL, 12, 183, .39f, muted, 0, tip);
 	if (item >= 0 && item < CATEGORY_ROW) {
 		const char *scope = per_game(s, item) ? "This game" : "All games";
@@ -317,10 +333,12 @@ static void draw_settings(void *ud)
 				 s->game && key && config_game_overridden(key) ? "  * override - X use default" : "");
 		ui_text_ex(NULL, 12, 199, .4f, white, 0, text);
 	}
+	// Category rows open with A; Left/Right only changes values.
 	ui_text_ex(NULL, 160, 222, .39f, muted, C2D_AlignCenter,
 			   s->page == CAT_HOME ? "A open    B back"
 			   : s->page == CAT_CHEATS ? "A on/off    X add code    B back"
-									   : "Left/Right change    L/R category    B back");
+			   : item >= CATEGORY_ROW ? "A open    L/R category    B back"
+			   : "Left/Right change    L/R category    B back");
 }
 static void change(settings_ui_t *s, int item, int dir)
 {
@@ -358,8 +376,11 @@ static void change(settings_ui_t *s, int item, int dir)
 		config_sync_stereo();
 		break;
 	case F_FPS:
-		if (s->game)
-			statsview_cycle();
+		if (s->game) {
+			statsview_cycle();   // steps forward; twice is one step back
+			if (dir < 0)
+				statsview_cycle();
+		}
 		else
 			g_cfg.show_fps = (g_cfg.show_fps + dir + 3) % 3;
 		break;
@@ -457,7 +478,11 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 		}
 		int item = s->count ? s->items[*sel] : -1;
 		if ((k & KEY_X) && s->page == CAT_CHEATS) {
-			cheats_add_dialog();
+			const char *result = cheats_add_dialog();
+			if (result) {
+				snprintf(message, sizeof(message), "%s", result);
+				message_frames = 180;
+			}
 			sync_picture();
 		} else if ((k & KEY_X) && game && item >= CONTROL_ROW && item < CHEAT_ROW) {
 			config_control_clear(item - CONTROL_ROW);
@@ -496,6 +521,8 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 				change(s, item, dir);
 			sfx_play(SFX_SELECT);
 		}
+		if (message_frames > 0)
+			message_frames--;
 		if(resume_requested) break;
 		rebuild(s);
 		flist_update(&s->list, s->selected[s->page], s->count, s->page == CAT_HOME ? 8 : VISIBLE_ROWS);
