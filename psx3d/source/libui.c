@@ -160,10 +160,13 @@ static void draw_cover(int e, float cx, float cy, float size, float dim, float z
 			float o = k * size * 0.06f, bx = x + o + ui_depth(0.3f * k), bz = z - 0.004f * k;
 			C3D_Tex *t = k < library_series_size(s) && dim < 0.6f ? covers_get(library_series_game(s, k)) : NULL;
 			if (t) {
+				// fanned up and right, a little smaller, so each cover reads
+				float bs = size * (1 - 0.07f * k), f = k * size * 0.11f;
 				Tex3DS_SubTexture st = { COVER_SIZE, COVER_SIZE, 0.0f, 1.0f, 1.0f, 0.0f };
 				C2D_ImageTint tint;
-				C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim + 0.2f * k);
-				C2D_DrawImageAt((C2D_Image){ t, &st }, bx, y - o, bz, &tint, size / COVER_SIZE, size / COVER_SIZE);
+				C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim + 0.15f * k);
+				C2D_DrawImageAt((C2D_Image){ t, &st }, x + size - bs + f + ui_depth(0.3f * k), y - f, bz, &tint,
+					bs / COVER_SIZE, bs / COVER_SIZE);
 				continue;
 			}
 			u8 c = (u8)(40 - k * 8);
