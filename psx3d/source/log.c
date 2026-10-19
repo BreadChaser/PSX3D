@@ -29,6 +29,14 @@ static u32 *soc_buf;
 
 void log_init(void)
 {
+	// Keep the last five sessions (log.txt newest, log.4.txt oldest), so the log
+	// of a crashed session survives the relaunch. Renames only: cheap at startup.
+	// FAT rename does not replace a file, so drop the oldest first.
+	remove(PSX3D_DIR "/log.4.txt");
+	rename(PSX3D_DIR "/log.3.txt", PSX3D_DIR "/log.4.txt");
+	rename(PSX3D_DIR "/log.2.txt", PSX3D_DIR "/log.3.txt");
+	rename(PSX3D_DIR "/log.1.txt", PSX3D_DIR "/log.2.txt");
+	rename(PSX3D_LOG, PSX3D_DIR "/log.1.txt");
 	log_fp = fopen(PSX3D_LOG, "w");
 	aptHook(&log_cookie, log_apt, NULL);
 
