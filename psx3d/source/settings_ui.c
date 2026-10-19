@@ -115,7 +115,7 @@ static const char *const tips[] = {
 #define CONTROL_ROW 2000
 #define CHEAT_ROW 3000
 #define CATEGORY_ROW 4000
-#define MAX_ROWS 160
+#define MAX_ROWS 256
 #define VISIBLE_ROWS 6
 
 typedef struct {
@@ -226,8 +226,11 @@ static const char *row_label(int i, void *ud)
 	int item = s->items[i];
 	if (item >= CATEGORY_ROW)
 		return categories[item - CATEGORY_ROW];
-	if (item >= CHEAT_ROW)
-		return cheats_desc(item - CHEAT_ROW);
+	if (item >= CHEAT_ROW) {
+		static char cheat[48];
+		snprintf(cheat, sizeof(cheat), "%.30s", cheats_desc(item - CHEAT_ROW));
+		return cheat;
+	}
 	if (item >= CONTROL_ROW) {
 		static char control[80];
 		int row = item - CONTROL_ROW;
@@ -433,7 +436,7 @@ static void change(settings_ui_t *s, int item, int dir)
 		break;
 	}
 }
-static bool run_settings(bool game, int page)
+static bool run_settings(bool game, int page, void (*draw_top)(void *))
 {
 	active = true;
 	resume_requested = false;
@@ -534,7 +537,7 @@ static bool run_settings(bool game, int page)
 		if (!game)
 			music_update();
 		ui_begin();
-		video_present_vsync(game, NULL, draw_settings, s);
+		video_present_vsync(game, draw_top, draw_settings, s);
 	}
 	active = false;
 	capture_debug = false;
@@ -543,5 +546,5 @@ static bool run_settings(bool game, int page)
 	return resume_requested;
 }
 
-bool settings_ui_run(bool game) { return run_settings(game, CAT_HOME); }
-bool settings_ui_cheats(void) { return run_settings(true, CAT_CHEATS); }
+bool settings_ui_run(bool game, void (*draw_top)(void *)) { return run_settings(game, CAT_HOME, draw_top); }
+bool settings_ui_cheats(void) { return run_settings(true, CAT_CHEATS, NULL); }

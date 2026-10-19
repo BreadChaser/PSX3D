@@ -6,7 +6,8 @@
 bool rewind_active(void) { return false; }
 bool rewind_start(void) { return false; }
 void rewind_stop(void) {}
-int cheats_count(void) { return 0; }
+static int cheat_fixture_count;
+int cheats_count(void) { return cheat_fixture_count; }
 const char *cheats_desc(int i)
 {
 	(void)i;
@@ -151,6 +152,10 @@ int main(void)
 			}
 	fclose(inventory);
 
+ // Preserve the full existing cheat capacity, not just the ordinary option count.
+ settings_ui_t cheats_fixture={.game=true};cheat_fixture_count=256;
+ open_page(&cheats_fixture,CAT_CHEATS);assert(cheats_fixture.count==256);
+ cheat_fixture_count=0;
  // Conditional rows still follow the existing parent option and debug gates.
  g_new3ds=true;config_reset_defaults();g_cfg.renderer=1;host_gpu=false;
  settings_ui_t conditional={0};

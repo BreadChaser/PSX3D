@@ -54,7 +54,7 @@ bool config_game_overridden(const char *key);
 bool config_control_overridden(int row);
 const char *input_control_key(int row);
 void config_control_clear(int row);
-bool settings_ui_run(bool game);
+bool settings_ui_run(bool game, void (*draw_top)(void *));
 bool settings_ui_cheats(void);
 bool settings_ui_active(void);
 bool settings_ui_debug_capture(void);

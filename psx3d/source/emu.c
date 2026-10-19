@@ -547,7 +547,7 @@ static bool menu_run(int initial_screen)
 	sfx_play(SFX_SELECT);
 	audio_pause(true);
 	srm_save(false);
-	if (initial_screen == DEV_UI_SETTINGS && settings_ui_run(true))
+	if (initial_screen == DEV_UI_SETTINGS && settings_ui_run(true, NULL))
 		goto resume;
 	while (aptMainLoop()) {
 		if (dev_tick(true)) {
@@ -557,7 +557,7 @@ static bool menu_run(int initial_screen)
 		int screen = dev_ui_take();
 		if (screen == DEV_UI_RESUME)
 			goto resume;
-		if (screen == DEV_UI_SETTINGS && settings_ui_run(true))
+		if (screen == DEV_UI_SETTINGS && settings_ui_run(true, NULL))
 			goto resume;
 		if (initial_screen == DEV_UI_STATES || screen == DEV_UI_STATES) {
 			initial_screen = DEV_UI_NONE;
@@ -639,7 +639,7 @@ static bool menu_run(int initial_screen)
 					goto resume;
 				break;
 			case M_SETTINGS:
-				if ((k & KEY_A) && settings_ui_run(true))
+				if ((k & KEY_A) && settings_ui_run(true, NULL))
 					goto resume;
 				break;
 			case M_RESET:
