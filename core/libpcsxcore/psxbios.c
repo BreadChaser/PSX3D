@@ -507,31 +507,38 @@ static int card_buf_io(int is_write, int port, void *buf, u32 size)
 	UnDeliverEvent(0xf4000001, 0x2000);
 	UnDeliverEvent(0xf4000001, 0x0100);
 
-	if (offset >= 128*1024u) {
-		log_unhandled("card offs %x(%x)\n", desc->offset, offset);
-		DeliverEvent(0xf4000001, 0x8000); // ?
-		return -1;
-	}
-	if (offset + size >= 128*1024u) {
-		log_unhandled("card offs+size %x+%x\n", offset, size);
-		size = 128*1024 - offset;
-	}
-	if (is_write) {
-		memcpy(mcdptr + offset, buf, size);
-		if (port == 0) {
-			SaveMcd(Config.Mcd1, Mcd1Data, offset, size);
-			McdFlag[0] &= ~8;
+	/* File offsets are logical: directory links need not be adjacent. */
+	{
+		u32 block = desc->mcfile, skip = desc->offset / 8192;
+		u32 within = desc->offset % 8192, left = size;
+		u32 visited = 0;
+		u8 *p = buf;
+		while (block > 0 && block < 16 && skip && visited++ < 15) {
+			const u8 *entry = (u8 *)mcdptr + block * 128;
+			block = (entry[8] | (entry[9] << 8)) + 1u;
+			skip--;
 		}
-		else {
-			SaveMcd(Config.Mcd2, Mcd2Data, offset, size);
-			McdFlag[1] &= ~8;
+		while (block > 0 && block < 16 && !skip && left && visited++ < 15) {
+			const u8 *entry = (u8 *)mcdptr + block * 128;
+			u32 count = 8192 - within;
+			if (count > left) count = left;
+			offset = block * 8192 + within;
+			if (is_write) {
+				memcpy(mcdptr + offset, p, count);
+				SaveMcd(port ? Config.Mcd2 : Config.Mcd1, mcdptr, offset, count);
+				McdFlag[port] &= ~8;
+			} else {
+				size_t ram_offset = (uintptr_t)p - (uintptr_t)psxRegs.ptrs.psxM;
+				memcpy(p, mcdptr + offset, count);
+				if (ram_offset < 0x200000)
+					psxCpu->Clear(ram_offset, (count + 3) / 4);
+			}
+			p += count;
+			left -= count;
+			within = 0;
+			block = (entry[8] | (entry[9] << 8)) + 1u;
 		}
-	}
-	else {
-		size_t ram_offset = (u8 *)buf - psxRegs.ptrs.psxM;
-		memcpy(buf, mcdptr + offset, size);
-		if (ram_offset < 0x200000)
-			psxCpu->Clear(ram_offset, (size + 3) / 4);
+		size -= left;
 	}
 	if (!(desc->mode & 0x8000) || is_write) // ?? ff9
 		desc->offset += size;
@@ -2664,7 +2671,7 @@ static void buopen(int mcd, char *ptr, char *cfg)
 	int i;
 	char *mcd_data = ptr;
 
-	strcpy(FDesc[1 + mcd].name, Ra0+5);
+	snprintf(FDesc[1 + mcd].name, sizeof(FDesc[1 + mcd].name), "%.20s", (char *)Ra0 + 5);
 	FDesc[1 + mcd].offset = 0;
 	FDesc[1 + mcd].mode   = a1;
 
@@ -2678,48 +2685,36 @@ static void buopen(int mcd, char *ptr, char *cfg)
 		break;
 	}
 	if (a1 & 0x200 && v0 == -1) { /* FCREAT */
-		for (i=1; i<16; i++) {
-			int j, xor, nblk = a1 >> 16;
-			char *pptr, *fptr2;
-			char *fptr = mcd_data + 128 * i;
-
-			if ((*fptr & 0xF0) != 0xa0) continue;
-
-			FDesc[1 + mcd].mcfile = i;
-			fptr[0] = 0x51;
-			fptr[4] = 0x00;
-			fptr[5] = 0x20 * nblk;
-			fptr[6] = 0x00;
-			fptr[7] = 0x00;
-			strcpy(fptr+0xa, FDesc[1 + mcd].name);
-			pptr = fptr2 = fptr;
-			for(j=2; j<=nblk; j++) {
-				int k;
-				for(i++; i<16; i++) {
-					fptr2 += 128;
-
-					memset(fptr2, 0, 128);
-					fptr2[0] = j < nblk ? 0x52 : 0x53;
-					pptr[8] = i - 1;
-					pptr[9] = 0;
-					for (k=0, xor=0; k<127; k++) xor^= pptr[k];
-					pptr[127] = xor;
-					pptr = fptr2;
-					break;
-				}
-				/* shouldn't this return ENOSPC if i == 16? */
+		unsigned blocks[15], count = 0, nblk = a1 >> 16;
+		/* Reserve the complete chain before changing any directory entry. */
+		if (!nblk || nblk > 15)
+			return;
+		for (i = 1; i < 16 && count < nblk; i++)
+			if ((mcd_data[128 * i] & 0xf0) == 0xa0)
+				blocks[count++] = i;
+		if (count != nblk)
+			return;
+		for (count = 0; count < nblk; count++) {
+			u8 *entry = (u8 *)mcd_data + 128 * blocks[count];
+			unsigned j, next = count + 1 < nblk ? blocks[count + 1] - 1 : 0xffff;
+			memset(entry, 0, 128);
+			entry[0] = count == 0 ? 0x51 : count + 1 < nblk ? 0x52 : 0x53;
+			entry[8] = next;
+			entry[9] = next >> 8;
+			if (count == 0) {
+				entry[4] = (nblk * 8192) & 0xff;
+				entry[5] = (nblk * 8192) >> 8;
+				entry[6] = (nblk * 8192) >> 16;
+				memcpy(entry + 10, FDesc[1 + mcd].name,
+					strnlen(FDesc[1 + mcd].name, 20));
 			}
-			pptr[8] = pptr[9] = 0xff;
-			for (j=0, xor=0; j<127; j++) xor^= pptr[j];
-			pptr[127] = xor;
-			PSXBIOS_LOG("openC %s %d\n", ptr, nblk);
-			v0 = 1 + mcd;
-			/* just go ahead and resave them all */
-			SaveMcd(cfg, ptr, 128, 128 * 15);
-			McdFlag[mcd - 1] &= ~8;
-			break;
+			for (j = 0; j < 127; j++)
+				entry[127] ^= entry[j];
 		}
-		/* shouldn't this return ENOSPC if i == 16? */
+		FDesc[1 + mcd].mcfile = blocks[0];
+		v0 = 1 + mcd;
+		SaveMcd(cfg, mcd_data, 128, 128 * 15);
+		McdFlag[mcd - 1] &= ~8;
 	}
 }
 
@@ -2942,11 +2937,15 @@ static void bufile(const u8 *mcd_data, u32 dir_) {
 		PSXBIOS_LOG("%d : %s = %s + %s (match=%d)\n",
 			nfile, dir->name, pfile, name, match);
 	}
-	for (; nfile <= 15; nfile++, blocks++) {
-		const u8 *data2 = mcd_data + 128 * nfile;
-		const char *name = (const char *)data2 + 0x0a;
-		if ((data2[0] & 0xF0) != 0x50 || name[0])
-			break;
+	if (match) {
+		unsigned block = (head / 0x40), seen = 0;
+		blocks = 0;
+		while (block > 0 && block < 16 && !(seen & (1u << block))) {
+			const u8 *entry = mcd_data + block * 128;
+			seen |= 1u << block;
+			blocks++;
+			block = (entry[8] | (entry[9] << 8)) + 1u;
+		}
 	}
 	if (match) {
 		// nul char of full lenth name seems to overwrite .attr
@@ -3055,17 +3054,27 @@ void psxBios_rename() { // 44
 }
 
 
-#define budelete(mcd) { \
-	for (i=1; i<16; i++) { \
-		ptr = Mcd##mcd##Data + 128 * i; \
-		if ((*ptr & 0xF0) != 0x50) continue; \
-		if (strcmp(Ra0+5, ptr+0xa)) continue; \
-		*ptr = (*ptr & 0xf) | 0xA0; \
-		SaveMcd(Config.Mcd##mcd, Mcd##mcd##Data, 128 * i, 1); \
-		PSXBIOS_LOG("delete %s\n", ptr+0xa); \
-		v0 = 1; \
-		break; \
-	} \
+static void budelete(char *mcd_data, char *cfg)
+{
+	unsigned block;
+	for (block = 1; block < 16; block++) {
+		u8 *entry = (u8 *)mcd_data + 128 * block;
+		unsigned seen = 0;
+		if (entry[0] != 0x51 || strncmp((char *)Ra0 + 5, (char *)entry + 10, 20))
+			continue;
+		do {
+			unsigned j, next = (entry[8] | (entry[9] << 8)) + 1u;
+			seen |= 1u << block;
+			entry[0] = (entry[0] & 0x0f) | 0xa0;
+			entry[127] = 0;
+			for (j = 0; j < 127; j++) entry[127] ^= entry[j];
+			SaveMcd(cfg, mcd_data, 128 * block, 128);
+			block = next;
+			entry = (u8 *)mcd_data + 128 * (block < 16 ? block : 0);
+		} while (block > 0 && block < 16 && !(seen & (1u << block)));
+		v0 = 1;
+		break;
+	}
 }
 
 /*
@@ -3074,8 +3083,6 @@ void psxBios_rename() { // 44
 
 void psxBios_delete() { // 45
 	void *pa0 = Ra0;
-	char *ptr;
-	int i;
 
 #ifdef PSXBIOS_LOG
 	PSXBIOS_LOG("psxBios_%s: %s\n", biosB0n[0x45], Ra0);
@@ -3085,11 +3092,11 @@ void psxBios_delete() { // 45
 
 	if (pa0 != INVALID_PTR) {
 		if (!strncmp(pa0, "bu00", 4)) {
-			budelete(1);
+			budelete(Mcd1Data, Config.Mcd1);
 		}
 
 		if (!strncmp(pa0, "bu10", 4)) {
-			budelete(2);
+			budelete(Mcd2Data, Config.Mcd2);
 		}
 	}
 
