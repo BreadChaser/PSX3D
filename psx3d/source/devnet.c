@@ -6,6 +6,9 @@
 #endif
 #include "devnet.h"
 #include "clip.h"
+#include "benchstate.h"
+#include <mbedtls/sha256.h>
+#include <sys/stat.h>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <arpa/inet.h>
@@ -40,6 +43,16 @@ static char shot_path[PATH_LEN];
 static bool shot_reply;
 static char update_args[1024];
 static bool background_update;
+static char import_path[PATH_LEN], import_hash[65];
+void devnet_import_reply(const char *path, const char *sha256)
+{
+    LightLock_Lock(&lock);
+    snprintf(import_path,sizeof(import_path),"%s",path);
+    snprintf(import_hash,sizeof(import_hash),"%s",sha256);
+    mailbox=3;
+    LightLock_Unlock(&lock);
+}
+
 
 /* JSON escapes all control bytes, quotes and backslashes (game/option names). */
 static char *json_string(char *p, const char *s)
@@ -249,6 +262,56 @@ static void send_json(int fd, const char *s)
 	send_payload(fd, "JSON", (void *)(s ? s : "{\"error\":\"out of memory\"}"),
 	             s ? strlen(s) : strlen("{\"error\":\"out of memory\"}"));
 }
+/* The main thread authorizes a concrete empty benchmark destination before
+   this worker receives any bytes. Bounded 8 KiB writes; no allocation of a full
+   state, and no sockets or core calls on the main thread. */
+static void receive_benchmark_state(int fd, const char *path, const char *expected)
+{
+    char temp[PATH_LEN + 16], actual[65];
+    unsigned char buffer[8192], header[40], digest[32];
+    snprintf(temp,sizeof(temp),"%s.import",path);
+    int staging = open(temp,O_CREAT|O_EXCL|O_WRONLY,0600);
+    FILE *file = staging < 0 ? NULL : fdopen(staging,"wb");
+    if (!file) {
+        if (staging >= 0) { close(staging); unlink(temp); }
+        send_json(fd,"{\"ok\":false,\"error\":\"cannot create exclusive state staging file\"}");
+        return;
+    }
+    send_json(fd,"{\"ok\":true,\"ready\":true,\"size\":4456448}");
+    mbedtls_sha256_context hash;
+    mbedtls_sha256_init(&hash);
+    mbedtls_sha256_starts_ret(&hash,0);
+    unsigned received = 0;
+    u64 deadline = osGetTime()+15000;
+    bool ok = true;
+    while (received < BENCH_STATE_BYTES && !devnet_stopping()) {
+        unsigned want = BENCH_STATE_BYTES-received;
+        if (want > sizeof(buffer)) want = sizeof(buffer);
+        int n = recv(fd,buffer,want,0);
+        if (n > 0) {
+            if (received < sizeof(header)) {
+                unsigned copy = sizeof(header)-received;
+                if (copy > (unsigned)n) copy=n;
+                memcpy(header+received,buffer,copy);
+            }
+            if (fwrite(buffer,1,n,file) != (size_t)n) { ok=false; break; }
+            mbedtls_sha256_update_ret(&hash,buffer,n);
+            received += n; deadline=osGetTime()+15000;
+        } else if (!n || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) || osGetTime()>deadline) {
+            ok=false; break;
+        } else svcSleepThread(2000000);
+    }
+    mbedtls_sha256_finish_ret(&hash,digest);
+    mbedtls_sha256_free(&hash);
+    for (unsigned i=0;i<32;i++) sprintf(actual+2*i,"%02x",digest[i]);
+    if (fclose(file)) ok=false;
+    ok = ok && received == BENCH_STATE_BYTES && bench_state_header(header,received) && !strcasecmp(expected,actual);
+    if (ok) ok=bench_state_commit(temp,path);
+    unlink(temp);
+    if (ok) send_json(fd,"{\"ok\":true,\"imported\":true,\"size\":4456448}");
+    else send_json(fd,"{\"ok\":false,\"error\":\"state transfer/format/hash failed or destination exists; existing slots untouched\"}");
+}
+
 static bool encode_shot(int client)
 {
 	LightLock_Lock(&lock);
@@ -929,6 +992,8 @@ static void serve_client(int fd)
 	LightLock_Lock(&lock);
 	char *r = reply;
 	reply = NULL;
+	char state_path[PATH_LEN], state_hash[65];
+    strcpy(state_path,import_path); strcpy(state_hash,import_hash); import_path[0]=0;
 	char update[sizeof(update_args)];
 	strcpy(update, update_args);
 	update_args[0] = 0;
@@ -947,7 +1012,9 @@ static void serve_client(int fd)
 			free(r);
 			return;
 		}
-	} else if (!encode_shot(fd))
+	} else if (state_path[0])
+        receive_benchmark_state(fd,state_path,state_hash);
+    else if (!encode_shot(fd))
 		send_json(fd, r);
 	free(r);
 	LightLock_Lock(&lock);

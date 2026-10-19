@@ -342,3 +342,35 @@ before declaring a timeout; never send a second install while the first may
 still be writing. CIA title counters must not decrease. If installation or
 relaunch is uncertain, stop automatic control and inspect the console before
 attempting recovery.
+
+### Provision a new benchmark state (developer only)
+
+`state-import TITLE slot=N size=4456448 sha256=HEX` accepts one native raw HLE
+state for a game already in the library. This command requires the on-card
+`remote` + token pair, an idle library and the console's benchmark slot (Old 2,
+New 0). The original six benchmark games are always rejected. Every existing
+state is preserved, including slots belonging to newly added games.
+
+The client waits for a framed JSON `ready` response before sending exactly
+4,456,448 binary bytes. A second framed JSON response confirms the import.
+The worker stages the transfer under `sdmc:/3ds/PSX3D/states/`, checks its exact
+length, current raw-state header/version, HLE flag and mandatory SHA256, then
+creates the final slot exclusively. It never accepts a destination path,
+loads a state, calls the core, or installs/relaunches the app. A disconnected
+or invalid transfer removes its temporary file. A power loss can leave an
+`.import` file or a partial newly created slot; inspect those manually before
+retrying. There is deliberately no overwrite or delete command.
+
+`tools/bench-pool/import-state.py` implements this handshake, throttles at
+384 KiB/s, holds `devtools/fastloop/lock.old|new`, checks the unavailable marker
+and an explicit expected build identity, and archives status plus a library
+screenshot. Example (after the coordinator installs a build with this command):
+
+```
+python3 tools/bench-pool/import-state.py new 'Spyro the Dragon' scene.st0 \
+  --expected-build BUILD_ID --out /path/to/new-evidence
+```
+
+The format check validates the state envelope, not every internal core field
+or the disc identity. Use only locally generated, hash-verified scene files
+paired with the exact disc revision recorded in their manifest.

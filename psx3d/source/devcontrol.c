@@ -3,7 +3,9 @@
 #endif
 #include "devnet.h"
 #include "clip.h"
+#include "benchstate.h"
 #include <ctype.h>
+#include <errno.h>
 #include <malloc.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -160,7 +162,7 @@ static void publish_status(void)
 	        running && !strcmp(opt("pcsx_rearmed_gpu_thread_rendering"), "enabled") ? "true" : "false",
 	        sw_nosputhread ? "true" : "false");
 	p += strlen(p);
-	p += sprintf(p, ",\"build\":\"release-v040-final2\",\"rtfs\":%s,\"ff\":%s,\"frontend\":%s,\"floataudio\":%s", sw_rtfs ? "true" : "false", sw_ff ? "true" : "false", sw_frontend ? "true" : "false", sw_floataudio ? "true" : "false");
+	p += sprintf(p, ",\"build\":\"heavy-scenes-1\",\"rtfs\":%s,\"ff\":%s,\"frontend\":%s,\"floataudio\":%s", sw_rtfs ? "true" : "false", sw_ff ? "true" : "false", sw_frontend ? "true" : "false", sw_floataudio ? "true" : "false");
 	p += sprintf(p, ",\"fsmart\":\"%s\"", sw_fsmart ? "new" : "old");
 	p += sprintf(p, ",\"remote_game\":%s", remote_game ? "true" : "false");
 	p += sprintf(p, ",\"version\":\"%s\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
@@ -482,6 +484,34 @@ bool dev_tick(bool playing)
 				error_reply("setting requires load, or batch active/no game");
 			else
 				dev_reply("{\"ok\":true}");
+		} else if (!strcmp(command, "state-import")) {
+            char title[256], hash[65], extra;
+            unsigned size, slot;
+            const game_t *picked = NULL;
+            if (!dev_remote || playing || load_pending || batch_active || clip_replay_session ||
+                sscanf(args, "%255s slot=%u size=%u sha256=%64s %c", title, &slot, &size, hash, &extra) != 4 ||
+                slot != (g_new3ds ? 0u : 2u) || size != BENCH_STATE_BYTES || strlen(hash) != 64) {
+                error_reply("state-import TITLE slot=BENCHMARK_SLOT size=4456448 sha256=HASH requires idle library");
+            } else {
+                bool valid = true;
+                for (unsigned i = 0; i < 64; i++) if (!isxdigit((unsigned char)hash[i])) valid = false;
+                for (char *p = title; *p; p++) if (*p == '_') *p = ' ';
+                unsigned matches = 0;
+                for (int i = 0; i < library_count(); i++)
+                    if (!strcasecmp(library_get(i)->title,title)) { picked = library_get(i); matches++; }
+                char path[PATH_LEN];
+                struct stat st;
+                if (!valid || matches != 1 || !bench_state_name(picked->cover_key))
+                    error_reply("invalid/ambiguous game, protected original benchmark, or hash");
+                else {
+                    snprintf(path,sizeof(path),PSX3D_STATE_DIR "/%s.st%u",picked->cover_key,slot);
+                    if (!stat(path,&st) || errno != ENOENT) error_reply("benchmark slot already exists or cannot be checked");
+                    else {
+                        covers_stop_wait();
+                        devnet_import_reply(path,hash);
+                    }
+                }
+            }
 		} else if (!strcmp(command, "savestate") || !strcmp(command, "loadstate")) {
 			char *end;
 			long slot = strtol(args, &end, 10);

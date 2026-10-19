@@ -20,6 +20,7 @@ void devnet_reply(const char *json);
 void devnet_status(const char *json);
 void devnet_sample(const dev_measurement *s, bool reset);
 bool devnet_shot(const char *path, bool bottom); /* main copies only; worker encodes */
+void devnet_import_reply(const char *path, const char *sha256);
 void devnet_start_update(const char *args);
 void devnet_update_reply(const char *args); /* after current game fully unloaded */
 void devnet_busy(bool busy); /* game or batch running: file commands wait */
