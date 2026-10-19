@@ -328,6 +328,7 @@ static int game_screen_get(const char *game)
 }
 
 static char cur_game[PATH_LEN];
+static bool legacy_screen_override;
 
 // a game starts: use its own screen mode if it has one
 void config_game_begin(const char *game)
@@ -352,8 +353,11 @@ void config_game_begin(const char *game)
 	if(g_cfg.touch_stick < -1 || g_cfg.touch_stick > 1) g_cfg.touch_stick = -1;
 	input_touch_begin();
 	int mode = gamecfg_int("screen", -1);
-	if (mode < 0)
+	legacy_screen_override = false;
+	if (mode < 0) {
 		mode = game_screen_get(game);   // 0.1.1 kept it in games.ini
+		legacy_screen_override = mode >= 0;
+	}
 	if (mode >= 0 && mode != default_screen)
 		config_set_screen_mode(mode);
 	log_printf("screen: %d (%s)\n", config_screen_mode(), mode >= 0 ? "this game" : "default");
@@ -448,6 +452,7 @@ static bool forget_legacy_screen(void)
 bool config_game_reset(void)
 {
 	if (!in_game || !forget_legacy_screen() || !gamecfg_reset()) return false;
+	legacy_screen_override = false;
 	config_set_screen_mode(default_screen);
 	config_controls_defaults();
 	return true;
@@ -462,6 +467,7 @@ bool config_game_clear(const char *key)
 		if (!forget_legacy_screen())
 			return false;
 		gamecfg_unset(key);
+		legacy_screen_override = false;
 		config_set_screen_mode(default_screen);
 	} else if (!strcmp(key, "renderer")) {
 		gamecfg_unset(key);
@@ -497,5 +503,5 @@ void config_control_clear(int row)
 
 bool config_game_overridden(const char *key)
 {
-	return in_game && (gamecfg_get(key) || (!strcmp(key, "screen") && game_screen_get(cur_game) >= 0));
+	return in_game && (gamecfg_get(key) || (!strcmp(key, "screen") && legacy_screen_override));
 }

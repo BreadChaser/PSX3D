@@ -173,8 +173,8 @@ int main(void)
 	// Isolated overrides, including preset renderer fallback and legacy screen.
 	g_new3ds = false;
 	config_reset_defaults();
-	config_game_begin("navigation");
 	write_text(PSX3D_DIR "/games.ini", "navigation=2\n");
+	config_game_begin("navigation");
  assert(config_game_overridden("screen"));
  assert(config_game_clear("screen") && !config_game_overridden("screen"));
  config_game_set_screen(1);
