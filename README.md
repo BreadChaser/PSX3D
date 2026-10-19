@@ -59,14 +59,14 @@ Frameskip-off numbers are emulated frames per second. Full speed is 60 FPS,
 or 100% game speed; automatic frameskip shows fewer pictures to improve speed.
 
 <!-- perf-table -->
-| Game | Old, off (FPS) | Old, auto (game speed) | New, off (FPS) | New, auto (game speed) |
-|---|---:|---:|---:|---:|
-| Crash Bandicoot | 53.0 | 100.0% | 60.0 | 100.0% |
-| Crash Team Racing | 37.4 | 83.2% | 60.0 | 100.0% |
-| Gran Turismo 2 | 34.4 | 79.0% | 60.0 | 100.0% |
-| Silent Hill | 42.0 | 100.0% | 60.0 | 100.0% |
-| Ridge Racer Type 4 | 60.0 | 100.0% | 60.0 | 100.0% |
-| Symphony of the Night | 57.8 | 100.0% | 60.0 | 100.0% |
+| Game | Old, off (FPS) | Old, auto (game speed) | Old, auto (frames shown) | New, off (FPS) | New, auto (game speed) |
+|---|---:|---:|---:|---:|---:|
+| Crash Bandicoot | 53.0 | 100.0% | 14 of 30/s | 60.0 | 100.0% |
+| Crash Team Racing | 37.4 | 83.2% | 9 of 25/s | 60.0 | 100.0% |
+| Gran Turismo 2 | 34.4 | 79.0% | 8 of 24/s | 60.0 | 100.0% |
+| Silent Hill | 42.0 | 100.0% | 10 of 30/s | 60.0 | 100.0% |
+| Ridge Racer Type 4 | 60.0 | 100.0% | 15 of 30/s | 60.0 | 100.0% |
+| Symphony of the Night | 57.8 | 100.0% | 47 of 60/s | 60.0 | 100.0% |
 <!-- /perf-table -->
 
 </details>

@@ -12,7 +12,10 @@ Exact values are in the [README table](../README.md#performance).
 Full speed is 60 emulated frames per second for these scenes. Automatic
 frameskip reduces displayed pictures to improve game speed; 100% does not mean
 60 distinct pictures per second. CTR and GT2 remain below full speed on Old 3DS.
-These are scene measurements, not whole-game compatibility guarantees.
+The auto chart also shows pictures displayed per second out of the pictures the
+game draws. For example, “14 of 30” means 14 pictures are shown from 30 game
+pictures each second. These are scene measurements, not whole-game compatibility
+guarantees.
 
 ## Main improvements
 

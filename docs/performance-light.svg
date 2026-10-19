@@ -1,10 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="880" height="752" viewBox="0 0 880 752" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" role="img" aria-label="PSX3D speed on Old 3DS and New 3DS">
 <title>PSX3D speed on Old 3DS and New 3DS</title>
-<rect x="0.5" y="0.5" width="879" height="751" rx="12" fill="#fcfcfb" stroke="#e4e3df"/>
-<line x1="770.0" y1="422" x2="770.0" y2="582" stroke="#e9e8e4" stroke-width="1"/>
-<line x1="635.0" y1="422" x2="635.0" y2="582" stroke="#e9e8e4" stroke-width="1"/>
-<line x1="500.0" y1="422" x2="500.0" y2="582" stroke="#e9e8e4" stroke-width="1"/>
-<line x1="365.0" y1="422" x2="365.0" y2="582" stroke="#e9e8e4" stroke-width="1"/>
+<line x1="620.0" y1="422" x2="620.0" y2="582" stroke="#e9e8e4" stroke-width="1"/>
+<line x1="522.5" y1="422" x2="522.5" y2="582" stroke="#e9e8e4" stroke-width="1"/>
+<line x1="425.0" y1="422" x2="425.0" y2="582" stroke="#e9e8e4" stroke-width="1"/>
+<line x1="327.5" y1="422" x2="327.5" y2="582" stroke="#e9e8e4" stroke-width="1"/>
 <line x1="230.0" y1="422" x2="230.0" y2="582" stroke="#8a8984" stroke-width="1"/>
 <line x1="770.0" y1="120" x2="770.0" y2="352" stroke="#e9e8e4" stroke-width="1"/>
 <line x1="635.0" y1="120" x2="635.0" y2="352" stroke="#e9e8e4" stroke-width="1"/>
@@ -56,46 +55,52 @@
 <text x="770.0" y="116.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal">full speed</text>
 <text x="28.0" y="408.0" font-size="15" fill="#0b0b0b" text-anchor="start" font-weight="600">Old 3DS — Auto frameskip (game speed, v0.4.0)</text>
 <text x="216.0" y="440.0" font-size="13" fill="#0b0b0b" text-anchor="end" font-weight="normal">Crash Bandicoot</text>
-<path d="M230.0,429.0 H766.0 Q770.0,429.0 770.0,433.0 V439.0 Q770.0,443.0 766.0,443.0 H230.0 Z" fill="#1baf7a"/>
-<text x="778.0" y="441.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">100%</text>
+<path d="M230.0,429.0 H616.0 Q620.0,429.0 620.0,433.0 V439.0 Q620.0,443.0 616.0,443.0 H230.0 Z" fill="#1baf7a"/>
+<text x="628.0" y="441.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">100%</text>
+<text x="672.0" y="441.0" font-size="12" fill="#8a8984" text-anchor="start" font-weight="normal">shows 14 of 30 frames/s</text>
 <text x="216.0" y="466.0" font-size="13" fill="#0b0b0b" text-anchor="end" font-weight="normal">Crash Team Racing</text>
-<path d="M230.0,455.0 H675.3 Q679.3,455.0 679.3,459.0 V465.0 Q679.3,469.0 675.3,469.0 H230.0 Z" fill="#2a78d6"/>
-<text x="687.3" y="467.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">83%</text>
+<path d="M230.0,455.0 H550.5 Q554.5,455.0 554.5,459.0 V465.0 Q554.5,469.0 550.5,469.0 H230.0 Z" fill="#2a78d6"/>
+<text x="562.5" y="467.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">83%</text>
+<text x="606.5" y="467.0" font-size="12" fill="#8a8984" text-anchor="start" font-weight="normal">shows 9 of 25 frames/s</text>
 <text x="216.0" y="492.0" font-size="13" fill="#0b0b0b" text-anchor="end" font-weight="normal">Gran Turismo 2</text>
-<path d="M230.0,481.0 H652.6 Q656.6,481.0 656.6,485.0 V491.0 Q656.6,495.0 652.6,495.0 H230.0 Z" fill="#2a78d6"/>
-<text x="664.6" y="493.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">79%</text>
+<path d="M230.0,481.0 H534.1 Q538.1,481.0 538.1,485.0 V491.0 Q538.1,495.0 534.1,495.0 H230.0 Z" fill="#2a78d6"/>
+<text x="546.1" y="493.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">79%</text>
+<text x="590.1" y="493.0" font-size="12" fill="#8a8984" text-anchor="start" font-weight="normal">shows 8 of 24 frames/s</text>
 <text x="216.0" y="518.0" font-size="13" fill="#0b0b0b" text-anchor="end" font-weight="normal">Silent Hill</text>
-<path d="M230.0,507.0 H766.0 Q770.0,507.0 770.0,511.0 V517.0 Q770.0,521.0 766.0,521.0 H230.0 Z" fill="#1baf7a"/>
-<text x="778.0" y="519.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">100%</text>
+<path d="M230.0,507.0 H616.0 Q620.0,507.0 620.0,511.0 V517.0 Q620.0,521.0 616.0,521.0 H230.0 Z" fill="#1baf7a"/>
+<text x="628.0" y="519.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">100%</text>
+<text x="672.0" y="519.0" font-size="12" fill="#8a8984" text-anchor="start" font-weight="normal">shows 10 of 30 frames/s</text>
 <text x="216.0" y="544.0" font-size="13" fill="#0b0b0b" text-anchor="end" font-weight="normal">Ridge Racer Type 4</text>
-<path d="M230.0,533.0 H766.0 Q770.0,533.0 770.0,537.0 V543.0 Q770.0,547.0 766.0,547.0 H230.0 Z" fill="#1baf7a"/>
-<text x="778.0" y="545.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">100%</text>
+<path d="M230.0,533.0 H616.0 Q620.0,533.0 620.0,537.0 V543.0 Q620.0,547.0 616.0,547.0 H230.0 Z" fill="#1baf7a"/>
+<text x="628.0" y="545.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">100%</text>
+<text x="672.0" y="545.0" font-size="12" fill="#8a8984" text-anchor="start" font-weight="normal">shows 15 of 30 frames/s</text>
 <text x="216.0" y="570.0" font-size="13" fill="#0b0b0b" text-anchor="end" font-weight="normal">Symphony of the Night</text>
-<path d="M230.0,559.0 H766.0 Q770.0,559.0 770.0,563.0 V569.0 Q770.0,573.0 766.0,573.0 H230.0 Z" fill="#1baf7a"/>
-<text x="778.0" y="571.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">100%</text>
+<path d="M230.0,559.0 H616.0 Q620.0,559.0 620.0,563.0 V569.0 Q620.0,573.0 616.0,573.0 H230.0 Z" fill="#1baf7a"/>
+<text x="628.0" y="571.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">100%</text>
+<text x="672.0" y="571.0" font-size="12" fill="#8a8984" text-anchor="start" font-weight="normal">shows 47 of 60 frames/s</text>
 <text x="230.0" y="598.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal">0%</text>
-<text x="365.0" y="598.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal">25%</text>
-<text x="500.0" y="598.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal">50%</text>
-<text x="635.0" y="598.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal">75%</text>
-<text x="770.0" y="598.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal">100%</text>
-<text x="242.0" y="618.0" font-size="12" fill="#52514e" text-anchor="start" font-weight="normal">Green = full game speed. Auto frameskip shows fewer pictures to keep the game at normal speed.</text>
+<text x="327.5" y="598.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal">25%</text>
+<text x="425.0" y="598.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal">50%</text>
+<text x="522.5" y="598.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal">75%</text>
+<text x="620.0" y="598.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal">100%</text>
+<text x="242.0" y="618.0" font-size="12" fill="#52514e" text-anchor="start" font-weight="normal">Green = full game speed. &quot;Shows 14 of 30&quot;: pictures shown per second out of the pictures the game draws.</text>
 <text x="28.0" y="656.0" font-size="15" fill="#0b0b0b" text-anchor="start" font-weight="600">New 3DS — every game above: 60 fps, frameskip off and Auto</text>
-<rect x="28.0" y="670" width="130.7" height="54" rx="6" fill="#eef7f2" stroke="#cfe8db"/>
+<rect x="28.0" y="670" width="130.7" height="54" rx="6" fill="#1baf7a14" stroke="#1baf7a55"/>
 <text x="93.3" y="696.0" font-size="16" fill="#0d6b49" text-anchor="middle" font-weight="600">60 fps</text>
 <text x="93.3" y="714.0" font-size="11" fill="#52514e" text-anchor="middle" font-weight="normal">Crash Bandicoot</text>
-<rect x="166.7" y="670" width="130.7" height="54" rx="6" fill="#eef7f2" stroke="#cfe8db"/>
+<rect x="166.7" y="670" width="130.7" height="54" rx="6" fill="#1baf7a14" stroke="#1baf7a55"/>
 <text x="232.0" y="696.0" font-size="16" fill="#0d6b49" text-anchor="middle" font-weight="600">60 fps</text>
 <text x="232.0" y="714.0" font-size="11" fill="#52514e" text-anchor="middle" font-weight="normal">CTR</text>
-<rect x="305.3" y="670" width="130.7" height="54" rx="6" fill="#eef7f2" stroke="#cfe8db"/>
+<rect x="305.3" y="670" width="130.7" height="54" rx="6" fill="#1baf7a14" stroke="#1baf7a55"/>
 <text x="370.7" y="696.0" font-size="16" fill="#0d6b49" text-anchor="middle" font-weight="600">60 fps</text>
 <text x="370.7" y="714.0" font-size="11" fill="#52514e" text-anchor="middle" font-weight="normal">Gran Turismo 2</text>
-<rect x="444.0" y="670" width="130.7" height="54" rx="6" fill="#eef7f2" stroke="#cfe8db"/>
+<rect x="444.0" y="670" width="130.7" height="54" rx="6" fill="#1baf7a14" stroke="#1baf7a55"/>
 <text x="509.3" y="696.0" font-size="16" fill="#0d6b49" text-anchor="middle" font-weight="600">60 fps</text>
 <text x="509.3" y="714.0" font-size="11" fill="#52514e" text-anchor="middle" font-weight="normal">Silent Hill</text>
-<rect x="582.7" y="670" width="130.7" height="54" rx="6" fill="#eef7f2" stroke="#cfe8db"/>
+<rect x="582.7" y="670" width="130.7" height="54" rx="6" fill="#1baf7a14" stroke="#1baf7a55"/>
 <text x="648.0" y="696.0" font-size="16" fill="#0d6b49" text-anchor="middle" font-weight="600">60 fps</text>
 <text x="648.0" y="714.0" font-size="11" fill="#52514e" text-anchor="middle" font-weight="normal">Ridge Racer 4</text>
-<rect x="721.3" y="670" width="130.7" height="54" rx="6" fill="#eef7f2" stroke="#cfe8db"/>
+<rect x="721.3" y="670" width="130.7" height="54" rx="6" fill="#1baf7a14" stroke="#1baf7a55"/>
 <text x="786.7" y="696.0" font-size="16" fill="#0d6b49" text-anchor="middle" font-weight="600">60 fps</text>
 <text x="786.7" y="714.0" font-size="11" fill="#52514e" text-anchor="middle" font-weight="normal">SotN</text>
 </svg>
