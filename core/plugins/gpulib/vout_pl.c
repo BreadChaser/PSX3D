@@ -110,6 +110,10 @@ int vout_update(struct psx_gpu *gpu, int src_x, int src_y)
   }
 
 
+  // Preserve the existing downscaled CPU scanout alignment for RGB24 movies.
+  if (h > 256 && gpu->state.downscale_enable && (src_y & 1))
+    src_y++;
+
   offset = (src_y * 1024 + src_x) * 2;
   offset += src_x2 * bpp / 8;
 
