@@ -23,7 +23,8 @@ These are scene measurements, not whole-game guarantees. See
 The built-in HLE BIOS needs no separate BIOS file. A real BIOS remains optional
 and may help compatibility. Per-object 3D currently falls back to depth-mesh
 screen 3D. Old 3DS has no stereoscopic display or rewind. Heavy games still run
-below full speed on Old 3DS, including with automatic frameskip.
+below full speed on Old 3DS, including with automatic frameskip. A thin blue
+line can remain along the top edge of Crash Bandicoot’s game picture.
 
 Install with **FBI → Remote Install → Scan QR Code**, or download and install
 **PSX3D.cia**. Existing settings and saves are retained; obsolete renderer

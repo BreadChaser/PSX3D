@@ -22,8 +22,8 @@ and Symphony of the Night to full game speed on the original 3DS.
   <img src="docs/screenshots/silent-hill.png" alt="Silent Hill gameplay" width="400">
 </p>
 <p align="center">
-  <img src="docs/screenshots/settings-old.png" alt="Old 3DS settings" width="300">
-  <img src="docs/screenshots/settings-new.png" alt="New 3DS settings" width="300">
+  <img src="docs/screenshots/settings.png" alt="Settings categories" width="300">
+  <img src="docs/screenshots/settings-display.png" alt="Opened Display settings category" width="300">
 </p>
 <p align="center">
   <img src="docs/screenshots/touch-layout.png" alt="Old 3DS bottom-screen touch controls" width="320">
