@@ -4670,7 +4670,10 @@ static void do_writestub_smc(struct compile_state *st, int n)
   literal_pool(256);
   assem_debug("do_writestub_smc %x\n", st->start + i*4);
   set_jump_target(stubs[n].addr, out);
-  do_write_slow(st, i, i_regs, type, NULL, rs, adj, reglist, 1);
+  // the store's own temporaries may reuse INVCP's register, so check after
+  // it has restored everything
+  do_write_slow(st, i, i_regs, type, NULL, rs, adj, reglist, 0);
+  do_store_smc_check(st, i, i_regs, reglist, rs);
   emit_jmp(stubs[n].retaddr);
   // Its SMC check may queue INVCODE stubs, whose own pool check assumes a
   // short distance; leave no literal behind.

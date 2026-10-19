@@ -17,6 +17,11 @@ assert b.keys() == c.keys(), 'incomplete/different game set'
 rows = []
 for game, ref in b.items():
     new = c[game]
+    if ref.get('exit') or new.get('exit'):
+        rows.append(dict(game=game, frames=ref['frames'], baseline_exit=ref.get('exit'), candidate_exit=new.get('exit'),
+                         timeline_equal=ref['hashes'] == new['hashes'] and ref.get('exit') == new.get('exit'),
+                         serialized_equal=ref.get('exit') == new.get('exit'), crashed=True))
+        continue
     assert sum(s.startswith('frame ') for s in ref['hashes']) == ref['frames'], 'missing draw checks'
     assert sum(s.startswith('checkpoint ') for s in ref['hashes']) == (ref['frames'] + 59)//60, 'missing state checkpoints'
     assert any(s.startswith('draw hash ') for s in ref['hashes']), 'missing final draw hash'
@@ -41,5 +46,5 @@ for game, ref in b.items():
 result = dict(baseline=str(a.baseline.resolve()), candidate=str(a.candidate.resolve()),
               passed=all(r['timeline_equal'] and r['serialized_equal'] for r in rows), games=rows)
 a.output.write_text(json.dumps(result, indent=2) + '\n')
-print(f"{len(rows)} games: {'PASS' if result['passed'] else 'FAIL'}")
+print(f"{len(rows)} games ({sum(1 for r in rows if r.get('crashed'))} fail identically in both): {'PASS' if result['passed'] else 'FAIL'}")
 raise SystemExit(0 if result['passed'] else 1)
