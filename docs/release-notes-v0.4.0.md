@@ -2,7 +2,8 @@
 
 ## Highlights
 
-- **GPU rendering on both Old and New 3DS**, with faster emulation and automatic frameskip.
+- **GPU rendering on both Old and New 3DS**, with faster emulation.
+- **Honest, smarter frameskip:** Auto now skips only as many pictures as needed and never drops below 15 pictures per second. The setting is simply Off or Auto.
 - **A clearer settings menu** with categories, per-game overrides and reset confirmations.
 - **Automatic box art** on both console models, with lower memory use.
 - **Safer HLE memory-card saves**, fixing corruption when creating multi-block files.
@@ -15,14 +16,18 @@ has drawing errors and missing effects.
 
 All six tested New 3DS scenes run at full game speed with frameskip off or auto.
 Most draw 30 new pictures per second; Symphony of the Night draws 60.
-Old 3DS benefits from automatic frameskip, though demanding games still run
-below full game speed. See the [Old/New performance chart and exact numbers](../README.md#performance)
+On Old 3DS, frameskip-off speed versus v0.3.1: Crash Team Racing +15%,
+Gran Turismo 2 +6%, Silent Hill +7%. With Auto, Crash, Ridge Racer Type 4 and
+Symphony of the Night run at full speed; Ridge Racer now shows all 30 pictures
+per second instead of 15. Demanding games (CTR, GT2, Silent Hill) hold at least
+15 pictures per second at reduced game speed. See the [Old/New performance chart and exact numbers](../README.md#performance)
 for measured scenes and [methodology](performance.md).
 
 ## What changed
 
 - GPU rendering is now the only renderer. Software rendering and its settings have been removed.
 - Faster scratchpad access, indirect-block lookup and geometry calculations.
+- Rewritten Auto frameskip: proportional skipping with a 15 pictures-per-second floor. Frameskip settings reduced to Off and Auto; curated games choose automatically.
 - Settings grouped into Display, Performance, Sound, Controls, Saves & general,
   and Advanced. Rows identify their scope; individual game overrides can be cleared.
 - Box art loads automatically on Old 3DS. Smaller image allocations and cancelling
@@ -45,8 +50,7 @@ for measured scenes and [methodology](performance.md).
 - Widescreen behaviour is unchanged in this release; improvements are planned for v0.4.1.
 - Display centering and interlaced modes are not implemented.
 - Performance and compatibility vary by game. A real BIOS may help compatibility.
-- Automatic frameskip can skip more pictures than necessary, reducing visible
-  smoothness even when game speed reaches 100%.
+- Cheats appear both in the pause menu and in Settings; this will be tidied up.
 - Heavy Wi-Fi traffic and slow cover downloads can cause audio clicks.
 
 ## Install

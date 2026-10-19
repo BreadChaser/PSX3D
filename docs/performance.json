@@ -7,26 +7,26 @@
       "name": "Crash Bandicoot",
       "native_fps": 30,
       "old": {
-        "off_speed": 88.3,
-        "off_fps": 26.7,
-        "auto_speed": 100.0,
-        "auto_fps": 13.7
+        "off_speed": 84.0,
+        "off_fps": 25.5,
+        "auto_speed": 99.7,
+        "auto_fps": 17.2
       },
       "new": {
         "off_speed": 100.0,
         "off_fps": 30.3,
         "auto_speed": 100.0,
-        "auto_fps": 30.3
+        "auto_fps": 30.2
       }
     },
     {
       "name": "Crash Team Racing",
       "native_fps": 30,
       "old": {
-        "off_speed": 62.3,
+        "off_speed": 61.6,
         "off_fps": 19.0,
-        "auto_speed": 83.2,
-        "auto_fps": 9.1
+        "auto_speed": 69.0,
+        "auto_fps": 15.3
       },
       "new": {
         "off_speed": 100.0,
@@ -39,26 +39,10 @@
       "name": "Gran Turismo 2",
       "native_fps": 30,
       "old": {
-        "off_speed": 57.4,
-        "off_fps": 17.5,
-        "auto_speed": 79.0,
-        "auto_fps": 8.0
-      },
-      "new": {
-        "off_speed": 100.0,
-        "off_fps": 30.4,
-        "auto_speed": 100.0,
-        "auto_fps": 30.2
-      }
-    },
-    {
-      "name": "Silent Hill",
-      "native_fps": 30,
-      "old": {
-        "off_speed": 70.1,
-        "off_fps": 21.3,
-        "auto_speed": 100.0,
-        "auto_fps": 10.1
+        "off_speed": 56.9,
+        "off_fps": 17.3,
+        "auto_speed": 60.2,
+        "auto_fps": 15.2
       },
       "new": {
         "off_speed": 100.0,
@@ -68,13 +52,29 @@
       }
     },
     {
+      "name": "Silent Hill",
+      "native_fps": 30,
+      "old": {
+        "off_speed": 70.0,
+        "off_fps": 21.3,
+        "auto_speed": 85.9,
+        "auto_fps": 15.1
+      },
+      "new": {
+        "off_speed": 100.0,
+        "off_fps": 30.3,
+        "auto_speed": 100.0,
+        "auto_fps": 30.2
+      }
+    },
+    {
       "name": "Ridge Racer Type 4",
       "native_fps": 30,
       "old": {
         "off_speed": 100.0,
         "off_fps": 30.4,
         "auto_speed": 100.0,
-        "auto_fps": 14.9
+        "auto_fps": 30.4
       },
       "new": {
         "off_speed": 100.0,
@@ -87,16 +87,16 @@
       "name": "Symphony of the Night",
       "native_fps": 60,
       "old": {
-        "off_speed": 96.3,
-        "off_fps": 58.3,
+        "off_speed": 96.1,
+        "off_fps": 58.1,
         "auto_speed": 100.0,
-        "auto_fps": 46.9
+        "auto_fps": 50.2
       },
       "new": {
-        "off_speed": 100.0,
-        "off_fps": 60.6,
+        "off_speed": 100.5,
+        "off_fps": 60.9,
         "auto_speed": 100.0,
-        "auto_fps": 60.6
+        "auto_fps": 60.5
       }
     }
   ]

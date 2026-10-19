@@ -75,18 +75,18 @@ Automatic frameskip shows fewer pictures to improve game speed.
 <!-- perf-table -->
 | Game | Console | Frameskip off: speed / FPS | Auto frameskip: speed / FPS |
 |---|---|---:|---:|
-| Crash Bandicoot | Old 3DS | 88.3% / 26.7 | 100.0% / 13.7 |
-| Crash Bandicoot | New 3DS | 100.0% / 30.3 | 100.0% / 30.3 |
-| Crash Team Racing | Old 3DS | 62.3% / 19.0 | 83.2% / 9.1 |
+| Crash Bandicoot | Old 3DS | 84.0% / 25.5 | 99.7% / 17.2 |
+| Crash Bandicoot | New 3DS | 100.0% / 30.3 | 100.0% / 30.2 |
+| Crash Team Racing | Old 3DS | 61.6% / 19.0 | 69.0% / 15.3 |
 | Crash Team Racing | New 3DS | 100.0% / 30.3 | 100.0% / 30.3 |
-| Gran Turismo 2 | Old 3DS | 57.4% / 17.5 | 79.0% / 8.0 |
-| Gran Turismo 2 | New 3DS | 100.0% / 30.4 | 100.0% / 30.2 |
-| Silent Hill | Old 3DS | 70.1% / 21.3 | 100.0% / 10.1 |
-| Silent Hill | New 3DS | 100.0% / 30.3 | 100.0% / 30.3 |
-| Ridge Racer Type 4 | Old 3DS | 100.0% / 30.4 | 100.0% / 14.9 |
+| Gran Turismo 2 | Old 3DS | 56.9% / 17.3 | 60.2% / 15.2 |
+| Gran Turismo 2 | New 3DS | 100.0% / 30.3 | 100.0% / 30.3 |
+| Silent Hill | Old 3DS | 70.0% / 21.3 | 85.9% / 15.1 |
+| Silent Hill | New 3DS | 100.0% / 30.3 | 100.0% / 30.2 |
+| Ridge Racer Type 4 | Old 3DS | 100.0% / 30.4 | 100.0% / 30.4 |
 | Ridge Racer Type 4 | New 3DS | 100.0% / 30.3 | 100.0% / 30.3 |
-| Symphony of the Night | Old 3DS | 96.3% / 58.3 | 100.0% / 46.9 |
-| Symphony of the Night | New 3DS | 100.0% / 60.6 | 100.0% / 60.6 |
+| Symphony of the Night | Old 3DS | 96.1% / 58.1 | 100.0% / 50.2 |
+| Symphony of the Night | New 3DS | 100.5% / 60.9 | 100.0% / 60.5 |
 <!-- /perf-table -->
 
 </details>
