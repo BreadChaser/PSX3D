@@ -378,9 +378,8 @@ static flist_t top_lst;   // the top-level list as it was when a series was open
 static const char *game_label(int i, void *ud)
 {
 	(void)ud;
-	static char line[96];
-	snprintf(line, sizeof(line), "%.36s", entry_title(i));
-	return line;
+	// room left of the series count, or the full row
+	return ui_fit(entry_title(i), 0.5f, entry_series(i) >= 0 ? 238 : 276);
 }
 
 static const char *game_value(int i, void *ud)

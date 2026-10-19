@@ -40,6 +40,41 @@ void ui_text(float x, float y, float size, u32 color, const char *fmt, ...)
 	C2D_DrawText(&text, C2D_WithColor, x, y, 0.5f, size, size, color);
 }
 
+// Shorten s with "..." so it fits width pixels at the given text size.
+// Results are cached by text: menus ask for the same rows every frame.
+const char *ui_fit(const char *s, float size, float width)
+{
+	static C2D_TextBuf measure_buf;
+	static struct { char src[128]; float size, width; char out[96]; } cache[32];
+	static unsigned next;
+	for (unsigned i = 0; i < 32; i++)
+		if (cache[i].size == size && cache[i].width == width && !strcmp(cache[i].src, s))
+			return cache[i].out;
+	if (!measure_buf && !(measure_buf = C2D_TextBufNew(128)))
+		return s;
+	unsigned slot = next++ % 32;
+	char *out = cache[slot].out;
+	snprintf(cache[slot].src, sizeof(cache[slot].src), "%s", s);
+	cache[slot].size = size;
+	cache[slot].width = width;
+	snprintf(out, sizeof(cache[slot].out), "%s", s);
+	for (size_t n = strlen(out);; ) {
+		C2D_Text t;
+		float w = 0;
+		C2D_TextBufClear(measure_buf);
+		if (!C2D_TextParse(&t, measure_buf, out))
+			break;
+		C2D_TextGetDimensions(&t, size, size, &w, NULL);
+		if (w <= width || n == 0)
+			break;
+		// drop one character (whole UTF-8 sequence) and trailing spaces
+		do n--; while (n > 0 && ((unsigned char)s[n] & 0xc0) == 0x80);
+		while (n > 0 && s[n - 1] == ' ') n--;
+		snprintf(out, sizeof(cache[slot].out), "%.*s...", (int)n, s);
+	}
+	return out;
+}
+
 void ui_rect(float x, float y, float w, float h, u32 color)
 {
 	C2D_DrawRectSolid(x, y, 0.5f, w, h, color);
