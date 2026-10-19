@@ -1705,6 +1705,24 @@ static void do_read_slow(struct compile_state *st, int i, const struct regstat *
   }
 }
 
+// Host address for a constant guest address held in ra. A base loaded from
+// a constant ROM word counts as constant, yet ra is then the guest register
+// itself: convert into the temporary and leave the guest value alone.
+// Otherwise ra no longer holds its constant afterwards, so later
+// instructions must not derive similar constants from it.
+static int host_addr_reg(int i, const signed char regmap[], u_int addr,
+  int ra, uintptr_t host_addr)
+{
+  if (regmap[ra] >= 0 && regmap[ra] <= HIREG) {
+    host_tempreg_acquire();
+    emit_movimm_from(addr, ra, host_addr, HOST_TEMPREG);
+    return HOST_TEMPREG;
+  }
+  emit_movimm_from(addr, ra, host_addr, ra);
+  regs[i].loadedconst &= ~(1u << ra);
+  return ra;
+}
+
 static void inline_readstub(enum stub_type type, int i, u_int addr,
   const signed char regmap[], int target, int adj, u_int reglist)
 {
@@ -1721,16 +1739,17 @@ static void inline_readstub(enum stub_type type, int i, u_int addr,
   if (handler == NULL) {
     if(rt<0||dops[i].rt1==0)
       return;
-    if(addr!=host_addr)
-      emit_movimm_from(addr,ra,host_addr,ra);
+    int ha = addr != host_addr ? host_addr_reg(i,regmap,addr,ra,host_addr) : ra;
     switch(type) {
-      case LOADB_STUB:  emit_movsbl_indexed(0,ra,rt); break;
-      case LOADBU_STUB: emit_movzbl_indexed(0,ra,rt); break;
-      case LOADH_STUB:  emit_movswl_indexed(0,ra,rt); break;
-      case LOADHU_STUB: emit_movzwl_indexed(0,ra,rt); break;
-      case LOADW_STUB:  emit_readword_indexed(0,ra,rt); break;
+      case LOADB_STUB:  emit_movsbl_indexed(0,ha,rt); break;
+      case LOADBU_STUB: emit_movzbl_indexed(0,ha,rt); break;
+      case LOADH_STUB:  emit_movswl_indexed(0,ha,rt); break;
+      case LOADHU_STUB: emit_movzwl_indexed(0,ha,rt); break;
+      case LOADW_STUB:  emit_readword_indexed(0,ha,rt); break;
       default:          assert(0);
     }
+    if (ha == HOST_TEMPREG)
+      host_tempreg_release();
     return;
   }
   is_dynamic=pcsxmem_is_handler_dynamic(addr);
@@ -1906,14 +1925,15 @@ static void inline_writestub(enum stub_type type, int i, u_int addr,
   uintptr_t host_addr = 0;
   void *handler = get_direct_memhandler(mem_wtab, addr, type, &host_addr);
   if (handler == NULL) {
-    if(addr!=host_addr)
-      emit_movimm_from(addr,ra,host_addr,ra);
+    int ha = addr != host_addr ? host_addr_reg(i,regmap,addr,ra,host_addr) : ra;
     switch(type) {
-      case STOREB_STUB: emit_writebyte_indexed(rt,0,ra); break;
-      case STOREH_STUB: emit_writehword_indexed(rt,0,ra); break;
-      case STOREW_STUB: emit_writeword_indexed(rt,0,ra); break;
+      case STOREB_STUB: emit_writebyte_indexed(rt,0,ha); break;
+      case STOREH_STUB: emit_writehword_indexed(rt,0,ha); break;
+      case STOREW_STUB: emit_writeword_indexed(rt,0,ha); break;
       default:          assert(0);
     }
+    if (ha == HOST_TEMPREG)
+      host_tempreg_release();
     return;
   }
 

@@ -10,6 +10,7 @@ p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('destination', type=Path)
 p.add_argument('--hash', action='store_true')
 p.add_argument('--annotate', action='store_true')
+p.add_argument('--spad', default='0x13400000', help='scratchpad host address for --map 3ds (console before dynr2: 0x0fddf000)')
 p.add_argument('--stats', action='store_true', help='Count dynarec events (STAT_PRINT) and cache clears')
 p.add_argument('--map', choices=('3ds', 'linux'), default='3ds', help='3ds: RAM 0x13000000, scratchpad 0x13400000 as the v0.4.0+ console build maps them')
 p.add_argument('--ref', help='Use an immutable Git core instead of working files')
@@ -49,7 +50,7 @@ s = s.replace('psxMap(0x1f800000, 0x10000, 0, MAP_TAG_OTHER)',
               'psxMap(0x76000000, 0x10000, 0, MAP_TAG_OTHER)')
 f.write_text(s)
 if a.map == '3ds':
-    s = f.read_text().replace('psxMap(0x77000000,', 'psxMap(0x13000000,').replace('psxMap(0x76000000,', 'psxMap(0x13400000,')
+    s = f.read_text().replace('psxMap(0x77000000,', 'psxMap(0x13000000,').replace('psxMap(0x76000000,', 'psxMap(%s,' % a.spad)
     f.write_text(s)
 # Correctness-only event/exception digest; no generated-code instrumentation.
 if a.hash:
