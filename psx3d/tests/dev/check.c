@@ -25,7 +25,7 @@ bool sw_rtfsmodel, sw_rtfswindow, sw_rtfs, sw_ff, sw_floataudio, sw_frontend;
 typedef struct { unsigned emulated, elapsed_ms, presented, held, top, bottom; float run_ms, present_ms, audio_ms, misc_ms, pace_ms; float spu_ms, spu_wait_ms, pica_ms; float phase_ms[8], draw_fraction; unsigned skip_level, drawn, skipped; } emu_frontend_sample;
 const emu_frontend_sample *emu_frontend_stats(void) { static emu_frontend_sample f; return &f; }
 bool sw_prof, sw_stats, sw_fs1, sw_fs3, sw_noskip, sw_nosputhread, sw_acap;
-bool sw_nogputhread, sw_aa, sw_gpu_async, sw_gpu_flush;
+bool sw_nogputhread, sw_aa, sw_showright, sw_sbs, sw_gpu_async, sw_gpu_flush;
 float sw_slider;
 int sw_state = -1, sw_pmu0 = -1, sw_pmu1 = -1, sw_gldbg, sw_vramdump;
 char sw_opt[8][48], sw_cdra[8], sw_clock[8];

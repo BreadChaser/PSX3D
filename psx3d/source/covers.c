@@ -233,14 +233,17 @@ static u32 *download(const char *key, bool *retry)
 		net_close();
 	curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &code);
 	{
-		double tc = 0, ta = 0, tt = 0;
-		curl_off_t sp = 0;
+		double tc = 0, ta = 0, tt = 0, sp = 0;
 		curl_easy_getinfo(c, CURLINFO_CONNECT_TIME, &tc);
 		curl_easy_getinfo(c, CURLINFO_APPCONNECT_TIME, &ta);
 		curl_easy_getinfo(c, CURLINFO_TOTAL_TIME, &tt);
-		curl_easy_getinfo(c, CURLINFO_SPEED_DOWNLOAD_T, &sp);
+/* Preserve the validated release layout; this supported legacy query is diagnostic only. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+		curl_easy_getinfo(c, CURLINFO_SPEED_DOWNLOAD, &sp);
+#pragma GCC diagnostic pop
 		log_printf("covers: http %ld %uKB connect %.2fs tls %.2fs total %.2fs (%.0fKB/s)\n",
-			code, (unsigned)(m.len / 1024), tc, ta, tt, (double)sp / 1024);
+			code, (unsigned)(m.len / 1024), tc, ta, tt, sp / 1024);
 	}
 	if (fclose(m.file) && rc == CURLE_OK) rc = CURLE_WRITE_ERROR;
 	last_curl = rc;

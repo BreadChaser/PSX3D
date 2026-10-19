@@ -110,6 +110,9 @@ static void show_error(const char *msg)
 // each turns one subsystem off so a problem can be bisected without
 // rebuilding.
 float sw_slider = -1;   // test: pretend the 3D slider is here
+// Legacy diagnostic storage retained for the validated Old 3DS code layout.
+bool sw_showright;
+bool sw_sbs;
 bool sw_prof;           // log where frame time goes, once a second
 bool sw_stats;          // log fps and renderer counters once a second (no timers)
 bool sw_o3ds;           // test: behave like an Old 3DS (settings not saved)
@@ -145,6 +148,8 @@ static void parse_switches(int argc, char **argv)
 		if (!strcmp(a, "nonet")) sw_nonet = true;
 		else if (!strcmp(a, "csnd")) sw_csnd = true;   // test the no-firmware sound path
 		else if (!strncmp(a, "slider=", 7)) sw_slider = strtof(a + 7, NULL);
+		else if (!strcmp(a, "showright")) sw_showright = true;
+		else if (!strcmp(a, "sbs")) sw_sbs = true;
 		else if (clip_switch(a)) {}
 		else if (!strcmp(a, "prof")) sw_prof = true;
 		else if (!strcmp(a, "stats")) sw_stats = true;

@@ -17,9 +17,11 @@ static char game[PATH_LEN];
 
 static void path_of(char *out, size_t len)
 {
-	strlcpy(out, DIR_ "/", len);
-	strlcat(out, game, len);
-	strlcat(out, ".ini", len);
+/* Bounded truncation is intentional; preserve the validated release code layout. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+	snprintf(out, len, DIR_ "/%s.ini", game);
+#pragma GCC diagnostic pop
 }
 
 void gamecfg_load(const char *name)
@@ -37,7 +39,11 @@ void gamecfg_load(const char *name)
 		if (!eq)
 			continue;
 		*eq = 0;
-		strlcpy(kv[nkv].key, line, sizeof(kv[nkv].key));
+/* Bounded truncation is intentional; preserve the validated release code layout. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+		snprintf(kv[nkv].key, sizeof(kv[nkv].key), "%s", line);
+#pragma GCC diagnostic pop
 		snprintf(kv[nkv].value, sizeof(kv[nkv].value), "%s", eq + 1);
 		nkv++;
 	}

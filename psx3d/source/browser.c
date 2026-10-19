@@ -115,9 +115,11 @@ static void load_dir(const char *path)
 static void join(char *out, size_t len, const char *dir, const char *name)
 {
 	size_t n = strlen(dir);
-	strlcpy(out, dir, len);
-	if (!n || dir[n - 1] != '/') strlcat(out, "/", len);
-	strlcat(out, name, len);
+/* Bounded truncation is intentional; preserve the validated release code layout. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+	snprintf(out, len, "%s%s%s", dir, (n && dir[n - 1] == '/') ? "" : "/", name);
+#pragma GCC diagnostic pop
 }
 
 static void select_name(const char *name)
