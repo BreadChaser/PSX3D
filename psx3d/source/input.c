@@ -974,3 +974,23 @@ void touch_buttons_draw(void)
 	if (touch_button_visible(4)) touch_rect_draw(4, !left);
 	if (touch_button_visible(5)) touch_rect_draw(5, !left);
 }
+
+// Menu-only lookup: use the existing persistent names for individual resets.
+const char *input_control_key(int row)
+{
+	static char key[32];
+	int i = control_item(row);
+	if (i < 0)
+		return NULL;
+	if (i == INPUT_REMAP_N)
+		return "touch_stick";
+	if (i > INPUT_REMAP_N)
+		return input_hotkey_key_name(i - INPUT_REMAP_N - 1);
+	snprintf(key, sizeof(key), "map_%s", input_map_key_name(i));
+	return key;
+}
+bool config_control_overridden(int row)
+{
+	const char *key = input_control_key(row);
+	return config_in_game() && key && gamecfg_get(key);
+}

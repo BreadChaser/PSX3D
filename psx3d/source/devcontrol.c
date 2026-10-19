@@ -384,6 +384,10 @@ bool dev_tick(bool playing)
 			args = command + strlen(command);
 		if (clip_active && strcmp(command,"quit") && strcmp(command,"exit") && strcmp(command,"shot")) {
 			error_reply("clip active; quit to cancel before changing settings/UI");
+		} else if (!strcmp(command, "ui-key")) {
+			if (batch_active || !settings_ui_key(args))
+				error_reply("ui-key requires open settings; a b x y up down left right l r");
+			else dev_reply("{\"ok\":true}");
 		} else if (!strcmp(command, "ui")) {
 			char *option = strchr(args, ' ');
 			if (option) *option++ = 0;

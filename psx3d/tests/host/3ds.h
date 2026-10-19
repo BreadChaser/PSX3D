@@ -16,6 +16,10 @@ enum {
  KEY_START=1<<8, KEY_SELECT=1<<9, KEY_DUP=1<<10, KEY_DDOWN=1<<11,
  KEY_DLEFT=1<<12, KEY_DRIGHT=1<<13, KEY_TOUCH=1<<14,
 };
+#define KEY_UP KEY_DUP
+#define KEY_DOWN KEY_DDOWN
+#define KEY_LEFT KEY_DLEFT
+#define KEY_RIGHT KEY_DRIGHT
 void hidScanInput(void);
 u32 hidKeysHeld(void);
 u32 hidKeysDown(void);

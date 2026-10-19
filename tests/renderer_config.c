@@ -25,6 +25,8 @@ void input_touch_begin(void) {}
 void input_touch_reset(void) {}
 game_preset_options_t game_capabilities(void) { return (game_preset_options_t){0}; }
 bool renderer_is_gpu(void) { return true; }
+bool settings_ui_debug_capture(void) { return false; }
+const char *input_control_key(int row) { (void)row;return NULL; }
 
 static void file(const char *path, const char *text)
 {

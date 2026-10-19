@@ -103,7 +103,7 @@ static bool is_hidden(const char *key)
 	if (!strcmp(key, RENDERER_KEY) || !strcmp(key, "pcsx_rearmed_psx3d_stereo") ||
 	    !strcmp(key, "pcsx_rearmed_psx3d_widescreen")) return true;
 	if (!strncmp(key, "pcsx_rearmed_screen_centering", sizeof("pcsx_rearmed_screen_centering") - 1)) return true;
-	if (!strcmp(key, "pcsx_rearmed_display_info") && !g_cfg.debug) return true;
+	if (!strcmp(key, "pcsx_rearmed_display_info") && !g_cfg.debug && !settings_ui_debug_capture()) return true;
 	if (!strcmp(key, "pcsx_rearmed_frameskip_threshold") &&
 	    !option_is("pcsx_rearmed_frameskip_type", "auto_threshold")) return true;
 	if (!strcmp(key, "pcsx_rearmed_frameskip_interval") &&

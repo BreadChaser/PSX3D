@@ -97,6 +97,16 @@ and the state browser keep servicing remote commands, so `load`, `quit` and
 `update` can safely unwind them. `shot` defaults to both screens; `shot top`
 keeps the existing top-only format. Benchmark PNGs remain top-only.
 
+### Settings navigation captures
+
+`ui-key a|b|x|y|up|down|left|right|l|r` navigates the real settings UI.
+It uses the same token-gated, opt-in remote mailbox, is rejected during batches
+or outside settings, and never injects gameplay input. Modal reset confirmations
+continue servicing the mailbox; capture before confirming or cancel with `b`.
+`ui-key debug-on` exposes the diagnostic settings page for capture only;
+`debug-off` hides it. This inspection flag is volatile, never saved, and cleared
+when settings closes. It does not enable core debug output.
+
 ## Batch format and output
 
 Each non-comment line is one run; use underscores for spaces in library titles.

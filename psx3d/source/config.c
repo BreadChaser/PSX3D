@@ -452,3 +452,50 @@ bool config_game_reset(void)
 	config_controls_defaults();
 	return true;
 }
+
+// Clear one override without changing global values or unrelated game keys.
+bool config_game_clear(const char *key)
+{
+	if (!in_game)
+		return false;
+	if (!strcmp(key, "screen")) {
+		if (!forget_legacy_screen())
+			return false;
+		gamecfg_unset(key);
+		config_set_screen_mode(default_screen);
+	} else if (!strcmp(key, "renderer")) {
+		gamecfg_unset(key);
+		g_cfg.renderer = config_game_renderer();
+	} else if (!strcmp(key, "rewind"))
+		gamecfg_unset(key);
+	else
+		return false;
+	return true;
+}
+
+void config_control_clear(int row)
+{
+	// Input rows depend on console/preset visibility. Match their persistent keys through
+	// the public row helper to avoid changing that visibility or saved formats.
+	const char *key = input_control_key(row);
+	if (!in_game || !key)
+		return;
+	gamecfg_unset(key);
+	if (!strcmp(key, "touch_stick"))
+		g_cfg.touch_stick = default_touch_stick;
+	for (int i = 0; i < INPUT_REMAP_N; i++) {
+		char name[32];
+		snprintf(name, sizeof(name), "map_%s", input_map_key_name(i));
+		if (!strcmp(key, name))
+			input_map_set(i, default_maps[i]);
+	}
+	for (int i = 0; i < INPUT_HOTKEY_N; i++)
+		if (!strcmp(key, input_hotkey_key_name(i)))
+			input_hotkey_set(i, default_hotkeys[i]);
+	input_touch_reset();
+}
+
+bool config_game_overridden(const char *key)
+{
+	return in_game && (gamecfg_get(key) || (!strcmp(key, "screen") && game_screen_get(cur_game) >= 0));
+}

@@ -4,6 +4,7 @@ repo_root=$(cd "$(dirname "$0")/../../.." && pwd)
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 export PSX3D_MOCKUPS="${PSX3D_MOCKUPS:-$repo_root/psx3d/docs/bottom-screen}"
+mkdir -p "$PSX3D_MOCKUPS"
 export PSX3D_TITLE_FONT="$repo_root/psx3d/tests/host/Michroma-Regular.ttf"
 export PSX3D_BODY_FONT=$(fc-match -f '%{file}' 'DejaVu Sans')
 cat > "$test_tmp/fonts.conf" <<EOF

@@ -21,6 +21,13 @@ int sw_pmu0=-1;
 char CdromId[10];
 bool log_linked(void) { return false; }
 bool dev_enabled(void) { return false; }
+#ifndef SETTINGS_NAV_TEST
+bool settings_ui_active(void) { return false; }
+bool settings_ui_debug_capture(void) { return false; }
+u32 dev_ui_keys_take(void) { return 0; }
+#endif
+bool dev_tick(bool playing) { (void)playing;return false; }
+int dev_ui_pending(void) { return 0; }
 unsigned audio_occupancy(void) { return 50; }
 size_t linearSpaceFree(void) { return 1024*1024; }
 

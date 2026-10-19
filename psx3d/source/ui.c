@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "psx3d.h"
+#include "devtools.h"
 
 static C2D_TextBuf textbuf;
 
@@ -424,9 +425,7 @@ static void confirm_draw(void *ud)
 {
 	confirm_t *c = ud;
 	ui_rect(0, 0, 320, 240, C2D_Color32(6, 9, 24, 255));
-	ui_text_ex(libui_font(), 12, 12, 0.48f, C2D_Color32(235, 238, 255, 255), 0, c->title);
-	const u32 cols[] = { 0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28 };
-	for (int i = 0; i < 4; i++) ui_rect(12+i*18, 34, 16, 2, cols[i]);
+	ui_menu_header(c->title, config_in_game() ? "this game" : "all games");
 	C2D_Text t;
 	if (C2D_TextParse(&t, textbuf, c->message))
 		C2D_DrawText(&t, C2D_WithColor | C2D_WordWrap, 16.0f, 62.0f, 0.7f, 0.5f, 0.5f,
@@ -441,7 +440,8 @@ bool ui_confirm(const char *title, const char *message, bool show_game)
 	bool released = false;
 	while (aptMainLoop()) {
 		input_poll();
-		u32 held = input_keys_held(), k = input_keys_down();
+		if (settings_ui_active() && (dev_tick(show_game) || dev_ui_pending())) return false;
+		u32 held = input_keys_held(), k = input_keys_down() | (settings_ui_active() ? dev_ui_keys_take() : 0);
 		if (released && (k & KEY_B)) return false;
 		if (released && (k & KEY_A)) return true;
 		if (!(held & (KEY_A | KEY_B | KEY_TOUCH))) released = true;

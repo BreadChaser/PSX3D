@@ -18,6 +18,8 @@ typedef struct {
 	char title[256], cover_key[256];
 } game_t;
 static bool g_new3ds;
+static bool ui_active;
+bool settings_ui_key(const char *name) { return ui_active && !strcmp(name,"down"); }
 int sw_rtfscap, sw_rtfslevel;
 bool sw_rtfsmodel, sw_rtfswindow, sw_rtfs, sw_ff, sw_floataudio, sw_frontend;
 typedef struct { unsigned emulated, elapsed_ms, presented, held, top, bottom; float run_ms, present_ms, audio_ms, misc_ms, pace_ms; float spu_ms, spu_wait_ms, pica_ms; float phase_ms[8], draw_fraction; unsigned skip_level, drawn, skipped; } emu_frontend_sample;
@@ -247,7 +249,12 @@ int main(void)
 	assert(!psx3d_idle_pointer && !psx3d_idle_delay);
 	command("set renderer=gpu", true);
 	assert(strstr(response, "false"));
-	command("ui pause", false);
+	command("ui-key down", false); assert(strstr(response,"false"));
+ ui_active=true;
+ command("ui-key down",false); assert(strstr(response,"true"));
+ command("ui-key home",false); assert(strstr(response,"false"));
+ ui_active=false;
+ command("ui pause", false);
 	assert(strstr(response, "false") && !dev_ui_pending());
 	command("ui settings", true);
 	assert(dev_ui_take() == DEV_UI_SETTINGS && !dev_ui_pending());
