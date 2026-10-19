@@ -1,6 +1,8 @@
 # PSX3D v0.4.0 — draft release notes
 
-Local candidate only. No tag or release has been published.
+Local candidate only. No tag or release has been published. Acceptance is blocked:
+RC2 self-restoration failed on both consoles; Old A2 and final installed-title
+verification remain incomplete. See the acceptance report before any release.
 
 PSX3D now uses the experimental 3DS GPU renderer on both Old and New 3DS.
 Software rendering and its settings have been removed. GPU drawing errors and
@@ -16,6 +18,12 @@ missing effects remain; this is still a work in progress.
 - Movie scanout synchronization and alternating-buffer border clearing fixes.
 - Vendored, pruned PCSX-ReARMed core; no submodule or patch regeneration step.
 - Opt-in developer input recording and deterministic replay tools.
+
+Measured candidate scenes: Old Crash 53.0 FPS, CTR 37.4, GT2 34.4, Silent Hill
+42.0, R4 60.0 and SotN 57.8 with frameskip off. Auto reaches full game speed
+in Crash, Silent Hill, R4 and SotN; CTR is 83.2% and GT2 79.0%. All six New
+3DS scenes hold about 60 FPS off and auto. These are saved benchmark scenes,
+not whole-game guarantees. The required final RC2 bracket is incomplete.
 
 The built-in HLE BIOS is the normal configuration; no separate BIOS file is
 required. A real BIOS remains optional and may help compatibility. Real per-object

@@ -6,7 +6,7 @@ This project is a work in progress.
 
 **The first PS1 emulator for the 3DS that draws on the 3DS GPU.** On an Old 3DS
 it runs games up to twice as fast as the PCSX-ReARMed software renderer used by
-other 3DS PS1 emulators (Crash Bandicoot: 49.1 FPS on GPU vs 22.8 on Software),
+other 3DS PS1 emulators (historical v0.3.1 Crash Bandicoot: 49.1 FPS on GPU vs 22.8 on Software),
 and automatic frameskip brings games like Crash Bandicoot, Ridge Racer Type 4
 and Symphony of the Night to full game speed on the original 3DS.
 
@@ -47,38 +47,31 @@ and Symphony of the Night to full game speed on the original 3DS.
 
 ## Performance
 
-v0.3.1, measured on 2026-10-18 in the supplied benchmark scenes. Old 3DS had
-BootNTR loaded with a low quality 30 / 128 KiB/s stream; New 3DS had no NTR.
+v0.4.0 candidate, measured on 2026-10-19 in six saved benchmark scenes,
+using the GPU renderer on both consoles. Each run used a 10-second warmup and
+15-second sample, clock 57, Old slot 2 / New slot 0. The consoles normally use
+HLE BIOS; these gameplay tests load existing save states. These are scene
+measurements, not whole-game compatibility guarantees. NTR was not explicitly
+unloaded; the host observer reported no recent stream packets.
+
 Frameskip-off numbers are emulated frames per second. Full speed is 60 FPS,
 or 100% game speed; automatic frameskip shows fewer pictures to improve speed.
 
-**Historical v0.3.1 measurements:** Software columns describe the previous release;
-Software rendering is no longer included.
+| Game | Old, off (FPS) | Old, auto (game speed) | New, off (FPS) | New, auto (game speed) |
+|---|---:|---:|---:|---:|
+| Crash Bandicoot | 53.0 | 100.0% | 60.0 | 100.0% |
+| Crash Team Racing | 37.4 | 83.2% | 60.0 | 100.0% |
+| Gran Turismo 2 | 34.4 | 79.0% | 60.0 | 100.0% |
+| Silent Hill | 42.0 | 100.0% | 60.0 | 100.0% |
+| Ridge Racer Type 4 | 60.0 | 100.0% | 60.0 | 100.0% |
+| Castlevania: Symphony of the Night | 57.8 | 100.0% | 60.0 | 100.0% |
 
-| Game | Old GPU, off (FPS) | Old GPU, auto (game speed) | New Software, off (FPS) |
-|---|---:|---:|---:|
-| Ridge Racer Type 4 | 58.5 | 100.0% | 60.0 |
-| Castlevania: Symphony of the Night | 54.7 | 100.0% | 60.0 |
-| Crash Bandicoot | 49.1 | 100.0% | 60.0 |
-| Silent Hill | 38.1 | 85.6% | 60.0 |
-| Crash Team Racing | 31.0 | 65.9% | 60.0 |
-| Gran Turismo 2 | 31.1 | 68.5% | 60.0 |
+Automatic frameskip reaches full game speed in the tested Crash, Silent Hill,
+R4 and Symphony of the Night scenes on Old 3DS. CTR and GT2 still run slowly.
+All six New 3DS scenes hold about 60 FPS with frameskip off and auto.
 
-New 3DS Software also averaged 100% with automatic frameskip in all six scenes.
-The previous Symphony of the Night **Software** preset on Old 3DS measured 51.8 FPS
-with frameskip off and 100.0% game speed with auto. Its New 3DS GPU spot check
-averaged 60.0 FPS off and 100.0% with auto.
-
-On the Old 3DS, automatic frameskip brings lighter games such as Crash
-Bandicoot, Ridge Racer Type 4 and Symphony of the Night to full game speed by
-showing fewer pictures. The heaviest 3D games still run below full speed.
-Old 3DS audio underruns were zero with automatic frameskip in these samples;
-forced frameskip off still underruns in some slow scenes.
-The GPU renderer also looks sharper on the Old 3DS: it draws every line, where
-the software renderer uses half-height 3D there to save time.
-
-Details of how these were measured: [hardware check](docs/release-check-v0.3.1.md).
-Changes: [v0.3.1 release notes](docs/release-notes-v0.3.1.md).
+Measurements, correctness gates and limitations: [candidate acceptance](docs/v040-candidate.md).
+Changes: [v0.4.0 draft release notes](docs/release-notes-v0.4.0.md).
 
 ## Presets and settings
 
