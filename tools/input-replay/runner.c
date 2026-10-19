@@ -65,6 +65,11 @@ static bool env(unsigned cmd, void *data)
 		return *(enum retro_pixel_format *)data == RETRO_PIXEL_FORMAT_RGB565;
 	case RETRO_ENVIRONMENT_GET_VARIABLE: {
 		struct retro_variable *v = data;
+		if ((clip_enabled || clip_replay_session) &&
+		    (!strcmp(v->key,"pcsx_rearmed_spu_thread") || !strcmp(v->key,"pcsx_rearmed_cd_readahead"))) {
+			v->value=!strcmp(v->key,"pcsx_rearmed_spu_thread") ? "disabled" : "0";
+			return true;
+		}
 		const char *recorded=clip_option(v->key);
 		if (recorded) { v->value=recorded; return true; }
 		for (int i = 0; i < nopt; i++)
@@ -131,6 +136,7 @@ int main(int argc, char **argv)
 {
 	if (argc < 3) { fprintf(stderr, "usage: runner game frames [state|-] [opts] [out.ppm]\n"); return 1; }
 	int frames = atoi(argv[2]);
+	clip_enabled=getenv("CLIP_RECORD") != NULL;
 	if (argc > 4) {
 		FILE *f = fopen(argv[4], "r");
 		char line[200];
@@ -181,11 +187,21 @@ int main(int argc, char **argv)
 	}
 	clip_set_live_input(poll,state);
     if (getenv("CLIP_REPLAY")) {
+        extern char CdromId[];
+        char serial[64]; snprintf(serial,sizeof(serial),"serial=%s\n",CdromId);
+        if (strncmp(clip_metadata(),serial,strlen(serial))) {
+            fprintf(stderr,"clip: wrong game serial\n"); return 2;
+        }
         if (!clip_restore()) { fprintf(stderr,"clip: %s\n",clip_status.message); return 2; }
         frames=clip_status.frames;
     } else if (getenv("CLIP_RECORD")) {
         char settings[CLIP_META-128]=""; size_t used=0;
-        for (int k=0;k<nopt;k++) used+=snprintf(settings+used,sizeof(settings)-used,"%s=%s\n",opt_k[k],opt_v[k]);
+        for (int k=0;k<nopt;k++) {
+            struct retro_variable option={opt_k[k],NULL}; env(RETRO_ENVIRONMENT_GET_VARIABLE,&option);
+            int count=snprintf(settings+used,sizeof(settings)-used,"%s=%s\n",opt_k[k],option.value);
+            if (count<0 || (size_t)count>=sizeof(settings)-used) { fprintf(stderr,"clip metadata too large\n"); return 2; }
+            used+=count;
+        }
         extern char CdromId[];
         if (!clip_record(getenv("CLIP_RECORD"),frames,60000,CdromId,settings)) {
             fprintf(stderr,"clip: %s\n",clip_status.message); return 2;
