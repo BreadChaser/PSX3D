@@ -101,7 +101,15 @@ def table(d):
     return "\n".join(rows)
 
 def from_results(d, path, console):
-    tsv = path if path.endswith(".tsv") else next(os.path.join(r, f) for r, _, fs in os.walk(path) for f in fs if f == "results.tsv")
+    if path.endswith(".tsv"):
+        tsv = path
+    else:
+        files = [os.path.join(r, f) for r, _, fs in os.walk(path) for f in fs if f == "results.tsv"]
+        matching = [f for f in files if os.path.basename(os.path.dirname(f)) == console]
+        files = matching or files
+        if len(files) != 1:
+            sys.exit("--results needs one results.tsv for the requested console; choose its batch directory")
+        tsv = files[0]
     byname = {re.sub(r"\W", "", g["name"]).lower(): g for g in d["games"]}
     for row in csv.DictReader(open(tsv), delimiter="\t"):
         if row.get("status") != "ok": continue
