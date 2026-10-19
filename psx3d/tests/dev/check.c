@@ -14,6 +14,7 @@
 typedef unsigned long long u64;
 #define PATH_LEN 512
 #define PSX3D_DIR "sdmc:/3ds/PSX3D"
+#define PSX3D_STATE_DIR PSX3D_DIR "/states"
 typedef struct {
 	char title[256], cover_key[256];
 } game_t;
@@ -24,6 +25,10 @@ int config_screen_mode(void) { return sw_wsscreen < 0 ? 0 : sw_wsscreen; }
 const char *ws_identity(void) { return "gte"; }
 static bool ui_active;
 bool settings_ui_key(const char *name) { return ui_active && !strcmp(name,"down"); }
+bool settings_ui_debug_key(const char *name) { return settings_ui_key(name); }
+bool input_remote_key(const char *name) { (void)name; return false; }
+bool devnet_import_active(void) { return false; }
+void devnet_import_reply(const char *path, const char *sha256) { (void)path; (void)sha256; }
 int sw_rtfscap, sw_rtfslevel;
 bool sw_fsmart;
 bool sw_rtfsmodel, sw_rtfswindow, sw_rtfs, sw_ff, sw_floataudio, sw_frontend;

@@ -199,12 +199,13 @@ int main(void)
 			const char *v = options_cycle(i, 1);
 			assert(!strcmp(config_core_override(options_key(i)), v));
 		}
-	assert(!settings_ui_key("down"));
+	// Remote navigation keys go through input_remote_key() now; only the
+	// capture-only debug page toggle stays gated on an open Settings.
+	assert(!settings_ui_debug_key("debug-on"));
 	active = true;
-	assert(settings_ui_key("down"));
-	assert(!settings_ui_key("up"));
-	assert(dev_ui_keys_take() == KEY_DOWN);
-	assert(dev_ui_keys_take() == 0);
+	assert(settings_ui_debug_key("debug-on") && capture_debug);
+	assert(!settings_ui_debug_key("down"));
+	assert(settings_ui_debug_key("debug-off") && !capture_debug);
 	active = false;
 	options_clear();
 	clear_overrides();

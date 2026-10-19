@@ -10,6 +10,12 @@
 #include FT_FREETYPE_H
 #include "../../source/psx3d.h"
 void cheats_disc_changed(void) {}
+int padAnalogMode(unsigned int index) { (void)index; return 1; } // touch L3/R3 follow analog mode
+bool ws_available(void) { return false; }
+#ifndef SETTINGS_NAV_TEST
+bool cheats_widescreen(bool on) { (void)on; return false; }
+#endif
+const char *emu_game_title(void) { return "Crash Bandicoot"; }
 #include "../../source/presets.c"
 #include "../../source/input.c"
 #include "../../source/config.c"
