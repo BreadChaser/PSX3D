@@ -16,7 +16,7 @@
 #include "../../source/options.c"
 #include "../../source/ui.c"
 #include "../../source/statsview.c"
-bool sw_stats, sw_prof, sw_hack_spunearest;
+bool sw_stats, sw_prof;
 int sw_pmu0=-1;
 char CdromId[10];
 bool log_linked(void) { return false; }
@@ -33,8 +33,7 @@ size_t linearSpaceFree(void) { return 1024*1024; }
 
 bool g_new3ds, sw_o3ds, sw_nosputhread, sw_nogputhread, sw_noskip, sw_fs1, sw_fs3;
 char sw_cdra[8], sw_clock[8], sw_opt[8][48];
-static bool host_gpu;
-bool renderer_is_gpu(void) { return host_gpu; }
+bool renderer_is_gpu(void) { return true; }
 int g_syscore_pct, ui_eye;
 float ui_parallax;
 static u32 fake_held, fake_down;
@@ -555,9 +554,6 @@ int main(void)
  assert(!FT_New_Face(ft,getenv("PSX3D_TITLE_FONT"),0,&title_face));
  assert(!FT_New_Face(ft,getenv("PSX3D_BODY_FONT"),0,&body_face));
  assert(!FT_Set_Pixel_Sizes(title_face,0,30)); assert(!FT_Set_Pixel_Sizes(body_face,0,30));
- sw_hack_spunearest=true;
- assert(!strcmp(options_get("pcsx_rearmed_spu_interpolation"),"off"));
- sw_hack_spunearest=false;
  g_new3ds=false;
  assert(!strcmp(options_get("pcsx_rearmed_spu_interpolation"),"simple"));
  g_new3ds=true;

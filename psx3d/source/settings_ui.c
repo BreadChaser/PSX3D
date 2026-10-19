@@ -48,7 +48,6 @@ enum {
 	CAT_RESET,
 	CAT_CPU,
 	CAT_PICTURE,
-	CAT_POSITION,
 	CAT_DEBUG,
 	CAT_HACKS,
 	CAT_BINDINGS,
@@ -65,52 +64,34 @@ static const char *const categories[] = {"Settings",
 										 "Reset to defaults",
 										 "CPU & compatibility",
 										 "Picture accuracy",
-										 "Picture position",
 										 "Debug",
 										 "Speed hacks",
 										 "Button mappings"};
-enum {
-	F_SCREEN,
-	F_SMOOTH,
-	F_STEREO,
-	F_RENDERER,
-	F_HALF,
-	F_FPS,
-	F_SIDE,
-	F_AUDIO,
-	F_SOUNDS,
-	F_MUSIC,
-	F_AUTO,
-	F_REWIND,
-	F_RECORD,
-	F_TONE,
-	F_COUNT
+enum { F_SCREEN, F_SMOOTH, F_STEREO, F_FPS, F_SIDE, F_AUDIO, F_SOUNDS,
+       F_MUSIC, F_AUTO, F_REWIND, F_RECORD, F_TONE, F_COUNT };
+static const char *const labels[] = {
+ [F_SCREEN]="Screen mode", [F_SMOOTH]="Smoothing", [F_STEREO]="3D",
+ [F_FPS]="Show FPS", [F_SIDE]="Bottom-screen buttons", [F_AUDIO]="Smooth audio when slow",
+ [F_SOUNDS]="Menu sounds", [F_MUSIC]="Library music", [F_AUTO]="Continue where I left off",
+ [F_REWIND]="Rewind", [F_RECORD]="Record audio", [F_TONE]="Test tone"
 };
-static const char *const labels[] = {"Screen mode",
-									 "Smoothing",
-									 "3D",
-									 "Renderer",
-									 "Half-height 3D (faster)",
-									 "Show FPS",
-									 "Bottom-screen buttons",
-									 "Smooth audio when slow",
-									 "Menu sounds",
-									 "Library music",
-									 "Continue where I left off",
-									 "Rewind",
-									 "Record audio",
-									 "Test tone"};
-static const int groups[] = {CAT_DISPLAY, CAT_DISPLAY,	CAT_DISPLAY, CAT_PERFORMANCE, CAT_PERFORMANCE,
-							 CAT_DISPLAY, CAT_CONTROLS, CAT_SOUND,	 CAT_SOUND,		  CAT_SOUND,
-							 CAT_SAVES,	  CAT_SAVES,	CAT_DEBUG,	 CAT_DEBUG};
+static const int groups[] = {
+ [F_SCREEN]=CAT_DISPLAY, [F_SMOOTH]=CAT_DISPLAY, [F_STEREO]=CAT_DISPLAY,
+ [F_FPS]=CAT_DISPLAY, [F_SIDE]=CAT_CONTROLS, [F_AUDIO]=CAT_SOUND, [F_SOUNDS]=CAT_SOUND,
+ [F_MUSIC]=CAT_SOUND, [F_AUTO]=CAT_SAVES, [F_REWIND]=CAT_SAVES,
+ [F_RECORD]=CAT_DEBUG, [F_TONE]=CAT_DEBUG
+};
 static const char *const tips[] = {
-	"Widescreen may change the game's picture.", "Soften pixels when enlarging the picture.",
-	"Use the 3D slider for screen depth.",		 "Reopen the game to apply this choice.",
-	"Software only: trade detail for speed.",	 "Show the frame counter on the bottom screen.",
-	"Choose the side for touch buttons.",		 "Keep sound smooth when the game runs slowly.",
-	"Play sounds while navigating menus.",		 "Play music in the game library.",
-	"Keep your place when leaving a game.",		 "Hold the rewind shortcut to go back.",
-	"Capture 30 seconds for troubleshooting.",	 "Play a tone to check audio output."};
+ [F_SCREEN]="Widescreen may change the game's picture.",
+ [F_SMOOTH]="Soften pixels when enlarging the picture.",
+ [F_STEREO]="Use the 3D slider for screen depth.",
+ [F_FPS]="Show the frame counter on the bottom screen.",
+ [F_SIDE]="Choose the side for touch buttons.",
+ [F_AUDIO]="Keep sound smooth when the game runs slowly.",
+ [F_SOUNDS]="Play sounds while navigating menus.", [F_MUSIC]="Play music in the game library.",
+ [F_AUTO]="Keep your place when leaving a game.", [F_REWIND]="Hold the rewind shortcut to go back.",
+ [F_RECORD]="Capture 30 seconds for troubleshooting.", [F_TONE]="Play a tone to check audio output."
+};
 #define CORE_ROW 1000
 #define CONTROL_ROW 2000
 #define CHEAT_ROW 3000
@@ -138,11 +119,9 @@ static int core_group(const char *key)
 		return CAT_CONTROLS;
 	if (!strncmp(k, "memcard", 7))
 		return CAT_SAVES;
-	if (!strncmp(k, "screen_centering", 16))
-		return CAT_POSITION;
 	if (!strcmp(k, "display_info"))
 		return CAT_DEBUG;
-	if (!strncmp(k, "gpu_unai_", 9) || !strcmp(k, "alt_flip") || !strcmp(k, "gpu_slow_llists"))
+	if (!strcmp(k, "alt_flip") || !strcmp(k, "gpu_slow_llists"))
 		return CAT_PICTURE;
 	if (!strcmp(k, "psxclock") || !strcmp(k, "nolddelay") || !strcmp(k, "nosmccheck") ||
 		!strcmp(k, "gteregsunneeded") || !strcmp(k, "nogteflags") || !strcmp(k, "nostalls"))
@@ -152,8 +131,6 @@ static int core_group(const char *key)
 static bool frontend_visible(settings_ui_t *s, int i)
 {
 	if (i == F_STEREO && !g_new3ds)
-		return false;
-	if (i == F_HALF && (s->game ? renderer_is_gpu() : !g_cfg.renderer))
 		return false;
 	if (i == F_SIDE &&
 		(!g_new3ds || (s->game && (g_cfg.show_fps == 2 || (!touch_buttons_active() && !g_cfg.show_fps)))))
@@ -180,8 +157,6 @@ static void rebuild(settings_ui_t *s)
 		add(s, CATEGORY_ROW + CAT_CPU);
 		add(s, CATEGORY_ROW + CAT_HACKS);
 		add(s, CATEGORY_ROW + CAT_PICTURE);
-		if (s->game ? !renderer_is_gpu() : g_cfg.renderer)
-			add(s, CATEGORY_ROW + CAT_POSITION);
 		if (g_cfg.debug || capture_debug)
 			add(s, CATEGORY_ROW + CAT_DEBUG);
 	} else if (s->page == CAT_BINDINGS) {
@@ -208,14 +183,12 @@ static void rebuild(settings_ui_t *s)
 static bool per_game(settings_ui_t *s, int item)
 {
 	return s->game && ((item >= CONTROL_ROW && item < CATEGORY_ROW) || item == F_SCREEN ||
-					   item == F_RENDERER || item == F_REWIND || item == F_RECORD || item == F_TONE);
+					   item == F_REWIND || item == F_RECORD || item == F_TONE);
 }
 static const char *override_key(int item)
 {
 	if (item == F_SCREEN)
 		return "screen";
-	if (item == F_RENDERER)
-		return "renderer";
 	if (item == F_REWIND)
 		return "rewind";
 	return NULL;
@@ -264,11 +237,7 @@ static const char *row_value(int i, void *ud)
 	case F_SMOOTH:
 		return g_cfg.smooth ? "On" : "Off";
 	case F_STEREO:
-		return (const char *const[]){"Off", "Screen depth", "Full 3D (test)"}[g_cfg.stereo == 2 && (s->game ? renderer_is_gpu() : !g_cfg.renderer) ? 1 : g_cfg.stereo];
-	case F_RENDERER:
-		return g_cfg.renderer ? "Software" : "GPU (experimental)";
-	case F_HALF:
-		return g_cfg.half3d ? "On" : "Off";
+		return g_cfg.stereo ? "Screen depth" : "Off";
 	case F_FPS:
 		return (const char *const[]){"Off", "FPS", "Detailed"}[g_cfg.show_fps];
 	case F_SIDE:
@@ -322,7 +291,7 @@ static void draw_settings(void *ud)
 	}
 	if (!s->count)
 		ui_text_ex(NULL, 160, 90, .48f, muted, C2D_AlignCenter,
-				   s->page == CAT_CHEATS ? "No cheats for this game yet" : "No options for this renderer");
+				   s->page == CAT_CHEATS ? "No cheats for this game yet" : "No options available");
 	int item = s->count ? s->items[sel] : -1;
 	const char *tip = "A open category";
 	if (item >= CATEGORY_ROW)
@@ -382,16 +351,8 @@ static void change(settings_ui_t *s, int item, int dir)
 		g_cfg.smooth ^= 1;
 		break;
 	case F_STEREO:
-		g_cfg.stereo = (g_cfg.stereo + dir + (g_cfg.debug && (s->game ? !renderer_is_gpu() : g_cfg.renderer) ? 3 : 2)) %
-					   (g_cfg.debug && (s->game ? !renderer_is_gpu() : g_cfg.renderer) ? 3 : 2);
+		g_cfg.stereo = (g_cfg.stereo + dir + 2) % 2;
 		config_sync_stereo();
-		break;
-	case F_RENDERER:
-		config_set_renderer(!g_cfg.renderer);
-		break;
-	case F_HALF:
-		g_cfg.half3d ^= 1;
-		psx3d_set_half3d(g_cfg.half3d);
 		break;
 	case F_FPS:
 		if (s->game)

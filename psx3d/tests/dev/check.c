@@ -33,7 +33,6 @@ static u64 mock_ms;
 static char wire[16384], response[512], status[4096];
 static int state_writes, init_calls, shot_calls;
 int pica_debug;
-bool sw_hack_spunearest;
 unsigned pica_submit;
 unsigned pica_prims;
 bool pica_texmask = true, pica_texmemo = true;
@@ -226,10 +225,8 @@ int main(void)
 	assert(switches_set("rttcache=old") && (sw_gldbg & 524288));
 	assert(switches_set("rttcache=new") && !(sw_gldbg & 524288));
 	assert(!switches_set("rttcache=invalid"));
-	assert(switches_set("hack_spunearest=on") && sw_hack_spunearest);
-	assert(!switches_set("hack_spunearest=invalid"));
-	command("set hack_spunearest=off", true);
-	assert(sw_hack_spunearest && strstr(response, "false"));
+	assert(!switches_set("hack_spunearest=on"));
+	assert(!switches_set("hack_spunearest=off"));
 	assert(!switches_set("dyn_lookup=on") && !switches_set("dyn_nclip=on") && !switches_set("g1sync=off"));
 	command("set dyn_lookup=off", true);
 	assert(switches_set("idleptr=on") && psx3d_idle_pointer);
@@ -248,7 +245,6 @@ int main(void)
 	assert(switches_run(defaults, game, sizeof(game), err, sizeof(err)));
 	assert(sw_frontend && !sw_floataudio && !sw_rtfs && !sw_rtfsdense && sw_rtfscap == 4);
 	assert(pica_submit == 7 && pica_prims == 7 && pica_texmask && pica_texmemo && psx3d_skipgate);
-	assert(!sw_hack_spunearest);
 	assert(!psx3d_idle_pointer && !psx3d_idle_delay);
 	command("set renderer=gpu", true);
 	assert(strstr(response, "false"));

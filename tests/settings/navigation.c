@@ -30,10 +30,8 @@ void music_play(bool on) { (void)on; }
 void music_update(void) {}
 bool audio_capture_start(void) { return true; }
 bool audio_test_tone_toggle(void) { return false; }
-void psx3d_set_half3d(int on) { (void)on; }
 #include "../../psx3d/source/settings_ui.c"
 #define HAVE_NO_LANGEXTRA
-#define GPU_UNAI
 #define GPU_PICA
 #define _3DS
 #define USE_ASYNC_CDROM
@@ -93,12 +91,9 @@ int main(void)
 	assert(inventory);
 
 	for (int model = 0; model < 2; model++)
-		for (int software = 0; software < 2; software++)
 			for (int game = 0; game < 2; game++) {
 				g_new3ds = model;
-				host_gpu = !software;
 				config_reset_defaults();
-				g_cfg.renderer = software;
 				if (game)
 					config_game_begin("navigation");
 				settings_ui_t s = {.game = game};
@@ -119,13 +114,11 @@ int main(void)
 						}
 						if (page == CAT_DISPLAY)
 							assert(has_row(&s, F_STEREO) == model);
-						if (page == CAT_PERFORMANCE)
-							assert(has_row(&s, F_HALF) == software);
 						if (page == CAT_SAVES)
 							assert(has_row(&s, F_REWIND) == (model && game));
 						char name[100];
 						snprintf(name, sizeof(name), "%s-%s-%s-%d", model ? "new" : "old",
-								 game ? "game" : "global", categories[page], software);
+								 game ? "game" : "global", categories[page], 0);
 						for (char *c = name; *c; c++)
 							if (*c == ' ' || *c == '&')
 								*c = '-';
@@ -138,7 +131,7 @@ int main(void)
 				for (int i = 0; i < n; i++) {
 					assert(seen[i] == 1);
 					fprintf(inventory, "%s\t%s\t%s\t%s\t%s\n", model ? "New" : "Old",
-							software ? "Software" : "GPU", options_key(i), options_desc(i),
+							"GPU", options_key(i), options_desc(i),
 							categories[core_group(options_key(i))]);
 				} // No missing or duplicated core settings.
 				s.selected[CAT_SOUND] = 2;
@@ -157,16 +150,12 @@ int main(void)
  open_page(&cheats_fixture,CAT_CHEATS);assert(cheats_fixture.count==256);
  cheat_fixture_count=0;
  // Conditional rows still follow the existing parent option and debug gates.
- g_new3ds=true;config_reset_defaults();g_cfg.renderer=1;host_gpu=false;
+ g_new3ds=true;config_reset_defaults();
  settings_ui_t conditional={0};
  config_set_core_override("pcsx_rearmed_frameskip_type","disabled");open_page(&conditional,CAT_PERFORMANCE);
  int base_count=conditional.count;
  config_set_core_override("pcsx_rearmed_frameskip_type","auto_threshold");open_page(&conditional,CAT_PERFORMANCE);
  assert(conditional.count==base_count+2);
- config_set_core_override("pcsx_rearmed_screen_centering","auto");open_page(&conditional,CAT_POSITION);
- base_count=conditional.count;
- config_set_core_override("pcsx_rearmed_screen_centering","manual");open_page(&conditional,CAT_POSITION);
- assert(conditional.count==base_count+3);
  open_page(&conditional,CAT_ADVANCED);assert(!has_row(&conditional,CATEGORY_ROW+CAT_DEBUG));
  g_cfg.debug=1;open_page(&conditional,CAT_ADVANCED);assert(has_row(&conditional,CATEGORY_ROW+CAT_DEBUG));
  g_cfg.debug=0;
@@ -182,8 +171,7 @@ int main(void)
 	gamecfg_set("other", "keep");
 	assert(config_game_clear("screen") && !gamecfg_get("screen") && config_screen_mode() == 0);
 	assert(gamecfg_int("rewind", 0) == 1 && !strcmp(gamecfg_get("other"), "keep"));
-	config_set_renderer(1);
-	assert(config_game_clear("renderer") && !gamecfg_get("renderer"));
+	assert(!config_game_clear("renderer"));
 	input_control_cycle(0, 1);
 	config_controls_save();
 	assert(config_control_overridden(0));

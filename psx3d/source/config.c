@@ -469,9 +469,6 @@ bool config_game_clear(const char *key)
 		gamecfg_unset(key);
 		legacy_screen_override = false;
 		config_set_screen_mode(default_screen);
-	} else if (!strcmp(key, "renderer")) {
-		gamecfg_unset(key);
-		g_cfg.renderer = config_game_renderer();
 	} else if (!strcmp(key, "rewind"))
 		gamecfg_unset(key);
 	else

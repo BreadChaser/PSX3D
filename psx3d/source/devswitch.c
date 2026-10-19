@@ -16,10 +16,6 @@ bool switches_set(const char *word)
 {
 	/* Input replay switches: keep this block together for combined builds. */
 	if (clip_switch(word)) return true;
-	if (!strcmp(word, "hack_spunearest=on") || !strcmp(word, "hack_spunearest=off")) {
-		sw_hack_spunearest = !strcmp(word, "hack_spunearest=on");
-		return true;
-	}
 	if (!strncmp(word, "rtfscap=", 8)) {
         char *end; long n = strtol(word+8, &end, 10);
         if (!word[8] || *end || n < 4 || n > 5) return false;
@@ -98,7 +94,6 @@ bool switches_set(const char *word)
 bool switches_run(char *line, char *game, size_t len, char *error, size_t error_len)
 {
 	clip_reset_request();
-	sw_hack_spunearest = false;
 	psx3d_idle_skip = 1; psx3d_idle_pointer = psx3d_idle_delay = 0;
 	sw_rtfslevel = -1; sw_rtfscap = 4; pica_submit = 7;
 	sw_rtfsdense = sw_rtfsmodel = sw_rtfswindow = sw_rtfs = sw_ff = sw_floataudio = false;

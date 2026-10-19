@@ -18,7 +18,7 @@ with tempfile.TemporaryDirectory() as tmp:
                     '-Wno-format-truncation', '-Wno-sign-compare', '-fsanitize=address,undefined', '-ffunction-sections', '-Wl,--gc-sections',
                     '-I'+str(tmp), '-I'+str(root/'psx3d/tests/host'), '-I'+str(root/'psx3d/source'),
                     '-I'+str(root/'core/deps/libretro-common/include'),
-                    str(root/'tests/settings/navigation.c'), *flags, '-lm', '-o', str(tmp/'check')], check=True)
+                    str(root/'tests/settings/navigation.c'), str(root/'psx3d/source/clip.c'), str(root/'tools/input-replay/mock-core.c'), *flags, '-lz', '-lm', '-o', str(tmp/'check')], check=True)
     env = dict(os.environ, PSX3D_MOCKUPS=str(out),
                PSX3D_TITLE_FONT=str(root/'psx3d/tests/host/Michroma-Regular.ttf'),
                PSX3D_BODY_FONT=subprocess.check_output(['fc-match', '-f', '%{file}', 'DejaVu Sans'], text=True))
