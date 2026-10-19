@@ -147,9 +147,7 @@ static bool base_dirty = true, state_dirty = true;
 static u32 seq = 1, synced_seq;
 static tcache cache[NENTRIES];
 static s16 cell_owner[CELLS * CELLS];   // entry, CELL_FREE or CELL_PLAIN
-static u8 block_used[16];               // occupied cells of each 256x256 area
 static u32 cell_rows[CELLS];            // occupied cells, a bit per column
-static bool rect_cache;                 // texevict=new, latched at game start
 static u16 active[NSIZES][NENTRIES];    // entries in use, by size
 static int nactive[NSIZES];
 static u16 free_list[NENTRIES];
@@ -286,7 +284,6 @@ typedef struct { s16 x, y, w, h; } prect;
 static prect pend[16];
 static int npend;
 bool pica_texmask = true, pica_texmemo = true; // named diagnostic A/B switches
-bool pica_texevict = true;   // texevict=old: power-of-two squares, same-size eviction (latched per game)
 int pica_debug;   // set by the frontend (test switch gldbg)
 unsigned pica_submit = 7; // named submitstate/submitclip/submittex switches
 void (*pica_pmu)(int end); // optional frontend kernel-PMU sampler
@@ -1254,31 +1251,11 @@ static void decode_rect(tcache *c, u64 need, unsigned rect)
 }
 
 
-// smallest square (32..256, starting on a multiple of 32, inside the page)
-// holding u0..u1 x v0..v1
-static int square_for(int u0, int u1, int v0, int v1, int *rx, int *ry)
-{
-	for (int lg = 0; lg < NSIZES; lg++) {
-		int size = 32 << lg;
-		int x = u0 & ~31, y = v0 & ~31;
-		if (x > 256 - size) x = 256 - size;
-		if (y > 256 - size) y = 256 - size;
-		if (u1 < x + size && v1 < y + size) {
-			*rx = x;
-			*ry = y;
-			return lg;
-		}
-	}
-	*rx = *ry = 0;
-	return NSIZES - 1;
-}
-
 static void cells_rect(int cx, int cy, int w, int h, s16 v)
 {
 	for (int y = cy; y < cy + h; y++) {
 		for (int x = cx; x < cx + w; x++) {
 			s16 *o = &cell_owner[y * CELLS + x];
-			block_used[(y >> 3) * 4 + (x >> 3)] += (v != CELL_FREE) - (*o != CELL_FREE);
 			*o = v;
 		}
 		u32 bits = (w == 32 ? ~0u : (1u << w) - 1) << cx;
@@ -1320,69 +1297,6 @@ static void evict(tcache *c)
 	trace_cache("evict", c, c->tiles);
 	texture_idle(c, SY_EVICT);
 	drop_entry(c);
-}
-
-// a new entry with an atlas square of 32 << lg: free space if there is any,
-// else the least recently used square of that size, else the least recently
-// used aligned block of smaller ones
-static tcache *take_square(int lg)
-{
-	int n = 1 << lg, bx = -1, by = -1, best_fill = -1;
-	// free space, in the fullest 256x256 area that has room: whole areas
-	// stay free for whole pages
-	for (int cy = 0; cy < CELLS; cy += n)
-		for (int cx = 0; cx < CELLS; cx += n) {
-			int fill = block_used[(cy >> 3) * 4 + (cx >> 3)];
-			if (fill > 64 - n * n || fill <= best_fill)
-				continue;
-			bool ok = true;
-			for (int y = cy; y < cy + n && ok; y++)
-				for (int x = cx; x < cx + n; x++)
-					if (cell_owner[y * CELLS + x] != CELL_FREE) { ok = false; break; }
-			if (ok) { bx = cx; by = cy; best_fill = fill; }
-		}
-	if (bx < 0 && nactive[lg]) {
-		// the same size: least recently used, preferring one no queued draw reads
-		tcache *v = NULL;
-		bool v_queued = true;
-		for (int i = 0; i < nactive[lg]; i++) {
-			tcache *c = &cache[active[lg][i]];
-			bool q = c->used_seq > synced_seq;
-			if (!v || (v_queued && !q) || (q == v_queued && c->lru < v->lru)) { v = c; v_queued = q; }
-		}
-		bx = v->ax >> 5; by = v->ay >> 5;
-		evict(v);
-	}
-	if (bx < 0) {
-		// only smaller squares: the block whose newest one is oldest
-		u32 best = ~0u;
-		for (int cy = 0; cy < CELLS; cy += n)
-			for (int cx = 0; cx < CELLS; cx += n) {
-				u32 newest = 0;
-				for (int y = cy; y < cy + n && newest != ~0u; y++)
-					for (int x = cx; x < cx + n; x++) {
-						int o = cell_owner[y * CELLS + x];
-						if (o == CELL_PLAIN) { newest = ~0u; break; }
-						if (o >= 0 && cache[o].lru > newest) newest = cache[o].lru;
-					}
-				if (newest < best) { best = newest; bx = cx; by = cy; }
-			}
-		for (int y = by; y < by + n; y++)
-			for (int x = bx; x < bx + n; x++)
-				if (cell_owner[y * CELLS + x] >= 0)
-					evict(&cache[cell_owner[y * CELLS + x]]);
-	}
-	int e = free_list[--nfree];
-	tcache *c = &cache[e];
-	memset(c, 0, sizeof(*c));
-	c->ax = bx * 32;
-	c->ay = by * 32;
-	c->lg = lg;
-	c->cw = c->ch = n;
-	c->slot = nactive[lg];
-	active[lg][nactive[lg]++] = e;
-	cells_set(bx, by, n, e);
-	return c;
 }
 
 // The rectangle of whole cells holding u0..u1 x v0..v1 (inside the page).
@@ -1461,12 +1375,9 @@ static PICA_COLD tcache *take_rect(int cw, int ch)
 // a new entry for u0..u1 x v0..v1 of the page
 static tcache *take_entry(int u0, int u1, int v0, int v1, int *rx, int *ry)
 {
-	if (rect_cache) {
-		int cw, ch;
-		rect_for(u0, u1, v0, v1, rx, ry, &cw, &ch);
-		return take_rect(cw, ch);
-	}
-	return take_square(square_for(u0, u1, v0, v1, rx, ry));
+	int cw, ch;
+	rect_for(u0, u1, v0, v1, rx, ry, &cw, &ch);
+	return take_rect(cw, ch);
 }
 
 // Several disjoint sprites may share a page/CLUT. Growing their union to
@@ -3346,9 +3257,7 @@ bool pica_game_begin(bool small)
 	// all cells free but the reserved square's (the last one)
 	for (int i = 0; i < CELLS * CELLS; i++)
 		cell_owner[i] = CELL_FREE;
-	memset(block_used, 0, sizeof(block_used));
 	memset(cell_rows, 0, sizeof(cell_rows));
-	rect_cache = pica_texevict;
 	memset(nactive, 0, sizeof(nactive));
 	for (nfree = 0; nfree < NENTRIES; nfree++)
 		free_list[nfree] = NENTRIES - 1 - nfree;

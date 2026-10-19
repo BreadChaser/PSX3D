@@ -72,12 +72,11 @@ int main(int argc,char **argv)
     renderer_init();
     struct rearmed_cbs cbs={0}; cbs.dithering=getenv("GPU_DITHER") ? atoi(getenv("GPU_DITHER")) : 1; renderer_set_config(&cbs);
 #ifdef PICA
-    { extern bool pica_texevict; if(getenv("TEXEVICT"))pica_texevict=atoi(getenv("TEXEVICT")); } // latched at game start
     unsigned shader=0; assert(pica_init(&shader,4)); assert(pica_game_begin(true));
     if(getenv("PICA_DEBUG"))pica_debug=atoi(getenv("PICA_DEBUG"));
     if(getenv("PICA_SUBMIT"))pica_submit=strtoul(getenv("PICA_SUBMIT"),NULL,0);
     if(getenv("PICA_PRIMS"))pica_prims=strtoul(getenv("PICA_PRIMS"),NULL,0);
-    extern bool pica_texmask, pica_texmemo, pica_texevict;
+    extern bool pica_texmask, pica_texmemo;
     if(getenv("TEXMASK"))pica_texmask=atoi(getenv("TEXMASK"));
     if(getenv("TEXMEMO"))pica_texmemo=atoi(getenv("TEXMEMO"));
     pica_frame_started();

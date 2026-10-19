@@ -158,7 +158,7 @@ extern bool sw_rtfs, sw_rtfswindow, sw_rtfsmodel;
 extern bool sw_prof, sw_stats, sw_o3ds, sw_fs1, sw_fs3, sw_noskip, sw_nosputhread, sw_acap;
 extern int sw_state, sw_gldbg, sw_vramdump;
 extern unsigned pica_prims;
-extern bool pica_texmask, pica_texmemo, pica_texevict;
+extern bool pica_texmask, pica_texmemo;
 extern int psx3d_skipgate;
 extern int sw_pmu0, sw_pmu1;
 extern char sw_clock[8], sw_cdra[8], sw_opt[8][48];

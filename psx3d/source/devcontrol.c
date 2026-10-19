@@ -166,8 +166,8 @@ static void publish_status(void)
 	p += sprintf(p, ",\"version\":\"%s\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
 	p += sprintf(p, ",\"pica_prims\":%u,\"idle\":%d,\"idleptr\":%d,\"idledelay\":%d", pica_prims, psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay);
 	p += sprintf(p, ",\"skipgate\":\"%s\"", psx3d_skipgate ? "new" : "old");
-	p += sprintf(p, ",\"texmask\":\"%s\",\"texmemo\":\"%s\",\"texevict\":\"%s\"",
-	             pica_texmask ? "new" : "old", pica_texmemo ? "new" : "old", pica_texevict ? "new" : "old");
+	p += sprintf(p, ",\"texmask\":\"%s\",\"texmemo\":\"%s\"",
+	             pica_texmask ? "new" : "old", pica_texmemo ? "new" : "old");
 	clip_status_json(p, sizeof(settings)-(size_t)(p-settings)); p+=strlen(p);
 	sprintf(p, ",\"rtt\":\"%s\",\"free_heap\":%u,\"free_linear\":%u",
 	        sw_gldbg & 262144 ? "old" : sw_gldbg & 1048576 ? "new" : "auto", heap_free(), linear_free());

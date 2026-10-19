@@ -36,7 +36,7 @@ static int state_writes, init_calls, shot_calls;
 int pica_debug;
 unsigned pica_submit;
 unsigned pica_prims;
-bool pica_texmask = true, pica_texmemo = true, pica_texevict = true;
+bool pica_texmask = true, pica_texmemo = true;
 int psx3d_idle_skip=1, psx3d_idle_pointer, psx3d_idle_delay;
 bool sw_pmuphase, sw_pmuclass, sw_rtfsdense;
 void pmu_category_detail(double values[21]) { for (int k=0;k<21;k++) values[k]=-1; }
@@ -251,7 +251,7 @@ int main(void)
 	assert(switches_set("fsmart=new") && sw_fsmart);
 	assert(!switches_set("fsmart=invalid"));
 	assert(sw_frontend && !sw_floataudio && !sw_rtfs && !sw_rtfsdense && sw_rtfscap == 4);
-	assert(pica_submit == 7 && pica_prims == 7 && pica_texmask && pica_texmemo && pica_texevict && psx3d_skipgate);
+	assert(pica_submit == 7 && pica_prims == 7 && pica_texmask && pica_texmemo && psx3d_skipgate);
 	assert(!psx3d_idle_pointer && !psx3d_idle_delay);
 	command("set renderer=gpu", true);
 	assert(strstr(response, "false"));
