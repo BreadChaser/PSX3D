@@ -11,7 +11,7 @@ import psx3dctl,fastbench
 from psx3dctl import Client,ControlError
 psx3dctl.MAX_RESPONSE=8*1024*1024
 BASELINE='release-v040-rc1-split'; FINAL='release-v040-final'
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('console',choices=['old','new']);p.add_argument('--label',required=True);a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('console',choices=['old','new']);p.add_argument('--label',required=True);p.add_argument('--wait-lock',action='store_true');a=p.parse_args()
 marker=D/'fastloop'/f'{a.console.upper()}_UNAVAILABLE'
 def clearance():
  if marker.exists():raise RuntimeError('UNAVAILABLE marker: no contact')
@@ -22,7 +22,9 @@ def save(label,value):
  return path
 with (D/'fastloop'/('lock.'+a.console)).open('a') as lock:
  try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
- except BlockingIOError:print('BUSY lock',flush=True);sys.exit(2)
+ except BlockingIOError:
+  if not a.wait_lock:print('BUSY lock',flush=True);sys.exit(2)
+  clearance();print('WAITING lock (no console contact)',flush=True);fcntl.flock(lock,fcntl.LOCK_EX)
  clearance();out=E/'hardware'/a.console/a.label;out.mkdir(parents=True,exist_ok=False)
  secret=(D/'fastloop/token').read_text().strip()
  class GuardedClient(Client):
