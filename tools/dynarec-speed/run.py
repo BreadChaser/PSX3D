@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline six-state / real-BIOS comparison and cache-model driver."""
+"""Offline six-state / BIOS boot comparison and cache-model driver."""
 import argparse
 import concurrent.futures
 import json
@@ -23,13 +23,19 @@ p.add_argument('--jobs', type=int, default=2)
 p.add_argument('--switch', default='0')
 p.add_argument('--interpreter', action='store_true')
 p.add_argument('--game', help='One state key or exact boot directory name')
+p.add_argument('--bios', choices=('real', 'hle'), default='real',
+               help='Cold-boot BIOS selection (save states retain their BIOS mode)')
 a = p.parse_args()
 a.sim = a.sim.resolve()
 a.out = a.out.resolve()
 a.out.mkdir(parents=True, exist_ok=True)
 options = (a.sim / 'o3hw_off.ini').read_text()
 if a.mode == 'boot':
-    options += '\npcsx_rearmed_bios=auto\n'
+    # The runner returns the first matching key; replace, do not append an
+    # override behind the template's existing BIOS entry.
+    options = '\n'.join(line for line in options.splitlines()
+                        if not line.startswith('pcsx_rearmed_bios=')) + '\n'
+    options += '\npcsx_rearmed_bios=' + ('HLE' if a.bios == 'hle' else 'auto') + '\n'
 if a.interpreter:
     options = options.replace('pcsx_rearmed_drc=enabled', 'pcsx_rearmed_drc=disabled')
 (a.out / 'options.ini').write_text(options)
@@ -51,7 +57,10 @@ def run(item):
     else:
         env.update(CHECKPOINTS='1', HASHEVERY='1', STATEOUT=str(work / 'state.bin'))
     if a.mode == 'boot':
-        env['BIOSDIR'] = str(DEV / 'bios')
+        bios = work / 'empty-bios' if a.bios == 'hle' else DEV / 'bios'
+        if a.bios == 'hle':
+            bios.mkdir(exist_ok=True)
+        env['BIOSDIR'] = str(bios)
     state = '-' if a.mode == 'boot' else str(DEV / 'sim/states' / (key + '.st0'))
     cmd += [str(a.sim / a.runner), str(cue), str(n), state, str(a.out / 'options.ini')]
     (work / 'command.json').write_text(json.dumps(dict(command=cmd, env={k:v for k,v in env.items() if k in ('SMALL', 'DYNAREC_SPEED','BIOSDIR','CHECKPOINTS','HASHEVERY','CACHESIM_OUT','STATEOUT')}), indent=2))
