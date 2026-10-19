@@ -88,7 +88,16 @@ Host validation includes legacy config migration, both-console settings and
 preset visibility, developer transport/batches/updater, controls and reset
 coverage, stats formatter, and actual presentation/held-frame/stereo call counts.
 ASan/UBSan are used by the developer/UI/presentation suites. GPU-thread lifecycle
-validation is recorded separately in `thread-tests-final.log`.
+validation is recorded separately in `thread-tests-final.log`:
+all20 direct/worker/repeated-worker/toggle+save runs finish600frames. The
+aggregate content-equivalence assertion **fails for R4 stress**. A pristine
+main9417930 PICA build reproduces this same off-versus-toggle/save divergence
+at frame52, just after the first frame50 save/reload. See
+`baseline-thread/result.json` and `baseline-thread-stress.log`. This is an
+existing stress-path limitation, not a passing test; it is outside this removal.
+Ordinary R4 off/on/on2 draw hashes match. Ordered CTR/GT2 worker hashes can
+change with batch splits; the mandatory main/candidate direct GPU hashes above
+are unchanged. No fix to save-state/thread semantics is included.
 
 ## Size (final package)
 
@@ -103,12 +112,12 @@ validation is recorded separately in `thread-tests-final.log`.
 
 The ELF includes debug sections; it is not resident-memory usage. CIA packaging
 includes alignment/compression. No hardware speed claim follows from size alone.
-See `size.json` and the raw section listings.
+See `size.json` and the raw section listings. The final source is1406b61; documentation-only commits follow it.
 
 ## Hardware status
 
 **Pending, not accepted as a performance change.** Old sessions were refused
-because another worker held `lock.old`. New sessions were refused because
+because other workers held `lock.old` (first settings-ui, then the combined benchmark session). New sessions were refused because
 `fastloop/NEW_UNAVAILABLE` says the sh-garbage install probe timed out. No
 console connection, install, screenshot, input, or state write was performed
 by this test. Thus no A/B/A fps, New screenshots, restoration, or final
