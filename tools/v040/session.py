@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Exclusive console acceptance session. JSON actions arrive on stdin.
-No automatic mutations on exceptions. Only the baseline build in the idle library starts a session.
+No automatic mutations on exceptions. Only an approved release build in the idle library starts a session.
 """
 import argparse, csv, fcntl, hashlib, io, json, sys, time
 from pathlib import Path
@@ -35,10 +35,10 @@ with (D/'fastloop'/('lock.'+a.console)).open('a') as lock:
    return value
  c=GuardedClient(a.console,secret,timeout=600);fastbench.Client=GuardedClient
  s=c.request('status');save('initial-status',s)
- if s['settings']['build']!=BASELINE or s['mode']!='library' or s['bench']['active']:
+ if s['settings']['build'] not in (BASELINE,FINAL) or s['mode']!='library' or s['bench']['active']:
   print('BUSY handoff '+json.dumps(s),flush=True);sys.exit(2)
  save('initial-library',c.request('shot both'));print('READY '+str(out),flush=True)
- expected=BASELINE
+ expected=s['settings']['build']
  def library(label):
   c.request('ui library');deadline=time.monotonic()+60
   while True:
