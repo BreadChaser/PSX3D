@@ -1,11 +1,4 @@
-> Current renderer policy: GPU only. See [Software removal](../../../docs/remove-sw.md).
-
 # Dynamic bottom-screen slots and curated presets
-
-Branch `t3/bottom-screen-main`, based on released software-renderer main
-`ea8d8c9`. All changes are in `psx3d/`. No push or console access.
-Initial dynamic-slot implementation: `ae3c292` (bindings, tiling, persistence
-and host checks). The curved-fill/action-palette follow-up adds no config keys.
 
 ## Slots and layout
 
@@ -119,7 +112,7 @@ bindings when the game loads; the obsolete key is removed on the next controls
 save/reset. On preserves custom mappings while binding otherwise inherited
 slots; Off hides all touch slots and the stick. Auto requires no migration.
 
-## Release v0.3.0 integration
+## Display and frame-rate readout
 
 GPU is the only renderer on both consoles. Legacy renderer config keys are
 ignored. Presets describe controls and capabilities, with no renderer field.
@@ -150,7 +143,7 @@ not console captures):
 Build checks: 3DSX and CIA. Host checks: `tests/statsview/check.c` covers visible
 value invalidation, rounded unchanged values, speed changes, mirrored label/bar
 alignment, and the existing Detailed formatter/cycling. The old one-line `fps/target fps % ms` draw has been removed; FPS draws only
-the two corner labels and their bar. No console access.
+the two corner labels and their bar.
 
 ## Presets, inheritance and permissions
 

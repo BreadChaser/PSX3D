@@ -13,7 +13,7 @@ The unused frontend/libpicofe submodule is not required by the 3DS build.
 The original GPL licence, AUTHORS, dependency licences and copyright notices
 are retained. The historical core version strings are fixed to their original
 values so this housekeeping does not change the executable. See
-[the vendoring report](../docs/vendor-core.md) for pruning and identity evidence.
+[building and testing](../docs/building.md) for build and identity checks.
 
 Non-3DS frontend/platform source, other CPU implementations, and upstream
 CI, packaging and tests have been removed. Shared frontend glue still compiled

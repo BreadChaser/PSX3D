@@ -3,7 +3,7 @@
 This is an opt-in developer facility, built into both the 3DSX and CIA. With no
 `remote token=...` or `bench` in `sdmc:/3ds/PSX3D/switches.txt`, it starts no
 control worker, sockets, history allocation, screenshot jobs, or extra probes.
-There are no new menu entries. A `3dslink` argument cannot enable the server.
+The recorder adds an opt-in pause-menu action; see [recording and replay](recorder.md). A `3dslink` argument cannot enable the server.
 
 ## One-time setup
 
@@ -31,12 +31,12 @@ still interrupt a run; do not use them during measurements or installation.
 
 ## Host tools
 
-The new host files live only in the main checkout's ignored `devtools/`:
-`psx3dctl.py`, `fastbench.py`, and the compatibility wrapper `fastbench.sh`.
-Python 3's standard library is sufficient.
+Tracked host clients are `tools/input-replay/psx3dctl.py` and
+`tools/input-replay/fastbench.py`. Python 3's standard library is sufficient.
+Choose the console addresses in those clients for your own LAN.
 
 ```sh
-cd /home/tony/Development/PS1_3ds/devtools
+cd tools/input-replay
 export PSX3D_TOKEN=choose-a-private-token
 ./psx3dctl.py old status
 ./psx3dctl.py new load Crash_Bandicoot state=0 renderer=gpu frameskip=off pmu=0x11,0x00
@@ -49,7 +49,6 @@ export PSX3D_TOKEN=choose-a-private-token
 ./psx3dctl.py new exit            # unload, normal shutdown to HOME
 ./fastbench.py six-runs.txt both
 ./fastbench.py six-runs.txt both --cia /path/to/PSX3D.cia
-./fastbench.sh /path/to/PSX3D.cia six-runs.txt both
 ```
 
 `old` = `192.168.1.147`, `new` = `192.168.1.135`; a numeric address can also be
@@ -150,7 +149,7 @@ an active batch and writes only the requested slot.
 Supported run switches include `renderer=gpu` (legacy `renderer=sw` is accepted and ignored), `frameskip=off|auto|on`, `state=N`,
 `pmu=AA,BB` (hex events), `clock=N`, `cdra=N`, up to eight `o:key=value`, `stats`,
 `prof`, `noskip`, `fs1`, `fs3`, `gputhread`/`nogputhread`, `nosputhread`, `acap`,
-`gldbg=N`, `vramdump=N`, stereo diagnostic switches and GPU submission switches.
+`gldbg=N`, `vramdump=N`, `slider=N` and GPU submission switches.
 `frameskip=off` consumes an `o:` slot. `stats` and `prof` retain their existing SD
 logging/profiling cost; omit them when using the live metrics alone. Subsystem
 startup switches (`nonet`, `nosound`, `csnd`, `noirrst`, `noaa`, `nolcd`, `nocovers`,
@@ -280,46 +279,22 @@ References checked during implementation:
 - [libctru APT chainloader API](https://github.com/devkitPro/libctru/blob/master/libctru/include/3ds/services/apt.h)
 - [libctru AM API](https://github.com/devkitPro/libctru/blob/master/libctru/include/3ds/services/am.h)
 
-## Cycle-time estimate and validation
+## Local validation
 
-For three games × two renderers × two consoles, both consoles run their six
-runs concurrently. With 5 s warm-up + 20 s sampling + about 1 s interval alignment
-and an assumed 2–10 s load/unload cost, each console takes **168–216 seconds**.
-Allow roughly 30–120 s for a CIA download/install/relaunch plus report/PNG pulls:
-**about 4–7 minutes** per updated build, versus today's 45–60+ minutes (roughly
-84–93% less elapsed time). Without an update, approximately 3–4 minutes plus
-result retrieval. This is an estimate, not a hardware measurement. Slow SD,
-state loading, HTTP throughput, PMU/profiling and renderer bugs can change it.
+Run `psx3d/tests/dev/run.sh` with a host C compiler, Python 3, pkg-config,
+libpng and OpenSSL development libraries. The ASan/UBSan tests cover the actual
+controller and switch parser, loopback TCP authentication/framing, screenshots,
+batch timing and cancellation, and updater validation and recovery. These tests
+do not contact consoles. See [building and testing](building.md) for other checks.
 
-Local check prerequisites: a host C compiler, Python 3, pkg-config/libpng and
-OpenSSL development libraries. `psx3d/tests/dev/run.sh` compiles the actual controller/switch parser
-and network worker with host substitutes under ASan/UBSan. It checks batch
-averages and warm-up boundaries, clean run settings, failures/cancellation,
-state-slot bounds, literal paths, real loopback TCP/token/framing, JSON history,
-PNG dimensions, download path restrictions and updater mailbox recovery. A
-separate test uses the real updater with simulated HTTP/AM/FS services to check
-LAN URL restrictions, size/hash/title rejection before install, cancellation on
-write/finish errors, the successful install path and update-switch consumption. It also
-checks the new Python client and temporary HTTP server on loopback only. These
-checks use no consoles. The existing frontend host suite and 3DSX/CIA builds are
-also required. Hardware acceptance remains: Old/New CIA launch, remote idle FPS
-cost, each renderer/state lifecycle, screenshots vs actual screens, transfer
-integrity, and successful self-update/relaunch.
+For hardware comparisons, keep the same state, clock, frameskip and network
+conditions. Use a baseline/candidate/baseline bracket, save the exact requests,
+check build identities after installs, and inspect screenshots. Do not overwrite
+benchmark slots; use a separate spare slot for save/load checks. Keep exclusive
+ownership of each console for the whole session.
 
-## Combined RTT hardware validation (2026-10-18)
-
-The `t3/fastloop-rtt` integration passed CIA launch, authenticated status, repeated
-SW/GPU game changes, 400x240 screenshots and self-update/relaunch on both consoles.
-Hardware exposed two updater/transport assumptions: immediate SOC close could
-reset framed replies, so replies now half-close and drain; FAT rename cannot
-replace an existing switches.txt, so updater switch consumption avoids unnecessary
-rewrites and uses backup/replace/rollback when needed. Direct game replacement
-also waits for the replacement game's load result instead of reporting the old
-game's teardown as a failure. Developer ASan/UBSan suites pass these corrections.
-
-The diagnostic version-bump update (0.3.1 to0.3.2) completed in26.4s on New and40.1s
-on Old, with changed session IDs and restored remote library mode. These are local
-test build versions, not a public release. Private measurements, exact artifacts,
-responses, PNGs and cycle timings are in the main checkout's ignored
-`devtools/fastloop/results.md`. Active low-bandwidth console NTR streams remained;
-host request/viewer processes were paused. No NTR-free overhead claim is made.
+Self-updates on New 3DS can take up to ten minutes. Wait for a changed session
+before declaring a timeout; never send a second install while the first may
+still be writing. CIA title counters must not decrease. If installation or
+relaunch is uncertain, stop automatic control and inspect the console before
+attempting recovery.

@@ -1,8 +1,8 @@
 # Silent Hill GPU profiling
 
 These scripts use the private simulator and ARM11 cache model described by the
-project's developer notes. `sh` means **Silent Hill**. They do not connect to consoles.
-The measurements and interpretation are in [gpu-batching.md](../../docs/gpu-batching.md).
+build and test documentation (`docs/building.md`). `sh` means **Silent Hill**. They do not connect to consoles.
+See [performance](../../docs/performance.md) for hardware results and limitations.
 
 `profile.py` instruments a **private simulator copy**, never the worktree core.
 It adds GP0 command markers, records inclusive instructions/cache misses by
@@ -17,7 +17,7 @@ plugin are deliberately not populated; use the `.ctx` output instead.
 ```sh
 source /home/tony/Development/PS1_3ds/devtools/env.sh
 # First copy devtools/sim to a private location and point build_pica.sh at
-# the worktree core. Follow the developer notes for normal baseline/candidate builds.
+# the worktree core. See docs/building.md for baseline/candidate builds.
 # The private QEMU is 10.0.3: use its matching qemu-plugin.h, not a newer
 # distro header. Its old build-tree symlink may no longer resolve.
 curl -fsSL https://raw.githubusercontent.com/qemu/qemu/v10.0.3/include/qemu/qemu-plugin.h \

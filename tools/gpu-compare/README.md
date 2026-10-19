@@ -12,7 +12,7 @@ Prerequisites: C compiler, Python with Pillow/numpy, ARM Linux cross compiler
 and qemu from the project's devtools. No console connection is used.
 
 ```sh
-# Follow the project instructions: initialize/patch core first.
+# Core sources and dependencies are included.
 make # core sources and dependencies are already committed
 cp -a /home/tony/Development/PS1_3ds/devtools/sim /tmp/correct-sim
 tools/gpu-compare/build.sh
@@ -50,7 +50,7 @@ python3 tools/gpu-compare/inspect_trace.py /tmp/correct-sim/sh.gputrace
 the subtract/quarter probes after correcting the target quantization model. `known-mask-half-blend` deliberately documents a
 remaining failure and is not counted as a passing regression. The high-frequency
 polygon probe likewise visualizes residual PS1/PICA interpolation differences.
-See [REPORT.md](REPORT.md) for game images, fixes and benchmark priorities.
+
 
 Limits: the fake GPU models this shader's affine interpolation, nearest tiled
 texture lookup, TEV stages (including the signed dither add), alpha tests and blend factors. It does not emulate
@@ -72,9 +72,8 @@ and traces are deliberately not checked in.
 
 ## Flicker investigation
 
-[The flicker report](../../docs/gpu-flicker.md) records the coordinate/presentation
-fixes and hardware handoff. The independent host regressions run without game
-files, with AddressSanitizer and UndefinedBehaviorSanitizer:
+The independent host regressions cover coordinates and presentation without
+game files, using AddressSanitizer and UndefinedBehaviorSanitizer:
 
 ```sh
 BUILD_DIR=/tmp/flicker-sim bash tools/gpu-compare/regress.sh
@@ -98,9 +97,6 @@ thousands of PPMs on the shared tmpfs.
 
 ## Colour/dither follow-up
 
-[CORRECTNESS-2.md](CORRECTNESS-2.md) contains the subsequent modulation, GPU
-dithering and flipped-wrap fixes, independent oracle comparisons, all requested
-frame metrics, CPU/submission cost estimates, build hashes and hardware notes.
 P.E.Op.S. has positive-only dither bias; `--reference neon` selects the upstream
 gpu_neon **portable C** renderer's signed-dither oracle. Only the original
 P.E.Op.S. replay asserts equality to captured full-VRAM snapshots.
@@ -130,7 +126,7 @@ traces or full VRAM dumps are added to the repository.
 
 The imported `REPORT.md` and `evidence/` describe the **reference-harness branch**;
 copying these tools does not apply its three renderer correctness fixes.
-The batching implementation/results are in [gpu-batching.md](../../docs/gpu-batching.md).
+Batching preserves order around mask and upload barriers.
 
 Set `GPU_HASH_VRAM=1` when replaying to log a per-frame hash of all 1024×512
 RGBA5551 pixels, including offscreen data and mask bits. Compare baseline and
@@ -155,7 +151,7 @@ and dummy-texel tags on the direct additive path.
 
 ## Render-to-texture validation
 
-[RTT design, measurements and hardware handoff](../../docs/gpu-rtt.md).
+[measurement guidance](../../docs/performance.md).
 `rtt.py` checks every RGB5/mask combination, repeated GPU overwrites,
 window fallback, native tile copies, indexed palettes and upload rollover:
 
@@ -224,14 +220,11 @@ a functional oracle, not a model of PICA's subpixel precision.
 64-bit-tile-mask generation`. `upload` records contain `x y width height generation`.
 The regular stats line now attributes syncs to CPU reads/copy fallbacks, texture
 reads, CLUT reads, eviction, invalidation, growth, vertices and staging. `prev`
-counts previous-frame texture/upload waits separately. See
-[the round-two report](../../docs/gpu-rtt-round2.md) for measurements and console
-A/B commands.
+counts previous-frame texture/upload waits separately.
 
 ## Primitive investigation probes
 
-See [the primitive report](../../docs/gpu-primitive-investigation.md) for the
-six-state measurements, limits and named hardware switches. Native replay uses
+Native replay uses
 `PICA_PRIMS=0` for old paths, `1` for copies, `2` for clip-plane skipping, `4`
 for VFP rounding and `7` for all. Set it separately from `PICA_DEBUG`.
 

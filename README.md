@@ -47,12 +47,13 @@ and Symphony of the Night to full game speed on the original 3DS.
 
 ## Performance
 
-v0.4.0 candidate, measured on 2026-10-19 in six saved benchmark scenes,
-using the GPU renderer on both consoles. Each run used a 10-second warmup and
-15-second sample, clock 57, Old slot 2 / New slot 0. The consoles normally use
-HLE BIOS; these gameplay tests load existing save states. These are scene
-measurements, not whole-game compatibility guarantees. NTR was not explicitly
-unloaded; the host observer reported no recent stream packets.
+![Old and New 3DS performance](docs/performance.svg)
+
+Six saved scenes, clock 57, HLE consoles; 10-second warmup, 15-second sample.
+See [methodology and limitations](docs/performance.md).
+
+<details>
+<summary>Exact numbers</summary>
 
 Frameskip-off numbers are emulated frames per second. Full speed is 60 FPS,
 or 100% game speed; automatic frameskip shows fewer pictures to improve speed.
@@ -66,12 +67,14 @@ or 100% game speed; automatic frameskip shows fewer pictures to improve speed.
 | Ridge Racer Type 4 | 60.0 | 100.0% | 60.0 | 100.0% |
 | Castlevania: Symphony of the Night | 57.8 | 100.0% | 60.0 | 100.0% |
 
+</details>
+
 Automatic frameskip reaches full game speed in the tested Crash, Silent Hill,
 R4 and Symphony of the Night scenes on Old 3DS. CTR and GT2 still run slowly.
 All six New 3DS scenes hold about 60 FPS with frameskip off and auto.
 
-Measurements, correctness gates and limitations: [candidate acceptance](docs/v040-candidate.md).
-Changes: [v0.4.0 draft release notes](docs/release-notes-v0.4.0.md).
+Measurements and limitations: [performance](docs/performance.md).
+Changes: [v0.4.0 release notes](docs/release-notes-v0.4.0.md).
 
 ## Presets and settings
 
@@ -163,7 +166,9 @@ When reporting a problem, include the affected session's `log.txt`.
 Requires devkitPro/devkitARM, libctru, citro2d, citro3d, makerom and bannertool.
 The GPU renderer and all core dependencies are included; no submodule, patch step
 or renderer build flag is needed. Core changes are committed directly under
-`core/`. See [core ownership and verification](docs/vendor-core.md).
+`core/`. See [building and testing](docs/building.md) for toolchain setup and checks.
+Export `DEVKITPRO` and `DEVKITARM` and add devkitPro’s tools to `PATH` first,
+as described there.
 
 ```bash
 git clone https://github.com/BreadChaser/PSX3D.git

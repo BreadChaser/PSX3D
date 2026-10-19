@@ -38,4 +38,4 @@ Use `make clean && make -j16` for a clean build; do not apply/regenerate patches
 For file removal or build housekeeping, compare allocated ELF sections with a
 clean baseline using the same toolchain and `SOURCE_DATE_EPOCH` (the core logs
 `__DATE__`/`__TIME__`). Unchanged bytes and addresses avoid Old 3DS code-layout
-regressions. See [vendor-core.md](docs/vendor-core.md).
+regressions. See [building and testing](docs/building.md).

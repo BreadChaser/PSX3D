@@ -1,0 +1,81 @@
+# Building and testing
+
+PSX3D includes its modified PCSX-ReARMed core in `core/`. Edit those files
+directly. No submodules or patch regeneration are needed. The core originated
+from libretro/pcsx_rearmed revision `c8816799b50388e61cfe237fe2cdbb7d8175f20a`.
+Keep its GPL licence, AUTHORS and dependency notices when changing it.
+
+## 3DS build
+
+Install [devkitPro](https://devkitpro.org/wiki/Getting_Started), devkitARM,
+`3ds-dev` and the 3DS curl, mbedTLS, libpng and zlib portlibs. CIA packaging also
+needs [bannertool](https://github.com/Steveice10/bannertool) and
+[makerom](https://github.com/3DSGuy/Project_CTR). Python 3 is used by the build.
+The tested toolchain is devkitARM GCC 16.1.0, libctru 2.7.0, citro2d 1.7.0 and
+citro3d 1.7.1.
+
+```sh
+export DEVKITPRO=/opt/devkitpro
+export DEVKITARM="$DEVKITPRO/devkitARM"
+export PATH="$DEVKITPRO/tools/bin:$DEVKITARM/bin:$PATH"
+git clone https://github.com/BreadChaser/PSX3D.git
+cd PSX3D
+make
+make cia BANNERTOOL=/path/to/bannertool MAKEROM=/path/to/makerom
+```
+
+Outputs are `psx3d/PSX3D.3dsx`, `psx3d/PSX3D.cia` and `psx3d/PSX3D.elf`.
+Use `make clean` before changing toolchain or compiler flags. The default GPU
+layout is `split`; alternative layouts are development comparisons, not user
+settings. `SOURCE_DATE_EPOCH` fixes the embedded build timestamp for executable
+comparisons. CIA packaging includes randomized ticket metadata, so compare the
+3DSX or allocated ELF sections when checking executable identity.
+
+`PSX3D_VERSION` in `psx3d/source/psx3d.h` controls the release version. The root
+Makefile derives the CIA title counter; v0.4.0 uses **4099**. Do not lower that
+counter when installing test builds over the release. The remote build identity is reported by `psx3d/source/devcontrol.c`.
+
+## Host checks
+
+Install a C compiler, Python 3, pkg-config, FreeType, Fontconfig, libpng, zlib,
+OpenSSL, DejaVu fonts and ImageMagick (`magick`). From the repository root:
+
+```sh
+PSX3D_MOCKUPS=/tmp/psx3d-bottom bash psx3d/tests/host/run.sh
+bash psx3d/tests/dev/run.sh
+PSX3D_SETTINGS_OUTPUT=/tmp/psx3d-settings python3 tests/settings/run.py
+bash tests/renderer_config.sh
+bash psx3d/tests/covers/run.sh
+python3 psx3d/tests/covers/worker.py
+python3 psx3d/tests/vout/check.py
+BUILD_DIR=/tmp/psx3d-clips bash tools/input-replay/check.sh
+BUILD_DIR=/tmp/psx3d-gpu bash tools/gpu-compare/regress.sh
+bash tools/pica-layout/check.sh
+bash tools/frameskip/check.sh
+python3 tests/gpu_thread_sim.py
+```
+
+These use local substitutes and ASan/UBSan where applicable. Generated mockups
+are offline renderings, not hardware screenshots; write them outside the source
+tree. See [GPU comparisons](../tools/gpu-compare/README.md) for the independent
+renderer oracles, [remote testing](dev-control.md) for hardware measurements and
+[recording and replay](recorder.md) for deterministic clips.
+
+## Emulation identity gates
+
+The ARM Linux simulator requires an ARMv6 hard-float cross compiler, static
+runtime libraries, QEMU, private game images, BIOS files and benchmark save
+states. Local simulator support lives in the ignored `devtools/` directory;
+it is not needed for a normal 3DS build. Prepare a separate source copy with
+`tools/dynarec-speed/prepare.py --hash <destination>` and build it with
+`tools/dynarec-speed/build.sh <destination>`. Never reuse another build's core
+objects. The simulator relocates RAM and scratchpad to exercise the production
+dynarec paths.
+
+For a change that should preserve emulation, compare baseline and candidate
+using the same runner, options and inputs: six states for 600 frames each,
+per-frame draw hashes, CPU/RAM checkpoints and the complete serialized guest
+state. Also compare 1,200-frame cold boots with a real BIOS and HLE separately.
+Matching hashes establish identity for those inputs, not complete game
+compatibility. Old 3DS CPU performance must be measured on hardware: its small
+instruction cache makes code layout significant.

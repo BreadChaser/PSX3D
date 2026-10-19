@@ -1,8 +1,0 @@
-PASS: empty slot edits, curved stick, all 15 stick-free tilings/targets, stick binding, Hide and blank MENU
-PASS: all 15 curved merges/targets, full-ring ownership, row/column fills and action palette
-PASS: one/two/zero side tiling, FF latch/cache, New mirrored edge-column targets and menu, Old rewind engine clamp
-PASS: every allowed action/slot on both consoles, hotkeys, toggle edges, menu blocking and capability revocation
-PASS: per-console presets/serials, raw inheritance, global/game bindings+stick+hotkeys, resets and legacy migration
-PASS: all symbol/shoulder ink centers at both console label sizes
-PASS: Detailed suppresses hidden controls, MENU remains reachable, stats taps never open blank-layout menus
-PASS: confirmation fresh-A/cancel and production drawing mockups

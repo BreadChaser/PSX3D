@@ -93,7 +93,7 @@ R4 measured 53.65 FPS with automatic RTT and 33.41 with both old paths
 (+60.58%). The gain persists without streaming, so the earlier R4 jump was not
 solely a streaming artifact.
 
-See the [complete hardware check](release-check-v0.3.0.md) for same-binary RTT comparisons,
+See the [performance guide](performance.md) for measurement methodology,
 RC02 screening flags, save/load checks and picture limits.
 
 ## Known issues and upgrading
@@ -112,4 +112,4 @@ upgrading; compatibility across builds is not guaranteed.
 Core credits: PCSX-ReARMed (notaz, Exophase, senquack and libretro contributors),
 PCSX/PCSX-Reloaded/P.E.Op.S., and the 3DS port authors. Frontend: BreadChaser.
 Thanks to devkitPro/libctru/citro2d/citro3d and DSP1/zoogie. GPL-2.0; artwork/font
-credits are in the repository. PSX3D remains a work in progress.
+credits are in the repository. The frontend remains a work in progress.
