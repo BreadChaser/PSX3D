@@ -520,7 +520,6 @@ int libui_run(char *out_path, size_t len)
 	fade = 1;
 	covers_resume();
 	bool home_pending = false;
-	static u32 frame_no;
 	while (aptMainLoop()) {
 		if (dev_tick(false)) {
 			music_play(false);
@@ -550,8 +549,6 @@ int libui_run(char *out_path, size_t len)
 			covers_resume();
 			continue;
 		}
-		// trail for hang diagnosis: last frames before a freeze end up in the log
-		frame_no++;
 
 		if (k & KEY_START) {
 			aptSetHomeAllowed(true);

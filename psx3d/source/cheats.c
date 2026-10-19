@@ -179,7 +179,7 @@ static void parse_plain(const char *path)
 		}
 		if (!more)
 			break;
-		snprintf(name, sizeof(name), "%s", line);
+		strlcpy(name, line, sizeof(name));
 		codes[0] = 0;
 	}
 	fclose(f);
@@ -198,7 +198,9 @@ static void apply(void)
 
 static void on_path(char *out, size_t len)
 {
-	snprintf(out, len, USER_DIR "/%s.on", game);
+	strlcpy(out, USER_DIR "/", len);
+	strlcat(out, game, len);
+	strlcat(out, ".on", len);
 }
 
 static void save_on(void)
@@ -274,7 +276,8 @@ void cheats_load(const char *key)
 		}
 	for (int k = 0; k < nf; k++) {
 		int before = ncheats;
-		snprintf(path, sizeof(path), DB_DIR "/%s", files[k]);
+		strlcpy(path, DB_DIR "/", sizeof(path));
+		strlcat(path, files[k], sizeof(path));
 		parse(path);
 		// drop cheats already listed (same description or same code)
 		int n = before;
@@ -352,7 +355,9 @@ const char *cheats_add_dialog(void)
 	}
 	char path[PATH_LEN];
 	mkdir(USER_DIR, 0777);
-	snprintf(path, sizeof(path), USER_DIR "/%s.txt", game);
+	strlcpy(path, USER_DIR "/", sizeof(path));
+	strlcat(path, game, sizeof(path));
+	strlcat(path, ".txt", sizeof(path));
 	FILE *f = fopen(path, "a");
 	if (!f) {
 		snprintf(msg, sizeof(msg), "Could not save the code");

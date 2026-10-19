@@ -324,7 +324,10 @@ static int16_t input_state_cb(unsigned port, unsigned device, unsigned index, un
 
 static void make_path(char *out, size_t len, const char *dir, const char *ext)
 {
-	snprintf(out, len, "%s/%s%s", dir, game_name, ext);
+	strlcpy(out, dir, len);
+	strlcat(out, "/", len);
+	strlcat(out, game_name, len);
+	strlcat(out, ext, len);
 }
 
 static bool write_file(const char *path, const void *data, size_t size)

@@ -358,7 +358,10 @@ static void serve_client(int fd)
 		char json[12288]="{\"ok\":true,\"recordings\":["; size_t used=strlen(json); unsigned count=0;
 		struct dirent *entry;
 		while ((entry=readdir(dir))) {
-			snprintf(probe,sizeof(probe),"recordings/%s/%s",title,entry->d_name);
+			strlcpy(probe,"recordings/",sizeof(probe));
+			strlcat(probe,title,sizeof(probe));
+			strlcat(probe,"/",sizeof(probe));
+			strlcat(probe,entry->d_name,sizeof(probe));
 			if (!clip_archive_name(probe) || !strstr(entry->d_name,".inp")) continue;
 			if (used+32>=sizeof(json)) break;
 			used+=snprintf(json+used,sizeof(json)-used,"%s%u",count++?",":"",(unsigned)strtoul(entry->d_name,NULL,10));

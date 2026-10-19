@@ -353,7 +353,7 @@ static void phase_end(unsigned k, u64 start)
 #endif
 static unsigned n_list, n_flush;   // diagnostics: ticks in state setup, draw calls, textures
 static unsigned st_why[5], st_evict_lg[NSIZES];   // batch ends: atlas, blend/mode, area, rebind, other
-static unsigned st_batches, st_prims, st_decodes, st_uploads, st_syncs, st_evict, st_inval, st_keys;
+static unsigned st_batches, st_prims, st_decodes, st_uploads, st_syncs, st_evict, st_inval;
 
 static void flush(void);
 static bool decode_gpu(tcache *c, u64 need);

@@ -16,7 +16,7 @@
 // against PlayStation DataCenter. Add a source before extending this list.
 #define SOTN(disc) GAME_PRESET_SAME(disc, { -1, -1, -1, -1, -1, -1, INHERIT_SLOTS })
 static const game_preset_t game_presets[] = {
-	// SotN: round-two GPU approaches software parity in the USA fight.
+	// SotN: GPU rendering verified in the USA prologue fight.
 	// GPU is used on both models.
 	// Regional identities: libretro-database metadat/redump/Sony - PlayStation.dat;
 	// All verified regional releases share the same capabilities.

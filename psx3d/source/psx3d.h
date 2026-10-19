@@ -409,7 +409,6 @@ bool emu_run_game(const char *path, const char *save_name, const char *title);
 
 extern int __ctr_svchax;
 extern float sw_slider;
-extern bool sw_showright, sw_sbs;
 float slider_get(void);
 extern bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_aa, sw_nolcd, sw_nocovers;
 extern bool g_new3ds;

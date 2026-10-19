@@ -80,30 +80,6 @@ void stereo_exit(void)
 
 #define HUD_POP 0.4f      // overlays come this fraction of max depth out of the screen
 
-// classify the 2x2 cells around a mesh point: HUD/text wins if it covers
-// half of them (keeps overlays crisp), then the nearest real depth (so
-// foreground edges don't get pulled back), else it's backdrop
-static u16 sample(const psx3d_depthmap *m, float px, float py)
-{
-	int cx = (int)(px / PSX3D_DM_CELL - 0.5f), cy = (int)(py / PSX3D_DM_CELL - 0.5f);
-	u16 best = 0;        // highest rank = nearest
-	int overlay = 0;
-	for (int dy = 0; dy < 2; dy++)
-		for (int dx = 0; dx < 2; dx++) {
-			int x = cx + dx, y = cy + dy;
-			if (x < 0) x = 0;
-			if (y < 0) y = 0;
-			if (x >= PSX3D_DM_W) x = PSX3D_DM_W - 1;
-			if (y >= PSX3D_DM_H) y = PSX3D_DM_H - 1;
-			u16 z = m->z[y][x];
-			if (z == PSX3D_Z_OVERLAY) overlay++;
-			else if (z != PSX3D_Z_NONE && z != PSX3D_Z_FAR && z > best) best = z;
-		}
-	if (overlay >= 2)
-		return PSX3D_Z_OVERLAY;
-	return best ? best : PSX3D_Z_FAR;
-}
-
 // 0 = drawn last (nearest) .. 1 = drawn first (farthest)
 static inline float farness(const psx3d_depthmap *m, u16 z)
 {

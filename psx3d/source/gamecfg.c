@@ -17,7 +17,9 @@ static char game[PATH_LEN];
 
 static void path_of(char *out, size_t len)
 {
-	snprintf(out, len, DIR_ "/%s.ini", game);
+	strlcpy(out, DIR_ "/", len);
+	strlcat(out, game, len);
+	strlcat(out, ".ini", len);
 }
 
 void gamecfg_load(const char *name)
@@ -35,7 +37,7 @@ void gamecfg_load(const char *name)
 		if (!eq)
 			continue;
 		*eq = 0;
-		snprintf(kv[nkv].key, sizeof(kv[nkv].key), "%s", line);
+		strlcpy(kv[nkv].key, line, sizeof(kv[nkv].key));
 		snprintf(kv[nkv].value, sizeof(kv[nkv].value), "%s", eq + 1);
 		nkv++;
 	}

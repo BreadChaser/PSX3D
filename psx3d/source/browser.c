@@ -115,7 +115,9 @@ static void load_dir(const char *path)
 static void join(char *out, size_t len, const char *dir, const char *name)
 {
 	size_t n = strlen(dir);
-	snprintf(out, len, "%s%s%s", dir, (n && dir[n - 1] == '/') ? "" : "/", name);
+	strlcpy(out, dir, len);
+	if (!n || dir[n - 1] != '/') strlcat(out, "/", len);
+	strlcat(out, name, len);
 }
 
 static void select_name(const char *name)

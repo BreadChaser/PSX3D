@@ -545,7 +545,7 @@ void video_present(bool show_game, void (*draw_top)(void *),
 	video_present_screens(show_game, true, draw_top, draw_bottom, ud);
 }
 
-// Called after the worker is synchronized. Software/RGB24 callbacks leave
+// Called after the GPU thread is synchronized. RGB24 movie callbacks leave
 // a pending upload; GPU 16-bit callbacks are NULL and use renderer serials.
 bool video_display_changed(void)
 {
