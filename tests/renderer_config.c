@@ -58,6 +58,15 @@ int main(void)
   assert(!strcmp(options_get("example"),"first"));
   config_game_end(); config_save(); config_load();
   assert(g_cfg.stereo==(model?2:0));
+  // Dithering follows the game by default on both consoles; a saved choice wins.
+  file(PSX3D_CONFIG,"renderer=gpu\n");
+  config_load();
+  struct retro_variable dither[]={{"pcsx_rearmed_dithering","Dithering; disabled|enabled|force"},{NULL,NULL}};
+  options_register(dither);
+  assert(!strcmp(options_get("pcsx_rearmed_dithering"),"enabled"));
+  file(PSX3D_CONFIG,"renderer=gpu\ncore.pcsx_rearmed_dithering=disabled\n");
+  config_load();
+  assert(!strcmp(options_get("pcsx_rearmed_dithering"),"disabled"));
  }
- puts("PASS: legacy renderer/unai configs ignored; GPU-only options; stored stereo mode preserved");
+ puts("PASS: legacy renderer/unai configs ignored; GPU-only options; stored stereo mode preserved; dithering default");
 }

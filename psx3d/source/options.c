@@ -193,6 +193,11 @@ static void finish_register(void)
 			o->nvalues = 2;
 			free(o->def); o->def = strdup("auto");
 		}
+		// Shaded polygons without the PS1's dither quantize to 15-bit colour
+		// in tinted bands (Silent Hill's fogged ground). Follow the game.
+		if (!strcmp(o->key, "pcsx_rearmed_dithering")) {
+			free(o->def); o->def = strdup("enabled");
+		}
 	}
 	nvisible = 0;
 	for (int i = 0; i < nopts; i++)
@@ -297,7 +302,6 @@ const char *options_get(const char *key)
 	// trade a little accuracy for speed (all still changeable in the menu).
 	if (!ov && !g_new3ds) {
 		static const char *const o3ds[][2] = {
-			{ "pcsx_rearmed_dithering", "disabled" },
 			{ "pcsx_rearmed_spu_reverb", "disabled" },
 			// GTE speed hacks: rare glitches, measurable gain on a 268MHz core
 			{ "pcsx_rearmed_gteregsunneeded", "enabled" },
