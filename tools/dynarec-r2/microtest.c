@@ -8,9 +8,11 @@
 #include "libpcsxcore/r3000a.h"
 #include "libpcsxcore/new_dynarec/new_dynarec.h"
 
-extern unsigned psx3d_dynr2;
+// The memory paths are always on now; a core built with -DDYNR2_FORCE_COLD
+// sends every group guard into its cold copy. One variant per build.
+static unsigned psx3d_dynr2;
 // all experiments off, all on, all on with every group guard failing
-static const unsigned variants[] = {0, 7, 0x107};
+static const unsigned variants[] = {0};
 #define NVAR (sizeof(variants)/sizeof(variants[0]))
 
 static uint32_t random_state = 0x31734bfe;

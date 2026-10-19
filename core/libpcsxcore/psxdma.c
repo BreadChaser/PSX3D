@@ -256,8 +256,6 @@ void psxAbortDma2() {
 	psxRegs.gpuIdleAfter = psxRegs.cycle + 32;
 }
 
-extern unsigned psx3d_dynr2; // bit 8: unrolled OT clear
-
 void psxDma6(u32 madr, u32 bcr, u32 chcr) {
 	u32 words, words_max;
 	u32 *mem;
@@ -277,8 +275,8 @@ void psxDma6(u32 madr, u32 bcr, u32 chcr) {
 		// already 32-bit size
 		words = bcr;
 
-		if (psx3d_dynr2 & 8) {
-			// same entries as below, four per iteration
+		// four entries per iteration
+		{
 			u32 n = mem - (u32 *)psxRegs.ptrs.psxM, v = madr - 4;
 			if (n > bcr)
 				n = bcr;
@@ -290,11 +288,6 @@ void psxDma6(u32 madr, u32 bcr, u32 chcr) {
 			}
 			for (; n; n--, v -= 4)
 				*mem-- = SWAP32(v & 0xffffff);
-		}
-		else
-		while (bcr-- && mem > (u32 *)psxRegs.ptrs.psxM) {
-			*mem-- = SWAP32((madr - 4) & 0xffffff);
-			madr -= 4;
 		}
 		*++mem = SWAP32(0xffffff);
 

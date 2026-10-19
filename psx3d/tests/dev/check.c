@@ -38,7 +38,6 @@ unsigned pica_submit;
 unsigned pica_prims;
 bool pica_texmask = true, pica_texmemo = true;
 int psx3d_idle_skip=1, psx3d_idle_pointer, psx3d_idle_delay;
-unsigned psx3d_dynr2;
 bool sw_pmuphase, sw_pmuclass, sw_rtfsdense;
 void pmu_category_detail(double values[21]) { for (int k=0;k<21;k++) values[k]=-1; }
 void pmu_renderer(double values[4]) { for (int k=0;k<4;k++) values[k]=-1; }
@@ -81,11 +80,6 @@ void debug_parse_switch(const char *word)
 	if (!strcmp(word, "idleptr=on")) psx3d_idle_pointer = 1;
 	if (!strcmp(word, "idledelay=off")) psx3d_idle_delay = 0;
 	if (!strcmp(word, "idledelay=on")) psx3d_idle_delay = 1;
-	if (!strcmp(word, "dynr2_spad=on")) psx3d_dynr2 |= 1;
-	if (!strcmp(word, "dynr2_spsmc=on")) psx3d_dynr2 |= 2;
-	if (!strcmp(word, "dynr2_group=on")) psx3d_dynr2 |= 4;
-	if (!strcmp(word, "dynr2_group=off")) psx3d_dynr2 &= ~4u;
-	if (!strcmp(word, "dynr2_otc=on")) psx3d_dynr2 |= 8;
 	if (!strcmp(word, "pica_prims_old")) pica_prims = 0;
 	if (!strcmp(word, "pica_prims_fast")) pica_prims = 7;
 	if (!strcmp(word, "pica_prims_copy")) pica_prims |= 1;
@@ -240,11 +234,6 @@ int main(void)
 	command("set dyn_lookup=off", true);
 	assert(switches_set("idleptr=on") && psx3d_idle_pointer);
 	assert(switches_set("idledelay=on") && psx3d_idle_delay);
-	assert(switches_set("dynr2_spad=on") && switches_set("dynr2_spsmc=on") && switches_set("dynr2_group=on") && psx3d_dynr2 == 7);
-	assert(switches_set("dynr2_group=off") && psx3d_dynr2 == 3 && !switches_set("dynr2_group=maybe"));
-	assert(switches_set("dynr2_otc=on") && psx3d_dynr2 == 11);
-	command("set dynr2_group=on", true);
-	assert(strstr(response, "false") && psx3d_dynr2 == 11);
 	command("set idleptr=off", true);
 	assert(strstr(response, "false") && psx3d_idle_pointer);
 	command("set pica_prims_fast", true);
@@ -263,7 +252,7 @@ int main(void)
 	assert(!switches_set("fsmart=invalid"));
 	assert(sw_frontend && !sw_floataudio && !sw_rtfs && !sw_rtfsdense && sw_rtfscap == 4);
 	assert(pica_submit == 7 && pica_prims == 7 && pica_texmask && pica_texmemo && psx3d_skipgate);
-	assert(!psx3d_idle_pointer && !psx3d_idle_delay && !psx3d_dynr2);
+	assert(!psx3d_idle_pointer && !psx3d_idle_delay);
 	command("set renderer=gpu", true);
 	assert(strstr(response, "false"));
 	command("ui-key down", false); assert(strstr(response,"false"));

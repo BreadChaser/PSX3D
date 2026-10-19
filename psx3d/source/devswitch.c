@@ -7,7 +7,6 @@
 extern float sw_slider;
 extern unsigned pica_submit;
 extern int psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay;
-extern unsigned psx3d_dynr2;
 extern bool sw_aa, sw_showright, sw_sbs;
 void debug_parse_switch(const char *word);
 
@@ -80,8 +79,7 @@ bool switches_set(const char *word)
 	static const char *flags[] = {"prof",         "stats",     "fs1",         "fs3",  "noskip",
 	                              "nogputhread",  "gputhread", "nosputhread", "acap", "renderer=sw",
 	                              "renderer=gpu", "state0",    "showright",   "sbs",  "gpuasync",
-	                              "nogpuasync",   "gpuflush",  "nogpuflush",  "aa", "rtt=old", "rtt=new", "rtt=auto", "rttcache=old", "rttcache=new", "rtfs", "rtfs=old", "rtfs=new", "rtfs=model", "rtfs=dense", "frontend=old", "frontend=new", "audio=old", "audio=new", "ff=on", "ff=off", "submitstate=old", "submitstate=new", "submitclip=old", "submitclip=new", "submittex=old", "submittex=new", "pmuclass=on", "pmuclass=off", "pmurender=on", "pmurender=off", "pica_prims_old", "pica_prims_fast", "pica_prims_copy", "pica_prims_clip", "pica_prims_round", "skipgate=old", "skipgate=new", "texmask=old", "texmask=new", "texmemo=old", "texmemo=new", "idle=on", "idle=off", "idleptr=on", "idleptr=off", "idledelay=on", "idledelay=off",
-	                              "dynr2_spad=on", "dynr2_spad=off", "dynr2_spsmc=on", "dynr2_spsmc=off", "dynr2_group=on", "dynr2_group=off", "dynr2_otc=on", "dynr2_otc=off"};
+	                              "nogpuasync",   "gpuflush",  "nogpuflush",  "aa", "rtt=old", "rtt=new", "rtt=auto", "rttcache=old", "rttcache=new", "rtfs", "rtfs=old", "rtfs=new", "rtfs=model", "rtfs=dense", "frontend=old", "frontend=new", "audio=old", "audio=new", "ff=on", "ff=off", "submitstate=old", "submitstate=new", "submitclip=old", "submitclip=new", "submittex=old", "submittex=new", "pmuclass=on", "pmuclass=off", "pmurender=on", "pmurender=off", "pica_prims_old", "pica_prims_fast", "pica_prims_copy", "pica_prims_clip", "pica_prims_round", "skipgate=old", "skipgate=new", "texmask=old", "texmask=new", "texmemo=old", "texmemo=new", "idle=on", "idle=off", "idleptr=on", "idleptr=off", "idledelay=on", "idledelay=off"};
 	static const char *prefix[] = {"slider=", "state=", "gldbg=", "vramdump=", "pmu=", "cdra=", "clock="};
 	bool known = false;
 	for (unsigned k = 0; k < sizeof(flags) / sizeof(*flags); k++)
@@ -147,7 +145,6 @@ bool switches_run(char *line, char *game, size_t len, char *error, size_t error_
 	}
 	clip_reset_request();
 	psx3d_idle_skip = 1; psx3d_idle_pointer = psx3d_idle_delay = 0;
-	psx3d_dynr2 = 0;
 	sw_rtfslevel = -1; sw_rtfscap = 4; pica_submit = 7;
 	sw_rtfsdense = sw_rtfsmodel = sw_rtfswindow = sw_rtfs = sw_ff = sw_floataudio = false;
 	sw_frontend = sw_fsmart = true;

@@ -3157,24 +3157,16 @@ static int get_ptr_mem_type(struct compile_state *st, u_int a)
 }
 
 // PSX3D Old 3DS experiments, selected at a clean game load (bits):
-// 1 scratchpad translation as one immediate add (off: two adds, the cost of
-//   the previous 0x0fddf000 mapping), 2 no SMC check after the proven
-//   scratchpad store path (its slow stub keeps the check), 4 group guards,
-//   8 unrolled OT-clear DMA (psxdma.c),
-//   0x100 (tests only) every group guard fails into its cold copy
-unsigned psx3d_dynr2 = 0;
+// Old 3DS memory access paths: the scratchpad is mapped at one ARM
+// immediate (0x13400000) so a guarded access translates with one add, a
+// store that passed the scratchpad guard skips its SMC check, and group
+// guards share one range check (below). DYNR2_FORCE_COLD (tests only)
+// makes every group guard fail into its cold copy.
 static int last_fastpath_type;
 
 static void emit_spad_translate(int r)
 {
-  uintptr_t base = (uintptr_t)psxRegs.ptrs.psxH;
-  u_int armval;
-  if (!(psx3d_dynr2 & 1) && genimm(base, &armval) && (base & 0x00ffffff)) {
-    emit_addimm(r, base & 0xff000000, r);
-    emit_addimm(r, base & 0x00ffffff, r);
-  }
-  else
-    emit_addimm_ptr(r, base, r);
+  emit_addimm_ptr(r, (uintptr_t)psxRegs.ptrs.psxH, r);
 }
 
 static int get_ro_reg(const struct regstat *i_regs, int host_tempreg_free)
@@ -3239,8 +3231,6 @@ static void dynr2_plan(const struct compile_state *st)
     dynr2_active[i] = 0;
   }
   dynr2_nsnap = dynr2_nlc = 0;
-  if (!(psx3d_dynr2 & 4))
-    return;
   for (i = 0; i < st->slen; i++) {
     int b = dops[i].rs1, lo, hi, n = 0, last = -1;
     if (!dynr2_plain_mem(i) || dynr2_head[i] >= 0 || b == 0
@@ -3290,7 +3280,7 @@ static int dynr2_fastpath(struct compile_state *st, int i, int type, int addr,
   int *offset_reg, int *addr_reg_override, const struct regstat *i_regs, void **jaddr)
 {
   int spad = type == MTYPE_1F80 && psxRegs.ptrs.psxH != (void *)0x1f800000;
-  if (dynr2_cold || !(psx3d_dynr2 & 4) || (type != 0 && !spad) || !dynr2_plain_mem(i))
+  if (dynr2_cold || (type != 0 && !spad) || !dynr2_plain_mem(i))
     return 0;
   int h = dynr2_head[i];
   if (h >= 0) {
@@ -3333,8 +3323,11 @@ static int dynr2_fastpath(struct compile_state *st, int i, int type, int addr,
     emit_xorimm(lo ? HOST_TEMPREG : addr, 0x1f800000, HOST_TEMPREG);
     emit_cmpimm(HOST_TEMPREG, n);
     *jaddr = out;
-    if (psx3d_dynr2 & 0x100) emit_jmp(0); // test: always take the cold copy
-    else emit_jc(0);
+#ifdef DYNR2_FORCE_COLD
+    emit_jmp(0);
+#else
+    emit_jc(0);
+#endif
     if (lo)
       emit_xorimm(addr, 0x1f800000, HOST_TEMPREG);
     emit_spad_translate(HOST_TEMPREG);
@@ -3354,8 +3347,11 @@ static int dynr2_fastpath(struct compile_state *st, int i, int type, int addr,
       emit_cmpimm(lo ? HOST_TEMPREG : addr, RAM_SIZE);
     host_tempreg_release();
     *jaddr = out;
-    if (psx3d_dynr2 & 0x100) emit_jmp(0);
-    else emit_jno(0);
+#ifdef DYNR2_FORCE_COLD
+    emit_jmp(0);
+#else
+    emit_jno(0);
+#endif
     if (ram_offset != 0)
       *offset_reg = get_ro_reg(i_regs, 0);
   }
@@ -3937,7 +3933,7 @@ static void store_assemble(struct compile_state *st, int i,
               &offset_reg, &addr_hr_io, ccadj_);
     // Code is only compiled from RAM and BIOS, so a store that passed the
     // scratchpad guard can't hit it. The slow stub still checks.
-    spad_smc = (psx3d_dynr2 & 2) && last_fastpath_type == MTYPE_1F80
+    spad_smc = last_fastpath_type == MTYPE_1F80
       && !HACK_ENABLED(NDHACK_NO_SMC_CHECK);
   }
   else if (c && ram80x_io) {
