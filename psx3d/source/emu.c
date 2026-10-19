@@ -397,12 +397,11 @@ static void state_load(void)
 
 enum { M_RESUME, M_SAVE, M_LOAD, M_DISC, M_CHEATS, M_SETTINGS, M_RESET, M_EXIT,
        M_DISPLAY, M_PERFORMANCE, M_CONTROL_GROUP, M_SOUND, M_GENERAL, M_ADVANCED,
-       M_SCREEN, M_SMOOTH, M_3D, M_RENDERER, M_RES3D, M_FPS,
+       M_SCREEN, M_SMOOTH, M_3D, M_FPS,
        M_CONTROLS, M_CLICK_SIDE, M_AUDIO, M_SOUNDS, M_MUSIC, M_AUTOSAVE, M_REWIND,
        M_DEFAULTS, M_CORE, M_RECORD, M_TONE, M_COUNT };
 static const int menu_sections[M_COUNT] = {
 	[M_SCREEN] = SETTINGS_DISPLAY, [M_SMOOTH] = SETTINGS_DISPLAY, [M_3D] = SETTINGS_DISPLAY,
-	[M_RENDERER] = SETTINGS_PERFORMANCE, [M_RES3D] = SETTINGS_PERFORMANCE,
 	[M_FPS] = SETTINGS_PERFORMANCE, [M_REWIND] = SETTINGS_GENERAL,
 	[M_CONTROLS] = SETTINGS_CONTROLS, [M_CLICK_SIDE] = SETTINGS_CONTROLS,
 	[M_AUDIO] = SETTINGS_SOUND, [M_SOUNDS] = SETTINGS_SOUND, [M_MUSIC] = SETTINGS_SOUND,
@@ -430,7 +429,6 @@ static int menu_items(int *items, bool settings)
 			if (i == M_3D && !g_new3ds) continue;
 			if (i == M_CLICK_SIDE && (!g_new3ds || g_cfg.show_fps == 2 ||
 			    (!touch_buttons_active() && g_cfg.show_fps != 1))) continue;
-			if (i == M_RES3D && renderer_is_gpu()) continue;
 			if (!added_header) { items[n++] = M_DISPLAY + section - 1; added_header = true; }
 			items[n++] = i;
 		}
@@ -485,8 +483,8 @@ static const char *const menu_names[M_COUNT] = {
 	[M_SETTINGS] = "Settings", [M_RESET] = "Reset game", [M_EXIT] = "Exit to library",
 	[M_DISPLAY] = "DISPLAY", [M_PERFORMANCE] = "PERFORMANCE", [M_CONTROL_GROUP] = "CONTROLS",
 	[M_SOUND] = "SOUND", [M_GENERAL] = "GENERAL", [M_ADVANCED] = "ADVANCED",
-	[M_RENDERER] = "Renderer", [M_SCREEN] = "Screen mode", [M_3D] = "3D",
-	[M_RES3D] = "Half-height 3D (faster)", [M_SMOOTH] = "Smoothing",
+	[M_SCREEN] = "Screen mode", [M_3D] = "3D",
+	[M_SMOOTH] = "Smoothing",
 	[M_FPS] = "Show FPS", [M_CONTROLS] = "Controls...", [M_REWIND] = "Rewind",
 	[M_CLICK_SIDE] = "Bottom-screen buttons",
 	[M_AUTOSAVE] = "Continue where I left off", [M_CORE] = "Core options...", [M_RECORD] = "Debug: record audio",
@@ -601,14 +599,12 @@ static void menu_draw_bottom(void *ud)
 	if (have_disk && disk.get_num_images)
 		snprintf(m->val[M_DISC], 48, "disc %u of %u", menu_disc + 1, disk.get_num_images());
 	snprintf(m->val[M_SCREEN], 48, "%s", screen_names[config_screen_mode()]);
-	snprintf(m->val[M_3D], 48, "%s", s3d_names[g_cfg.stereo == 2 && renderer_is_gpu() ? 1 : g_cfg.stereo]);
+	snprintf(m->val[M_3D], 48, "%s", s3d_names[g_cfg.stereo == 2 ? 1 : g_cfg.stereo]);
 	snprintf(m->val[M_SMOOTH], 48, "%s", g_cfg.smooth ? "On" : "Off");
 	snprintf(m->val[M_FPS], 48, "%s", g_cfg.show_fps == 2 ? "Detailed" : g_cfg.show_fps ? "FPS" : "Off");
-	snprintf(m->val[M_RENDERER], 48, "%s", g_cfg.renderer ? "Software" : "GPU (experimental)");
 	snprintf(m->val[M_AUDIO], 48, "%s", g_cfg.audio_stretch ? "On" : "Off");
 	snprintf(m->val[M_SOUNDS], 48, "%s", g_cfg.sounds ? "On" : "Off");
 	snprintf(m->val[M_MUSIC], 48, "%s", g_cfg.music ? "On" : "Off");
-	snprintf(m->val[M_RES3D], 48, "%s", g_cfg.half3d ? "On" : "Off");
 	snprintf(m->val[M_REWIND], 48, "%s",
 		gamecfg_int("rewind", 0) ? (rewind_active() ? "On" : "On (unavailable)") : "Off");
 	snprintf(m->val[M_CLICK_SIDE], 48, "%s", g_cfg.touch_click_left ? "Left side" : "Right side");
@@ -810,7 +806,6 @@ static bool menu_run(int initial_screen)
 						rewind_stop();
 				} break;
 				case M_AUTOSAVE: g_cfg.autosave ^= 1; break;
-				case M_RENDERER: config_set_renderer(!g_cfg.renderer); break;
 				case M_AUDIO: g_cfg.audio_stretch = g_cfg.audio_stretch ? 0 : 50; break;
 				case M_SOUNDS: g_cfg.sounds ^= 1; break;
 				case M_MUSIC: g_cfg.music ^= 1; break;
@@ -830,12 +825,11 @@ static bool menu_run(int initial_screen)
 				case M_SCREEN: config_game_set_screen((config_screen_mode() + dir + 3) % 3); sync_widescreen(); break;
 				case M_3D: {
 					// "real" per-object 3D is experimental: debug builds only
-					int modes = g_cfg.debug && !renderer_is_gpu() ? 3 : 2;
+					int modes = 2;
 					g_cfg.stereo = (g_cfg.stereo + dir + modes) % modes;
 					config_sync_stereo();
 				} break;
 				case M_SMOOTH: g_cfg.smooth ^= 1; break;
-				case M_RES3D: g_cfg.half3d ^= 1; psx3d_set_half3d(g_cfg.half3d); break;
 				case M_FPS: statsview_cycle(); break;
 				case M_CORE:
 					if (k & KEY_A) {
@@ -1032,9 +1026,8 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	memset(&disk, 0, sizeof(disk));
 	log_printf("loading %s\n", path);
 	config_game_begin(game_name);   // before loading: the core reads the widescreen option at load
-	bool software = sw_renderer >= 0 ? sw_renderer : config_game_renderer();
-	log_printf("renderer: %s (applied at game start)\n", software ? "Software" : "GPU");
-	if (!video_game_begin(software)) {
+	log_printf("renderer: GPU\n");
+	if (!video_game_begin()) {
 		log_printf("renderer initialization failed\n");
 		config_game_end();
 		return false;
@@ -1051,32 +1044,6 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		video_game_end();
 		return false;
 	}
-	// CheckCdrom identifies the serial after GPU_init. Apply its profile
-	// before any emulated frame; at most one reload, never on disc swaps.
-	int profiled = sw_renderer >= 0 ? sw_renderer : config_game_renderer();
-	if (profiled != software) {
-		retro_unload_game();
-		retro_deinit();
-		core_initialized = false;
-		video_game_end();
-		software = profiled;
-		g_cfg.renderer = profiled;
-		if (!video_game_begin(software)) {
-			config_game_end();
-			return false;
-		}
-		config_sync_stereo();
-		retro_init();
-		core_initialized = true;
-		if (!retro_load_game(&info)) {
-			retro_deinit();
-			core_initialized = false;
-			video_game_end();
-			config_game_end();
-			return false;
-		}
-		log_printf("renderer: %s (curated disc profile)\n", software ? "Software" : "GPU");
-	}
 	// DualShock: starts in digital mode, games switch it to analog themselves,
 	// and analog-only games (Ape Escape) need it plugged in
 	retro_set_controller_port_device(0, RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_ANALOG, 1));
@@ -1087,7 +1054,6 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	srm_load();
 	cheats_load(game_name);
 	sync_widescreen();
-	psx3d_set_half3d(g_cfg.half3d);
 	psx3d_prof_on = sw_prof;
 
 	{
@@ -1241,8 +1207,6 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			else if (g_cfg.stereo != 2 || below > 30)
 				config_set_stereo_active(false);
 		}
-		if (!renderer_is_gpu() && g_cfg.stereo == 2)
-			psx3d_depth_frame();   // this frame's depth map is complete
 		u64 t1 = svcGetSystemTick();
 		fps_frames++;
 		u64 run_ticks = t1 - t0;

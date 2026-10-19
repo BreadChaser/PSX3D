@@ -98,7 +98,7 @@ bool switches_run(char *line, char *game, size_t len, char *error, size_t error_
 	sw_nogputhread = sw_aa = sw_showright = sw_sbs = false;
 	sw_gpu_async = sw_gpu_flush = true;
 	sw_slider = -1;
-	sw_state = sw_renderer = sw_pmu0 = sw_pmu1 = -1;
+	sw_state = sw_pmu0 = sw_pmu1 = -1;
 	sw_gldbg = sw_vramdump = 0;
 	pica_prims = 7; sw_pmuphase = sw_pmuclass = false;
 	pica_texmask = pica_texmemo = true; psx3d_skipgate = 1;

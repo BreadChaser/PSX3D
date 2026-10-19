@@ -134,7 +134,6 @@ int sw_state = -1;       // test: load this save state slot when the game starts
 bool sw_nogputhread;
 bool sw_gpu_async = true;
 bool sw_gpu_flush = true;
-int sw_renderer = -1;    // renderer=sw|gpu overrides global/per-game settings
 bool sw_aa;              // test: Old 3DS: gameplay supersampled too
 bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 
@@ -182,8 +181,7 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "gputhread")) sw_nogputhread = false;
 		else if (!strcmp(a, "nosputhread")) sw_nosputhread = true;
 		else if (!strcmp(a, "acap")) sw_acap = true;
-		else if (!strcmp(a, "renderer=sw")) sw_renderer = 1;
-		else if (!strcmp(a, "renderer=gpu")) sw_renderer = 0;
+		else if (!strcmp(a, "renderer=sw") || !strcmp(a, "renderer=gpu")) { /* legacy key: GPU only */ }
 		else if (!strcmp(a, "state0")) sw_state = 0;
 		else if (!strncmp(a, "state=", 6)) sw_state = atoi(a + 6);
 		else if (!strcmp(a, "rtt=old")) sw_gldbg = (sw_gldbg | 262144) & ~1048576;

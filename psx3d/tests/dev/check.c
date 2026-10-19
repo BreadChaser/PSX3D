@@ -53,7 +53,7 @@ const char *options_get(const char *key)
 	return "disabled";
 }
 void pmu_categories(double cycles[3], unsigned counts[3]) { for (int k=0;k<3;k++) { cycles[k]=-1; counts[k]=0; } }
-bool renderer_is_gpu(void) { return sw_renderer != 1; }
+bool renderer_is_gpu(void) { return true; }
 unsigned statsview_emulated(void) { return 60; }
 int library_count(void) { return 2; }
 const game_t *library_get(int i) { return &games[i]; }
@@ -184,7 +184,7 @@ int main(void)
 	sample(3000, 60);
 	assert(run_index == 1 && load_pending && batch_active);
 	dev_game_ended(true);
-	assert(dev_next_game(path, save, title) && sw_renderer == 1);
+	assert(dev_next_game(path, save, title) && renderer_is_gpu());
 	dev_game_started(title, true);
 	sample(4000, 1);
 	sample(5000, 30);

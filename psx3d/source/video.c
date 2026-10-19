@@ -1,9 +1,4 @@
-// Video: the core renders RGB565 straight into a linear-memory buffer we hand
-// it (GET_CURRENT_SOFTWARE_FRAMEBUFFER). The GPU's DMA engine converts that
-// buffer into a tiled texture, and citro2d draws it scaled on the top screen.
-// Two buffers alternate so the DMA of one frame runs on the GPU, queued ahead
-// of the draw, while the core is already rendering the next one into the
-// other buffer; the CPU never waits for the copy.
+// Video: GPU scanout presentation; RGB24 movies retain the CPU staging path.
 #include <string.h>
 #include <stdlib.h>
 #include "psx3d.h"
@@ -11,7 +6,6 @@
 #include "pica_shbin.h"
 #include "../../core/libpcsxcore/psx3d_depth.h"
 
-int psx3d_renderer_select(int software);
 
 #define TEX_W 1024
 #define TEX_H 512
@@ -33,15 +27,7 @@ bool ui_wants_3d;
 
 // 3D slider fully up pushes the game picture this many pixels behind the screen
 #define MAX_DEPTH_PX 8.0f
-// real 3D: full slider = this much disparity for the farthest things, in
-// PS1 pixels (shown 1.25x wider on the 3DS)
-#define MAX_REAL_PX 9.0f
 static C3D_Tex tex;
-// real 3D: the core draws each eye into its own VRAM; the left eye is the
-// normal game picture, the right one is converted here from the second VRAM
-static C3D_Tex tex_r;
-static u16 *right_lin;               // linear staging, TEX_W pixels per row
-static bool right_pending, right_ok;
 static Tex3DS_SubTexture subtex;
 static u16 *fbs[2];          // linear memory, TEX_W pixels per row
 static int fb_cur;           // buffer the core renders into next
@@ -111,7 +97,7 @@ bool video_init(void)
 {
 	gfxInitDefault();
 	gfxSet3D(false);  // switched on per frame when the game is shown in 3D
-	if (!C3D_Init(0x100000))   // reserve room for either renderer's command lists
+	if (!C3D_Init(0x100000))   // reserve room for GPU command lists
 		return false;
 	// the library's live floor mesh alone is a few thousand primitives
 	if (!C2D_Init(16384))
@@ -154,15 +140,11 @@ bool video_init(void)
 static bool hardware_active;
 bool renderer_is_gpu(void) { return hardware_active; }
 
-bool video_game_begin(bool software)
+bool video_game_begin(void)
 {
-	if (psx3d_renderer_select(software) != 0)
-		return false;
-	have_frame = right_ok = right_pending = false;
+	have_frame = false;
 	pending = NULL;
 	fb_cur = 0;
-	if (software)
-		return true;
 	music_unload();
 	video_gpu_idle();
 	covers_release_gpu();
@@ -195,23 +177,12 @@ void video_game_end(void)
 		hardware_active = false;
 		music_reload();
 	}
-	if (tex_r.data) {
-		C3D_TexDelete(&tex_r);
-		memset(&tex_r, 0, sizeof(tex_r));
-	}
-	if (right_lin) linearFree(right_lin);
-	right_lin = NULL;
-	have_frame = right_ok = right_pending = false;
+	have_frame = false;
 	pending = NULL;
 }
 
 void video_exit(void)
 {
-	if (tex_r.data)
-		C3D_TexDelete(&tex_r);
-	if (right_lin)
-		linearFree(right_lin);
-	right_lin = NULL;
 	C3D_TexDelete(&tex);
 	for (int i = 0; i < 2; i++) {
 		if (fbs[i])
@@ -273,58 +244,6 @@ void video_frame(const void *data, unsigned width, unsigned height, size_t pitch
 	pending = fb;
 	fb_cur = (fb == fbs[0]) ? 1 : 0;
 
-	// real 3D: the right eye's picture is in the core's second VRAM, PS1
-	// BGR555; convert it the same way (when it's the same size as the left)
-	right_ok = false;
-	u64 rt0 = svcGetSystemTick();
-	if (!renderer_is_gpu() && g_cfg.stereo == 2 && !right_lin) {
-		right_lin = linearAlloc(TEX_W * TEX_H * 2);
-		if (!right_lin || !C3D_TexInit(&tex_r, TEX_W, TEX_H, GPU_RGB565)) {
-			if (right_lin) linearFree(right_lin);
-			right_lin = NULL;
-		} else
-			C3D_TexSetWrap(&tex_r, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
-	}
-	if (!renderer_is_gpu() && g_cfg.stereo == 2 && right_lin) {
-		int rx, ry, rw, rh, rgb24;
-		const u16 *v2 = psx3d_right_get(&rx, &ry, &rw, &rh, &rgb24);
-		if (v2 && !rgb24 && (unsigned)rw == width && ((unsigned)rh == height || (unsigned)rh == height * 2)) {
-			int step = (unsigned)rh == height * 2 ? 2 : 1;   // 480-line modes: every other line, like the left
-			for (unsigned yy = 0; yy < height; yy++) {
-				const u16 *src = v2 + ((ry + yy * step) & 511) * 1024;
-				u16 *dst = right_lin + yy * TEX_W;
-				if (!(rx & 1) && rx + width <= 1024) {
-					// two pixels per word: BGR555 -> RGB565 on both halves at once
-					const u32 *s2 = (const u32 *)(src + rx);
-					u32 *d2 = (u32 *)dst;
-					for (unsigned xx = 0; xx < width / 2; xx++) {
-						u32 p = s2[xx];
-						u32 r = p & 0x001f001f, g = (p >> 5) & 0x001f001f, b = (p >> 10) & 0x001f001f;
-						d2[xx] = (r << 11) | (g << 6) | ((g & 0x00100010) << 1) | b;
-					}
-				} else {
-					for (unsigned xx = 0; xx < width; xx++) {
-						u16 p = src[(rx + xx) & 1023];
-						u16 r = p & 31, g = (p >> 5) & 31, b = (p >> 10) & 31;
-						dst[xx] = (u16)((r << 11) | (g << 6) | ((g >> 4) << 5) | b);
-					}
-				}
-			}
-			GSPGPU_FlushDataCache(right_lin, TEX_W * height * 2);
-			right_pending = right_ok = true;
-		}
-	}
-	if (!renderer_is_gpu() && g_cfg.stereo == 2) {
-		static u64 acc; static int n;
-		acc += svcGetSystemTick() - rt0;
-		if (++n == 60) {
-			float zc; int n3, n2, dmin, dmax, zmin, zmax;
-			psx3d_stats(&zc, &n3, &n2, &dmin, &dmax, &zmin, &zmax);
-			log_printf("  3d: convert %.2fms zc %.0f z %d..%d disp %d..%d polys3d %d 2d %d\n",
-				acc / 60.0 / CPU_TICKS_PER_MSEC, zc, zmin, zmax, dmin, dmax, n3, n2);
-			acc = 0; n = 0;
-		}
-	}
 }
 
 // Copy the same texture/scanout draw_game presents, including the held
@@ -454,10 +373,6 @@ static void draw_game_tex(C3D_Tex *t, float eye_dx)
 
 static void draw_game(float eye_dx)
 {
-	if (!renderer_is_gpu()) {
-		draw_game_tex(&tex, eye_dx);
-		return;
-	}
 	// hardware renderer: the picture is already a GPU texture
 	C3D_Tex *t;
 	float l, tp, r, b, w, h;
@@ -579,15 +494,7 @@ void video_present_screens(bool show_game, bool repaint_top, void (*draw_top)(vo
 			stereo_on = stereo;
 		}
 		float depth = stereo ? slider * MAX_DEPTH_PX : 0.0f;
-		// real 3D: the core drew each eye separately; tell it how strong
-		psx3d_set_strength(show_game && !renderer_is_gpu() && stereo && g_cfg.stereo == 2 ? slider * MAX_REAL_PX : 0.0f);
-		if (right_pending) {
-			GX_DisplayTransfer((u32 *)right_lin, GX_BUFFER_DIM(TEX_W, rows),
-				(u32 *)tex_r.data, GX_BUFFER_DIM(TEX_W, rows), TRANSFER_FLAGS);
-			right_pending = false;
-		}
-		bool real = show_game && stereo && g_cfg.stereo == 2 && have_frame && right_ok;
-
+		// Stored stereo=2 falls back to screen depth until GPU real 3D lands.
 		// gameplay at 1x on Old 3DS, menus supersampled
 		bool plain = renderer_is_gpu() && plain_ok && show_game && !in_menu_call;
 		if (plain != plain_now) {
@@ -598,16 +505,7 @@ void video_present_screens(bool show_game, bool repaint_top, void (*draw_top)(vo
 		C3D_RenderTarget *tl = top, *tr = top_r;
 		C2D_TargetClear(tl, C2D_Color32(0, 0, 0, 255));
 		top_begin(tl);
-		if (real && sw_sbs) {
-			// test: both eyes side by side (left | right), each squeezed to half width
-			C2D_Image l = { &tex, &subtex }, r = { &tex_r, &subtex };
-			draw_game(0.0f);   // sets up subtex
-			C2D_DrawRectSolid(0, 0, 0.55f, 400, 240, C2D_Color32(0, 0, 0, 255));
-			C2D_DrawImageAt(l, 0, 0, 0.6f, NULL, 200.0f / frame_w, 240.0f / frame_h);
-			C2D_DrawImageAt(r, 200, 0, 0.6f, NULL, 200.0f / frame_w, 240.0f / frame_h);
-		} else if (real)
-			draw_game_tex(sw_showright ? &tex_r : &tex, 0.0f);   // left eye: the core already moved everything
-		else if (show_game)
+		if (show_game)
 			draw_game(-depth);
 		ui_eye = ui3d ? -1 : 0;
 		if (draw_top)
@@ -616,9 +514,7 @@ void video_present_screens(bool show_game, bool repaint_top, void (*draw_top)(vo
 		if (stereo) {
 			C2D_TargetClear(tr, C2D_Color32(0, 0, 0, 255));
 			top_begin(tr);
-			if (real)
-				draw_game_tex(&tex_r, 0.0f);
-			else if (show_game)
+			if (show_game)
 				draw_game(depth);
 			ui_eye = ui3d ? 1 : 0;
 			if (draw_top)
@@ -654,7 +550,7 @@ void video_present(bool show_game, void (*draw_top)(void *),
 bool video_display_changed(void)
 {
 	bool gpu_changed = renderer_is_gpu() && pica_display_changed();
-	return pending || right_pending || gpu_changed;
+	return pending || gpu_changed;
 }
 
 // Submit required offscreen work without composing or swapping LCD targets.

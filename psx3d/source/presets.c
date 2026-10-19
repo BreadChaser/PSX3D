@@ -23,7 +23,6 @@ game_preset_options_t game_capabilities(void)
 		.needs_l2r2 = !g_new3ds,
 		.needs_l3r3 = 1,
 		.needs_right_stick = !g_new3ds,
-		.renderer = PRESET_RENDERER_DEFAULT,
 		.touch_bindings = {-2, -2, -2, -2, -2, -2},
 	};
 	if (current_preset) {
@@ -34,7 +33,6 @@ game_preset_options_t game_capabilities(void)
 		RESOLVE(fast_forward);
 		RESOLVE(rewind);
 		RESOLVE(touch_controls);
-		RESOLVE(renderer);
 		RESOLVE(needs_l2r2);
 		RESOLVE(needs_l3r3);
 		RESOLVE(needs_right_stick);

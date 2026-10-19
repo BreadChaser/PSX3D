@@ -224,11 +224,11 @@ static bool contains(const char *path,const char *needle)
 #define INHERIT_TEST_SLOTS { -2,-2,-2,-2,-2,-2 }
 // Fixtures never enter the compiled retail table.
 static const game_preset_t l2_fixture=GAME_PRESET_SAME("TEST00001",
- {0,0,0,1,0,0,PRESET_RENDERER_DEFAULT,INHERIT_TEST_SLOTS});
+ {0,0,0,1,0,0,INHERIT_TEST_SLOTS});
 static const game_preset_t blank_fixture=GAME_PRESET_SAME("TEST00002",
- {0,0,0,0,0,0,PRESET_RENDERER_DEFAULT,INHERIT_TEST_SLOTS});
+ {0,0,0,0,0,0,INHERIT_TEST_SLOTS});
 static const game_preset_t enabled_fixture=GAME_PRESET_SAME("TEST00003",
- {1,1,0,1,1,1,PRESET_RENDERER_DEFAULT,INHERIT_TEST_SLOTS});
+ {1,1,0,1,1,1,INHERIT_TEST_SLOTS});
 static void paint(const char *name) { shot(name); touch_buttons_draw(); statsview_draw(); shot_end(); }
 static void clean_input(bool model)
 {
@@ -451,21 +451,15 @@ static void serial_config_checks(void)
   input_touch_disc_log(msg);
   assert(current_preset == &game_presets[i] && input_map_raw(10)==-2);
   assert(game_capabilities().fast_forward == (game_presets[i].old3ds.fast_forward != 0));
-  if(game_presets[i].old3ds.renderer == PRESET_RENDERER_SOFTWARE) {
-   assert(game_capabilities().renderer == PRESET_RENDERER_SOFTWARE);
-   g_new3ds=true; assert(game_capabilities().renderer == PRESET_RENDERER_SOFTWARE);
-   g_new3ds=false;
-  }
  }
  input_touch_disc_log("CD-ROM ID: scus_944.23\n"); assert(current_preset);
  input_touch_disc_log("CD-ROM ID: SCUS944230\n"); assert(!current_preset);
  input_touch_disc_log("CD-ROM ID: SLUS99999\n"); assert(game_capabilities().fast_forward);
  // Explicit preset assignments, separate consoles and shorthand inheritance.
  static const game_preset_t assigned={"TEST00004",
-  {0,0,0,0,0,0,PRESET_RENDERER_SOFTWARE,{12,13,-1,-1,-1,-1}},
-  {1,1,0,0,0,0,PRESET_RENDERER_GPU,{-1,-1,9,-1,16,18}}};
+  {0,0,0,0,0,0,{12,13,-1,-1,-1,-1}},
+  {1,1,0,0,0,0,{-1,-1,9,-1,16,18}}};
  current_preset=&assigned; assert(input_map_get(10)==12 && input_map_get(12)==-1);
- assert(game_capabilities().renderer==PRESET_RENDERER_SOFTWARE);
  input_map_set(12,9); config_save(); config_load(); assert(input_map_get(12)==9);
  config_game_begin("Dynamic slots"); current_preset=&l2_fixture;
  input_map_set(12,8); input_stick_set(1); input_hotkey_load(0,"off");
@@ -492,7 +486,7 @@ static void serial_config_checks(void)
  config_game_begin("Legacy off"); assert(!touch_buttons_active());
  assert(config_game_reset()); assert(touch_buttons_active()); config_game_end();
  clean_input(true); current_preset=&assigned;
- assert(input_map_get(12)==9 && input_map_get(13)==-1 && game_capabilities().renderer==PRESET_RENDERER_GPU);
+ assert(input_map_get(12)==9 && input_map_get(13)==-1);
  hide_touch(); input_map_set(12,9); input_map_set(13,0); paint("new3ds-symbols");
  input_map_set(12,16); input_map_set(13,18); paint("new3ds-actions"); controls_shot("controls-actions",12);
  config_reset_defaults();

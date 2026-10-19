@@ -18,7 +18,6 @@ bool cheats_widescreen(bool on) { return on; }
 // These functions and tables are extracted verbatim from production sources.
 #include "settings_extract.h"
 #define HAVE_NO_LANGEXTRA
-#define GPU_UNAI
 #define GPU_PICA
 #define _3DS
 #define USE_ASYNC_CDROM
@@ -63,18 +62,16 @@ static unsigned disc_count(void) { return 2; }
 static void visibility(void)
 {
  int items[M_COUNT];
- for(int model=0;model<2;model++) for(int software=0;software<2;software++) {
-  g_new3ds=model; host_gpu=!software; config_reset_defaults(); g_cfg.renderer=software;
+ for(int model=0;model<2;model++) {
+  g_new3ds=model; host_gpu=true; config_reset_defaults();
   int n=settings_items(items);
   assert(n>7 && n<=S_COUNT);
   assert(has_item(items,n,S_3D)==model);
   assert(has_item(items,n,S_CLICK_SIDE)==model);
-  assert(has_item(items,n,S_RES3D)==software);
   n=menu_items(items,true);
   assert(n>7 && n<=M_COUNT);
   assert(has_item(items,n,M_3D)==model);
   assert(has_item(items,n,M_CLICK_SIDE)==model);
-  assert(has_item(items,n,M_RES3D)==software);
   assert(has_item(items,n,M_REWIND)==model);
   int general=settings_find(items,n,M_AUTOSAVE,M_DISPLAY,M_ADVANCED);
   assert(items[general+1]==(model?M_REWIND:M_DEFAULTS));
@@ -101,10 +98,10 @@ static void visibility(void)
   }
  }
  // Rebuilding a list preserves the setting, not its old numeric row index.
- g_new3ds=true; config_reset_defaults(); g_cfg.renderer=1;
+ g_new3ds=true; config_reset_defaults();
  int n=settings_items(items), sel=settings_find(items,n,S_DEFAULTS,S_DISPLAY,S_ADVANCED);
  assert(items[sel]==S_DEFAULTS);
- g_cfg.renderer=0; n=settings_items(items);
+  n=settings_items(items);
  sel=settings_find(items,n,S_DEFAULTS,S_DISPLAY,S_ADVANCED); assert(items[sel]==S_DEFAULTS);
  g_cfg.show_fps=2; n=menu_items(items,true);
  sel=settings_find(items,n,M_FPS,M_DISPLAY,M_ADVANCED); assert(items[sel]==M_FPS);
@@ -128,14 +125,7 @@ static void visibility(void)
  n=menu_items(items,true); assert(!has_item(items,n,M_REWIND));
  assert(!game_capabilities().fast_forward && !game_capabilities().rewind);
  game_presets_reset();
- // Hide software-only settings according to the running renderer, even when
- // the pending renderer has changed; library settings use the chosen default.
- g_new3ds=true; config_reset_defaults(); host_gpu=true;
- config_game_begin("settings-check"); config_set_renderer(1);
- n=menu_items(items,true); assert(!has_item(items,n,M_RES3D));
- config_set_renderer(0); host_gpu=false;
- n=menu_items(items,true); assert(has_item(items,n,M_RES3D));
- config_game_end();
+ g_new3ds=true; config_reset_defaults();
  struct retro_variable vars[] = {
   {"pcsx_rearmed_frameskip_type","Skip; disabled|auto|auto_threshold|fixed_interval"},
   {"pcsx_rearmed_frameskip_threshold","Limit; 33|50"},
@@ -148,15 +138,15 @@ static void visibility(void)
   {"psx3d_renderer","Renderer; Software|GPU (experimental)"},
   {NULL,NULL}
  };
- options_register(vars); g_cfg.renderer=0;
+ options_register(vars);
  assert(option_index("pcsx_rearmed_gpu_unai_fast_lighting")==-1);
  assert(option_index("pcsx_rearmed_screen_centering")==-1);
  assert(option_index("pcsx_rearmed_psx3d_stereo")==-1);
  assert(option_index("pcsx_rearmed_psx3d_widescreen")==-1);
  assert(option_index("psx3d_renderer")==-1);
- g_cfg.renderer=1;
- assert(option_index("pcsx_rearmed_gpu_unai_fast_lighting")>=0);
- assert(option_index("pcsx_rearmed_screen_centering")>=0);
+
+ assert(option_index("pcsx_rearmed_gpu_unai_fast_lighting")==-1);
+ assert(option_index("pcsx_rearmed_screen_centering")==-1);
  assert(option_index("pcsx_rearmed_screen_centering_x")==-1);
  assert(option_index("pcsx_rearmed_frameskip_threshold")==-1);
  assert(option_index("pcsx_rearmed_frameskip_interval")==-1);
@@ -164,7 +154,7 @@ static void visibility(void)
  assert(option_index("pcsx_rearmed_frameskip_threshold")>=0);
  assert(option_index("pcsx_rearmed_frameskip_interval")>=0);
  config_set_core_override("pcsx_rearmed_screen_centering","manual");
- assert(option_index("pcsx_rearmed_screen_centering_x")>=0);
+ assert(option_index("pcsx_rearmed_screen_centering_x")==-1);
 }
 static bool rewind_text(const char *text)
 {
@@ -235,8 +225,8 @@ int main(void)
  // Record the exact normal Core options inventory for each console/renderer.
  char inventory_path[1024]; snprintf(inventory_path,sizeof(inventory_path),"%s/core-inventory.tsv",getenv("PSX3D_MOCKUPS"));
  FILE *inventory=fopen(inventory_path,"w"); assert(inventory);
- for(int model=0;model<2;model++) for(int software=0;software<2;software++) {
-  g_new3ds=model; config_reset_defaults(); g_cfg.renderer=software;
+ for(int model=0;model<2;model++) {
+  g_new3ds=model; config_reset_defaults();
   int n=options_count();
   for(int i=0;i<n;i++) {
    assert(strcmp(options_desc(i),opts[visible[i]].desc)); // every visible core option has a plain name
@@ -256,13 +246,13 @@ int main(void)
      }
     }
    }
-   fprintf(inventory,"%s\t%s\t%s\t%s\t%s\n",model?"New":"Old",software?"Software":"GPU",options_key(i),options_desc(i),options_value(i));
+   fprintf(inventory,"%s\t%s\t%s\t%s\t%s\n",model?"New":"Old","GPU",options_key(i),options_desc(i),options_value(i));
   }
  }
  fclose(inventory);
 
  for(int model=0;model<2;model++) for(int game=0;game<2;game++) {
-  g_new3ds=model; config_reset_defaults(); host_gpu=!g_cfg.renderer;
+  g_new3ds=model; config_reset_defaults(); host_gpu=true;
   if(game) config_game_begin("settings-mockup");
   // These are scroll positions within ONE list, not category child pages.
   static const char *const names[]={"Settings","Display","Performance","Controls","Sound","General","Advanced"};
@@ -286,18 +276,6 @@ int main(void)
   flist_snap(&core_st.core_fl,0,count,7); flist_snap(&core_m.core_fl,0,count,7);
   char core_name[100]; snprintf(core_name,sizeof(core_name),"%s-%s-Core",model?"new":"old",game?"game":"global");
   shot(core_name); if(game) menu_draw_bottom(&core_m); else settings_bottom(&core_st); shot_end();
-  // Show half-height on Old 3DS too, with Software explicitly selected.
-  if(!model) {
-   host_gpu=false; g_cfg.renderer=1;
-   settings_t st={0}; st.nitems=settings_items(st.items);
-   menu_t m={.settings=true}; m.nitems=menu_items(m.items,true);
-   st.sel=settings_find(st.items,st.nitems,S_RES3D,S_DISPLAY,S_ADVANCED);
-   m.sel=settings_find(m.items,m.nitems,M_RES3D,M_DISPLAY,M_ADVANCED);
-   shot(game?"old-game-Software":"old-global-Software");
-   if(game) { flist_snap(&m.fl,m.sel,m.nitems,7); menu_draw_bottom(&m); check_spacing(m.nitems,m.sel,menu_label,menu_value,&m); }
-   else { flist_snap(&st.fl,st.sel,st.nitems,7); settings_bottom(&st); check_spacing(st.nitems,st.sel,s_label,s_value,&st); }
-   shot_end();
-  }
   if(game) config_game_end();
  }
  options_clear(); clear_overrides();

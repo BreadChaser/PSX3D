@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
-out = root / 'docs/settings'
+out = Path(os.environ.get('PSX3D_SETTINGS_OUT', root / 'docs/settings'))
 out.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory() as tmp:
     tmp = Path(tmp)

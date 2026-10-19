@@ -434,17 +434,17 @@ static void clamp_list(void)
 // game; a game's own screen mode, controls and rewind live in its menu).
 
 enum { S_DISPLAY, S_PERFORMANCE, S_CONTROL_GROUP, S_SOUND, S_GENERAL, S_ADVANCED,
-       S_SCREEN, S_SMOOTH, S_3D, S_RENDERER, S_RES3D, S_FPS, S_CONTROLS, S_CLICK_SIDE,
+       S_SCREEN, S_SMOOTH, S_3D, S_FPS, S_CONTROLS, S_CLICK_SIDE,
        S_AUDIO, S_SOUNDS, S_MUSIC, S_AUTOSAVE, S_DEFAULTS, S_CORE, S_COUNT };
 static const char *const s_names[S_COUNT] = {
 	"DISPLAY", "PERFORMANCE", "CONTROLS", "SOUND", "GENERAL", "ADVANCED",
-	"Screen mode", "Smoothing", "3D", "Renderer", "Half-height 3D (faster)", "Show FPS",
+	"Screen mode", "Smoothing", "3D", "Show FPS",
 	"Controls...", "Bottom-screen buttons", "Smooth audio when slow", "Menu sounds", "Library music",
 	"Continue where I left off", "Reset to defaults", "Core options...",
 };
 static const int s_sections[S_COUNT] = {
 	[S_SCREEN] = SETTINGS_DISPLAY, [S_SMOOTH] = SETTINGS_DISPLAY, [S_3D] = SETTINGS_DISPLAY,
-	[S_RENDERER] = SETTINGS_PERFORMANCE, [S_RES3D] = SETTINGS_PERFORMANCE, [S_FPS] = SETTINGS_PERFORMANCE,
+	[S_FPS] = SETTINGS_PERFORMANCE,
 	[S_CONTROLS] = SETTINGS_CONTROLS, [S_CLICK_SIDE] = SETTINGS_CONTROLS,
 	[S_AUDIO] = SETTINGS_SOUND, [S_SOUNDS] = SETTINGS_SOUND, [S_MUSIC] = SETTINGS_SOUND,
 	[S_AUTOSAVE] = SETTINGS_GENERAL, [S_DEFAULTS] = SETTINGS_GENERAL, [S_CORE] = SETTINGS_ADVANCED,
@@ -458,7 +458,6 @@ static int settings_items(int *items)
 		for (int i = S_SCREEN; i < S_COUNT; i++) {
 			if (s_sections[i] != section) continue;
 			if ((i == S_3D || i == S_CLICK_SIDE) && !g_new3ds) continue;
-			if (i == S_RES3D && !g_cfg.renderer) continue;
 			if (!added_header) { items[n++] = section - 1; added_header = true; }
 			items[n++] = i;
 		}
@@ -486,10 +485,8 @@ static const char *s_value(int i, void *ud)
 	static const char *const screens[] = { "4:3", "Stretch", "Widescreen" };
 	static const char *const s3d[] = { "Off", "Screen depth", "Full 3D (test)" };
 	switch (i) {
-	case S_RENDERER: return g_cfg.renderer ? "Software" : "GPU (experimental)";
 	case S_SCREEN: return screens[config_screen_mode()];
-	case S_3D: return s3d[g_cfg.stereo == 2 && !g_cfg.renderer ? 1 : g_cfg.stereo];
-	case S_RES3D: return g_cfg.half3d ? "On" : "Off";
+	case S_3D: return s3d[g_cfg.stereo == 2 ? 1 : g_cfg.stereo];
 	case S_SMOOTH: return g_cfg.smooth ? "On" : "Off";
 	case S_FPS: return (const char *const[]){"Off", "FPS", "Detailed"}[g_cfg.show_fps];
 	case S_AUTOSAVE: return g_cfg.autosave ? "On" : "Off";
@@ -584,14 +581,12 @@ static void settings_run(void)
 			if (dir) {
 				sfx_play(SFX_MOVE);
 				switch (st.items[st.sel]) {
-				case S_RENDERER: config_set_renderer(!g_cfg.renderer); break;
 				case S_SCREEN: config_set_screen_mode((config_screen_mode() + dir + 3) % 3); break;
 				case S_3D: {
-					int modes = g_cfg.debug && g_cfg.renderer ? 3 : 2;
+					int modes = 2;
 					g_cfg.stereo = (g_cfg.stereo + dir + modes) % modes;
 					config_sync_stereo();
 				} break;
-				case S_RES3D: g_cfg.half3d ^= 1; break;
 				case S_SMOOTH: g_cfg.smooth ^= 1; break;
 				case S_FPS: g_cfg.show_fps = (g_cfg.show_fps + dir + 3) % 3; break;
 				case S_AUTOSAVE: g_cfg.autosave ^= 1; break;

@@ -3,27 +3,23 @@
 // Existing evidence covers stick clicks only;
 // other Old 3DS touch requirements remain at the full safe default.
 #define INHERIT_SLOTS { -2, -2, -2, -2, -2, -2 }
-#define INHERIT_OPTIONS { -1, -1, -1, -1, -1, -1, PRESET_RENDERER_INHERIT, INHERIT_SLOTS }
-// GAME_PRESET_SAME("ABCD12345", { ff, rw, policy, l2r2, l3r3, stick, renderer, INHERIT_SLOTS })
+#define INHERIT_OPTIONS { -1, -1, -1, -1, -1, -1, INHERIT_SLOTS }
+// GAME_PRESET_SAME("ABCD12345", { ff, rw, policy, l2r2, l3r3, stick, INHERIT_SLOTS })
 // is shorthand for equal Old/New options (technical limits still apply).
 #define CLICKS(disc) { .serial = disc, \
- .old3ds = { 0, 0, -1, -1, -1, -1, PRESET_RENDERER_INHERIT, INHERIT_SLOTS }, \
- .new3ds = { -1, -1, TOUCH_CONTROLS_AUTO, 0, 1, 0, PRESET_RENDERER_INHERIT, INHERIT_SLOTS } }
+ .old3ds = { 0, 0, -1, -1, -1, -1, INHERIT_SLOTS }, \
+ .new3ds = { -1, -1, TOUCH_CONTROLS_AUTO, 0, 1, 0, INHERIT_SLOTS } }
 // Future TESTED Old FF example (not enabled):
-// { "ABCD12345", { 1, -1, -1, -1, -1, -1, PRESET_RENDERER_INHERIT, INHERIT_SLOTS }, INHERIT_OPTIONS },
-// Curated renderer example, enable ONLY after both accuracy and speed checks:
-// { .serial = "ABCD12345", .old3ds = INHERIT_OPTIONS,
-//   .new3ds = { -1, -1, -1, -1, -1, -1, PRESET_RENDERER_GPU, INHERIT_SLOTS } },
-// DEFAULT uses Old GPU / New Software unless overridden by the user.
+// { "ABCD12345", { 1, -1, -1, -1, -1, -1, INHERIT_SLOTS }, INHERIT_OPTIONS },
 // Sources and regional coverage: docs/bottom-screen/README.md.
 // Confidence below describes L3/R3 use, not serial identity. All IDs checked
 // against PlayStation DataCenter. Add a source before extending this list.
-#define SOTN(disc) GAME_PRESET_SAME(disc, { -1, -1, -1, -1, -1, -1, PRESET_RENDERER_SOFTWARE, INHERIT_SLOTS })
+#define SOTN(disc) GAME_PRESET_SAME(disc, { -1, -1, -1, -1, -1, -1, INHERIT_SLOTS })
 static const game_preset_t game_presets[] = {
 	// SotN: round-two GPU approaches software parity in the USA fight.
-	// Keep software: it remains the proven picture on both models.
+	// GPU is used on both models.
 	// Regional identities: libretro-database metadat/redump/Sony - PlayStation.dat;
-	// conservative software default applies to all verified regional releases.
+	// All verified regional releases share the same capabilities.
 	SOTN("SLUS00067"), SOTN("SLES00524"), SOTN("SCPS45196"),
 	SOTN("SLPM86023"), SOTN("SLPM86073"), SOTN("SLPM87328"),
 	// Ape Escape / Saru! Get You!: HIGH, stick clicks confirmed by the user,

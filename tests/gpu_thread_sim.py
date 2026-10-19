@@ -31,23 +31,22 @@ if not args.reuse:
             copy_function=shutil.copyfile, ignore=shutil.ignore_patterns(".git", "*.o", "*.d", "*.a"))
     for name in ("runner.c", "o3hw_off.ini"):
         shutil.copyfile(devtools / "sim" / name, sim / name)
-    # Preserve the simulator's ctrsim platform, but use the current renderer
-    # and gpulib. The checked-in core makefile also handles dual builds.
-    # Install every current patched source, including shared libretro/thread
-    # changes, while retaining the simulator's ctrsim platform.
-    changed = subprocess.check_output(["git", "-C", str(repo / "core"),
-        "diff", "HEAD", "--name-only"], text=True).splitlines()
-    # make patch creates new sources as untracked files in a fresh checkout.
-    # Include them without requiring intent-to-add in the submodule index.
-    changed += subprocess.check_output(["git", "-C", str(repo / "core"),
-        "ls-files", "--others", "--exclude-standard"], text=True).splitlines()
-    for name in sorted(set(changed)):
-        if name == "Makefile.libretro": continue
-        source, target = repo / "core" / name, sim / "core_pica" / name
-        if source.is_file():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, target)
-        elif target.exists(): target.unlink()
+    # Vendored core: copy all current sources, preserving only ctrsim's
+    # host platform definitions from the simulator Makefile.libretro.
+    old_make = (sim / "core_pica/Makefile.libretro").read_text()
+    shutil.rmtree(sim / "core_pica")
+    shutil.copytree(repo / "core", sim / "core_pica",
+        ignore=shutil.ignore_patterns("*.o", "*.d", "*.a"))
+    makefile = sim / "core_pica/Makefile.libretro"
+    current = makefile.read_text()
+    marker, end = "else ifeq ($(platform), ctrsim)", "else ifeq ($(platform), ctr)"
+    offset = 0
+    for occurrence in range(2):
+        start = old_make.index(marker, offset)
+        offset = old_make.index(end, start)
+        pos = current.index(end, 0 if occurrence == 0 else current.index(end) + len(end))
+        current = current[:pos] + old_make[start:offset] + current[pos:]
+    makefile.write_text(current)
     # Match the SDK APIs/state constants added since the simulator snapshot.
     sdk = sim / "fake3ds/3ds.h"
     text = sdk.read_text()
@@ -65,8 +64,6 @@ if not args.reuse:
     makefile = sim / "core_pica/Makefile.libretro"
     makefile.write_text(makefile.read_text().replace(
         "\tifneq ($(CTR_GPU),unai)\n\tUSE_ASYNC_GPU = 0\n\tendif\n", ""))
-    # Dual renderer must explicitly select GPU before core initialization;
-    # its factory default is software. This exercises the release dispatch.
     # Check gpulib's queue invariants too, even in an otherwise release build.
     with (sim / "core_pica/Makefile").open("a") as out:
         out.write("\nplugins/gpulib/gpu_async.o: CFLAGS += -UNDEBUG\n")
@@ -94,10 +91,9 @@ if not args.reuse:
             fprintf(stderr, "thread stress save/restore frame %d\\n", i);
         }
 #ifdef GLES""", 1)
-    text = text.replace("\tretro_init();", "\t{ int psx3d_renderer_select(int); if (psx3d_renderer_select(0)) abort(); }\n\tretro_init();")
     runner.write_text(text)
     core = sim / "core_pica"
-    command = ["make", "-f", "Makefile.libretro", "platform=ctrsim", "CTR_GPU=dual", "USE_ASYNC_GPU=1"]
+    command = ["make", "-f", "Makefile.libretro", "platform=ctrsim", "CTR_GPU=pica", "USE_ASYNC_GPU=1"]
     with (sim / "thread-build.log").open("w") as log:
         subprocess.run(command + ["clean"], cwd=core, stdout=log, stderr=log, check=True)
         subprocess.run(command + ["-j16", "DEBUG_SYMS=1", "CFLAGS_OPT=-O2",

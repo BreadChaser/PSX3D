@@ -20,7 +20,6 @@ static bool in_game;
 bool config_in_game(void) { return in_game; }
 void config_set_ws_native(bool on);
 static int default_screen;
-static int default_renderer;
 static int default_maps[INPUT_REMAP_N], default_touch_stick;
 static int default_hotkeys[INPUT_HOTKEY_N];
 #define WS_KEY "pcsx_rearmed_psx3d_widescreen"
@@ -54,8 +53,6 @@ static void set_defaults(void)
 	g_cfg.bottom_off = 1;
 	g_cfg.autosave = 1;
 	g_cfg.audio_stretch = 50; // both models: only used when sound runs low
-	g_cfg.half3d = !g_new3ds;
-	g_cfg.renderer = g_new3ds; // Old defaults to GPU; New defaults to software
 	g_cfg.touch_stick = -1;
 	input_map_reset();
 	for (size_t i = 0; i < sizeof(tuned_defaults) / sizeof(tuned_defaults[0]); i++)
@@ -131,10 +128,6 @@ void config_load(void)
 			g_cfg.music = atoi(v) != 0;
 		else if (strcmp(k, "bottom_off") == 0)
 			g_cfg.bottom_off = atoi(v) != 0;
-		else if (strcmp(k, "half3d") == 0)
-			g_cfg.half3d = atoi(v) != 0;
-		else if (strcmp(k, "renderer") == 0)
-			g_cfg.renderer = strcmp(v, "gpu") != 0;
 		else if (strcmp(k, "autosave") == 0)
 			g_cfg.autosave = atoi(v) != 0;
 		else if (strcmp(k, "audio_stretch") == 0) {
@@ -153,9 +146,7 @@ void config_load(void)
 	}
 	fclose(f);
 	if(g_cfg.touch_stick < -1 || g_cfg.touch_stick > 1) g_cfg.touch_stick = -1;
-	if (g_cfg.stereo == 2 && !g_cfg.debug)
-		g_cfg.stereo = 1;
-	g_cfg.bottom_off = 1;   // experimental real 3D needs debug=1
+	g_cfg.bottom_off = 1;
 	config_sync_stereo();
 }
 
@@ -179,8 +170,6 @@ void config_save(void)
 	fprintf(f, "stretch=%d\n", screen == 1);
 	fprintf(f, "sounds=%d\nmusic=%d\nbottom_off=%d\n", g_cfg.sounds, g_cfg.music, g_cfg.bottom_off);
 	fprintf(f, "autosave=%d\n", g_cfg.autosave);
-	fprintf(f, "half3d=%d\n", g_cfg.half3d);
-	fprintf(f, "renderer=%s\n", (in_game ? default_renderer : g_cfg.renderer) ? "sw" : "gpu");
 	fprintf(f, "audio_stretch=%d\n", g_cfg.audio_stretch);
 	fprintf(f, "touch_stick=%d\n", in_game ? default_touch_stick : g_cfg.touch_stick);
 	fprintf(f, "touch_click_left=%d\n", g_cfg.touch_click_left);
@@ -273,7 +262,7 @@ void config_sync_stereo(void)
 	// video.c consumes this same field, so Old 3DS never draws a second eye.
 	if (!g_new3ds) g_cfg.stereo = 0;
 	config_set_core_override("pcsx_rearmed_psx3d_stereo",
-		g_cfg.stereo == 2 && stereo_active && !renderer_is_gpu() ? "enabled" : "disabled");
+		"disabled");
 	options_mark_updated();
 }
 
@@ -345,7 +334,6 @@ void config_game_begin(const char *game)
 {
 	snprintf(cur_game, sizeof(cur_game), "%s", game);
 	default_screen = config_screen_mode();
-	default_renderer = g_cfg.renderer;
 	for (int i = 0; i < INPUT_REMAP_N; i++) default_maps[i] = input_map_raw(i);
 	default_touch_stick = g_cfg.touch_stick;
 	for (int i = 0; i < INPUT_HOTKEY_N; i++) default_hotkeys[i] = input_hotkey_get(i);
@@ -363,7 +351,6 @@ void config_game_begin(const char *game)
 	g_cfg.touch_stick = gamecfg_int("touch_stick", default_touch_stick);
 	if(g_cfg.touch_stick < -1 || g_cfg.touch_stick > 1) g_cfg.touch_stick = -1;
 	input_touch_begin();
-	g_cfg.renderer = config_game_renderer();
 	int mode = gamecfg_int("screen", -1);
 	if (mode < 0)
 		mode = game_screen_get(game);   // 0.1.1 kept it in games.ini
@@ -380,28 +367,6 @@ void config_game_set_screen(int mode)
 		gamecfg_set_int("screen", mode);
 }
 
-// Resolve once before starting a renderer. Disc identification happens during
-// load, so emu.c repeats initialization once if its curated profile changes it.
-// Never switch the running renderer on a disc-change callback.
-int config_game_renderer(void)
-{
- const char *v = in_game ? gamecfg_get("renderer") : NULL;
- if (v && (!strcmp(v, "sw") || !strcmp(v, "gpu"))) return !strcmp(v, "sw");
- int preset = in_game ? game_capabilities().renderer : PRESET_RENDERER_DEFAULT;
- if (preset == PRESET_RENDERER_SOFTWARE) return 1;
- if (preset == PRESET_RENDERER_GPU) return 0;
- return in_game ? default_renderer : g_cfg.renderer;
-}
-
-// Like screen mode, the in-game choice belongs to this game. The active
-// renderer stays unchanged until the game is closed and opened again.
-void config_set_renderer(int software)
-{
-	g_cfg.renderer = !!software;
-	if (in_game)
-		gamecfg_set("renderer", software ? "sw" : "gpu");
-}
-
 // back to the library: the default screen mode again
 void config_game_end(void)
 {
@@ -409,7 +374,6 @@ void config_game_end(void)
 		return;
 	config_set_stereo_active(false);
 	in_game = false;
-	g_cfg.renderer = default_renderer;
 	gamecfg_end();
 	input_touch_begin();
 	for (int i = 0; i < INPUT_REMAP_N; i++) input_map_set(i, default_maps[i]);
@@ -485,7 +449,6 @@ bool config_game_reset(void)
 {
 	if (!in_game || !forget_legacy_screen() || !gamecfg_reset()) return false;
 	config_set_screen_mode(default_screen);
-	g_cfg.renderer = config_game_renderer();
 	config_controls_defaults();
 	return true;
 }

@@ -109,7 +109,7 @@ void statsview_update(const statsview_sample *s)
 		snprintf(lines[11], sizeof(lines[11]), "Linear %luK  DRC n/a", (unsigned long)(linearSpaceFree()/1024));
 	}
 	snprintf(lines[12], sizeof(lines[12]), "PS1 clock %.8s  GTE regs %.8s", opt("pcsx_rearmed_psxclock"), opt("pcsx_rearmed_gteregsunneeded"));
-	snprintf(lines[13], sizeof(lines[13]), "GTE flags %.8s  light %.8s  WS %s", opt("pcsx_rearmed_nogteflags"), opt("pcsx_rearmed_gpu_unai_fast_lighting"), config_widescreen() ? "on" : "off");
+	snprintf(lines[13], sizeof(lines[13]), "GTE flags %.8s  WS %s", opt("pcsx_rearmed_nogteflags"), config_widescreen() ? "on" : "off");
 	if (memcmp(previous, lines, sizeof(lines)) ||
 	    (int)(old_budget*308) != (int)(budget_fraction*308)) parse();
 }

@@ -42,8 +42,6 @@ typedef struct {
 	int  audio_stretch; // maximum slowdown in percent, 0 disables (0..50)
 	int  touch_stick;  // Old 3DS virtual right stick
 	int  touch_click_left; // global New 3DS bottom-screen layout: 0 right, 1 left
-	int  half3d;       // Software-only half-height 3D polygons (Old 3DS default)
-	int  renderer;     // 0 = GPU, 1 = software; applied when a game starts
 } psx3d_config;
 
 extern psx3d_config g_cfg;
@@ -57,8 +55,6 @@ const char *config_core_override(const char *key);
 bool config_widescreen(void);
 int config_screen_mode(void);
 void config_set_screen_mode(int mode);
-void config_set_renderer(int software);
-int config_game_renderer(void);
 void config_game_begin(const char *game);
 void config_game_set_screen(int mode);
 void config_game_end(void);
@@ -84,7 +80,7 @@ const char *options_cycle(int i, int dir);
 
 // video.c
 bool video_init(void);
-bool video_game_begin(bool software);
+bool video_game_begin(void);
 void video_game_end(void);
 bool renderer_is_gpu(void);   // active renderer, independent of pending settings
 void video_exit(void);
@@ -150,7 +146,6 @@ extern int sw_state, sw_gldbg, sw_vramdump;
 extern unsigned pica_prims;
 extern bool pica_texmask, pica_texmemo;
 extern int psx3d_skipgate;
-extern int sw_renderer;       // -1 = use config; 0 = GPU, 1 = software
 extern int sw_pmu0, sw_pmu1;
 extern char sw_clock[8], sw_cdra[8], sw_opt[8][48];
 // pmu.c - ARM11 performance counters (test tool)
@@ -289,12 +284,9 @@ void input_control_cycle(int i, int dir);
 
 // presets.c: curated per-console serial profiles. Boolean/policy fields use
 // -1 to inherit the uncurated console defaults. Renderer selects the per-console default.
-enum { PRESET_RENDERER_INHERIT = -1, PRESET_RENDERER_DEFAULT,
-       PRESET_RENDERER_SOFTWARE, PRESET_RENDERER_GPU };
 typedef struct {
 	int fast_forward, rewind, touch_controls;
 	int needs_l2r2, needs_l3r3, needs_right_stick;
-	int renderer;
 	int touch_bindings[INPUT_TOUCH_N]; // -2 inherits needs_* shorthand; -1 hides.
 	// Add future renderer/frameskip/clock parameters with explicit inheritance.
 } game_preset_options_t;

@@ -27,7 +27,6 @@ static bool updated;
 // here. They're fixed and not shown in the menu.
 static const char *const locked[][2] = {
 	{ "pcsx_rearmed_scale_hires", "enabled" },        // 240-line screen: never draw 480 lines
-	{ "pcsx_rearmed_gpu_unai_skipline", "disabled" }, // superseded by scale_hires
 	{ "pcsx_rearmed_spu_interpolation", "gaussian" }, // what the real SPU does
 	{ "pcsx_rearmed_spu_reverb", "enabled" },
 	{ "pcsx_rearmed_spu_thread", "disabled" },        // would share core 2 with the GPU
@@ -41,6 +40,7 @@ static const char *const locked[][2] = {
 
 // options for hardware or renderers this build doesn't have
 static const char *const hidden_prefix[] = {
+	"pcsx_rearmed_gpu_unai_",
 	"pcsx_rearmed_neon_",        // NEON renderer: no NEON on the 3DS CPU
 	"pcsx_rearmed_gpu_peops_",   // P.E.Op.S. renderer isn't built in
 	"pcsx_rearmed_show_",        // RetroArch menu folding
@@ -101,9 +101,7 @@ static bool is_hidden(const char *key)
 	// owned by the frontend, never exposed as duplicate raw core options.
 	if (!strcmp(key, RENDERER_KEY) || !strcmp(key, "pcsx_rearmed_psx3d_stereo") ||
 	    !strcmp(key, "pcsx_rearmed_psx3d_widescreen")) return true;
-	bool software = config_in_game() ? !renderer_is_gpu() : g_cfg.renderer;
-	if (!software && !strncmp(key, "pcsx_rearmed_gpu_unai_", sizeof("pcsx_rearmed_gpu_unai_") - 1)) return true;
-	if (!software && !strncmp(key, "pcsx_rearmed_screen_centering", sizeof("pcsx_rearmed_screen_centering") - 1)) return true;
+	if (!strncmp(key, "pcsx_rearmed_screen_centering", sizeof("pcsx_rearmed_screen_centering") - 1)) return true;
 	if (!strcmp(key, "pcsx_rearmed_display_info") && !g_cfg.debug) return true;
 	if (!strcmp(key, "pcsx_rearmed_frameskip_threshold") &&
 	    !option_is("pcsx_rearmed_frameskip_type", "auto_threshold")) return true;
@@ -219,8 +217,7 @@ const char *options_get(const char *key)
 		return "disabled";
 	if (!strcmp(key, "pcsx_rearmed_gpu_thread_rendering") && (!g_new3ds || sw_nogputhread))
 		return "disabled";
-	if (!strcmp(key, RENDERER_KEY))
-		return g_cfg.renderer ? "Software" : "GPU (experimental)";
+	if (!strcmp(key, RENDERER_KEY) || !strncmp(key, "pcsx_rearmed_gpu_unai_", sizeof("pcsx_rearmed_gpu_unai_") - 1)) return NULL;
 	const char *ov = locked_value(key);
 	option_t *o = find(key);
 
@@ -254,7 +251,6 @@ const char *options_get(const char *key)
 		static const char *const o3ds[][2] = {
 			{ "pcsx_rearmed_frameskip_type", "auto" },        // skip drawing, keep game speed
 			{ "pcsx_rearmed_frameskip_interval", "2" },       // at most 2 skipped in a row
-			{ "pcsx_rearmed_gpu_unai_fast_lighting", "enabled" },
 			{ "pcsx_rearmed_dithering", "disabled" },
 			{ "pcsx_rearmed_spu_reverb", "disabled" },
 			// GTE speed hacks: rare glitches, measurable gain on a 268MHz core
@@ -311,10 +307,6 @@ static const char *const player_names[][2] = {
 	{ "pcsx_rearmed_screen_centering_x", "Move picture sideways" },
 	{ "pcsx_rearmed_screen_centering_y", "Move picture up or down" },
 	{ "pcsx_rearmed_screen_centering_h_adj", "Adjust picture height" },
-	{ "pcsx_rearmed_gpu_unai_old_renderer", "Older software drawing" },
-	{ "pcsx_rearmed_gpu_unai_blending", "Transparency effects" },
-	{ "pcsx_rearmed_gpu_unai_lighting", "Lighting effects" },
-	{ "pcsx_rearmed_gpu_unai_fast_lighting", "Faster lighting" },
 	{ "pcsx_rearmed_spu_reverb", "Sound echo" },
 	{ "pcsx_rearmed_nocdaudio", "Disc music" }, { "pcsx_rearmed_noxadecoding", "Disc voices and effects" },
 	{ "pcsx_rearmed_analog_axis_modifier", "Stick response" },
@@ -368,10 +360,7 @@ const char *options_cycle(int i, int dir)
 		if (cur && strcmp(o->values[j], cur) == 0)
 			idx = j;
 	idx = (idx + dir + o->nvalues) % o->nvalues;
-	if (!strcmp(o->key, RENDERER_KEY)) {
-		config_set_renderer(idx == 0);
-		return o->values[idx];
-	}
+
 	config_set_core_override(o->key, o->values[idx]);
 	updated = true;
 	return o->values[idx];
@@ -397,10 +386,6 @@ static const char *const notes[][3] = {
 	{ "pcsx_rearmed_screen_centering_x", "Manual position only", "Move the game picture left or right." },
 	{ "pcsx_rearmed_screen_centering_y", "Manual position only", "Move the game picture up or down." },
 	{ "pcsx_rearmed_screen_centering_h_adj", "Manual position only", "Change the game picture's height." },
-	{ "pcsx_rearmed_gpu_unai_old_renderer", "Faster, less accurate", "Use the older software drawing code. May draw some games incorrectly." },
-	{ "pcsx_rearmed_gpu_unai_fast_lighting", "Faster, may alter colours", "Use a quicker way to light textured surfaces. Colours can be slightly wrong in some games." },
-	{ "pcsx_rearmed_gpu_unai_lighting", "Usually keep On", "Draw lighting and shading effects. Off may improve speed but makes many 3D games look wrong." },
-	{ "pcsx_rearmed_gpu_unai_blending", "Usually keep On", "Draw transparent effects such as water and shadows. Off may improve speed but breaks these effects." },
 	{ "pcsx_rearmed_spu_reverb", "Off can improve speed", "Play the PS1's echo effect. Off sounds drier and can help Old 3DS keep up." },
 	{ "pcsx_rearmed_nocdaudio", "Usually keep On", "Play music stored as audio tracks on the game disc." },
 	{ "pcsx_rearmed_noxadecoding", "Usually keep On", "Play compressed voices, music and effects stored on the game disc." },
