@@ -2354,6 +2354,13 @@ static void multdiv_assemble_arm(int i, const struct regstat *i_regs)
 
 static void do_jump_vaddr(int rs)
 {
+  if (psx3d_dyn_lookup) {
+    extern void jump_vaddr_fast(void);
+    if (rs != 0)
+      emit_mov(rs, 0);
+    emit_far_jump(jump_vaddr_fast);
+    return;
+  }
   emit_far_jump(jump_vaddr_reg[rs]);
 }
 

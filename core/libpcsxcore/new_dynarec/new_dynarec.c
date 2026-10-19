@@ -435,6 +435,10 @@ void jump_to_new_pc();
 void new_dyna_leave();
 
 void *ndrc_get_addr_ht(u_int vaddr, struct ht_entry *ht);
+
+// Research switches: sampled only when compiling a block. A clean game/state
+// reload is required; generated code never polls these globals.
+int psx3d_dyn_lookup;
 void ndrc_write_invalidate_one(u_int addr);
 static void ndrc_write_invalidate_many(u_int addr, u_int end);
 

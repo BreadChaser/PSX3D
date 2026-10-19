@@ -6,6 +6,7 @@
 extern float sw_slider;
 extern unsigned pica_submit;
 extern int psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay;
+extern int psx3d_dyn_lookup;
 extern bool sw_aa, sw_showright, sw_sbs;
 void debug_parse_switch(const char *word);
 
@@ -75,6 +76,9 @@ bool switches_set(const char *word)
 	                              "nogpuasync",   "gpuflush",  "nogpuflush",  "aa", "rtt=old", "rtt=new", "rtt=auto", "rttcache=old", "rttcache=new", "rtfs", "rtfs=old", "rtfs=new", "rtfs=model", "rtfs=dense", "frontend=old", "frontend=new", "audio=old", "audio=new", "ff=on", "ff=off", "submitstate=old", "submitstate=new", "submitclip=old", "submitclip=new", "submittex=old", "submittex=new", "pmuclass=on", "pmuclass=off", "pmurender=on", "pmurender=off", "pica_prims_old", "pica_prims_fast", "pica_prims_copy", "pica_prims_clip", "pica_prims_round", "skipgate=old", "skipgate=new", "texmask=old", "texmask=new", "texmemo=old", "texmemo=new", "idle=on", "idle=off", "idleptr=on", "idleptr=off", "idledelay=on", "idledelay=off"};
 	static const char *prefix[] = {"slider=", "state=", "gldbg=", "vramdump=", "pmu=", "cdra=", "clock="};
 	bool known = false;
+	// Dynarec experiments take effect only on the next clean load/batch run.
+	if (!strcmp(word, "dyn_lookup=on") || !strcmp(word, "dyn_lookup=off"))
+		known = true;
 	for (unsigned k = 0; k < sizeof(flags) / sizeof(*flags); k++)
 		if (!strcmp(word, flags[k]))
 			known = true;
@@ -91,6 +95,7 @@ bool switches_set(const char *word)
 bool switches_run(char *line, char *game, size_t len, char *error, size_t error_len)
 {
 	psx3d_idle_skip = 1; psx3d_idle_pointer = psx3d_idle_delay = 0;
+	psx3d_dyn_lookup = 0;
 	sw_rtfslevel = -1; sw_rtfscap = 4; pica_submit = 7;
 	sw_rtfsdense = sw_rtfsmodel = sw_rtfswindow = sw_rtfs = sw_ff = sw_floataudio = false;
 	sw_frontend = true;

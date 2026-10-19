@@ -229,6 +229,27 @@ FUNCTION(jump_vaddr_r0):
 	bx	r0
 	.size	jump_vaddr_r0, .-jump_vaddr_r0
 
+/* Same two-way hash as ndrc_get_addr_ht_param. Use its existing invalidation
+ * and lifetime rules, with no extra cached pointers. r0 keeps the original
+ * vaddr for the miss path (including misalignment/exception information).
+ * Indirect exits have already written guest state back, so r1-r3/ip may die.
+ */
+FUNCTION(jump_vaddr_fast):
+	ldr	r1, [fp, #LO_hash_table_ptr]
+	eor	r2, r0, r0, lsr #16
+	uxth	r2, r2
+	add	r2, r1, r2, lsl #4
+	bic	r3, r0, #3
+	ldr	ip, [r2]
+	cmp	ip, r3
+	ldreq	pc, [r2, #8]
+	ldr	ip, [r2, #4]
+	cmp	ip, r3
+	ldreq	pc, [r2, #12]
+	bl	ndrc_get_addr_ht
+	bx	r0
+	.size	jump_vaddr_fast, .-jump_vaddr_fast
+
 	.align	2
 FUNCTION(cc_interrupt):
 	ldr	r0, [fp, #LO_last_count]
