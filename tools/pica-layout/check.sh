@@ -19,13 +19,13 @@ for layout in baseline split; do
  cc -O1 -g -fno-strict-aliasing -fsanitize=address,undefined \
   -DPSX3D_SIM -DPICA_SIM_HASH "${flags[@]}" -I core -I "$out" -I tools/gpu-compare \
   tools/pica-layout/commands-test.c tools/gpu-compare/raster.c \
-  core/plugins/gpu_pica/gpu_pica.c "$out/commands.c" -lm -o "$out/commands-$layout"
+  core/plugins/gpu_pica/gpu_pica.c core/plugins/gpulib/vout_pl.c "$out/commands.c" -lm -o "$out/commands-$layout"
  "$out/commands-$layout" > "$out/commands-$layout.log"
 done
 cmp "$out/commands-baseline.log" "$out/commands-split.log"
 cc -O1 -g -fno-strict-aliasing -fsanitize=address,undefined \
  -DPSX3D_SIM -DPICA_LAYOUT_SPLIT -I core -I "$out" -I tools/gpu-compare \
  tools/gpu-compare/regress.c tools/gpu-compare/raster.c \
- core/plugins/gpu_pica/gpu_pica.c "$out/commands.c" -lm -o "$out/regress"
+ core/plugins/gpu_pica/gpu_pica.c core/plugins/gpulib/vout_pl.c "$out/commands.c" -lm -o "$out/regress"
 "$out/regress" > "$out/regress.log"
 echo 'line command/timing/pixels and polygon/presentation sanitizer checks: PASS'

@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Exclusive console acceptance session. JSON actions arrive on stdin.
-No automatic mutations on exceptions. Only RC2/idle starts a session.
+No automatic mutations on exceptions. Only the baseline build in the idle library starts a session.
 """
 import argparse, csv, fcntl, hashlib, io, json, sys, time
 from pathlib import Path
 from types import SimpleNamespace
-D=Path('/home/tony/Development/PS1_3ds/devtools'); E=D/'v040'
+D=Path('/home/tony/Development/PS1_3ds/devtools'); E=D/'v040-final'
 sys.path.insert(0,str(D))
 import psx3dctl,fastbench
 from psx3dctl import Client,ControlError
 psx3dctl.MAX_RESPONSE=8*1024*1024
-RC2='release-v031-rc2-split'; CAND='release-v040-rc1-split'
+BASELINE='release-v040-rc1-split'; FINAL='release-v040-final'
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('console',choices=['old','new']);p.add_argument('--label',required=True);a=p.parse_args()
 marker=D/'fastloop'/f'{a.console.upper()}_UNAVAILABLE'
 def clearance():
@@ -33,10 +33,10 @@ with (D/'fastloop'/('lock.'+a.console)).open('a') as lock:
    return value
  c=GuardedClient(a.console,secret,timeout=600);fastbench.Client=GuardedClient
  s=c.request('status');save('initial-status',s)
- if s['settings']['build']!=RC2 or s['mode']!='library' or s['bench']['active']:
+ if s['settings']['build']!=BASELINE or s['mode']!='library' or s['bench']['active']:
   print('BUSY handoff '+json.dumps(s),flush=True);sys.exit(2)
  save('initial-library',c.request('shot both'));print('READY '+str(out),flush=True)
- expected=RC2
+ expected=BASELINE
  def library(label):
   c.request('ui library');deadline=time.monotonic()+60
   while True:
@@ -50,8 +50,8 @@ with (D/'fastloop'/('lock.'+a.console)).open('a') as lock:
   try:
    x=json.loads(line);op=x['op'];label=x.get('label',op)
    if op=='install':
-    library(label+'-before');file=E/'artifacts/PSX3D.cia' if x['build']=='candidate' else D/'release_v031/final/PSX3D.cia'
-    build=CAND if x['build']=='candidate' else RC2
+    library(label+'-before');file=E/'artifacts/PSX3D.cia' if x['build']=='final' else D/'v040/artifacts/PSX3D.cia'
+    build=FINAL if x['build']=='final' else BASELINE
     before=c.request('status');uncertain=True
     try:
      with fastbench.serve_cia(file,port=8785 if a.console=='old' else 8786) as request:

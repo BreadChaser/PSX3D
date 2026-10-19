@@ -282,7 +282,7 @@ def main():
             # Do not contact the console here, including quit/status/restore.
             MARKER.write_text(datetime.now(timezone.utc).isoformat() + '\n'
                 'combined2 session stopped; installed state unverified.\n'
-                'No retries/recovery/contact until maintainer checks with the user.\n'
+                'No retries/recovery/contact until the user checks the console.\n'
                 'Evidence: ' + str(out) + '\n')
             raise
         print('Exact RC2 restored; final screenshot reviewed. Lock releases on driver exit.')
