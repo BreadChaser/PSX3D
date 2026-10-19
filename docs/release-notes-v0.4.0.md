@@ -5,6 +5,7 @@
 - **GPU rendering on both Old and New 3DS**, with faster emulation and automatic frameskip.
 - **A clearer settings menu** with categories, per-game overrides and reset confirmations.
 - **Automatic box art** on both console models, with lower memory use.
+- **Safer HLE memory-card saves**, fixing corruption when creating multi-block files.
 - Built-in HLE BIOS: install, add your games and play without a separate BIOS file.
 
 PSX3D remains a work in progress. The GPU renderer is experimental and still
@@ -27,6 +28,9 @@ for measured scenes and [methodology](performance.md).
 - Box art loads automatically on Old 3DS. Smaller image allocations and cancelling
   downloads before gameplay leave more memory for games.
 - Movie synchronization and alternating-buffer border clearing fixes.
+- Restores the library's graphics state when leaving a game, preventing corrupted menus.
+- HLE memory-card files follow their block chains when creating, reading, writing,
+  listing and deleting saves. A full card is rejected without overwriting other saves.
 - The included PCSX-ReARMed core builds directly from source without a separate patch step.
 - Optional developer tools for input recording and deterministic replay.
 - The FPS display reports new pictures shown per second alongside game speed.

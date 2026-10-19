@@ -52,6 +52,7 @@ BUILD_DIR=/tmp/psx3d-clips bash tools/input-replay/check.sh
 BUILD_DIR=/tmp/psx3d-gpu bash tools/gpu-compare/regress.sh
 bash tools/pica-layout/check.sh
 bash tools/frameskip/check.sh
+python3 tools/frontend-overhead/library_check.py
 python3 tests/gpu_thread_sim.py --sim /tmp/psx3d-thread-sim --sdk tools/input-replay/fake3ds
 ```
 
@@ -61,6 +62,8 @@ are offline renderings, not hardware screenshots; write them outside the source
 tree. See [GPU comparisons](../tools/gpu-compare/README.md) for the independent
 renderer oracles, [remote testing](dev-control.md) for hardware measurements and
 [recording and replay](recorder.md) for deterministic clips.
+The [HLE memory-card probes](../tools/hle-compat/README.md) exercise fragmented
+save files and full-card handling using disposable cards and an optional real-BIOS oracle.
 
 ## Emulation identity gates
 
