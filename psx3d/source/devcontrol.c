@@ -372,6 +372,14 @@ static bool runtime_set(const char *word)
 	}
 	return false;
 }
+// Screens that cannot be left mid-way (the resume prompt) only take keys and shots.
+static bool keys_only;
+void dev_tick_keys(void)
+{
+	keys_only = true;
+	dev_tick(false);
+	keys_only = false;
+}
 bool dev_tick(bool playing)
 {
 	if (!dev_enabled())
@@ -388,11 +396,13 @@ bool dev_tick(bool playing)
 				args++;
 		} else
 			args = command + strlen(command);
-		if (clip_active && strcmp(command,"quit") && strcmp(command,"exit") && strcmp(command,"shot")) {
+		if (keys_only && strcmp(command, "ui-key") && strcmp(command, "shot")) {
+			error_reply("only ui-key and shot on this screen");
+		} else if (clip_active && strcmp(command,"quit") && strcmp(command,"exit") && strcmp(command,"shot")) {
 			error_reply("clip active; quit to cancel before changing settings/UI");
 		} else if (!strcmp(command, "ui-key")) {
-			if (batch_active || !settings_ui_key(args))
-				error_reply("ui-key requires open settings; a b x y up down left right l r");
+			if (batch_active || !(settings_ui_debug_key(args) || input_remote_key(args)))
+				error_reply("ui-key needs an open menu; a b x y up down left right l r select");
 			else dev_reply("{\"ok\":true}");
 		} else if (!strcmp(command, "ui")) {
 			char *option = strchr(args, ' ');
@@ -401,7 +411,8 @@ bool dev_tick(bool playing)
 			             !strcmp(args, "pause") ? DEV_UI_PAUSE :
 			             !strcmp(args, "settings") ? DEV_UI_SETTINGS :
 			             !strcmp(args, "states") ? DEV_UI_STATES :
-			             !strcmp(args, "resume") ? DEV_UI_RESUME : DEV_UI_NONE;
+			             !strcmp(args, "resume") ? DEV_UI_RESUME :
+			             !strcmp(args, "continue") ? DEV_UI_CONTINUE : DEV_UI_NONE;
 			int slot = option && !strncmp(option, "slot=", 5) ? field_int(option, "slot", 0) : 0;
 			bool valid = screen && slot >= 0 && slot <= 9;
 			const game_t *selection = NULL;
@@ -416,7 +427,7 @@ bool dev_tick(bool playing)
 				} else if (screen != DEV_UI_STATES || strncmp(option, "slot=", 5)) valid = false;
 			}
 			if (!valid || batch_active || (!playing && screen != DEV_UI_LIBRARY && screen != DEV_UI_SETTINGS))
-				error_reply("ui library [select=title] | pause | settings | states [slot=0..9] | resume; idle batch required");
+				error_reply("ui library [select=title] | pause | settings | states [slot=0..9] | resume | continue; idle batch required");
 			else {
 				if (selection) libui_select_title(selection->title);
 				ui_request = screen;

@@ -8,7 +8,7 @@ void dev_authorize(void);
 bool dev_enabled(void);
 bool dev_batch_active(void);
 void dev_interrupt(void);
-enum { DEV_UI_NONE, DEV_UI_LIBRARY, DEV_UI_PAUSE, DEV_UI_SETTINGS, DEV_UI_STATES, DEV_UI_RESUME };
+enum { DEV_UI_NONE, DEV_UI_LIBRARY, DEV_UI_PAUSE, DEV_UI_SETTINGS, DEV_UI_STATES, DEV_UI_RESUME, DEV_UI_CONTINUE };
 int dev_ui_pending(void);
 int dev_ui_take(void);
 extern int dev_ui_slot;
@@ -18,6 +18,7 @@ void covers_debug(char *out, size_t len);
 void dev_init(void);
 void dev_shutdown(void);
 bool dev_tick(bool playing); /* main thread, after pica_thread_sync */
+void dev_tick_keys(void);
 bool dev_transition(void);
 bool dev_exiting(void);
 bool dev_next_game(char *path, char *save, char *title);

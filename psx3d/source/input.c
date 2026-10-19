@@ -232,11 +232,30 @@ void input_gameplay(bool enabled)
 	action_blocked = held; // menu/HOME gestures must release before firing actions
 }
 
+// Developer remote: one press for whichever menu polls next. Real buttons
+// still work; gameplay never sees it, so the game and hotkeys stay local.
+static u32 remote_key;
+bool input_remote_key(const char *name)
+{
+	static const char *const names[] = {"a", "b", "x", "y", "up", "down", "left", "right", "l", "r", "select"};
+	static const u32 keys[] = {KEY_A,	 KEY_B,	   KEY_X,	  KEY_Y, KEY_UP,
+							   KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_L, KEY_R, KEY_SELECT};
+	if (gameplay || remote_key)
+		return false;
+	for (unsigned i = 0; i < sizeof(keys) / sizeof(keys[0]); i++)
+		if (!strcmp(name, names[i])) {
+			remote_key = keys[i];
+			return true;
+		}
+	return false;
+}
+
 void input_poll(void)
 {
 	hidScanInput();
 	held = hidKeysHeld();
-	down = hidKeysDown();
+	down = hidKeysDown() | (gameplay ? 0 : remote_key);
+	remote_key = 0;
 	hidCircleRead(&cpad);
 	irrstCstickRead(&cstick);
 	hidTouchRead(&touch);

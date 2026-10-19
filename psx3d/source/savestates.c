@@ -413,6 +413,7 @@ bool states_resume_prompt(const char *prefix)
 	free(px);
 	bool resume = false;
 	while (aptMainLoop()) {
+		dev_tick_keys();
 		input_poll();
 		u32 k = input_keys_down();
 		if (k & KEY_TOUCH) {

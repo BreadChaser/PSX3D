@@ -483,7 +483,7 @@ bool ui_confirm_action(const char *title, const char *message, const char *actio
 		input_poll();
 		// The pause menu also keeps answering the remote loop while this is open.
 		if ((settings_ui_active() || show_game) && (dev_tick(show_game) || dev_ui_pending())) return false;
-		u32 held = input_keys_held(), k = input_keys_down() | (settings_ui_active() ? dev_ui_keys_take() : 0);
+		u32 held = input_keys_held(), k = input_keys_down();
 		if (released && (k & KEY_B)) return false;
 		if (released && (k & KEY_A)) return true;
 		if (!(held & (KEY_A | KEY_B | KEY_TOUCH))) released = true;

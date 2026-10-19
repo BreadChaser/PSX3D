@@ -7,33 +7,15 @@
 
 // Available only inside this navigator; the network mailbox authenticates first.
 static bool active, capture_debug, resume_requested;
-static u32 remote_key;
 bool settings_ui_active(void) { return active; }
 bool settings_ui_debug_capture(void) { return active && capture_debug; }
-u32 dev_ui_keys_take(void)
+// Volatile inspection only: no config write, reset on closing settings.
+bool settings_ui_debug_key(const char *name)
 {
-	u32 k = remote_key;
-	remote_key = 0;
-	return k;
-}
-bool settings_ui_key(const char *name)
-{
-	static const char *const names[] = {"a", "b", "x", "y", "up", "down", "left", "right", "l", "r"};
-	static const u32 keys[] = {KEY_A,	 KEY_B,	   KEY_X,	  KEY_Y, KEY_UP,
-							   KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_L, KEY_R};
-	if (!active || remote_key)
+	if (!active || (strcmp(name, "debug-on") && strcmp(name, "debug-off")))
 		return false;
-	// Volatile inspection only: no config write, reset on closing settings.
-	if (!strcmp(name, "debug-on") || !strcmp(name, "debug-off")) {
-		capture_debug = !strcmp(name, "debug-on");
-		return true;
-	}
-	for (unsigned i = 0; i < sizeof(keys) / sizeof(keys[0]); i++)
-		if (!strcmp(name, names[i])) {
-			remote_key = keys[i];
-			return true;
-		}
-	return false;
+	capture_debug = !strcmp(name, "debug-on");
+	return true;
 }
 
 enum {
@@ -425,7 +407,6 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 {
 	active = true;
 	resume_requested = false;
-	remote_key = 0;
 	static settings_ui_t memory[2];
 	settings_ui_t *s = &memory[game];
 	s->game = game;
@@ -434,7 +415,7 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 		if (dev_tick(game) || dev_ui_pending())
 			break;
 		input_poll();
-		u32 k = input_keys_down() | dev_ui_keys_take();
+		u32 k = input_keys_down();
 		if (k & KEY_B) {
 			sfx_play(SFX_BACK);
 			// Cheats is opened from the pause menu: B returns there.
@@ -533,7 +514,6 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 	}
 	active = false;
 	capture_debug = false;
-	remote_key = 0;
 	config_save();
 	return resume_requested;
 }
