@@ -21,6 +21,11 @@ int sw_pmu0=-1;
 char CdromId[10];
 bool log_linked(void) { return false; }
 bool dev_enabled(void) { return false; }
+const emu_frontend_sample *emu_frontend_stats(void)
+{
+ static const emu_frontend_sample sample = {.top=30, .drawn=30};
+ return &sample;
+}
 #ifndef SETTINGS_NAV_TEST
 bool settings_ui_active(void) { return false; }
 bool settings_ui_debug_capture(void) { return false; }
@@ -538,7 +543,7 @@ static void stats_input_checks(void)
 static void fps_mockups(void)
 {
  clean_input(false); g_cfg.show_fps=1;
- strcpy(brief,"40.8 FPS"); strcpy(speed_label,"68% speed");
+ strcpy(brief,"20 FPS"); strcpy(speed_label,"68% speed");
  paint("fps-old-full");
  clean_input(true); paint("fps-new-stacked");
  g_cfg.touch_click_left=1; paint("fps-new-left");
