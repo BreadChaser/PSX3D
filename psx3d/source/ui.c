@@ -393,7 +393,7 @@ static const char *const own_help[][3] = {
 	{ "3D", "New 3DS only", "Screen depth puts the picture behind the screen when you raise the 3D slider. Affects every game." },
 	{ "Smooth audio when slow", "Affects every game", "Keep audio flowing when a game runs slowly; music and voices slow down with it." },
 	{ "Smoothing", "Affects every game", "Soften enlarged pixels. Turn off for a sharper picture." },
-	{ "Show FPS", "Affects every game", "Off hides the frame rate. FPS shows it beside touch controls; Detailed shows speed measurements. Tap the bottom-screen footer to cycle views." },
+	{ "Show FPS", "Affects every game", "FPS shows new pictures per second and game speed beside touch controls. Detailed adds emulated and host rates. Tap the bottom-screen footer to cycle views." },
 	{ "Controls...", NULL, "Change physical buttons, touch buttons and shortcuts. Choices follow the game's preset. Hide removes a touch button; mapping an empty slot shows it." },
 	{ "Reset to defaults", NULL, "Restore this console's global settings and button mappings. Game overrides, saves, cheats and library folders are kept. Asks for confirmation." },
 	{ "Bottom-screen buttons", "Affects every game", "Place New 3DS touch buttons on the Right side or Left side. Menu and the logo move to the opposite side." },

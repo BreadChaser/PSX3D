@@ -10,6 +10,12 @@ categories. Touch a row to select it and again to activate it. Each page remembe
 its selection. Advanced groups CPU & compatibility, Speed hacks and Picture
 accuracy. Debug tools appear only when explicitly enabled for development.
 
+**Show FPS → FPS** reports new game pictures shown per second and game speed
+relative to normal speed. A game that draws 30 pictures per second at full speed
+reads **30 FPS** and **100% speed**. Automatic frameskip can keep game speed high
+while showing fewer pictures. **Detailed** also shows emulated vblanks and host
+loop iterations per second, labelled separately from shown pictures.
+
 Each row states whether it affects **this game** or **all games**. Core options,
 audio, smoothing, FPS and menu preferences are global even when opened during a
 game. Screen mode, rewind and control mappings can have per-game overrides.

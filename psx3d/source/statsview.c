@@ -69,9 +69,14 @@ void statsview_update(const statsview_sample *s)
 	if (!g_cfg.show_fps) return;
 	if (reset_interval) { reset_interval = false; return; } // drain counters accumulated while hidden
 	float speed = s->elapsed && s->target ? frames * 100000.0f / s->elapsed / s->target : 0;
+	const emu_frontend_sample *front = emu_frontend_stats();
+	// Top repaints can repeat a picture (slider/OSD); drawn flips exclude
+	// held/skipped pictures. Never count more pictures than top presentations.
+	unsigned shown = front->drawn < front->top ? front->drawn : front->top;
+	float shown_fps = s->elapsed ? shown * 1000.0f / s->elapsed : 0;
 	if (g_cfg.show_fps == 1) {
 		char next_brief[sizeof(brief)], next_speed[sizeof(speed_label)];
-		snprintf(next_brief, sizeof(next_brief), "%.1f FPS", s->fps);
+		snprintf(next_brief, sizeof(next_brief), "%.0f FPS", shown_fps);
 		snprintf(next_speed, sizeof(next_speed), "%.0f%% speed", speed);
 		// Samples arrive once per second. Only visible values invalidate FPS.
 		if (strcmp(brief, next_brief) || strcmp(speed_label, next_speed))
@@ -84,9 +89,9 @@ void statsview_update(const statsview_sample *s)
 	memcpy(previous, lines, sizeof(lines));
 	float old_budget = budget_fraction;
 	snprintf(lines[0], sizeof(lines[0]), "%.27s  %.9s", title, CdromId);
-	snprintf(lines[1], sizeof(lines[1]), "HOST %.1f / %.1f fps    SPEED %.0f%%", s->fps, s->target, speed);
-	snprintf(lines[2], sizeof(lines[2]), "Draw %u  skip %u  late %u / second", frames > s->skipped ? frames - s->skipped : 0, s->skipped, s->late);
-	snprintf(lines[3], sizeof(lines[3]), "Frameskip: %.24s", opt("pcsx_rearmed_frameskip_type"));
+	snprintf(lines[1], sizeof(lines[1]), "Emulated %.1f/%.0f  speed %.0f%%", s->elapsed ? frames * 1000.0f / s->elapsed : 0, s->target, speed);
+	snprintf(lines[2], sizeof(lines[2]), "Shown %.1f/s  host %.1f/s  late %u", shown_fps, s->fps, s->late);
+	snprintf(lines[3], sizeof(lines[3]), "Frameskip: %.24s  skip %u", opt("pcsx_rearmed_frameskip_type"), s->skipped);
 	snprintf(lines[4], sizeof(lines[4]), "Emu %.2f ms    max %.2f", s->emu, s->max);
 	snprintf(lines[5], sizeof(lines[5]), "Present %.2f   wait %.2f   GPU %.2f ms", s->present, s->wait, s->gpu);
 	snprintf(lines[6], sizeof(lines[6]), "Budget %.1f / %.1f ms", s->emu + s->present, 1000.0f / s->target);

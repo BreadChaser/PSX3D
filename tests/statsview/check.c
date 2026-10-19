@@ -49,6 +49,9 @@ static void C2D_TextOptimize(C2D_Text *t) {}
 static void C2D_DrawText(C2D_Text *t, int flags, float x, float y, float z, float sx, float sy, u32 color) {}
 static void ui_rect(float x,float y,float w,float h,u32 c) {}
 static bool input_stats_touched(void) { return g_cfg.show_fps && keys && touch.py >= 218; }
+typedef struct { unsigned top, drawn; } emu_frontend_sample;
+static emu_frontend_sample front = {.top=60, .drawn=30};
+static const emu_frontend_sample *emu_frontend_stats(void) { return &front; }
 static u32 hidKeysHeld(void) { return keys; }
 static void hidTouchRead(touchPosition *t) { *t=touch; }
 #include "../../psx3d/source/statsview.c"
@@ -63,15 +66,28 @@ int main(void) {
   .renderer="pica: cmdlist 1ms; state 1ms; ends: atlas 1; evictions by size 0 0 0 0; 22 batches 88 prims 17 tile decodes (0 evictions 0 invalidations) 19 uploads 3 syncs 2 readbacks"};
  frames(60); statsview_update(&s); // discard the partial/hidden interval
  frames(60); statsview_update(&s);
- assert(!strcmp(brief,"30.0 FPS") && !strcmp(speed_label,"100% speed"));
+ // A native-30 game at full emulated speed shows 30, even with 60 repaints.
+ assert(!strcmp(brief,"30 FPS") && !strcmp(speed_label,"100% speed"));
  assert(statsview_redraw(0)); assert(!statsview_redraw(0));
  int fps_parses=parses;
  s.emu=21; s.max=29; s.gpu=.3;
  frames(60); statsview_update(&s);
  assert(!statsview_redraw(0) && parses==fps_parses);
- s.fps=30.04f; frames(60); statsview_update(&s); assert(!statsview_redraw(0));
- s.fps=30.1f; frames(60); statsview_update(&s); assert(statsview_redraw(0));
+ s.fps=60; front.top=90; frames(60); statsview_update(&s); assert(!statsview_redraw(0));
+ front.drawn=31; frames(60); statsview_update(&s); assert(statsview_redraw(0));
  assert(!statsview_redraw(0));
+ // Auto skip separates shown pictures from emulated time and host loops.
+ front.top=front.drawn=9; frames(50); statsview_update(&s);
+ assert(!strcmp(brief,"9 FPS") && !strcmp(speed_label,"83% speed"));
+ // Fast forward may draw several pictures between top presentations.
+ front.top=14; front.drawn=40; frames(60); statsview_update(&s);
+ assert(!strcmp(brief,"14 FPS"));
+ // Rates use actual elapsed time, not an assumed exactly-one-second sample.
+ s.elapsed=2000; front.top=60; front.drawn=30; frames(120); statsview_update(&s);
+ assert(!strcmp(brief,"15 FPS") && !strcmp(speed_label,"100% speed"));
+ s.elapsed=0; frames(60); statsview_update(&s);
+ assert(!strcmp(brief,"0 FPS") && !strcmp(speed_label,"0% speed"));
+ s.elapsed=1000; front.top=60; front.drawn=30;
  frames(120); statsview_update(&s); assert(!strcmp(speed_label,"200% speed"));
  assert(statsview_redraw(0));
  statsview_draw(); assert(labels==2 && bars==4 && label_x==12 && bar_end==74 && label_align==0);
@@ -80,7 +96,9 @@ int main(void) {
  g_new3ds=false; g_cfg.touch_click_left=0;
  statsview_cycle(); assert(g_cfg.show_fps==2);
  frames(60); statsview_update(&s);
- assert(strstr(lines[2],"Draw 30  skip 30  late 9"));
+ assert(!strcmp(lines[1],"Emulated 60.0/60  speed 100%"));
+ assert(!strcmp(lines[2],"Shown 30.0/s  host 60.0/s  late 9"));
+ assert(!strcmp(lines[3],"Frameskip: auto  skip 30"));
  assert(strstr(lines[7],"underruns 7"));
  assert(strstr(lines[10],"19/17  sync/read 3/2"));
  assert(strstr(lines[11],"88/22"));
