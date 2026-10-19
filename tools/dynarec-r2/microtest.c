@@ -187,6 +187,44 @@ static void stress_groups(psxRegisters initial)
     printf("%u group-guard runs across window/I/O/RAM-end/mirror bases after scratchpad and RAM speculation: values identical to the unchanged dynarec (and to the interpreter except %u pre-existing cases), cycles identical across variants\n", cases, preexisting);
 }
 
+// A store compiled with scratchpad speculation (no inline SMC check with
+// dynr2_spsmc) later overwrites compiled code through its slow stub.
+static void stress_spad_smc(psxRegisters initial)
+{
+    uint32_t *target=(uint32_t *)(initial.ptrs.psxM+0x58000);
+    uint32_t *writer=(uint32_t *)(initial.ptrs.psxM+0x59000);
+    initial.GPR.r[31]=0x80070000;
+    initial.cycle=initial.subCycle=initial.stop=initial.branching=initial.branchSeen=initial.interrupt=0;
+    initial.dloadReg[0]=initial.dloadReg[1]=0;
+    initial.next_interupt=0x10000000;
+    initial.CP0.n.SR=0;
+    for(unsigned i=0;i<20;i++) initial.event_cycles[i]=0x10000000;
+    for (unsigned variant=0;variant<NVAR;variant++) {
+        psx3d_dynr2=variants[variant];
+        psxRegs=initial; psxCpu=&psxRec;
+        new_dynarec_clear_full();
+        psxRec.Notify(R3000ACPU_NOTIFY_AFTER_LOAD,NULL);
+        target[0]=0x24020000; target[1]=(31u<<21)|8; target[2]=0;
+        // sw r1,0(r2); sw r1,4(r3); jr ra
+        writer[0]=(0x2bu<<26)|(2u<<21)|(1u<<16);
+        writer[1]=(0x2bu<<26)|(3u<<21)|(1u<<16)|4;
+        writer[2]=(31u<<21)|8; writer[3]=0;
+        initial.GPR.r[2]=0x1f800010; initial.GPR.r[3]=0x1f800020;
+        run_block(&initial,0x80059000); // compiled as scratchpad stores
+        for (unsigned i=0;i<500;i++) {
+            run_block(&initial,0x80058000);
+            assert(psxRegs.GPR.r[2]==(i ? i-1 : 0));
+            initial.GPR.r[1]=0x24020000|i;
+            initial.GPR.r[2]=0x80058000; initial.GPR.r[3]=(i&1) ? 0x80060000-4 : 0x80058000-4;
+            run_block(&initial,0x80059000);
+            initial.GPR.r[2]=0x1f800010; initial.GPR.r[3]=0x1f800020;
+            run_block(&initial,0x80058000);
+            assert(psxRegs.GPR.r[2]==i);
+        }
+    }
+    puts("500 code overwrites by stores compiled for the scratchpad, through their slow stubs: invalidated in every variant");
+}
+
 void dynarec_microtest(void)
 {
     psxRegisters initial = psxRegs;
@@ -270,5 +308,6 @@ void dynarec_microtest(void)
     }
     stress_guards_smc(initial);
     stress_groups(initial);
+    stress_spad_smc(initial);
     puts("6000 randomized guest ALU/RAM/scratchpad byte/half/word/LWL/LWR programs: interpreter GPR/memory/PC identical; dynarec off/on cycles identical");
 }
