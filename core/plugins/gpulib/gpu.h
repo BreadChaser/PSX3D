@@ -136,21 +136,7 @@ struct psx_gpu {
 
 extern struct psx_gpu gpu;
 
-// Selection is fixed between GPUinit and GPUshutdown. 0 = GPU, 1 = software.
-#ifdef GPU_DUAL
-extern int psx3d_renderer_software;
-int psx3d_renderer_select(int software);
-#endif
-static inline int psx3d_renderer_is_pica(void)
-{
-#ifdef GPU_DUAL
-  return !psx3d_renderer_software;
-#elif defined(GPU_PICA)
-  return 1;
-#else
-  return 0;
-#endif
-}
+static inline int psx3d_renderer_is_pica(void) { return 1; }
 
 extern const unsigned char cmd_lengths[256];
 

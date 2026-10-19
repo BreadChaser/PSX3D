@@ -52,14 +52,6 @@ void pica_drop_fills(void);
 void pica_readback_rect(int x, int y, int w, int h);
 void pica_readback_all(void);
 int pica_vram_copy(int sx, int sy, int dx, int dy, int w, int h, unsigned mask);
-#ifdef GPU_DUAL
-// Software owns the shared VRAM directly; PICA's deferred work is inactive.
-#define pica_settle_rect(x,y,w,h) do { if (psx3d_renderer_is_pica()) pica_settle_rect(x,y,w,h); } while (0)
-#define pica_settle_vram() do { if (psx3d_renderer_is_pica()) pica_settle_vram(); } while (0)
-#define pica_drop_fills() do { if (psx3d_renderer_is_pica()) pica_drop_fills(); } while (0)
-#define pica_readback_rect(x,y,w,h) do { if (psx3d_renderer_is_pica()) pica_readback_rect(x,y,w,h); } while (0)
-#define pica_readback_all() do { if (psx3d_renderer_is_pica()) pica_readback_all(); } while (0)
-#endif
 #else
 #define pica_settle_rect(x, y, w, h)
 #define pica_settle_vram()
@@ -334,8 +326,7 @@ static noinline void get_gpu_info(struct psx_gpu *gpu, uint32_t data)
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 #endif
 
-//  Minimum 16-byte VRAM alignment needed by gpu_unai's pixel-skipping
-//  renderer/downscaler it uses in high res modes:
+// Keep VRAM cache-line aligned, with the existing overscan guard.
 #ifdef GCW_ZERO
 	// On GCW platform (MIPS), align to 8192 bytes (1 TLB entry) to reduce # of
 	// fills. (Will change this value if it ever gets large page support)

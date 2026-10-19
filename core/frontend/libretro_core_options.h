@@ -75,13 +75,6 @@ struct retro_core_option_v2_category option_cats_us[] = {
       "Configure low-level settings of the P.E.Op.S. GPU plugin."
    },
 #endif
-#ifdef GPU_UNAI
-   {
-      "gpu_unai",
-      "GPU Plugin (Advanced)",
-      "Configure low-level settings of the UNAI GPU plugin."
-   },
-#endif
    {
       "audio",
       "Audio",
@@ -799,94 +792,6 @@ struct retro_core_option_v2_definition option_defs_us[] = {
       "disabled",
    },
 #endif /* GPU_PEOPS */
-#ifdef GPU_UNAI
-   {
-      "pcsx_rearmed_show_gpu_unai_settings",
-      "Show Advanced UNAI GPU Settings",
-      NULL,
-      "Show low-level configuration options for the UNAI GPU plugin. Quick Menu may need to be toggled for this setting to take effect.",
-      NULL,
-      NULL,
-      {
-         { "disabled", NULL },
-         { "enabled",  NULL },
-         { NULL, NULL},
-      },
-      "disabled",
-   },
-#ifndef GPU_UNAI_NO_OLD
-   {
-      "pcsx_rearmed_gpu_unai_old_renderer",
-      "(GPU) Old renderer",
-      "Old renderer",
-      "This enables faster, but less accurate code.",
-      NULL,
-      "gpu_unai",
-      {
-         { "disabled", NULL },
-         { "enabled",  NULL },
-         { NULL, NULL},
-      },
-      "disabled",
-   },
-#endif
-   {
-      "pcsx_rearmed_gpu_unai_blending",
-      "(GPU) Texture Blending",
-      "Texture Blending",
-      "Enable alpha-based (and additive) texture blending. Required for various rendering effects, including transparency (e.g. water, shadows). Can be disabled to improve performance at the expense of severe display errors/inaccuracies.",
-      NULL,
-      "gpu_unai",
-      {
-         { "disabled", NULL },
-         { "enabled",  NULL },
-         { NULL, NULL},
-      },
-      "enabled",
-   },
-   {
-      "pcsx_rearmed_gpu_unai_skipline",
-      "(GPU) Skip every 2nd line",
-      "Skip every 2nd line",
-      "Skips every second scanline. Can be enabled to improve performance at the expense of display inaccuracies (artifacts etc.).",
-      NULL,
-      "gpu_unai",
-      {
-         { "disabled", NULL },
-         { "enabled",  NULL },
-         { NULL, NULL},
-      },
-      "disabled",
-   },
-   {
-      "pcsx_rearmed_gpu_unai_lighting",
-      "(GPU) Lighting Effects",
-      "Lighting Effects",
-      "Enable simulated lighting effects (via vertex coloring combined with texture mapping). Required by almost all 3D games. Can be disabled to improve performance at the expense of severe display errors/inaccuracies (missing shadows, flat textures, etc.).",
-      NULL,
-      "gpu_unai",
-      {
-         { "disabled", NULL },
-         { "enabled",  NULL },
-         { NULL, NULL},
-      },
-      "enabled",
-   },
-   {
-      "pcsx_rearmed_gpu_unai_fast_lighting",
-      "(GPU) Fast Lighting",
-      "Fast Lighting",
-      "Improves performance when 'Lighting Effects' are enabled, but may cause moderate/severe rendering errors.",
-      NULL,
-      "gpu_unai",
-      {
-         { "disabled", NULL },
-         { "enabled",  NULL },
-         { NULL, NULL},
-      },
-      "disabled",
-   },
-#endif /* GPU_UNAI */
    {
       "pcsx_rearmed_spu_reverb",
       "Audio Reverb Effects",
@@ -2048,8 +1953,7 @@ static INLINE void libretro_set_core_options(retro_environment_t environ_cb,
             /* Skip options that are irrelevant when using the
              * old style core options interface */
             if ((strcmp(key, "pcsx_rearmed_show_input_settings") == 0) ||
-                (strcmp(key, "pcsx_rearmed_show_gpu_peops_settings") == 0) ||
-                (strcmp(key, "pcsx_rearmed_show_gpu_unai_settings") == 0))
+                (strcmp(key, "pcsx_rearmed_show_gpu_peops_settings") == 0))
                continue;
 
             if (desc)

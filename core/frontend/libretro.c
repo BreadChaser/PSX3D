@@ -125,9 +125,6 @@ static bool show_input_settings = true;
 #ifdef GPU_PEOPS
 static bool show_advanced_gpu_peops_settings = true;
 #endif
-#ifdef GPU_UNAI
-static bool show_advanced_gpu_unai_settings = true;
-#endif
 static bool show_info_notifications = true;
 static float mouse_sensitivity = 1.0f;
 static unsigned int disk_current_index;
@@ -1017,47 +1014,6 @@ static bool update_option_visibility(void)
       }
    }
 #endif
-#ifdef GPU_UNAI
-   var.key = "pcsx_rearmed_show_gpu_unai_settings";
-   var.value = NULL;
-
-   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
-   {
-      bool show_advanced_gpu_unai_settings_prev =
-            show_advanced_gpu_unai_settings;
-
-      show_advanced_gpu_unai_settings = true;
-      if (strcmp(var.value, "disabled") == 0)
-         show_advanced_gpu_unai_settings = false;
-
-      if (show_advanced_gpu_unai_settings !=
-            show_advanced_gpu_unai_settings_prev)
-      {
-         unsigned i;
-         struct retro_core_option_display option_display;
-         char gpu_unai_option[][40] = {
-            "pcsx_rearmed_gpu_unai_blending",
-            "pcsx_rearmed_gpu_unai_skipline",
-            "pcsx_rearmed_gpu_unai_lighting",
-            "pcsx_rearmed_gpu_unai_fast_lighting",
-         };
-
-         option_display.visible = show_advanced_gpu_unai_settings;
-
-         for (i = 0;
-              i < (sizeof(gpu_unai_option) /
-                     sizeof(gpu_unai_option[0]));
-              i++)
-         {
-            option_display.key = gpu_unai_option[i];
-            environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY,
-                  &option_display);
-         }
-
-         updated = true;
-      }
-   }
-#endif
    return updated;
 }
 
@@ -1100,11 +1056,6 @@ void retro_set_environment(retro_environment_t cb)
 
 #ifdef GPU_PEOPS
       option_display.key = "pcsx_rearmed_show_gpu_peops_settings";
-      environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY,
-            &option_display);
-#endif
-#ifdef GPU_UNAI
-      option_display.key = "pcsx_rearmed_show_gpu_unai_settings";
       environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY,
             &option_display);
 #endif
@@ -2914,68 +2865,6 @@ static void update_variables(bool in_flight)
       pl_rearmed_cbs.gpu_peops.dwActFixes = gpu_peops_fix;
 #endif
 
-#ifdef GPU_UNAI
-   /* Note: This used to be an option, but it only works
-    * (correctly) when running high resolution games
-    * (480i, 512i) and has been obsoleted by
-    * pcsx_rearmed_scale_hires */
-   pl_rearmed_cbs.gpu_unai.ilace_force = 0;
-
-   var.key = "pcsx_rearmed_gpu_unai_old_renderer";
-   var.value = NULL;
-
-   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
-   {
-      if (strcmp(var.value, "enabled") == 0)
-         pl_rearmed_cbs.gpu_unai.old_renderer = 1;
-      else
-         pl_rearmed_cbs.gpu_unai.old_renderer = 0;
-   }
-
-   var.key = "pcsx_rearmed_gpu_unai_skipline";
-   var.value = NULL;
-
-   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
-   {
-      if (strcmp(var.value, "disabled") == 0)
-         pl_rearmed_cbs.gpu_unai.ilace_force = 0;
-      else if (strcmp(var.value, "enabled") == 0)
-         pl_rearmed_cbs.gpu_unai.ilace_force = 1;
-   }
-
-   var.key = "pcsx_rearmed_gpu_unai_lighting";
-   var.value = NULL;
-
-   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
-   {
-      if (strcmp(var.value, "disabled") == 0)
-         pl_rearmed_cbs.gpu_unai.lighting = 0;
-      else if (strcmp(var.value, "enabled") == 0)
-         pl_rearmed_cbs.gpu_unai.lighting = 1;
-   }
-
-   var.key = "pcsx_rearmed_gpu_unai_fast_lighting";
-   var.value = NULL;
-
-   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
-   {
-      if (strcmp(var.value, "disabled") == 0)
-         pl_rearmed_cbs.gpu_unai.fast_lighting = 0;
-      else if (strcmp(var.value, "enabled") == 0)
-         pl_rearmed_cbs.gpu_unai.fast_lighting = 1;
-   }
-
-   var.key = "pcsx_rearmed_gpu_unai_blending";
-   var.value = NULL;
-
-   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
-   {
-      if (strcmp(var.value, "disabled") == 0)
-         pl_rearmed_cbs.gpu_unai.blending = 0;
-      else if (strcmp(var.value, "enabled") == 0)
-         pl_rearmed_cbs.gpu_unai.blending = 1;
-   }
-#endif // GPU_UNAI
 
    var.value = NULL;
    var.key = "pcsx_rearmed_crosshair1";
@@ -4064,9 +3953,6 @@ void retro_deinit(void)
    show_input_settings = true;
 #ifdef GPU_PEOPS
    show_advanced_gpu_peops_settings = true;
-#endif
-#ifdef GPU_UNAI
-   show_advanced_gpu_unai_settings = true;
 #endif
    for (i = 0; i < ARRAY_SIZE(bios_saved); i++) {
       free(bios_saved[i]);

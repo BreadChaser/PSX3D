@@ -96,13 +96,6 @@ struct rearmed_cbs {
 		int   dwFrameRateTicks;
 	} gpu_peops;
 	struct {
-		int old_renderer;
-		int ilace_force;
-		int lighting;
-		int fast_lighting;
-		int blending;
-	} gpu_unai;
-	struct {
 		int   dwActFixes;
 		int   bDrawDither, iFilterType, iFrameTexType;
 		int   iUseMask, bOpaquePass, bAdvancedBlend, bUseFastMdec;

@@ -3,11 +3,7 @@
 
 all: app
 
-# The frontend always includes both renderers; selection is a game setting.
-# Core-only builds still accept CTR_GPU=pica/unai for diagnostics.
-ifneq ($(origin GPU),undefined)
-$(error GPU= was replaced by the runtime Renderer setting; build with plain make)
-endif
+# GPU-only frontend.
 # Renderer-only compile/link experiments; prepare.py invalidates changed objects.
 PICA_LAYOUT ?= split
 ifeq ($(filter $(PICA_LAYOUT),baseline split section os),)
@@ -28,7 +24,7 @@ export PICA_LAYOUT PICA_LAYOUT_CFLAGS PICA_OPT
 
 EXTERN_SYMS := psx3d_depth_get psx3d_depth_frame psx3d_overlay_get psx3d_ov_seq psx3d_set_strength \
 	psx3d_right_get psx3d_stats psx3d_set_half3d psx3d_prof_t psx3d_prof_c psx3d_prof_on new_dynarec_print_stats \
-	psx3d_irq_t psx3d_irq_c psx3d_renderer_select CdromId
+	psx3d_irq_t psx3d_irq_c CdromId
 EXTERN_SYMS += psx3d_idle_skip psx3d_idle_pointer psx3d_idle_delay
 EXTERN_SYMS += psx3d_spu_worker_ticks psx3d_spu_worker_items psx3d_skip pica_display_changed
 EXTERN_SYMS += pica_init pica_exit pica_game_begin pica_game_end pica_flush_vertices pica_frame_started pica_frame_ended \
@@ -36,7 +32,7 @@ EXTERN_SYMS += pica_init pica_exit pica_game_begin pica_game_end pica_flush_vert
 
 core:
 	@python3 tools/pica-layout/prepare.py $(PICA_LAYOUT)
-	$(MAKE) -C core -f Makefile.libretro platform=ctr CTR_GPU=dual EXTRA_EXTERN_SYMS="$(EXTERN_SYMS)"
+	$(MAKE) -C core -f Makefile.libretro platform=ctr CTR_GPU=pica EXTRA_EXTERN_SYMS="$(EXTERN_SYMS)"
 
 app: core
 	$(MAKE) -C psx3d
@@ -61,5 +57,5 @@ cia: app
 		-icon psx3d/build/icon.icn -banner psx3d/build/banner.bnr -target t -ver $(VERSION)
 
 clean:
-	$(MAKE) -C core -f Makefile.libretro platform=ctr CTR_GPU=dual EXTRA_EXTERN_SYMS="$(EXTERN_SYMS)" clean
+	$(MAKE) -C core -f Makefile.libretro platform=ctr CTR_GPU=pica EXTRA_EXTERN_SYMS="$(EXTERN_SYMS)" clean
 	$(MAKE) -C psx3d clean

@@ -123,11 +123,6 @@ void emu_set_default_config(void)
 	pl_rearmed_cbs.gpu_neon.enhancement_no_main = 0;
 	pl_rearmed_cbs.gpu_neon.enhancement_tex_adj = 1;
 	pl_rearmed_cbs.gpu_peops.dwActFixes = 1<<7;
-	pl_rearmed_cbs.gpu_unai.old_renderer = 0;
-	pl_rearmed_cbs.gpu_unai.ilace_force = 0;
-	pl_rearmed_cbs.gpu_unai.lighting = 1;
-	pl_rearmed_cbs.gpu_unai.fast_lighting = 0;
-	pl_rearmed_cbs.gpu_unai.blending = 1;
 	memset(&pl_rearmed_cbs.gpu_peopsgl, 0, sizeof(pl_rearmed_cbs.gpu_peopsgl));
 	pl_rearmed_cbs.gpu_peopsgl.iVRamSize = 64;
 	pl_rearmed_cbs.gpu_peopsgl.iTexGarbageCollection = 1;
@@ -148,8 +143,6 @@ void emu_set_default_config(void)
 #endif
 #if defined(MIYOO)
 	pl_rearmed_cbs.dithering = 0;
-	pl_rearmed_cbs.gpu_unai.fast_lighting = 1;
-	pl_rearmed_cbs.gpu_unai.scale_hires = 1;
 #endif
 	ndrc_g.hacks = 0;
 

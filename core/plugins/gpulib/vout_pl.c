@@ -109,9 +109,6 @@ int vout_update(struct psx_gpu *gpu, int src_x, int src_y)
     src_x2 *= 2;
   }
 
-  // gpu_unai skips drawing odd lines
-  if (h > 256 && gpu->state.downscale_enable && (src_y & 1))
-    src_y++;
 
   offset = (src_y * 1024 + src_x) * 2;
   offset += src_x2 * bpp / 8;

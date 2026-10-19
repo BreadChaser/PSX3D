@@ -3477,9 +3477,7 @@ static void PICA_COLD pica_probe_local(char *buf, int n)
 }
 
 // ------------------------------------------------------------------ PSX3D stereo hooks
-// (part of the software renderer; nothing to do here yet)
-
-#ifndef GPU_DUAL
+// Reserved entry points for GPU stereo integration. Mode 2 currently uses screen depth.
 uint16_t *psx3d_vram2;
 volatile uint32_t psx3d_ov_seq;
 void psx3d_stereo_set(int on) { (void)on; }
@@ -3494,7 +3492,6 @@ void psx3d_stats(float *zc, int *n3d, int *n2d, int *dmin, int *dmax, int *zmin,
 {
 	*zc = 0; *n3d = *n2d = *dmin = *dmax = *zmin = *zmax = 0;
 }
-#endif
 
 // All requests are synchronous; buffers and strings can live on the caller's
 // stack. No frontend callback runs concurrently with emulation.

@@ -269,7 +269,6 @@ OBJS += plugins/gpulib/gpu.o plugins/gpulib/vout_pl.o plugins/gpulib/prim.o
 ifeq "$(USE_ASYNC_GPU)" "1"
 OBJS += plugins/gpulib/gpu_async.o
 plugins/gpulib/%.o: CFLAGS += -DUSE_ASYNC_GPU
-plugins/gpu_unai/gpulib_if.o: CFLAGS += -DUSE_ASYNC_GPU
 endif
 ifeq "$(BUILTIN_GPU)" "neon"
 CFLAGS += -DGPU_NEON
@@ -292,44 +291,13 @@ frontend/menu.o frontend/plugin_lib.o: CFLAGS += -DBUILTIN_GPU_PEOPS
 OBJS += plugins/dfxvideo/gpulib_if.o
 endif
 
-ifneq (,$(filter $(BUILTIN_GPU),pica dual))
+ifeq "$(BUILTIN_GPU)" "pica"
 # PSX3D: the PS1 GPU on the 3DS GPU through citro3d
 CFLAGS += -DGPU_PICA
 CFLAGS += -DUSE_GPULIB=1
 OBJS += plugins/gpu_pica/gpu_pica.o
 plugins/gpu_pica/gpu_pica.o: CFLAGS += $(PICA_CFLAGS) $(PICA_LAYOUT_CFLAGS) $(PICA_OPT)   # renderer-only options
 plugins/gpulib/gpu.o: CFLAGS += $(PICA_LAYOUT_CFLAGS)
-endif
-
-ifneq (,$(filter $(BUILTIN_GPU),unai dual))
-CFLAGS += -DGPU_UNAI
-CFLAGS += -DUSE_GPULIB=1
-OBJS += plugins/gpu_unai/gpulib_if.o
-ifeq "$(ARCH)" "arm"
-OBJS += plugins/gpu_unai/gpu_arm.o
-endif
-ifneq "$(GPU_UNAI_NO_OLD)" "1"
-OBJS += plugins/gpu_unai/old/if.o
-else
-CFLAGS += -DGPU_UNAI_NO_OLD
-endif
-plugins/gpu_unai/gpulib_if.o: plugins/gpu_unai/*.h
-plugins/gpu_unai/gpulib_if.o: CFLAGS += -DREARMED -DUSE_GPULIB=1
-frontend/menu.o frontend/plugin_lib.o: CFLAGS += -DBUILTIN_GPU_UNAI
-ifneq ($(DEBUG), 1)
-plugins/gpu_unai/gpulib_if.o \
-plugins/gpu_unai/old/if.o: CFLAGS += -O3
-endif
-CC_LINK = $(CXX)
-endif
-
-ifeq "$(BUILTIN_GPU)" "dual"
-CFLAGS += -DGPU_DUAL
-OBJS += plugins/gpulib/renderer_dispatch.o
-# Namespace only the renderer interface, leaving each primitive loop intact.
-RENDERER_API := init finish do_cmd_list sync_ecmds update_caches flush_queues set_interlace set_config notify_screen_change
-plugins/gpu_pica/gpu_pica.o: CFLAGS += $(foreach s,$(RENDERER_API),-Drenderer_$(s)=pica_renderer_$(s))
-plugins/gpu_unai/gpulib_if.o: CFLAGS += $(foreach s,$(RENDERER_API),-Drenderer_$(s)=unai_renderer_$(s))
 endif
 
 # libchdr
