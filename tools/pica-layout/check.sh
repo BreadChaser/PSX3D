@@ -17,14 +17,14 @@ for layout in baseline split; do
  flags=()
  if [[ $layout == split ]]; then flags+=(-DPICA_LAYOUT_SPLIT); fi
  cc -O1 -g -fno-strict-aliasing -fsanitize=address,undefined \
-  -DPSX3D_SIM -DPICA_SIM_HASH "${flags[@]}" -I core -I "$out" -I tools/gpu-compare \
+  -DPSX3D_SIM -DGPU_PICA -DPICA_SIM_HASH "${flags[@]}" -I core -I "$out" -I tools/gpu-compare \
   tools/pica-layout/commands-test.c tools/gpu-compare/raster.c \
   core/plugins/gpu_pica/gpu_pica.c core/plugins/gpulib/vout_pl.c "$out/commands.c" -lm -o "$out/commands-$layout"
  "$out/commands-$layout" > "$out/commands-$layout.log"
 done
 cmp "$out/commands-baseline.log" "$out/commands-split.log"
 cc -O1 -g -fno-strict-aliasing -fsanitize=address,undefined \
- -DPSX3D_SIM -DPICA_LAYOUT_SPLIT -I core -I "$out" -I tools/gpu-compare \
+ -DPSX3D_SIM -DGPU_PICA -DPICA_LAYOUT_SPLIT -I core -I "$out" -I tools/gpu-compare \
  tools/gpu-compare/regress.c tools/gpu-compare/raster.c \
  core/plugins/gpu_pica/gpu_pica.c core/plugins/gpulib/vout_pl.c "$out/commands.c" -lm -o "$out/regress"
 "$out/regress" > "$out/regress.log"
