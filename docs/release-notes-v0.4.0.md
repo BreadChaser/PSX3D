@@ -1,37 +1,54 @@
 # PSX3D v0.4.0
 
-PSX3D now uses the experimental 3DS GPU renderer on both Old and New 3DS.
-Software rendering and its settings have been removed. Drawing errors and
-missing effects remain; PSX3D is still a work in progress.
+## Highlights
 
-- Faster emulation through scratchpad, indirect-block lookup and NCLIP improvements.
-- Settings categories with clear per-game/global scope, individual override
-  clearing and reset confirmations.
-- Box art loads automatically on Old 3DS and during remote library sessions.
-  Smaller PNG allocations and download cancellation leave memory for games.
+- **GPU rendering on both Old and New 3DS**, with faster emulation and automatic frameskip.
+- **A clearer settings menu** with categories, per-game overrides and reset confirmations.
+- **Automatic box art** on both console models, with lower memory use.
+- Built-in HLE BIOS: install, add your games and play without a separate BIOS file.
+
+PSX3D remains a work in progress. The GPU renderer is experimental and still
+has drawing errors and missing effects.
+
+## Performance
+
+All six tested New 3DS scenes run at about 60 FPS with frameskip off or auto.
+Old 3DS benefits from automatic frameskip, though demanding games still run
+below full game speed. See the [Old/New performance chart and exact numbers](../README.md#performance)
+for measured scenes and [methodology](performance.md).
+
+## What changed
+
+- GPU rendering is now the only renderer. Software rendering and its settings have been removed.
+- Faster scratchpad access, indirect-block lookup and geometry calculations.
+- Settings grouped into Display, Performance, Sound, Controls, Saves & general,
+  and Advanced. Rows identify their scope; individual game overrides can be cleared.
+- Box art loads automatically on Old 3DS. Smaller image allocations and cancelling
+  downloads before gameplay leave more memory for games.
 - Movie synchronization and alternating-buffer border clearing fixes.
-- Included PCSX-ReARMed core: no submodules or patch step when building.
-- Opt-in developer input recording and deterministic replay tools.
+- The included PCSX-ReARMed core builds directly from source without a separate patch step.
+- Optional developer tools for input recording and deterministic replay.
 
-Measured saved scenes on Old 3DS: Crash 53.0 FPS, CTR 37.4, GT2 34.4,
-Silent Hill 42.0, R4 60.0 and Symphony of the Night 57.8 with frameskip off.
-Auto reaches full game speed in Crash, Silent Hill, R4 and Symphony of the Night;
-CTR reaches 83.2% and GT2 79.0%. All six New 3DS scenes hold about 60 FPS.
-These are scene measurements, not whole-game guarantees. See
-[performance and limitations](performance.md).
+## Known limits
 
-The built-in HLE BIOS needs no separate BIOS file. A real BIOS remains optional
-and may help compatibility. Per-object 3D currently falls back to depth-mesh
-screen 3D. Old 3DS has no stereoscopic display or rewind. Heavy games still run
-below full speed on Old 3DS, including with automatic frameskip. A thin blue
-line can remain along the top edge of Crash Bandicoot’s game picture.
+- GPU rendering can show incorrect effects, flicker and other drawing errors.
+  A thin blue line at the top of Crash Bandicoot's picture still reproduces.
+- Real per-object stereoscopic 3D currently falls back to depth-mesh screen 3D
+  on New 3DS. Old 3DS has no stereoscopic display or rewind.
+- Widescreen behaviour is unchanged in this release; improvements are planned for v0.4.1.
+- Display centering and interlaced modes are not implemented.
+- Performance and compatibility vary by game. A real BIOS may help compatibility.
+- Heavy Wi-Fi traffic and slow cover downloads can cause audio clicks.
 
-Install with **FBI → Remote Install → Scan QR Code**, or download and install
-**PSX3D.cia**. Existing settings and saves are retained; obsolete renderer
-settings are ignored.
+## Install
 
-![FBI remote install](qr-install.png)
+Scan this code in **FBI → Remote Install → Scan QR Code**, or download
+[**PSX3D.cia**](https://github.com/BreadChaser/PSX3D/releases/latest/download/PSX3D.cia)
+and install it with FBI. A 3DSX is available for Homebrew Launcher.
 
-https://github.com/BreadChaser/PSX3D/releases/latest/download/PSX3D.cia
+![FBI remote install QR code](https://raw.githubusercontent.com/BreadChaser/PSX3D/main/docs/qr-install.png)
 
-Credits and GPL-2.0 licensing: [README](../README.md) and [LICENSE](../LICENSE).
+Put your games in `sdmc:/roms/psx/`, or choose a folder with **Y** in the library.
+Existing settings and saves are retained; obsolete renderer settings are ignored.
+
+Credits and GPL-2.0 licensing: [README](../README.md#credits-and-licence) and [LICENSE](../LICENSE).
