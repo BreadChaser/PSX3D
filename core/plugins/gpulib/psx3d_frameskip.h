@@ -7,6 +7,8 @@
 typedef struct {
   unsigned enabled, level, phase, streak, max_skips;
   unsigned numerator, denominator;
+  unsigned smart;
+  double budget_debt, frame_budget;
   unsigned timing, spu_main_ticks, spu_wait_ticks;
   unsigned gpu_main_ticks;
   unsigned phase_ticks[8], render_prims;
@@ -32,6 +34,11 @@ static inline unsigned psx3d_skip_period(unsigned level)
 }
 static inline unsigned psx3d_skip_decide(psx3d_skip_state *s)
 {
+  if (s->smart) {
+    unsigned skip = s->budget_debt > 0 && s->streak < s->max_skips;
+    if (skip) s->streak++; else s->streak = 0;
+    return skip;
+  }
   unsigned period = s->denominator ? s->denominator : psx3d_skip_period(s->level);
   s->phase += s->denominator ? s->numerator : psx3d_skip_draw(s->level);
   unsigned skip = s->phase < period && s->streak < (s->max_skips ? s->max_skips : 4);
@@ -204,39 +211,20 @@ static inline void psx3d_skip_observe_dense(psx3d_skip_controller *c,
     c->dense_numerator = current; c->age = 0;
   }
 }
-/* Whole-vblank budget feedback, independent of the game's heavy/light phase.
- * 120 ticks gives fine picture cadences (one skip in N), advanced by GP1(05).
- * No single-frame lateness signal: a 30fps picture can borrow the idle slot. */
-typedef struct {
-  double work, average;
-  unsigned count, numerator, age;
-} psx3d_smart_controller;
-
-static inline void psx3d_smart_observe(psx3d_smart_controller *c,
-    double work, double budget, unsigned occupancy, unsigned max_skips)
+/* Actual work, excluding the frontend's pacing sleep. Two vblanks of credit
+ * let a 30fps heavy/idle pair share its budget, and absorb scheduler jitter.
+ * At each GAME flip, drawing is admitted unless previous work owes time.
+ * Skipped drawing repays exactly the time it saves; there is no guessed
+ * render-cost slope, coarse level or audio/late-vblank threshold. Constant
+ * work converges to evenly distributed, minimum-needed picture skips. */
+static inline void psx3d_smart_observe(psx3d_skip_state *s,
+    double work, double budget)
 {
-  if (work > budget * 8) { memset(c, 0, sizeof(*c)); return; }
-  c->work += work;
-  if (++c->count < 30) return;
-  c->average = c->work / c->count;
-  c->count = 0; c->work = 0; c->age += 30;
-  unsigned current = c->numerator ? c->numerator : 120;
-  unsigned minimum = (120 + max_skips) / (max_skips + 1);
-  /* Two percent reserve absorbs normal scheduling and audio callback jitter.
-   * At full density keep drawing whenever the measured budget is met. */
-  double target = budget * (current == 120 ? 1.005 : .98);
-  if (c->average > target) {
-    unsigned step = (unsigned)((c->average / target - 1) * 120) + 1;
-    if (step > 12) step = 12;
-    if (occupancy < 10 && step < 4) step = 4;
-    current = current > minimum + step ? current - step : minimum;
-    c->age = 0;
-  } else if (current < 120 && c->age >= 60 && occupancy >= 20 &&
-             c->average < budget * .96) {
-    current += c->average < budget * .85 ? 4 : 1;
-    if (current > 120) current = 120;
-    c->age = 0;
-  }
-  c->numerator = current;
+  if (!s->frame_budget) s->budget_debt = -2 * budget;
+  s->frame_budget = budget;
+  if (work > budget * 8) return; // blocking load/menu, not a scene cost
+  s->budget_debt += work - budget;
+  if (s->budget_debt < -2 * budget) s->budget_debt = -2 * budget;
+  if (s->budget_debt > 4 * budget) s->budget_debt = 4 * budget;
 }
 #endif

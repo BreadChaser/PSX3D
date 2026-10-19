@@ -20,3 +20,23 @@ void __wrap_retro_run(void)
     frame++,psx3d_skip.flips_drawn-drawn,psx3d_skip.flips_skipped-skipped,
     psx3d_skip.pictures-pictures,psx3d_skip.phase,psx3d_skip.streak);
 }
+
+/* Count/hash the core's actual audio across all tested skip cadences. */
+#include "libretro.h"
+static retro_audio_sample_batch_t sink;
+static unsigned long long audio_frames;
+static uint64_t audio_hash=1469598103934665603ULL;
+static size_t capture(const int16_t *data,size_t frames)
+{
+  audio_frames+=frames;
+  for(size_t i=0;i<frames*2;i++) audio_hash=(audio_hash^(uint16_t)data[i])*1099511628211ULL;
+  return sink(data,frames);
+}
+static void audio_report(void) { fprintf(stderr,"skip-audio frames=%llu hash=%016llx\n",audio_frames,(unsigned long long)audio_hash); }
+void __real_retro_set_audio_sample_batch(retro_audio_sample_batch_t);
+void __wrap_retro_set_audio_sample_batch(retro_audio_sample_batch_t cb)
+{
+  sink=cb;
+  __real_retro_set_audio_sample_batch(capture);
+  atexit(audio_report);
+}
