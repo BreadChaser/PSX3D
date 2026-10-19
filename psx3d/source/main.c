@@ -135,11 +135,11 @@ int sw_state = -1;       // test: load this save state slot when the game starts
 bool sw_nogputhread;
 bool sw_gpu_async = true;
 bool sw_gpu_flush = true;
+bool sw_hack_spunearest;
 bool sw_aa;              // test: Old 3DS: gameplay supersampled too
 bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 
 extern int psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay;
-extern int psx3d_dyn_lookup;
 
 static void parse_switches(int argc, char **argv)
 {
@@ -179,8 +179,8 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "idleptr=on")) psx3d_idle_pointer = 1;
 		else if (!strcmp(a, "idledelay=off")) psx3d_idle_delay = 0;
 		else if (!strcmp(a, "idledelay=on")) psx3d_idle_delay = 1;
-		else if (!strcmp(a, "dyn_lookup=off")) psx3d_dyn_lookup = 0;
-		else if (!strcmp(a, "dyn_lookup=on")) psx3d_dyn_lookup = 1;
+		else if (!strcmp(a, "hack_spunearest=on")) sw_hack_spunearest = true;
+		else if (!strcmp(a, "hack_spunearest=off")) sw_hack_spunearest = false;
 		else if (!strcmp(a, "noskip")) sw_noskip = true;
 		else if (!strcmp(a, "nogputhread")) sw_nogputhread = true;
 		else if (!strcmp(a, "gputhread")) sw_nogputhread = false;
@@ -207,8 +207,6 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "pica_prims_round")) pica_prims |= 4;
 		else if (!strcmp(a, "skipgate=old")) psx3d_skipgate = 0;
 		else if (!strcmp(a, "skipgate=new")) psx3d_skipgate = 1;
-		else if (!strcmp(a, "g1sync=on")) pica_g1sync = true;
-		else if (!strcmp(a, "g1sync=off")) pica_g1sync = false;
 		else if (!strcmp(a, "texmemo=old")) pica_texmemo = false;
 		else if (!strcmp(a, "texmemo=new")) pica_texmemo = true;
 		else if (!strcmp(a, "texmask=old")) pica_texmask = false;

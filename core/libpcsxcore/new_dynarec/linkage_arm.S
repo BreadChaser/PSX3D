@@ -180,55 +180,6 @@ FUNCTION(dyna_linker):
 	.size	dyna_linker, .-dyna_linker
 
 	.align	2
-FUNCTION(jump_vaddr_r1):
-	mov	r0, r1
-	b	jump_vaddr_r0
-	.size	jump_vaddr_r1, .-jump_vaddr_r1
-FUNCTION(jump_vaddr_r2):
-	mov	r0, r2
-	b	jump_vaddr_r0
-	.size	jump_vaddr_r2, .-jump_vaddr_r2
-FUNCTION(jump_vaddr_r3):
-	mov	r0, r3
-	b	jump_vaddr_r0
-	.size	jump_vaddr_r3, .-jump_vaddr_r3
-FUNCTION(jump_vaddr_r4):
-	mov	r0, r4
-	b	jump_vaddr_r0
-	.size	jump_vaddr_r4, .-jump_vaddr_r4
-FUNCTION(jump_vaddr_r5):
-	mov	r0, r5
-	b	jump_vaddr_r0
-	.size	jump_vaddr_r5, .-jump_vaddr_r5
-FUNCTION(jump_vaddr_r6):
-	mov	r0, r6
-	b	jump_vaddr_r0
-	.size	jump_vaddr_r6, .-jump_vaddr_r6
-FUNCTION(jump_vaddr_r8):
-	mov	r0, r8
-	b	jump_vaddr_r0
-	.size	jump_vaddr_r8, .-jump_vaddr_r8
-FUNCTION(jump_vaddr_r9):
-	mov	r0, r9
-	b	jump_vaddr_r0
-	.size	jump_vaddr_r9, .-jump_vaddr_r9
-FUNCTION(jump_vaddr_r10):
-	mov	r0, r10
-	b	jump_vaddr_r0
-	.size	jump_vaddr_r10, .-jump_vaddr_r10
-FUNCTION(jump_vaddr_r12):
-	mov	r0, r12
-	b	jump_vaddr_r0
-	.size	jump_vaddr_r12, .-jump_vaddr_r12
-FUNCTION(jump_vaddr_r7):
-	add	r0, r7, #0
-	.size	jump_vaddr_r7, .-jump_vaddr_r7
-FUNCTION(jump_vaddr_r0):
-	ldr     r1, [fp, #LO_hash_table_ptr]
-	bl	ndrc_get_addr_ht
-	bx	r0
-	.size	jump_vaddr_r0, .-jump_vaddr_r0
-
 /* Same two-way hash as ndrc_get_addr_ht_param. Use its existing invalidation
  * and lifetime rules, with no extra cached pointers. r0 keeps the original
  * vaddr for the miss path (including misalignment/exception information).

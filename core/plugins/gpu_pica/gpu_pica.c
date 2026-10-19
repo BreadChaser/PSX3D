@@ -3610,7 +3610,6 @@ void pica_prepare_present(void)
 }
 
 // G1 is correctness-on; the switch is read only on RGB24 scanout.
-bool pica_g1sync = true;
 // The RGB24 frontend reads packed bytes from CPU VRAM, including movie
 // borders that may last have been cleared/drawn in 16-bit GPU mode. Settle
 // old fills before newer drawing; dirty tracking makes later movie frames cheap.
@@ -3623,7 +3622,6 @@ static noinline __attribute__((cold)) void cpu_scanout_on_thread(void *data)
 }
 noinline __attribute__((cold)) void pica_prepare_cpu_scanout(int offset, int w, int h)
 {
-	if (!pica_g1sync) return;
 	// Packed RGB bytes can begin at an odd byte after left clipping.
 	struct cpu_scanout_request r = { ((unsigned)offset >> 1) & 1023, ((unsigned)offset >> 11) & 511,
 		((unsigned)w * 3 + (offset & 1) + 1) >> 1, h };

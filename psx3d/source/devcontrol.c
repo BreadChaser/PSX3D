@@ -110,7 +110,6 @@ static unsigned linear_free(void)
 #endif
 }
 extern int psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay;
-extern int psx3d_dyn_lookup;
 
 /* Input replay integration: this block is self-contained for combined builds. */
 bool emu_record_start(void);
@@ -158,10 +157,10 @@ static void publish_status(void)
 	        running && !strcmp(opt("pcsx_rearmed_gpu_thread_rendering"), "enabled") ? "true" : "false",
 	        sw_nosputhread ? "true" : "false");
 	p += strlen(p);
-	p += sprintf(p, ",\"build\":\"remove-sw-1-" PICA_LAYOUT_NAME "\",\"rtfs\":%s,\"ff\":%s,\"frontend\":%s,\"floataudio\":%s", sw_rtfs ? "true" : "false", sw_ff ? "true" : "false", sw_frontend ? "true" : "false", sw_floataudio ? "true" : "false");
+	p += sprintf(p, ",\"build\":\"combined2-1-" PICA_LAYOUT_NAME "\",\"rtfs\":%s,\"ff\":%s,\"frontend\":%s,\"floataudio\":%s", sw_rtfs ? "true" : "false", sw_ff ? "true" : "false", sw_frontend ? "true" : "false", sw_floataudio ? "true" : "false");
+	p += sprintf(p, ",\"hack_spunearest\":%s", sw_hack_spunearest ? "true" : "false");
 	p += sprintf(p, ",\"version\":\"%s\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
 	p += sprintf(p, ",\"pica_prims\":%u,\"idle\":%d,\"idleptr\":%d,\"idledelay\":%d", pica_prims, psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay);
-	p += sprintf(p, ",\"dyn_lookup\":%d", psx3d_dyn_lookup);
 	p += sprintf(p, ",\"skipgate\":\"%s\"", psx3d_skipgate ? "new" : "old");
 	p += sprintf(p, ",\"texmask\":\"%s\",\"texmemo\":\"%s\"",
 	             pica_texmask ? "new" : "old", pica_texmemo ? "new" : "old");

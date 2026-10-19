@@ -9,6 +9,7 @@ import subprocess
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('destination', type=Path)
 p.add_argument('--hash', action='store_true')
+p.add_argument('--source', type=Path, help='read-only source tree; runner still comes from this checkout')
 a = p.parse_args()
 repo = Path(__file__).resolve().parents[2]
 dev = Path('/home/tony/Development/PS1_3ds/devtools')
@@ -16,7 +17,7 @@ dst = a.destination.resolve()
 assert dst != dev / 'sim'
 dst.mkdir(parents=True, exist_ok=True)
 subprocess.run(['rsync', '-a', '--delete', '--exclude=*.o', '--exclude=*.d',
-                '--exclude=*.a', str(repo / 'core') + '/', str(dst / 'core') + '/'], check=True)
+                '--exclude=*.a', str((a.source or repo) / 'core') + '/', str(dst / 'core') + '/'], check=True)
 for pat in ('*.o', '*.d', '*.a'):
     for f in (dst / 'core').rglob(pat):
         f.unlink()
@@ -34,6 +35,8 @@ f.write_text(s)
 f = dst / 'core/libpcsxcore/psxmem.c'
 s = f.read_text().replace('ptr = psxMap(0x80000000, 0x00210000, 1, MAP_TAG_RAM);',
                          'ptr = MAP_FAILED; /* Linux simulator uses relocated RAM. */')
+s = s.replace('psxMap(0x1f800000, 0x10000, 0, MAP_TAG_OTHER)',
+              'psxMap(0x0fde0000, 0x10000, 0, MAP_TAG_OTHER)')
 f.write_text(s)
 f = dst / 'core/libpcsxcore/new_dynarec/new_dynarec.c'
 f.write_text(f.read_text() + '\nunsigned sim_codegen_size(void) { return out - ndrc->translation_cache; }\n')

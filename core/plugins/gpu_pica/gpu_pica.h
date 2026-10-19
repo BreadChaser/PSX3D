@@ -3,7 +3,6 @@
 #define GPU_PICA_H
 
 #include <stdbool.h>
-extern bool pica_g1sync;
 // CPU VRAM byte offset and RGB24 pixel dimensions.
 void pica_prepare_cpu_scanout(int offset, int w, int h);
 #include "gpu_pica_thread.h"

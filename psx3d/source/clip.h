@@ -9,7 +9,7 @@
 #define CLIP_META 12288
 #define CLIP_MAX_FRAMES 3600
 #define CLIP_CHECK_INTERVAL 60
-#define CLIP_BUILD "input-replay-1"
+#define CLIP_BUILD "combined2-1-split"
 extern int clip_active; /* one predictable branch per retro_run; zero normally */
 extern bool clip_enabled;
 extern int clip_seconds, clip_requested;

@@ -1215,7 +1215,12 @@ static void no_stackprotector gteMVMVA_mx##mx_##v##v_##cv##cv_##sf##sf_##lm##lm_
 	TABLE_ENTRY1_MVMVA32(nf, 1)
 
 DECL_OP4_(RTPS, NF, )
+#if defined(FLAGLESS) && defined(HAVE_ARMV6) && !defined(DRC_DBG)
+/* The flagless ARMv6 determinant is the sole 3DS path. */
+static void gteNCLIP_nf(psxCP2Regs *regs, u32 code) { gteNCLIP_nf_armv6(regs, code); }
+#else
 DECL_OP1(NCLIP, NF)
+#endif
 DECL_OP4(OP,    NF)
 DECL_OP4(DPCS,  NF)
 DECL_OP4(INTPL, NF)

@@ -16,7 +16,7 @@
 #include "../../source/options.c"
 #include "../../source/ui.c"
 #include "../../source/statsview.c"
-bool sw_stats, sw_prof;
+bool sw_stats, sw_prof, sw_hack_spunearest;
 int sw_pmu0=-1;
 char CdromId[10];
 bool log_linked(void) { return false; }
@@ -548,6 +548,13 @@ int main(void)
  assert(!FT_New_Face(ft,getenv("PSX3D_TITLE_FONT"),0,&title_face));
  assert(!FT_New_Face(ft,getenv("PSX3D_BODY_FONT"),0,&body_face));
  assert(!FT_Set_Pixel_Sizes(title_face,0,30)); assert(!FT_Set_Pixel_Sizes(body_face,0,30));
+ sw_hack_spunearest=true;
+ assert(!strcmp(options_get("pcsx_rearmed_spu_interpolation"),"off"));
+ sw_hack_spunearest=false;
+ g_new3ds=false;
+ assert(!strcmp(options_get("pcsx_rearmed_spu_interpolation"),"simple"));
+ g_new3ds=true;
+ assert(!strcmp(options_get("pcsx_rearmed_spu_interpolation"),"gaussian"));
  config_load(); layout_checks(); curved_fill_checks(); side_and_new_checks(); action_checks(); serial_config_checks(); symbol_checks(); stats_input_checks();
  fps_mockups();
  confirm_accept=false; confirm_step=0; assert(!ui_confirm("RESET?","Cancel test",false));

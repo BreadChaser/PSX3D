@@ -145,17 +145,7 @@ int main(int argc, char **argv)
 	retro_set_input_poll(poll);
 	retro_set_input_state(state);
 	retro_init();
- {
-  extern int psx3d_dyn_lookup __attribute__((weak));
-  extern int psx3d_dyn_gtecode __attribute__((weak));
-  extern int psx3d_dyn_nclip __attribute__((weak));
-  extern int psx3d_dyn_regpair __attribute__((weak));
-  unsigned m=getenv("DYNAREC_SPEED") ? atoi(getenv("DYNAREC_SPEED")) : 0;
-  if (&psx3d_dyn_lookup) psx3d_dyn_lookup=!!(m&1);
-  if (&psx3d_dyn_gtecode) psx3d_dyn_gtecode=!!(m&2);
-  if (&psx3d_dyn_nclip) psx3d_dyn_nclip=!!(m&4);
-  if (&psx3d_dyn_regpair) psx3d_dyn_regpair=!!(m&8);
- }
+
 	struct retro_game_info gi = { .path = argv[1] };
 	if (!retro_load_game(&gi)) { fprintf(stderr, "load failed\n"); return 1; }
 #ifdef DYNAREC_MICROTEST

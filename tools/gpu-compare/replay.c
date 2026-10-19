@@ -72,7 +72,6 @@ int main(int argc,char **argv)
     renderer_init();
     struct rearmed_cbs cbs={0}; cbs.dithering=getenv("GPU_DITHER") ? atoi(getenv("GPU_DITHER")) : 1; renderer_set_config(&cbs);
 #ifdef PICA
-    if(getenv("G1SYNC"))pica_g1sync=atoi(getenv("G1SYNC"))!=0;
     unsigned shader=0; assert(pica_init(&shader,4)); assert(pica_game_begin(true));
     if(getenv("PICA_DEBUG"))pica_debug=atoi(getenv("PICA_DEBUG"));
     if(getenv("PICA_SUBMIT"))pica_submit=strtoul(getenv("PICA_SUBMIT"),NULL,0);

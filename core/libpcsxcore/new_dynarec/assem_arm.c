@@ -45,37 +45,6 @@ static int literalcount;
 void indirect_jump_indexed();
 void indirect_jump();
 void do_interrupt();
-void jump_vaddr_r0();
-void jump_vaddr_r1();
-void jump_vaddr_r2();
-void jump_vaddr_r3();
-void jump_vaddr_r4();
-void jump_vaddr_r5();
-void jump_vaddr_r6();
-void jump_vaddr_r7();
-void jump_vaddr_r8();
-void jump_vaddr_r9();
-void jump_vaddr_r10();
-void jump_vaddr_r12();
-
-void * const jump_vaddr_reg[16] = {
-  jump_vaddr_r0,
-  jump_vaddr_r1,
-  jump_vaddr_r2,
-  jump_vaddr_r3,
-  jump_vaddr_r4,
-  jump_vaddr_r5,
-  jump_vaddr_r6,
-  jump_vaddr_r7,
-  jump_vaddr_r8,
-  jump_vaddr_r9,
-  jump_vaddr_r10,
-  0,
-  jump_vaddr_r12,
-  0,
-  0,
-  0
-};
 
 void invalidate_addr_r0();
 void invalidate_addr_r1();
@@ -2358,7 +2327,7 @@ static void multdiv_assemble_arm(int i, const struct regstat *i_regs)
 
 static void do_jump_vaddr(int rs)
 {
-  if (psx3d_dyn_lookup) {
+  {
     extern void jump_vaddr_fast(void);
     extern char jump_vaddr_fast_r1[];
     // Shared eight-byte input shims keep every generated exit one branch,
@@ -2366,9 +2335,7 @@ static void do_jump_vaddr(int rs)
     assert(rs >= 0 && rs < HOST_REGS && rs != EXCLUDE_REG);
     emit_far_jump(rs ? (void *)(jump_vaddr_fast_r1 + (rs - 1) * 8) :
                        (void *)jump_vaddr_fast);
-    return;
   }
-  emit_far_jump(jump_vaddr_reg[rs]);
 }
 
 static void do_preload_rhash(int r) {

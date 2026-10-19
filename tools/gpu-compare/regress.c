@@ -77,10 +77,6 @@ int main(void)
     u32 movie[]={0x02000000,xy(0,0),xy(480,240),
         0x600000ff,xy(32,32),xy(16,16)};
     commands(movie,6);
-    pica_g1sync=false;
-    assert(vout_update(&gpu,0,0)==1);
-    assert(vram[10*1024+10]==0x5555); // negative control: off preserves stale CPU data
-    pica_g1sync=true;
     assert(vout_update(&gpu,0,0)==1);
     assert(vram[10*1024+10]==0);
     assert(vram[36*1024+36]==31);

@@ -436,9 +436,6 @@ void new_dyna_leave();
 
 void *ndrc_get_addr_ht(u_int vaddr, struct ht_entry *ht);
 
-// Research switches: sampled only when compiling a block. A clean game/state
-// reload is required; generated code never polls these globals.
-int psx3d_dyn_lookup;
 void ndrc_write_invalidate_one(u_int addr);
 static void ndrc_write_invalidate_many(u_int addr, u_int end);
 
@@ -3225,8 +3222,15 @@ static void *emit_fastpath_cmp_jump(struct compile_state *st, int i,
       emit_jc(0);
     }
     else {
-      // do the usual RAM check, jump will go to the right handler
-      type=0;
+      // Guard the existing 4 KB dynarec scratchpad mapping. Failure enters
+      // the original slow stub with the guest address and mappings intact.
+      host_tempreg_acquire();
+      emit_xorimm(addr, 0x1f800000, HOST_TEMPREG);
+      emit_cmpimm(HOST_TEMPREG, 0x1000);
+      jaddr = out;
+      emit_jc(0);
+      emit_addimm_ptr(HOST_TEMPREG, (uintptr_t)psxRegs.ptrs.psxH, HOST_TEMPREG);
+      *addr_reg_override = HOST_TEMPREG;
     }
   }
 
@@ -3430,7 +3434,7 @@ static u_int resolve_const_io(int i, const struct regstat *i_regs, int *is_const
   // take non-ram/scratchpad likely_addr only, else keep the usual path
   if (is_ram_addr(addr))
     return ~0;
-  if (psxRegs.ptrs.psxH == (void *)0x1f800000 && (addr >> 10) == (0x1f800000u >> 10))
+  if ((addr >> 10) == (0x1f800000u >> 10))
     return ~0;
   assem_debug("; likely addr: %08x\n", addr);
   *likely_addr = addr;

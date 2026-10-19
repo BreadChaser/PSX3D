@@ -31,15 +31,15 @@ static u64 mock_ms;
 static char wire[16384], response[512], status[4096];
 static int state_writes, init_calls, shot_calls;
 int pica_debug;
+bool sw_hack_spunearest;
 unsigned pica_submit;
 unsigned pica_prims;
+bool pica_texmask = true, pica_texmemo = true;
 int psx3d_idle_skip=1, psx3d_idle_pointer, psx3d_idle_delay;
-int psx3d_dyn_lookup;
 bool sw_pmuphase, sw_pmuclass, sw_rtfsdense;
 void pmu_category_detail(double values[21]) { for (int k=0;k<21;k++) values[k]=-1; }
 void pmu_renderer(double values[4]) { for (int k=0;k<4;k++) values[k]=-1; }
 int psx3d_skipgate = 1;
-bool pica_texmask = true, pica_texmemo = true, pica_g1sync = true;
 static bool state_ok = true;
 static game_t games[] = {{"Crash Bandicoot", "Crash Bandicoot (USA)"}, {"Crash Team Racing", "CTR"}};
 u64 osGetTime(void) { return mock_ms; }
@@ -72,8 +72,6 @@ void debug_parse_switch(const char *word)
 	if (!strcmp(word, "rtt=auto")) sw_gldbg &= ~(262144 | 1048576);
 	if (!strcmp(word, "rttcache=old")) sw_gldbg |= 524288;
 	if (!strcmp(word, "rttcache=new")) sw_gldbg &= ~524288;
-	if (!strcmp(word, "dyn_lookup=off")) psx3d_dyn_lookup = 0;
-	if (!strcmp(word, "dyn_lookup=on")) psx3d_dyn_lookup = 1;
 	if (!strcmp(word, "idle=off")) psx3d_idle_skip = 0;
 	if (!strcmp(word, "idle=on")) psx3d_idle_skip = 1;
 	if (!strcmp(word, "idleptr=off")) psx3d_idle_pointer = 0;
@@ -223,10 +221,12 @@ int main(void)
 	assert(switches_set("rttcache=old") && (sw_gldbg & 524288));
 	assert(switches_set("rttcache=new") && !(sw_gldbg & 524288));
 	assert(!switches_set("rttcache=invalid"));
-	assert(switches_set("dyn_lookup=on") && psx3d_dyn_lookup);
-	assert(!switches_set("dyn_lookup=invalid"));
+	assert(switches_set("hack_spunearest=on") && sw_hack_spunearest);
+	assert(!switches_set("hack_spunearest=invalid"));
+	command("set hack_spunearest=off", true);
+	assert(sw_hack_spunearest && strstr(response, "false"));
+	assert(!switches_set("dyn_lookup=on") && !switches_set("dyn_nclip=on") && !switches_set("g1sync=off"));
 	command("set dyn_lookup=off", true);
-	assert(strstr(response, "false") && psx3d_dyn_lookup);
 	assert(switches_set("idleptr=on") && psx3d_idle_pointer);
 	assert(switches_set("idledelay=on") && psx3d_idle_delay);
 	command("set idleptr=off", true);
@@ -241,10 +241,10 @@ int main(void)
 	assert(!switches_set("pica_prims_invalid"));
 	char defaults[] = "game=Crash_Bandicoot";
 	assert(switches_run(defaults, game, sizeof(game), err, sizeof(err)));
-	assert(pica_g1sync && pica_submit == 7 && pica_prims == 7 && pica_texmask && pica_texmemo && psx3d_skipgate);
 	assert(sw_frontend && !sw_floataudio && !sw_rtfs && !sw_rtfsdense && sw_rtfscap == 4);
+	assert(pica_submit == 7 && pica_prims == 7 && pica_texmask && pica_texmemo && psx3d_skipgate);
+	assert(!sw_hack_spunearest);
 	assert(!psx3d_idle_pointer && !psx3d_idle_delay);
-	assert(!psx3d_dyn_lookup);
 	command("set renderer=gpu", true);
 	assert(strstr(response, "false"));
 	command("ui pause", false);

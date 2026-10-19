@@ -214,6 +214,8 @@ void options_fast_forward(bool on)
 
 const char *options_get(const char *key)
 {
+	if (sw_hack_spunearest && !strcmp(key, "pcsx_rearmed_spu_interpolation"))
+		return "off";
 	// Developer clips use synchronous sound/CD. Keep normal defaults intact.
 	if ((clip_enabled || clip_requested >= 0) &&
 	    (!strcmp(key, "pcsx_rearmed_spu_thread") || !strcmp(key, "pcsx_rearmed_cd_readahead")))
