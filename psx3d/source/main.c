@@ -119,6 +119,7 @@ bool sw_o3ds;           // test: behave like an Old 3DS (settings not saved)
 bool sw_frontend = true, sw_ff;
 int sw_rtfscap, sw_rtfslevel = -1;
 bool sw_rtfsmodel, sw_rtfswindow, sw_pmuphase, sw_pmuclass, sw_rtfsdense;
+bool sw_fsmart = true;
 bool sw_rtfs;           // experimental predictive, even-cadence frameskip
 bool sw_fs3;            // test: Old 3DS auto frameskip may skip up to 3 in a row
 bool sw_fs1;            // test: force frameskip, every other frame
@@ -159,6 +160,8 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "pmuclass=off")) sw_pmuclass = false;
 		else if (!strcmp(a, "pmurender=on")) sw_pmuphase = true;
 		else if (!strcmp(a, "pmurender=off")) sw_pmuphase = false;
+		else if (!strcmp(a, "fsmart=old")) sw_fsmart = false;
+		else if (!strcmp(a, "fsmart=new")) sw_fsmart = true;
 		else if (!strcmp(a, "rtfs")) sw_rtfs = true;
 		else if (!strcmp(a, "rtfs=old")) { sw_rtfs = true; sw_rtfswindow = false; }
 		else if (!strcmp(a, "rtfs=dense")) { sw_rtfs = sw_rtfsdense = true; }

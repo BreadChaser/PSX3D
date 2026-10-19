@@ -887,6 +887,10 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	psx3d_skip_state skip_previous = psx3d_skip;
 	u64 pace_ticks = 0, misc_ticks = 0;
 	unsigned held = 0, presented = 0, emulated = 0, top_paints = 0, bottom_paints = 0;
+	psx3d_smart_controller smart_control = {0};
+	u64 picture_last = 0;
+	double picture_sum = 0, picture_square = 0;
+	unsigned picture_intervals = 0;
 	bool previous_special = false;
 	int previous_speed_icon = 0;
 	u64 next_deadline = svcGetSystemTick();
@@ -907,6 +911,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		u64 now_t = svcGetSystemTick();
 		if (!game_frames) { // resume/suspend/menu: start a fresh timing estimate
 			memset(&skip_control, 0, sizeof(skip_control));
+			memset(&smart_control, 0, sizeof(smart_control));
 			psx3d_skip.phase = psx3d_skip.streak = 0;
 			next_deadline = now_t;
 		}
@@ -915,6 +920,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		if (previous_special != ((sw_ff || (!dev_batch_active() && input_fast_forward())) || input_rewind())) {
 			next_deadline = now_t;
 			memset(&skip_control, 0, sizeof(skip_control));
+			memset(&smart_control, 0, sizeof(smart_control));
 			psx3d_skip.phase = psx3d_skip.streak = 0;
 		}
 		previous_special = (sw_ff || (!dev_batch_active() && input_fast_forward())) || input_rewind();
@@ -927,7 +933,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			next_deadline = now_t;   // far behind (loading, menu): don't race to catch up
 		next_deadline += frame_ticks;
 
-		const char *skip_type = sw_rtfs && renderer_is_gpu() && !previous_special
+		const char *skip_type = (sw_rtfs || sw_fsmart) && renderer_is_gpu() && !previous_special
 			? options_get("pcsx_rearmed_frameskip_type") : NULL;
 		psx3d_skip.enabled = skip_type && !strcmp(skip_type, "auto");
 		skip_control.max_level = sw_rtfscap == 5 ? 7 : 6;
@@ -935,6 +941,13 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		psx3d_skip.level = sw_rtfslevel >= 0 ? sw_rtfslevel : skip_control.level;
 		psx3d_skip.numerator = sw_rtfsdense ? (skip_control.dense_numerator ? skip_control.dense_numerator : 60) : 0;
 		psx3d_skip.denominator = sw_rtfsdense ? 60 : 0;
+		if (sw_fsmart && !sw_rtfs) {
+			const char *cap = options_get("pcsx_rearmed_frameskip_interval");
+			psx3d_skip.max_skips = cap ? strtoul(cap, NULL, 10) : 2;
+			if (!psx3d_skip.max_skips) psx3d_skip.max_skips = 1;
+			psx3d_skip.numerator = smart_control.numerator ? smart_control.numerator : 120;
+			psx3d_skip.denominator = 120;
+		}
 		if (!psx3d_skip.enabled) psx3d_skip.phase = psx3d_skip.streak = 0;
 		if (abuf_status_cb) {
 			unsigned occ = has_audio ? audio_occupancy() : 50;
@@ -1032,6 +1045,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			next_deadline = svcGetSystemTick();
 			stats_deadline = next_deadline + SYSCLOCK_ARM11;
 			memset(&skip_control, 0, sizeof(skip_control));
+			memset(&smart_control, 0, sizeof(smart_control));
 			psx3d_skip.phase = psx3d_skip.streak = 0;
 			held = presented = emulated = 0;
 			pace_ticks = audio_ticks = misc_ticks = 0;
@@ -1070,6 +1084,13 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			bottom_paints += repaint;
 		} else { video_hold(); held++; }
 		u64 end_work = svcGetSystemTick();
+		if (repaint_top && dev_enabled()) {
+			if (picture_last) {
+				double gap = (end_work - picture_last) / (double)CPU_TICKS_PER_MSEC;
+				picture_sum += gap; picture_square += gap * gap; picture_intervals++;
+			}
+			picture_last = end_work;
+		}
 		u64 compose_ticks = end_work - t1;
 		t_present += compose_ticks;
 
@@ -1103,6 +1124,9 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 				.run_ms = t_run * per_frame_ms, .present_ms = t_present * per_frame_ms,
 				.audio_ms = audio_ticks * per_frame_ms, .misc_ms = misc_ticks * per_frame_ms,
 				.pace_ms = pace_ticks * per_frame_ms,
+				.picture_mean = picture_intervals ? picture_sum / picture_intervals : 0,
+				.picture_square = picture_intervals ? picture_square / picture_intervals : 0,
+				.picture_intervals = picture_intervals,
 				.pica_ms = (unsigned)(psx3d_skip.gpu_main_ticks - skip_previous.gpu_main_ticks) * per_frame_ms,
 				.spu_ms = (unsigned)(psx3d_skip.spu_main_ticks - skip_previous.spu_main_ticks) * per_frame_ms,
 				.spu_wait_ms = (unsigned)(psx3d_skip.spu_wait_ticks - skip_previous.spu_wait_ticks) * per_frame_ms,
@@ -1216,6 +1240,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			}
 			t_run = t_present = t_run_max = 0;
 			skip_previous = psx3d_skip;
+			picture_sum = picture_square = 0; picture_intervals = 0;
 			pace_ticks = audio_ticks = misc_ticks = 0;
 			top_paints = bottom_paints = 0;
 			held = presented = emulated = 0;
@@ -1225,7 +1250,10 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			stats_deadline = end_work + SYSCLOCK_ARM11;
 		}
 		if (psx3d_skip.timing) misc_ticks += svcGetSystemTick() - report_start;
-		if (psx3d_skip.enabled && sw_rtfsdense)
+		if (psx3d_skip.enabled && sw_fsmart && !sw_rtfs)
+			psx3d_smart_observe(&smart_control, (svcGetSystemTick() - t0) / (double)CPU_TICKS_PER_MSEC,
+				1000.0 / fps_target, has_audio ? audio_occupancy() : 50, psx3d_skip.max_skips);
+		else if (psx3d_skip.enabled && sw_rtfsdense)
 			psx3d_skip_observe_dense(&skip_control, (svcGetSystemTick() - t0) / (double)CPU_TICKS_PER_MSEC,
 				1000.0 / fps_target, psx3d_skip.render_prims != prims_before ? 0 :
 				psx3d_skip.words_skipped != skipped_before ? 1 : 2);

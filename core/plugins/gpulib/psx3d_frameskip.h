@@ -204,4 +204,39 @@ static inline void psx3d_skip_observe_dense(psx3d_skip_controller *c,
     c->dense_numerator = current; c->age = 0;
   }
 }
+/* Whole-vblank budget feedback, independent of the game's heavy/light phase.
+ * 120 ticks gives fine picture cadences (one skip in N), advanced by GP1(05).
+ * No single-frame lateness signal: a 30fps picture can borrow the idle slot. */
+typedef struct {
+  double work, average;
+  unsigned count, numerator, age;
+} psx3d_smart_controller;
+
+static inline void psx3d_smart_observe(psx3d_smart_controller *c,
+    double work, double budget, unsigned occupancy, unsigned max_skips)
+{
+  if (work > budget * 8) { memset(c, 0, sizeof(*c)); return; }
+  c->work += work;
+  if (++c->count < 30) return;
+  c->average = c->work / c->count;
+  c->count = 0; c->work = 0; c->age += 30;
+  unsigned current = c->numerator ? c->numerator : 120;
+  unsigned minimum = (120 + max_skips) / (max_skips + 1);
+  /* Two percent reserve absorbs normal scheduling and audio callback jitter.
+   * At full density keep drawing whenever the measured budget is met. */
+  double target = budget * (current == 120 ? 1.005 : .98);
+  if (c->average > target) {
+    unsigned step = (unsigned)((c->average / target - 1) * 120) + 1;
+    if (step > 12) step = 12;
+    if (occupancy < 10 && step < 4) step = 4;
+    current = current > minimum + step ? current - step : minimum;
+    c->age = 0;
+  } else if (current < 120 && c->age >= 60 && occupancy >= 20 &&
+             c->average < budget * .96) {
+    current += c->average < budget * .85 ? 4 : 1;
+    if (current > 120) current = 120;
+    c->age = 0;
+  }
+  c->numerator = current;
+}
 #endif
