@@ -9,7 +9,7 @@
 #define CLIP_META 12288
 #define CLIP_MAX_FRAMES 3600
 #define CLIP_CHECK_INTERVAL 60
-#define CLIP_BUILD "release-v041-rc2"
+#define CLIP_BUILD "release-v041-rc3"
 extern int clip_active; /* one predictable branch per retro_run; zero normally */
 extern bool clip_enabled;
 extern int clip_seconds, clip_requested;
