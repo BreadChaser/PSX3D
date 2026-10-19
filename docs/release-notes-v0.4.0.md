@@ -12,7 +12,8 @@ has drawing errors and missing effects.
 
 ## Performance
 
-All six tested New 3DS scenes run at about 60 FPS with frameskip off or auto.
+All six tested New 3DS scenes run at full game speed with frameskip off or auto.
+Most draw 30 new pictures per second; Symphony of the Night draws 60.
 Old 3DS benefits from automatic frameskip, though demanding games still run
 below full game speed. See the [Old/New performance chart and exact numbers](../README.md#performance)
 for measured scenes and [methodology](performance.md).
@@ -28,6 +29,8 @@ for measured scenes and [methodology](performance.md).
 - Movie synchronization and alternating-buffer border clearing fixes.
 - The included PCSX-ReARMed core builds directly from source without a separate patch step.
 - Optional developer tools for input recording and deterministic replay.
+- The FPS display reports new pictures shown per second alongside game speed.
+  Detailed statistics label shown pictures, emulated vblanks and host loops separately.
 
 ## Known limits
 

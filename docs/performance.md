@@ -9,13 +9,13 @@ NTR was not explicitly unloaded; the host observer reported no recent packets.
 
 Exact values are in the [README table](../README.md#performance).
 
-Full speed is 60 emulated frames per second for these scenes. Automatic
-frameskip reduces displayed pictures to improve game speed; 100% does not mean
-60 distinct pictures per second. CTR and GT2 remain below full speed on Old 3DS.
-The auto chart also shows pictures displayed per second out of the pictures the
-game draws. For example, “14 of 30” means 14 pictures are shown from 30 game
-pictures each second. These are scene measurements, not whole-game compatibility
-guarantees.
+Game speed measures emulated time against real time: 100% means normal speed.
+The FPS panel measures pictures shown per second (`top_count` in the benchmark),
+with separate bars for frameskip off and auto. Dashed markers show each game's
+native picture rate: 30 for most of these games and 60 for Symphony of the Night.
+Automatic frameskip shows fewer pictures to improve game speed; 100% speed does
+not imply 60 pictures per second. CTR and GT2 remain below full speed on Old 3DS.
+These are scene measurements, not whole-game compatibility guarantees.
 
 ## Main improvements
 
@@ -33,8 +33,8 @@ guarantees.
 - Code layout and the split renderer build reduce instruction-cache pressure
   on Old 3DS. The removed software renderer also reduces executable size.
 
-For historical context, the v0.3.1 Old 3DS Crash scene measured 49.1 FPS with
-GPU rendering versus 22.8 with software rendering. Those older measurements
+For historical context, the v0.3.1 Old 3DS Crash scene measured 49.1 emulated
+vblanks/s with GPU rendering versus 22.8 with software rendering. Those measurements
 are not a matched comparison with v0.4.0 and its changed executable layout.
 
 ## Checking changes

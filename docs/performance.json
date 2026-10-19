@@ -1,86 +1,103 @@
 {
-  "title": "PSX3D speed on Old 3DS and New 3DS",
-  "subtitle": "GPU renderer, measured in each game's benchmark scene. 60 fps / 100% = full game speed.",
-  "previous": "v0.3.1",
-  "current": "v0.4.0",
+  "title": "PSX3D on Old 3DS and New 3DS",
+  "subtitle": "GPU renderer, each game's benchmark scene. Game speed = how fast the game runs (100% = normal). FPS = new pictures you actually see per second.",
+  "version": "v0.4.0",
   "games": [
     {
       "name": "Crash Bandicoot",
-      "short": "Crash Bandicoot",
-      "old_prev_fps": 50.5,
-      "old_fps": 53.0,
-      "old_auto": 100.0,
-      "new_fps": 60.0,
-      "new_auto": 100.0,
-      "old_auto_shown": 13.7,
-      "old_auto_game": 30.3,
-      "new_auto_shown": 30.3,
-      "new_auto_game": 30.3
+      "native_fps": 30,
+      "old": {
+        "off_speed": 88.3,
+        "off_fps": 26.7,
+        "auto_speed": 100.0,
+        "auto_fps": 13.7
+      },
+      "new": {
+        "off_speed": 100.0,
+        "off_fps": 30.3,
+        "auto_speed": 100.0,
+        "auto_fps": 30.3
+      }
     },
     {
       "name": "Crash Team Racing",
-      "short": "CTR",
-      "old_prev_fps": 32.1,
-      "old_fps": 37.4,
-      "old_auto": 83.2,
-      "new_fps": 60.0,
-      "new_auto": 100.0,
-      "old_auto_shown": 9.1,
-      "old_auto_game": 25.3,
-      "new_auto_shown": 30.3,
-      "new_auto_game": 30.3
+      "native_fps": 30,
+      "old": {
+        "off_speed": 62.3,
+        "off_fps": 19.0,
+        "auto_speed": 83.2,
+        "auto_fps": 9.1
+      },
+      "new": {
+        "off_speed": 100.0,
+        "off_fps": 30.3,
+        "auto_speed": 100.0,
+        "auto_fps": 30.3
+      }
     },
     {
       "name": "Gran Turismo 2",
-      "short": "Gran Turismo 2",
-      "old_prev_fps": 32.2,
-      "old_fps": 34.4,
-      "old_auto": 79.0,
-      "new_fps": 60.0,
-      "new_auto": 100.0,
-      "old_auto_shown": 8.0,
-      "old_auto_game": 24.0,
-      "new_auto_shown": 30.2,
-      "new_auto_game": 30.2
+      "native_fps": 30,
+      "old": {
+        "off_speed": 57.4,
+        "off_fps": 17.5,
+        "auto_speed": 79.0,
+        "auto_fps": 8.0
+      },
+      "new": {
+        "off_speed": 100.0,
+        "off_fps": 30.4,
+        "auto_speed": 100.0,
+        "auto_fps": 30.2
+      }
     },
     {
       "name": "Silent Hill",
-      "short": "Silent Hill",
-      "old_prev_fps": 39.1,
-      "old_fps": 42.0,
-      "old_auto": 100.0,
-      "new_fps": 60.0,
-      "new_auto": 100.0,
-      "old_auto_shown": 10.1,
-      "old_auto_game": 30.2,
-      "new_auto_shown": 30.4,
-      "new_auto_game": 30.4
+      "native_fps": 30,
+      "old": {
+        "off_speed": 70.1,
+        "off_fps": 21.3,
+        "auto_speed": 100.0,
+        "auto_fps": 10.1
+      },
+      "new": {
+        "off_speed": 100.0,
+        "off_fps": 30.3,
+        "auto_speed": 100.0,
+        "auto_fps": 30.3
+      }
     },
     {
       "name": "Ridge Racer Type 4",
-      "short": "Ridge Racer 4",
-      "old_prev_fps": 58.4,
-      "old_fps": 60.0,
-      "old_auto": 100.0,
-      "new_fps": 60.0,
-      "new_auto": 100.0,
-      "old_auto_shown": 14.9,
-      "old_auto_game": 30.3,
-      "new_auto_shown": 30.3,
-      "new_auto_game": 30.3
+      "native_fps": 30,
+      "old": {
+        "off_speed": 100.0,
+        "off_fps": 30.4,
+        "auto_speed": 100.0,
+        "auto_fps": 14.9
+      },
+      "new": {
+        "off_speed": 100.0,
+        "off_fps": 30.3,
+        "auto_speed": 100.0,
+        "auto_fps": 30.3
+      }
     },
     {
       "name": "Symphony of the Night",
-      "short": "SotN",
-      "old_prev_fps": 54.2,
-      "old_fps": 57.8,
-      "old_auto": 100.0,
-      "new_fps": 60.0,
-      "new_auto": 100.0,
-      "old_auto_shown": 46.9,
-      "old_auto_game": 60.5,
-      "new_auto_shown": 60.6,
-      "new_auto_game": 60.6
+      "native_fps": 60,
+      "old": {
+        "off_speed": 96.3,
+        "off_fps": 58.3,
+        "auto_speed": 100.0,
+        "auto_fps": 46.9
+      },
+      "new": {
+        "off_speed": 100.0,
+        "off_fps": 60.6,
+        "auto_speed": 100.0,
+        "auto_fps": 60.6
+      }
     }
   ]
 }

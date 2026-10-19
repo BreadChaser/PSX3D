@@ -83,13 +83,14 @@ instruction cache makes code layout significant.
 
 ## Updating the performance chart
 
-1. Run the benchmark batch with `fastbench.py`, using the same saved scenes and
-   settings as the existing measurements.
+1. Run frameskip-off and auto benchmark batches with `fastbench.py`, using the
+   same saved scenes and settings as the existing measurements.
 2. Import each console's results:
    `tools/perfchart/perfchart.py --results <directory> --console old` (and `new`).
 3. Commit `docs/performance.json`, both generated SVGs and the README table.
 
-For a new release, first run `tools/perfchart/perfchart.py --promote vX.Y.Z`.
-The current Old 3DS numbers become the previous-release comparison.
-`--set "Game name" old_fps=54.1 old_auto=100` can enter a separately verified
-measurement; plain `tools/perfchart/perfchart.py` regenerates all outputs.
+For a new release, first run `tools/perfchart/perfchart.py --version vX.Y.Z`.
+`--set "Game name" old.off_speed=90 old.off_fps=27` can enter a separately
+verified measurement; plain `tools/perfchart/perfchart.py` regenerates all
+outputs. The importer reads game speed from `speed_pct` and shown pictures per
+second from `top_count`, choosing off or auto from the benchmark request.

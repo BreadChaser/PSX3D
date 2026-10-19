@@ -68,18 +68,25 @@ Six saved scenes; 10-second warmup and 15-second sample.
 <details>
 <summary>Exact numbers</summary>
 
-Full speed is 60 emulated frames/s. Automatic frameskip shows fewer pictures
-to improve game speed; the game itself may draw only 30 pictures/s.
+100% speed means the game runs at its normal pace. FPS counts pictures shown
+per second; most games here draw 30, while Symphony of the Night draws 60.
+Automatic frameskip shows fewer pictures to improve game speed.
 
 <!-- perf-table -->
-| Game | Old, off (FPS) | Old, auto (game speed) | Old, auto (frames shown) | New, off (FPS) | New, auto (game speed) |
-|---|---:|---:|---:|---:|---:|
-| Crash Bandicoot | 53.0 | 100.0% | 14 of 30/s | 60.0 | 100.0% |
-| Crash Team Racing | 37.4 | 83.2% | 9 of 25/s | 60.0 | 100.0% |
-| Gran Turismo 2 | 34.4 | 79.0% | 8 of 24/s | 60.0 | 100.0% |
-| Silent Hill | 42.0 | 100.0% | 10 of 30/s | 60.0 | 100.0% |
-| Ridge Racer Type 4 | 60.0 | 100.0% | 15 of 30/s | 60.0 | 100.0% |
-| Symphony of the Night | 57.8 | 100.0% | 47 of 60/s | 60.0 | 100.0% |
+| Game | Console | Frameskip off: speed / FPS | Auto frameskip: speed / FPS |
+|---|---|---:|---:|
+| Crash Bandicoot | Old 3DS | 88.3% / 26.7 | 100.0% / 13.7 |
+| Crash Bandicoot | New 3DS | 100.0% / 30.3 | 100.0% / 30.3 |
+| Crash Team Racing | Old 3DS | 62.3% / 19.0 | 83.2% / 9.1 |
+| Crash Team Racing | New 3DS | 100.0% / 30.3 | 100.0% / 30.3 |
+| Gran Turismo 2 | Old 3DS | 57.4% / 17.5 | 79.0% / 8.0 |
+| Gran Turismo 2 | New 3DS | 100.0% / 30.4 | 100.0% / 30.2 |
+| Silent Hill | Old 3DS | 70.1% / 21.3 | 100.0% / 10.1 |
+| Silent Hill | New 3DS | 100.0% / 30.3 | 100.0% / 30.3 |
+| Ridge Racer Type 4 | Old 3DS | 100.0% / 30.4 | 100.0% / 14.9 |
+| Ridge Racer Type 4 | New 3DS | 100.0% / 30.3 | 100.0% / 30.3 |
+| Symphony of the Night | Old 3DS | 96.3% / 58.3 | 100.0% / 46.9 |
+| Symphony of the Night | New 3DS | 100.0% / 60.6 | 100.0% / 60.6 |
 <!-- /perf-table -->
 
 </details>
@@ -133,7 +140,7 @@ without a preset show every option supported by the console. Each setting
 shows whether it affects one game or all games.
 
 The bottom screen stays quiet when no touch controls are needed. Enable
-**Show FPS** for a frame-rate readout or detailed statistics.
+**Show FPS** for pictures shown per second and game speed, or detailed statistics.
 See the [settings reference](docs/settings-ui.md).
 
 ## Building from source
