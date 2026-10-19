@@ -24,9 +24,9 @@ static void read_memory(png_structp png, png_bytep out, png_size_t n)
 	d->pos += n;
 }
 
-// Keep compatibility with interlaced user PNGs. The database's covers are
-// noninterlaced; Adam7 needs all preceding passes, hence its full-image buffer.
-static uint32_t *interlaced(const void *data, size_t len, const char *file, int size)
+// Preserve libpng's simplified color conversion for 16-bit and Adam7 user
+// PNGs. Database covers use the 8-bit noninterlaced streaming path.
+static uint32_t *full_image(const void *data, size_t len, const char *file, int size)
 {
 	png_image img = { .version = PNG_IMAGE_VERSION };
 	if (!(file ? png_image_begin_read_from_file(&img, file) :
@@ -71,13 +71,13 @@ uint32_t *covers_png_decode(const void *data, size_t len, const char *file, int 
 	png_read_info(d->png, d->info);
 	unsigned w = png_get_image_width(d->png, d->info), h = png_get_image_height(d->png, d->info);
 	if (!w || !h || size <= 0 || size > 512) goto done;
-	if (png_get_interlace_type(d->png, d->info) != PNG_INTERLACE_NONE) {
-		d->out = interlaced(data, len, file, size);
+	if (png_get_interlace_type(d->png, d->info) != PNG_INTERLACE_NONE ||
+	    png_get_bit_depth(d->png, d->info) == 16) {
+		d->out = full_image(data, len, file, size);
 		goto done;
 	}
 	png_set_alpha_mode(d->png, PNG_ALPHA_PNG, PNG_DEFAULT_sRGB);
 	int depth = png_get_bit_depth(d->png, d->info), color = png_get_color_type(d->png, d->info);
-	if (depth == 16) png_set_scale_16(d->png);
 	if (color == PNG_COLOR_TYPE_PALETTE) png_set_palette_to_rgb(d->png);
 	if (color == PNG_COLOR_TYPE_GRAY && depth < 8) png_set_expand_gray_1_2_4_to_8(d->png);
 	int transparency = png_get_valid(d->png, d->info, PNG_INFO_tRNS);

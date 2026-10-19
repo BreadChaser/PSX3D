@@ -22,6 +22,13 @@ for w,h in [(1,1),(37,91),(128,128),(512,512),(535,512),(500,500)]:
   path=out/f'{w}x{h}-{color}.png';path.write_bytes(png)
   if w==37:subprocess.run(['magick',str(path),'-interlace','PNG',str(out/f'{w}x{h}-{color}-adam7.png')],check=True)
 
+for color,nc in [(0,1),(2,3),(4,2),(6,4)]:
+ data=b''.join(b'\0'+b''.join(struct.pack('>H',(x*601+y*307+c*1009)%65536) for x in range(37) for c in range(nc)) for y in range(91))
+ for gamma in [None,45455,100000]:
+  png=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',37,91,16,color,0,0,0))
+  if gamma:png+=chunk(b'gAMA',struct.pack('>I',gamma))
+  (out/f'16bit-{color}-{gamma}.png').write_bytes(png+chunk(b'IDAT',zlib.compress(data))+chunk(b'IEND',b''))
+
 PY
 cc -std=gnu11 -Wall -Wextra -Werror -g -fsanitize=address,undefined \
   "$ROOT/psx3d/tests/covers/png.c" "$ROOT/psx3d/source/covers_png.c" $(pkg-config --cflags --libs libpng) -Wl,--wrap=malloc -o "$TMP/check"
