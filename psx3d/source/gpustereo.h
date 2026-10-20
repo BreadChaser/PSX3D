@@ -27,15 +27,17 @@ void gs_core_clear(void);
 // (0 = unknown) and the drawing area / offset registers (E3, E4, E5) it uses
 void gs_capture(const uint32_t *words, uint32_t cmd, uint32_t e3, uint32_t e4, uint32_t e5,
 	const uint16_t z[4]);
-// main thread, once per emulated frame: new generation, focus update.
-// strength 0..1 (the 3D slider); the GPU thread uses it from now on.
-void gs_core_frame(float strength);
+// main thread, once per emulated frame: new generation, depth range update.
+// strength 0..1 (the 3D slider), hres the picture's width in PS1 pixels;
+// the GPU thread uses them from now on.
+void gs_core_frame(float strength, int hres);
 // GPU thread: n vertices (whole triangles) copied to dst, polygon vertices
 // with a known depth shifted by their disparity. Returns how many moved.
 int gs_shift(const gs_vtx *src, gs_vtx *dst, int n);
-float gs_focus(void);          // 0 until a scene focus is known
-// diagnostics, reset by each call: corners looked up, found; vertices shifted
-void gs_core_counts(unsigned *lookups, unsigned *found, unsigned *shifted);
+float gs_focus(void);          // depth on the screen plane, 0 until known
+// diagnostics, reset by each call: corners looked up, found; vertices
+// shifted; corners rejected (another object's depth)
+void gs_core_counts(unsigned *lookups, unsigned *found, unsigned *shifted, unsigned *rejected);
 
 // gpustereo.c (3DS frontend)
 void gpustereo_frame(void);           // main thread, after pica_thread_sync

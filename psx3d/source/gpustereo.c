@@ -104,7 +104,7 @@ void gpustereo_frame(void)
 	}
 	if (on)
 		psx3d_zframe++;
-	gs_core_frame(on ? slider : 0);
+	gs_core_frame(on ? slider : 0, gpu.screen.hres);
 	want = on ? slider : 0;
 }
 
@@ -314,13 +314,13 @@ void *gpustereo_right_for(void *picture)
 
 void gpustereo_status(char *out, int n)
 {
-	unsigned lookups, found, shifted;
-	gs_core_counts(&lookups, &found, &shifted);
+	unsigned lookups, found, shifted, rejected;
+	gs_core_counts(&lookups, &found, &shifted, &rejected);
 	snprintf(out, n, ",\"stereo_mode\":%d,\"stereo\":{\"want\":%.3f,\"tracking\":%s,\"mirror\":%s,"
-		"\"seeded\":%s,\"hold\":%s,\"failed\":%s,\"focus\":%.1f,\"lookups\":%u,\"found\":%u,\"shifted\":%u,"
+		"\"seeded\":%s,\"hold\":%s,\"failed\":%s,\"focus\":%.1f,\"lookups\":%u,\"found\":%u,\"shifted\":%u,\"rejected\":%u,"
 		"\"display3d\":%s,\"top_aa\":%s,\"free_vram\":%u}",
 		gpustereo_mode(), want, tracking ? "true" : "false", mirror ? "true" : "false",
 		seeded ? "true" : "false", hold_valid ? "true" : "false", failed ? "true" : "false",
-		gs_focus(), lookups, found, shifted, video_stereo_on() ? "true" : "false",
+		gs_focus(), lookups, found, shifted, rejected, video_stereo_on() ? "true" : "false",
 		video_top_aa() ? "true" : "false", (unsigned)vramSpaceFree());
 }
