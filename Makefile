@@ -30,7 +30,7 @@ EXTERN_SYMS += Mcd1Data Mcd2Data psx3d_clip_prepare padAnalogMode
 EXTERN_SYMS += psx3d_idle_skip psx3d_idle_pointer psx3d_idle_delay
 EXTERN_SYMS += psx3d_spu_worker_ticks psx3d_spu_worker_items psx3d_skip pica_display_changed
 EXTERN_SYMS += pica_init pica_exit pica_game_begin pica_game_end pica_flush_vertices pica_frame_started pica_frame_ended \
-	pica_texmask pica_texmemo psx3d_skipgate pica_thread_call pica_thread_sync pica_state_lost pica_prepare_present pica_picture pica_stats pica_probe pica_debug pica_submit pica_prims pica_pmu pica_open_frame pica_async pica_double_buffer pica_wait_frame pica_frame_pending pica_dump_vram
+	pica_texmask pica_texmemo psx3d_skipgate pica_thread_call pica_thread_sync pica_state_lost pica_prepare_present pica_picture pica_stats pica_probe pica_debug pica_submit pica_prims pica_rcpu pica_pmu pica_open_frame pica_async pica_double_buffer pica_wait_frame pica_frame_pending pica_dump_vram
 
 core:
 	@python3 tools/pica-layout/prepare.py $(PICA_LAYOUT)

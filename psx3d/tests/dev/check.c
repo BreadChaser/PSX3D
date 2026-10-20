@@ -46,6 +46,7 @@ int pica_debug;
 unsigned pica_submit;
 unsigned pica_prims;
 bool pica_texmask = true, pica_texmemo = true;
+unsigned pica_rcpu;
 int psx3d_idle_skip=1, psx3d_idle_pointer, psx3d_idle_delay;
 bool sw_pmuphase, sw_pmuclass, sw_rtfsdense;
 void pmu_category_detail(double values[21]) { for (int k=0;k<21;k++) values[k]=-1; }

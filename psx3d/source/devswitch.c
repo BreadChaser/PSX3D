@@ -84,7 +84,7 @@ bool switches_set(const char *word)
 	                              "nogputhread",  "gputhread", "nosputhread", "acap", "renderer=sw",
 	                              "renderer=gpu", "state0",    "showright",   "sbs",  "gpuasync",
 	                              "nogpuasync",   "gpuflush",  "nogpuflush",  "aa", "rtt=old", "rtt=new", "rtt=auto", "rttcache=old", "rttcache=new", "rtfs", "rtfs=old", "rtfs=new", "rtfs=model", "rtfs=dense", "frontend=old", "frontend=new", "audio=old", "audio=new", "ff=on", "ff=off", "submitstate=old", "submitstate=new", "submitclip=old", "submitclip=new", "submittex=old", "submittex=new", "pmuclass=on", "pmuclass=off", "pmurender=on", "pmurender=off", "pica_prims_old", "pica_prims_fast", "pica_prims_copy", "pica_prims_clip", "pica_prims_round", "skipgate=old", "skipgate=new", "texmask=old", "texmask=new", "texmemo=old", "texmemo=new", "idle=on", "idle=off", "idleptr=on", "idleptr=off", "idledelay=on", "idledelay=off"};
-	static const char *prefix[] = {"slider=", "state=", "gldbg=", "vramdump=", "pmu=", "cdra=", "clock="};
+	static const char *prefix[] = {"slider=", "state=", "gldbg=", "vramdump=", "pmu=", "cdra=", "clock=", "rcpu="};
 	bool known = false;
 	for (unsigned k = 0; k < sizeof(flags) / sizeof(*flags); k++)
 		if (!strcmp(word, flags[k]))
@@ -107,7 +107,7 @@ static struct {
 	bool saved;
 	int idle_skip, idle_pointer, idle_delay, rtfslevel, rtfscap, state, pmu0, pmu1, gldbg, vramdump, skipgate;
 	int clip_requested, clip_seconds;
-	unsigned submit, prims;
+	unsigned submit, prims, rcpu;
 	bool rtfsdense, rtfsmodel, rtfswindow, rtfs, ff, floataudio, frontend, fsmart, prof, stats, fs1, fs3, noskip;
 	bool nosputhread, acap, nogputhread, aa, showright, sbs, gpu_async, gpu_flush, pmuphase, pmuclass;
 	bool texmask, texmemo, clip_enabled;
@@ -120,7 +120,7 @@ static struct {
 		TO(rtfslevel, sw_rtfslevel); TO(rtfscap, sw_rtfscap); TO(state, sw_state); TO(pmu0, sw_pmu0);           \
 		TO(pmu1, sw_pmu1); TO(gldbg, sw_gldbg); TO(vramdump, sw_vramdump); TO(skipgate, psx3d_skipgate);       \
 		TO(clip_requested, clip_requested); TO(clip_seconds, clip_seconds); TO(submit, pica_submit);           \
-		TO(prims, pica_prims); TO(rtfsdense, sw_rtfsdense); TO(rtfsmodel, sw_rtfsmodel);                       \
+		TO(prims, pica_prims); TO(rcpu, pica_rcpu); TO(rtfsdense, sw_rtfsdense); TO(rtfsmodel, sw_rtfsmodel);                       \
 		TO(rtfswindow, sw_rtfswindow); TO(rtfs, sw_rtfs); TO(ff, sw_ff); TO(floataudio, sw_floataudio);        \
 		TO(frontend, sw_frontend); TO(fsmart, sw_fsmart); TO(prof, sw_prof); TO(stats, sw_stats);              \
 		TO(fs1, sw_fs1); TO(fs3, sw_fs3); TO(noskip, sw_noskip); TO(nosputhread, sw_nosputhread);              \
@@ -160,6 +160,7 @@ bool switches_run(char *line, char *game, size_t len, char *error, size_t error_
 	sw_state = sw_pmu0 = sw_pmu1 = -1;
 	sw_gldbg = sw_vramdump = 0;
 	pica_prims = 7; sw_pmuphase = sw_pmuclass = false;
+	pica_rcpu = PICA_RCPU_DEFAULT;
 	pica_texmask = pica_texmemo = true; psx3d_skipgate = 1;
 	memset(sw_opt, 0, sizeof(sw_opt));
 	sw_cdra[0] = sw_clock[0] = 0;

@@ -161,6 +161,8 @@ extern bool sw_prof, sw_stats, sw_o3ds, sw_fs1, sw_fs3, sw_noskip, sw_nosputhrea
 extern int sw_state, sw_gldbg, sw_vramdump;
 extern unsigned pica_prims;
 extern bool pica_texmask, pica_texmemo;
+extern unsigned pica_rcpu;   // renderer CPU experiments, a bit per change (rcpu=N)
+#define PICA_RCPU_DEFAULT 0u
 extern int psx3d_skipgate;
 extern int sw_pmu0, sw_pmu1;
 extern char sw_clock[8], sw_cdra[8], sw_opt[8][48];

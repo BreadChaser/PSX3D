@@ -262,6 +262,7 @@ typedef struct {
 static drawstate cur, sent;
 static bool sent_valid;
 static bool batch_semi;   // any primitive in this batch actually enables blending
+static bool batch_untex;  // ...is an untextured effect (rcpu bit 2)
 // Additive effects may wait behind later, disjoint solid/half primitives.
 // Cached staging avoids reading back the write-only linear vertex buffer.
 #define ADD_PRIMS 32
@@ -272,6 +273,7 @@ static struct {
 	tcache *tex[ADD_PRIMS];
 	int n, nv;
 	u32 area_gen;
+	bool untex;
 	drawstate state;
 } addq;
 static C3D_Tex tex_alias[2];   // a rebind under a new address clears the GPU texture cache
@@ -297,6 +299,11 @@ unsigned pica_prims = 7;   // named pica_prims_* experiments, separate from gldb
 #else
 #define PRIM_TEST(mask) (pica_prims & (mask))
 #endif
+// Renderer CPU experiments (switch rcpu=N, a bit per change) for same-binary A/B.
+unsigned pica_rcpu;
+#define RCPU_DEFER 1u   // blended passes wait in addq: masked additive, subtract/quarter pass 1
+#define RCPU_ADDMASK 2u // additive batches of textured primitives write the mask bit in their one pass
+#define RCPU(bit) (pica_rcpu & (bit))
 // Set by the frontend: opens a GPU frame (waiting for the previous one to
 // finish). Called when the first drawing command of a frame arrives, so the
 // GPU finishes the last frame while the game's own code runs.
@@ -913,7 +920,7 @@ static void pica_frame_started_local(void)
 		vbank = pica_async ? (vbank ^ 1) : 0;
 		vbuf = vbuf_base + vbank * vlimit;
 	}
-	batch_semi = false;
+	batch_semi = batch_untex = false;
 	stage_y = 0;
 	if (npend) {
 		prect p[16];
@@ -1696,7 +1703,7 @@ static void PICA_COLD apply_state_impl(void)
 		// The target alpha is the PS1 mask bit (E6 force OR texture STP).
 		// Opaque batches write it directly. Semi-transparent batches need
 		// alpha for RGB blending first, then flush writes the final mask.
-		GPU_BLENDFACTOR MASK_SA = ((d->mask & 1) || d->blend == BL_OPAQUE) ? GPU_ONE : GPU_ZERO;
+		GPU_BLENDFACTOR MASK_SA = ((d->mask & 5) || d->blend == BL_OPAQUE) ? GPU_ONE : GPU_ZERO;
 		switch (d->blend) {
 		case BL_OPAQUE:
 			C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, MASK_SA, GPU_ZERO);
@@ -1802,9 +1809,16 @@ static void flush_current(void)
 	// Opaque primitives can write RGB and the STP mask in one draw. Only
 	// batches containing semi-transparent commands need a separate mask pass.
 	int original_blend = cur.blend;
+	u8 original_mask = cur.mask;
 	if (cur.blend == BL_HALF && !batch_semi)
 		cur.blend = BL_OPAQUE;
-	if (!sent_valid || sent.blend != cur.blend)
+	// rcpu bit 2: the alpha an additive batch blends with is 0 for opaque
+	// texels and 1 for STP ones, the PS1 mask bit itself; without untextured
+	// primitives (alpha tagged 0 for the mask pass) it can be written directly
+	if (cur.blend == BL_ADD && !(cur.mask & 3) && !batch_untex &&
+		(pica_rcpu & (RCPU_DEFER | RCPU_ADDMASK)) == (RCPU_DEFER | RCPU_ADDMASK))
+		cur.mask = 4;
+	if (!sent_valid || sent.blend != cur.blend || sent.mask != cur.mask)
 		state_dirty = true;
 #ifdef PICA_TIMERS
 	u64 t0 = svcGetSystemTick();
@@ -1819,7 +1833,7 @@ static void flush_current(void)
 		C3D_DrawArrays(GPU_TRIANGLES, vstart, vpos - vstart);
 	// gldbg=32768: skip this pass for a hardware submission-cost comparison.
 	if (!(pica_debug & (1024 | 32768)) && cur.blend != BL_OPAQUE && (cur.blend < BL_SUB || cur.pass == 1) &&
-		!(cur.blend == BL_HALF && (cur.mask & 1))) {
+		!(cur.blend == BL_HALF && (cur.mask & 1)) && !(cur.mask & 4)) {
 		// RGB blending needs alpha 1 for opaque texels and 1/2 for STP.
 		// VRAM's mask bit instead needs 0 for opaque and 1 for STP. Write
 		// it separately on the GPU, preserving RGB and skipping colour 0.
@@ -1871,7 +1885,8 @@ static void flush_current(void)
 	seq++;
 	vstart = vpos;
 	cur.blend = original_blend;
-	batch_semi = false;
+	cur.mask = original_mask;
+	batch_semi = batch_untex = false;
 	st_batches++;
 }
 
@@ -1988,7 +2003,9 @@ static void flush(void)
 	if (!addq.n)
 		return;
 	int n = addq.n, nv = addq.nv;
+	bool untex = addq.untex;
 	addq.n = addq.nv = 0;   // alloc_verts may synchronize and call flush again
+	addq.untex = false;
 	drawstate save = cur;
 	u32 area = cur_area_gen;
 	cur = addq.state;
@@ -1997,6 +2014,7 @@ static void flush(void)
 	pvtx *o = alloc_verts(nv);
 	if (o) {
 		batch_semi = true;
+		batch_untex = untex;
 		memcpy(o, addq.verts, nv * sizeof(pvtx));
 		for (int i = 0; i < n; i++)
 			addq.tex[i]->used_seq = seq + 1;
@@ -2018,11 +2036,65 @@ static bool add_overlap(int x0, int y0, int x1, int y1)
 	return false;
 }
 
+// rcpu bit 1: a blended pass (additive, or pass 1 of subtract/quarter) may
+// wait in addq while later disjoint primitives draw, so alternating effects
+// stop ending a batch each. E6 mask setting is a per-pixel write and is kept
+// in the queued state; only mask checking needs the original order. Queued
+// entries share one state. Plain additive ones may overlap each other, as
+// before; the others are kept pairwise disjoint, so nothing new assumes that
+// blending commutes.
+static inline bool defer_allowed(void)
+{
+	return RCPU(RCPU_DEFER) && !(ps.mask & 2) && !(pica_debug & 65536);
+}
+
+// the batch being filled already has this state: draw straight into it
+static inline bool batch_is(int blend, int pass, bool dither)
+{
+	return !addq.n && cur.atlas == 0 && cur.blend == blend && cur.texmode == TX_MOD && cur.pass == pass &&
+		cur.dither == dither && cur.mask == (ps.mask & 3) && ps.area_gen == cur_area_gen && !atlas[0].rebind;
+}
+
+static noinline pvtx *defer_verts(int blend, int pass, bool dither, tcache *tex, int nv,
+	int bx0, int by0, int bx1, int by1)
+{
+	u8 mask = ps.mask & 1;
+	if (addq.n && (addq.state.blend != blend || addq.state.pass != pass || addq.state.dither != dither ||
+		addq.state.mask != mask || addq.n == ADD_PRIMS || addq.nv + nv > ADD_VERTS ||
+		ps.area_gen != addq.area_gen || ((blend != BL_ADD || mask) && add_overlap(bx0, by0, bx1, by1))))
+		flush();
+	if (!addq.n) {
+		addq.state = (drawstate){ .atlas = 0, .blend = blend, .texmode = TX_MOD, .pass = pass, .dither = dither,
+			.mask = mask, .sc = { ps.dx1, ps.dy1, ps.dx2, ps.dy2 } };
+		addq.area_gen = ps.area_gen;
+	}
+	s16 *b = addq.bounds[addq.n];
+	b[0] = bx0; b[1] = by0; b[2] = bx1; b[3] = by1;
+	addq.untex |= tex == plain;
+	addq.tex[addq.n++] = tex;
+	pvtx *o = addq.verts + addq.nv;
+	addq.nv += nv;
+	return o;
+}
+
 // Keep the common opaque/half path small; only effects and primitives
 // that might pass queued effects need the overlap/state work below.
 static noinline pvtx *effect_verts(int blend, tcache *tex, int nv,
 	int bx0, int by0, int bx1, int by1, bool dither)
 {
+	if (RCPU(RCPU_DEFER)) {
+		if (blend == BL_ADD && defer_allowed() && !batch_is(BL_ADD, 0, dither))
+			return defer_verts(BL_ADD, 0, dither, tex, nv, bx0, by0, bx1, by1);
+		if (addq.n && ((ps.mask & 2) || ps.area_gen != addq.area_gen || add_overlap(bx0, by0, bx1, by1)))
+			flush();
+		use_state(0, blend == BL_ADD ? BL_ADD : BL_HALF, TX_MOD, 0, dither);
+		pvtx *o = alloc_verts(nv);
+		if (o) {
+			batch_semi |= blend != BL_OPAQUE;
+			batch_untex |= tex == plain;
+		}
+		return o;
+	}
 	bool defer = blend == BL_ADD && !(ps.mask & 3) && !(pica_debug & 65536);
 	if (addq.n && (ps.mask || ps.area_gen != addq.area_gen || dither != addq.state.dither ||
 		addq.n == ADD_PRIMS || (!defer && add_overlap(bx0, by0, bx1, by1))))
@@ -2287,13 +2359,17 @@ static void noinline PICA_HOT(emit_tris) emit_tris(const pvtx *v, int ntri, int 
 		v = clipped;
 		ntri = n;
 	}
-	if (addq.n) flush();
+	int lx = 0x7fff, hx = -0x8000, ly = 0x7fff, hy = -0x8000;
+	for (int i = 0; i < ntri * 3; i++) {
+		lx = v[i].x < lx ? v[i].x : lx; hx = v[i].x > hx ? v[i].x : hx;
+		ly = v[i].y < ly ? v[i].y : ly; hy = v[i].y > hy ? v[i].y : hy;
+	}
+	const int qx0 = lx, qy0 = ly, qx1 = hx, qy1 = hy;   // bounds against queued passes
+	// (an additive primitive that will wait in the queue itself is checked there)
+	if (addq.n && (!RCPU(RCPU_DEFER) || (ps.mask & 2) || ps.area_gen != addq.area_gen ||
+		(!(blend == BL_ADD && defer_allowed()) && add_overlap(lx, ly, hx, hy))))
+		flush();
 	{
-		int lx = 0x7fff, hx = -0x8000, ly = 0x7fff, hy = -0x8000;
-		for (int i = 0; i < ntri * 3; i++) {
-			lx = v[i].x < lx ? v[i].x : lx; hx = v[i].x > hx ? v[i].x : hx;
-			ly = v[i].y < ly ? v[i].y : ly; hy = v[i].y > hy ? v[i].y : hy;
-		}
 		if (!rtt_old()) {
 			if (!polygon) { hx--; hy--; }
 			if (hx >= ps.dx2) hx = ps.dx2-1;
@@ -2359,12 +2435,19 @@ static void noinline PICA_HOT(emit_tris) emit_tris(const pvtx *v, int ntri, int 
 	}
 	int passes = (blend == BL_SUB || blend == BL_QUARTER) ? 2 : 1;
 	for (int p = 0; p < passes; p++) {
-		use_state(0, blend, texmode, p, dither);
-		pvtx *o = alloc_verts(nv);
+		pvtx *o;
+		// the blended pass of an effect waits for later disjoint primitives
+		if ((blend == BL_ADD || p == 1) && defer_allowed() && !batch_is(blend, p, dither))
+			o = defer_verts(blend, p, dither, tex, nv, qx0, qy0, qx1, qy1);
+		else {
+			use_state(0, blend, texmode, p, dither);
+			o = alloc_verts(nv);
+		}
 		if (!o)
 			return;
 		memcpy(o, fin, nv * sizeof(pvtx));
 		batch_semi |= semi;
+		batch_untex |= untex;
 	}
 	tex->used_seq = seq + 1;   // the batch it is in: seq + 1 once sent
 	st_prims++; psx3d_skip.render_prims++;
