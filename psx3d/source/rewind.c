@@ -19,10 +19,14 @@ static size_t step_bytes[MAX_STEPS];
 static int first, count;     // ring of compressed deltas, oldest at first
 static size_t total;
 static bool have_cur, active;
-static volatile bool busy, quit;
+// busy: the worker owns cur/next/the ring until it clears it (release), the
+// game thread reads it with acquire; quit only stops the worker
+static bool busy;
+static volatile bool quit;
 static Thread worker;
 static LightEvent job;
 static int frame_ctr;
+static unsigned failed_steps;   // history dropped for lack of memory
 
 // delta = a XOR b as runs: [zero words][literal words][literals...]
 static size_t encode(const u32 *a, const u32 *b, u32 *out)
@@ -68,7 +72,7 @@ static void worker_main(void *arg)
 	(void)arg;
 	while (!quit) {
 		LightEvent_WaitTimeout(&job, 100000000LL);
-		if (!busy)
+		if (!__atomic_load_n(&busy, __ATOMIC_ACQUIRE))
 			continue;
 		size_t bytes = encode(cur, next, scratch);
 		void *d = malloc(bytes);
@@ -81,9 +85,15 @@ static void worker_main(void *arg)
 			step_bytes[at] = bytes;
 			count++;
 			total += bytes;
+		} else {
+			// The step to the capture can't be kept, and the older steps
+			// lead to cur, not to it: drop them, the history starts here
+			while (count)
+				drop_oldest();
+			failed_steps++;
 		}
 		u32 *t = cur; cur = next; next = t;   // the capture is the newest state now
-		busy = false;
+		__atomic_store_n(&busy, false, __ATOMIC_RELEASE);
 	}
 }
 
@@ -115,6 +125,7 @@ bool rewind_start(void)
 	}
 	LightEvent_Init(&job, RESET_ONESHOT);
 	quit = busy = have_cur = false;
+	failed_steps = 0;
 	first = count = 0;
 	total = 0;
 	s32 prio = 0x30;
@@ -150,15 +161,19 @@ bool rewind_active(void) { return active; }
 // after each emulated frame
 void rewind_capture(void)
 {
-	if (!active || ++frame_ctr < INTERVAL || busy)
+	if (!active || ++frame_ctr < INTERVAL || __atomic_load_n(&busy, __ATOMIC_ACQUIRE))
 		return;
+	if (failed_steps) {
+		log_printf("rewind: not enough memory, history dropped (%u)\n", failed_steps);
+		failed_steps = 0;
+	}
 	frame_ctr = 0;
 	if (!have_cur) {
 		have_cur = retro_serialize(cur, words * 4);
 		return;
 	}
 	if (retro_serialize(next, words * 4)) {
-		busy = true;
+		__atomic_store_n(&busy, true, __ATOMIC_RELEASE);
 		LightEvent_Signal(&job);
 	}
 }
@@ -168,7 +183,7 @@ bool rewind_step(void)
 {
 	if (!active || !have_cur)
 		return false;
-	while (busy)
+	while (__atomic_load_n(&busy, __ATOMIC_ACQUIRE))
 		svcSleepThread(1000000LL);
 	if (!count)
 		return false;
@@ -186,7 +201,7 @@ void rewind_reset(void)
 {
 	if (!active)
 		return;
-	while (busy)
+	while (__atomic_load_n(&busy, __ATOMIC_ACQUIRE))
 		svcSleepThread(1000000LL);
 	while (count)
 		drop_oldest();
