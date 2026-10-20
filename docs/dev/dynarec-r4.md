@@ -1,5 +1,8 @@
 # Old 3DS dynarec, round 4: exact load delays before a branch
 
+> Research report. Its `tools/dynarec-r4/` scripts were moved out of the repository into the
+> local tooling archive (`devtools/repo-tools-archive/dynarec-r4/`) after the round finished.
+
 Branch `t3/dynarec-r4`, from `release/v0.4.1-candidate` RC3 (`aa3eeff`).
 Evidence and artifacts live outside Git in
 `/home/tony/Development/PS1_3ds/devtools/dynarec-r4/` (abbreviated `E/` below).

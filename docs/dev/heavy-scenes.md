@@ -54,7 +54,7 @@ GPU drawing never dominates on the New (≤ 5.6 ms of 16.7). Every slow scene is
 
 **New 3DS scenes below 100% / native FPS:** NFS HS 48%, R4 demo 88.5% (off; auto 99%), Tekken 3 96.4% (off). FFVII auto shows only 15 pictures/s although the game runs at 100% (an Auto-frameskip over-skip case).
 
-![New 3DS heavy scenes](../devtools/heavy-scenes/new-heavy-sheet.png)
+![New 3DS heavy scenes](../../devtools/heavy-scenes/new-heavy-sheet.png)
 
 ### Silent Hill café: the slowdown does not reproduce from a clean load
 The user's live café stats (`new-sh-live/`): 37–40 fps, 62–67% speed, emu 22 ms, about **8,400 texture decodes/s** and 3,000 evictions/s.

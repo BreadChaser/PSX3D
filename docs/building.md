@@ -66,6 +66,8 @@ renderer oracles, [remote testing](dev-control.md) for hardware measurements and
 [recording and replay](recorder.md) for deterministic clips.
 The [HLE memory-card probes](../tools/hle-compat/README.md) exercise fragmented
 save files and full-card handling using disposable cards and an optional real-BIOS oracle.
+Per-game presets have their own format and checks: see [presets](presets.md).
+Research round reports live in [docs/dev](dev/README.md).
 
 ## Emulation identity gates
 

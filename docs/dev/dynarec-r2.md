@@ -1,5 +1,8 @@
 # Old 3DS dynarec, round 2
 
+> Research report. Its `tools/dynarec-r2/` scripts were moved out of the repository into the
+> local tooling archive (`devtools/repo-tools-archive/dynarec-r2/`) after the round finished.
+
 Living report. Branch `t3/dynarec-r2`, based on `release/v0.4.0-candidate`
 (1c7e734, release-v040-final2). Evidence and artifacts live outside Git in
 `/home/tony/Development/PS1_3ds/devtools/dynarec-r2/`. No push.
