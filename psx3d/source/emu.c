@@ -1199,6 +1199,10 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	unsigned picture_intervals = 0;
 	bool previous_special = false;
 	int previous_speed_icon = 0;
+	// Pacer self-check: frames dropped after stalls longer than the catch-up
+	// window, and how many seconds in a row speed stayed low with idle time.
+	u64 stall_ticks = 0;
+	unsigned stalls = 0, slow_seconds = 0, catch_up = 3;
 	u64 next_deadline = svcGetSystemTick();
 	u64 stats_deadline = next_deadline + SYSCLOCK_ARM11;
 	u64 smart_clock = next_deadline;
@@ -1241,8 +1245,11 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			frame_pace = svcGetSystemTick() - now_t;
 			pace_ticks += frame_pace;
 		}
-		else if (now_t > next_deadline + 3 * frame_ticks)
+		else if (now_t > next_deadline + catch_up * frame_ticks) {
+			stall_ticks += now_t - next_deadline;
+			stalls++;
 			next_deadline = now_t;   // far behind (loading, menu): don't race to catch up
+		}
 		next_deadline += frame_ticks;
 
 		// The core queries this option on load and after options_mark_updated().
@@ -1518,6 +1525,33 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 				statsview_update(&sample);
 			}
 			dup_frames = late_frames = 0;
+			{
+				// Self-check: below full speed while the pacer still sleeps means
+				// time is lost to the timing logic, not to a slow console. After
+				// two such seconds, start fresh timing (fps from the core, skip
+				// estimates), and if stalls dropped the time, catch up longer ones.
+				double speed = emulated * 100000.0 / (now - fps_t0) / fps_target;
+				double idle_ms = pace_ticks / (double)(emulated ? emulated : 1) / CPU_TICKS_PER_MSEC;
+				slow_seconds = speed < 99.0 && idle_ms > 1.5 && !speed_icon ? slow_seconds + 1 : 0;
+				if (slow_seconds >= 2) {
+					struct retro_system_av_info info;
+					retro_get_system_av_info(&info);
+					if (info.timing.fps > 1.0)
+						fps_target = info.timing.fps;
+					if (stalls && catch_up < 8)
+						catch_up = 8;
+					log_printf("pacer: %.1f%% speed with %.1fms/frame idle, %u stalls dropped %.0fms; fresh timing (%.3f fps, catch-up %u frames)\n",
+						speed, idle_ms, stalls, stall_ticks / (double)CPU_TICKS_PER_MSEC, fps_target, catch_up);
+					memset(&skip_control, 0, sizeof(skip_control));
+					psx3d_skip.budget_debt = psx3d_skip.frame_budget = psx3d_skip.picture_credit = 0;
+					psx3d_skip.phase = psx3d_skip.streak = 0;
+					next_deadline = svcGetSystemTick();
+					smart_clock = next_deadline;
+					slow_seconds = 0;
+				}
+				stall_ticks = 0;
+				stalls = 0;
+			}
 			if (sw_prof) {
 				static const char *const names[6] = { "compile", "inval", "spu", "gpu", "irq", "cdr" };
 				char pb[200]; int n = 0;
