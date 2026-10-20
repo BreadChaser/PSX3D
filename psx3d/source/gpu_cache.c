@@ -116,3 +116,49 @@ u8 video_cache_frame_end(u8 flags)
 	}
 	return flags;
 }
+
+// citro3d updates the shader uniforms on every draw, twice (vertex and
+// geometry stage), scanning 96 + 4 dirty flags a byte at a time; nearly
+// always nothing is dirty. Skip the call then (rcpu bit 4): the commands
+// are the same. The shader constants' dirty flag is private to citro3d,
+// so the two functions that set it are wrapped to note it.
+static bool shader_consts_dirty[2] = { true, true };
+void __real_C3D_UpdateUniforms(GPU_SHADER_TYPE type);
+void __real_C3Di_LoadShaderUniforms(shaderInstance_s *si);
+void __real_C3Di_DirtyUniforms(GPU_SHADER_TYPE type);
+
+void __wrap_C3Di_LoadShaderUniforms(shaderInstance_s *si)
+{
+	shader_consts_dirty[si->dvle->type] = true;
+	__real_C3Di_LoadShaderUniforms(si);
+}
+
+void __wrap_C3Di_DirtyUniforms(GPU_SHADER_TYPE type)
+{
+	shader_consts_dirty[type] = true;
+	__real_C3Di_DirtyUniforms(type);
+}
+
+static bool any_set(const bool *flags, unsigned n)
+{
+	if (!((uintptr_t)flags & 3) && !(n & 3)) {
+		const u32 *w = (const u32 *)flags;
+		u32 any = 0;
+		for (unsigned i = 0; i < n / 4; i++)
+			any |= w[i];
+		return any;
+	}
+	for (unsigned i = 0; i < n; i++)
+		if (flags[i])
+			return true;
+	return false;
+}
+
+void __wrap_C3D_UpdateUniforms(GPU_SHADER_TYPE type)
+{
+	if ((pica_rcpu & 4) && !shader_consts_dirty[type] && !C3D_BoolUnifsDirty[type] &&
+		!any_set(C3D_FVUnifDirty[type], C3D_FVUNIF_COUNT) && !any_set(C3D_IVUnifDirty[type], C3D_IVUNIF_COUNT))
+		return;
+	shader_consts_dirty[type] = false;
+	__real_C3D_UpdateUniforms(type);
+}
