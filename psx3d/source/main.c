@@ -416,7 +416,10 @@ int main(int argc, char **argv)
 					break;
 				continue;
 			}
-			log_printf("test: no game matches %s\n", want);
+			if (picked)
+				show_error("Could not write the disc list for this game.\nIs the SD card full?");
+			else
+				log_printf("test: no game matches %s\n", want);
 			picked = NULL;
 		}
 		if (use_library) {

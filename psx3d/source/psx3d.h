@@ -402,6 +402,8 @@ int library_game_series(int game);          // -1 if not in a series
 const char *library_series_name(int s);
 int library_series_size(int s);
 int library_series_game(int s, int k);      // k-th game of series s, in order
+int library_omitted(void);                  // files and folders the last scan left out
+// NULL if the disc list of a multi-disc game could not be written
 const char *library_launch_path(const game_t *g, char *buf, size_t len);
 
 // covers.c - box art

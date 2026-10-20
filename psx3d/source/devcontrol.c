@@ -658,7 +658,12 @@ bool dev_next_game(char *path, char *save, char *title)
 			matches++;
 		}
 	}
-	if (picked && matches == 1 && library_launch_path(picked, path, PATH_LEN)) {
+	if (picked && matches == 1 && !library_launch_path(picked, path, PATH_LEN)) {
+		snprintf(last_error, sizeof(last_error), "could not write the disc list for that game");
+		dev_game_ended(false);
+		return false;
+	}
+	if (picked && matches == 1) {
 		snprintf(save, PATH_LEN, "%s", picked->cover_key);
 		snprintf(title, PATH_LEN, "%s", picked->title);
 	} else if (!strncmp(game, "sdmc:/", 6) && strlen(game) < PATH_LEN) {

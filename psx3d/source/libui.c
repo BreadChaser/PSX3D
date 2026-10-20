@@ -26,6 +26,7 @@ static float fade = 1;             // 1 = black, eases to 0 on open
 static float launch_t = -1;        // >= 0 while the launch zoom plays
 static int rep_l, rep_r, rep_u, rep_d, rep_pl, rep_pr;
 static int rescan_frames;          // > 0 while "Library updated" shows
+static int launch_fail_frames;     // > 0 while the disc list error shows
 
 // What the list shows: the top level (series and the games not in one), or
 // the games of one open series. Entries >= 0 are games, < 0 are series -(s+1).
@@ -418,10 +419,18 @@ static void draw_bottom(void *ud)
 		float h = 216.0f * ROWS / n, y = 4 + 216.0f * lst.scroll / n;
 		C2D_DrawRectSolid(315, y, 0.3f, 3, h, C2D_Color32(60, 80, 140, 255));
 	}
-	if (rescan_frames > 0) {
-		char msg[48];
-		snprintf(msg, sizeof(msg), "Library updated: %d games", library_count());
-		ui_text_ex(NULL, 8, 222, 0.4f, C2D_Color32(255, 210, 120, 255), 0, msg);
+	if (launch_fail_frames > 0) {
+		ui_text_ex(NULL, 8, 222, 0.4f, C2D_Color32(255, 130, 130, 255), 0,
+			"Could not write the disc list. Is the SD card full?");
+	} else if (rescan_frames > 0) {
+		char msg[80];
+		int omitted = library_omitted();
+		if (omitted)
+			snprintf(msg, sizeof(msg), "Library updated: %d games, %d %s skipped (see log)",
+				library_count(), omitted, omitted == 1 ? "item" : "items");
+		else
+			snprintf(msg, sizeof(msg), "Library updated: %d games", library_count());
+		ui_text_ex(NULL, 8, 222, omitted ? 0.36f : 0.4f, C2D_Color32(255, 210, 120, 255), 0, msg);
 	} else
 		ui_text_ex(NULL, 8, 223, 0.36f, C2D_Color32(90, 100, 135, 255), 0,
 			open_series >= 0 ? "A play   B back   X settings   SELECT rescan   START quit" :
@@ -632,7 +641,12 @@ int libui_run(char *out_path, size_t len)
 			}
 			if (k & KEY_A) {
 				const game_t *g = library_get(entry_game(sel));
-				library_launch_path(g, out_path, len);
+				if (!library_launch_path(g, out_path, len)) {
+					// do not start with just disc 1
+					launch_fail_frames = 300;
+					sfx_play(SFX_BACK);
+					continue;
+				}
 				snprintf(g_cfg.last_title, sizeof(g_cfg.last_title), "%s", g->title);
 				config_save();
 				covers_stop_wait();   // no network during the game
@@ -677,6 +691,7 @@ int libui_run(char *out_path, size_t len)
 		if (title_t < 1) title_t = fminf(1, title_t + dt * 5);
 		if (fade > 0) fade = fmaxf(0, fade - dt * 3);
 		if (rescan_frames > 0) rescan_frames--;
+		if (launch_fail_frames > 0) launch_fail_frames--;
 		// the selection first, then outward: what's on screen loads first
 		covers_focus(entry_game(sel));
 		for (int d = 0; d <= 4; d++) {
