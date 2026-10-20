@@ -26,6 +26,7 @@ bool log_linked(void);
 void log_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void log_close(void);
 void log_resume(void);
+void log_hold(bool hold);
 
 // config.c - frontend settings plus core option overrides
 typedef struct {

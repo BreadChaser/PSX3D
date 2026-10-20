@@ -1419,6 +1419,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		u64 report_start = psx3d_skip.timing ? svcGetSystemTick() : 0;
 		u64 now = end_work >= stats_deadline ? osGetTime() : fps_t0;
 		if (now - fps_t0 >= 1000 || (clip_replay_session && clip_status.done)) {
+			log_hold(true);   // the report's lines go to the SD card in one write
 			if (clip_replay_session && clip_status.done) { now=osGetTime(); if (now<=fps_t0) now=fps_t0+1; }
 			fps_measured = fps_frames * 1000.0f / (now - fps_t0);
 			double per_frame_ms = 1.0 / (emulated ? emulated : 1) / CPU_TICKS_PER_MSEC;
@@ -1554,6 +1555,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			fps_frames = 0;
 			fps_t0 = now;
 			stats_deadline = end_work + SYSCLOCK_ARM11;
+			log_hold(false);
 		}
 		if (psx3d_skip.timing) misc_ticks += svcGetSystemTick() - report_start;
 		if (psx3d_skip.enabled && sw_fsmart && !sw_rtfs) {
