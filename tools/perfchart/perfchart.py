@@ -9,7 +9,8 @@ Two honest numbers per run: game speed (emulation speed, 100% = normal) and FPS
     tools/perfchart/perfchart.py --set "Silent Hill" old.auto_fps=11.2
     tools/perfchart/perfchart.py --version v0.5.0
 
---results reads fastbench results.tsv: speed_pct -> *_speed, top_count -> *_fps,
+--results reads fastbench results.tsv: speed_pct -> *_speed, min(drawn_count, top_count)
+-> *_fps (new pictures, like the in-game counter),
 split by the frameskip=off|auto request word.
 """
 import argparse, csv, json, os, re, sys
@@ -125,7 +126,8 @@ def from_results(d, path, console):
             g = max(matches, key=lambda g: len(norm(g["name"]))) if matches else None
             if not g: print("skip (add it to performance.json first):", req.get("game")); continue
             g.setdefault(console, {})[f"{mode}_speed"] = round(float(row["speed_pct"]), 1)
-            g[console][f"{mode}_fps"] = round(float(row.get("top_count") or row.get("drawn_count") or 0), 1)
+            counts = [float(row[k]) for k in ("drawn_count", "top_count") if row.get(k)]
+            g[console][f"{mode}_fps"] = round(min(counts) if counts else 0, 1)
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)

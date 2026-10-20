@@ -67,29 +67,29 @@ see [methodology](docs/performance.md).
 <!-- perf-table -->
 | Game | Console | Frameskip off: speed / FPS | Auto frameskip: speed / FPS |
 |---|---|---:|---:|
-| Crash Bandicoot | Old 3DS | 82.9% / 19.5 | 93.4% / 13.3 |
+| Crash Bandicoot | Old 3DS | 86.0% / 20.3 | 97.0% / 14.5 |
 | Crash Bandicoot | New 3DS | 100.0% / 24.8 | 100.0% / 24.8 |
-| Crash Bandicoot 2 | Old 3DS | 48.1% / 15.0 | 48.2% / 14.1 |
+| Crash Bandicoot 2 | Old 3DS | 49.5% / 15.1 | 49.9% / 14.3 |
 | Crash Bandicoot 2 | New 3DS | 100.0% / 30.3 | 100.0% / 30.3 |
-| Crash Team Racing | Old 3DS | 60.6% / 18.3 | 68.3% / 15.3 |
+| Crash Team Racing | Old 3DS | 61.2% / 18.4 | 69.5% / 15.2 |
 | Crash Team Racing | New 3DS | 100.0% / 26.3 | 100.0% / 26.3 |
-| Gran Turismo 2 | Old 3DS | 46.9% / 12.8 | 47.6% / 11.5 |
+| Gran Turismo 2 | Old 3DS | 46.9% / 12.7 | 47.7% / 11.4 |
 | Gran Turismo 2 | New 3DS | 100.0% / 24.8 | 100.0% / 24.8 |
-| Ridge Racer Type 4 | Old 3DS | 72.2% / 22.1 | 82.9% / 15.6 |
+| Ridge Racer Type 4 | Old 3DS | 73.4% / 22.3 | 83.8% / 15.7 |
 | Ridge Racer Type 4 | New 3DS | 100.0% / 30.3 | 100.0% / 30.3 |
-| Need for Speed: High Stakes | Old 3DS | 33.8% / 10.8 | 32.9% / 10.0 |
+| Need for Speed: High Stakes | Old 3DS | 34.3% / 11.1 | 33.8% / 10.3 |
 | Need for Speed: High Stakes | New 3DS | 97.6% / 37.2 | 97.6% / 36.7 |
-| Tekken 3 | Old 3DS | 55.3% / 33.7 | 69.7% / 15.2 |
+| Tekken 3 | Old 3DS | 54.7% / 33.4 | 69.1% / 15.2 |
 | Tekken 3 | New 3DS | 100.0% / 60.8 | 100.0% / 60.7 |
-| Final Fantasy VII | Old 3DS | 100.0% / 15.2 | 100.0% / 15.2 |
+| Final Fantasy VII | Old 3DS | 100.0% / 15.1 | 100.0% / 15.2 |
 | Final Fantasy VII | New 3DS | 100.0% / 15.2 | 100.0% / 15.1 |
-| Klonoa | Old 3DS | 57.9% / 35.3 | 61.7% / 15.1 |
+| Klonoa | Old 3DS | 84.8% / 51.5 | 99.3% / 15.3 |
 | Klonoa | New 3DS | 100.0% / 60.8 | 100.0% / 60.8 |
-| Silent Hill (alley) | Old 3DS | 60.5% / 18.5 | 68.0% / 15.3 |
+| Silent Hill (alley) | Old 3DS | 61.4% / 18.9 | 70.0% / 15.2 |
 | Silent Hill (alley) | New 3DS | 100.0% / 29.7 | 100.0% / 29.7 |
-| Silent Hill (café) | Old 3DS | 61.8% / 14.7 | 61.3% / 14.6 |
+| Silent Hill (café) | Old 3DS | 61.8% / 14.6 | 61.3% / 14.6 |
 | Silent Hill (café) | New 3DS | 100.0% / 22.3 | 100.0% / 22.3 |
-| Symphony of the Night | Old 3DS | 96.8% / 58.5 | 100.0% / 50.6 |
+| Symphony of the Night | Old 3DS | 98.4% / 59.5 | 100.0% / 54.1 |
 | Symphony of the Night | New 3DS | 100.0% / 60.7 | 100.0% / 60.7 |
 <!-- /perf-table -->
 

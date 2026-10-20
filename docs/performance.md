@@ -46,8 +46,13 @@ These are scene measurements, not whole-game compatibility guarantees.
   v0.4.1 the scratchpad sits at one ARM immediate, loads and stores through one
   base register share a single range check, and the ordering-table clear writes
   four entries per step.
-- Safe wait-loop skipping avoids emulating known idle loops. Sound mixing and
-  disc read-ahead use system-core time when available.
+- Safe wait-loop skipping avoids emulating known idle loops. Since v0.4.1 this
+  includes the PsyQ library's `VSync(-1)` polling loop (Klonoa: 58% to 85% game
+  speed on Old 3DS) and the older PsyQ `v_wait` loop (Crash Bandicoot: +3%);
+  skipped iterations cost exactly the guest time they would have taken. The
+  dynarec no longer emits Cortex-A8 branch-prediction padding, which the 3DS's
+  ARM11 doesn't use. Sound mixing and disc read-ahead use system-core time when
+  available.
 - Code layout and the split renderer build reduce instruction-cache pressure
   on Old 3DS. The removed software renderer also reduces executable size.
 
