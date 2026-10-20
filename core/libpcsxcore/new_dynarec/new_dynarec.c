@@ -7512,6 +7512,8 @@ void new_dynarec_init(void)
   // v0.4.1 RC3, i.e. in the same cache sets (the 16 KiB 4-way caches repeat
   // every 4 KiB). Runs once; recompute the size whenever the code of this
   // file changes (4096 minus its growth, arm-none-eabi-nm on the ELF).
+  // Still needed with psx3d/core-first.ld: the frontend can no longer move
+  // the core, but this file's own size changes still move the rest of it.
   __asm__ volatile("b 1f\n\t.space " NDRC_LAYOUT_PAD "\n1:");
 #endif
   SysPrintf("Init new dynarec, ndrc size %x, pgsize %d\n",

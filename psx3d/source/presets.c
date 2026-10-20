@@ -26,11 +26,6 @@ static int cached_model = -1;
 #ifdef PSX3D_PS1_OVERCLOCK_PRESETS
 static bool core_clock; // the core set this game's clock itself
 #endif
-// Old 3DS speed depends on layout (zz_core_align.s keeps the core's code in
-// place). The compiled table these files replaced held this much read-only
-// data; keeping the space holds the core's data at its v0.4.1 addresses too.
-#define PRESETS_RODATA_PAD 8000
-__attribute__((used)) static const char rodata_pad[PRESETS_RODATA_PAD] = { 1 };
 
 // Named keys in game_preset_options_t field order. Value words count from 0
 // (touch slots from -1 = hide); psxclock takes a number.

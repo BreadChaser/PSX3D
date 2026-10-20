@@ -11,3 +11,4 @@ decisions. User and contributor documentation is one level up in `docs/`.
 | [renderer-cpu.md](renderer-cpu.md) | Old 3DS renderer CPU work in the heavy scenes |
 | [sh-texcache.md](sh-texcache.md) | Texture atlas thrash (Silent Hill café, NFS, R4, Tekken 3) |
 | [ps1-overclock.md](ps1-overclock.md) | PS1 CPU clock: New 3DS measurements behind the `psxclock` presets |
+| [core-first.md](core-first.md) | Link layout: emulator core first, so frontend changes never move it |

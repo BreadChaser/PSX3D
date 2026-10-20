@@ -69,6 +69,21 @@ save files and full-card handling using disposable cards and an optional real-BI
 Per-game presets have their own format and checks: see [presets](presets.md).
 Research round reports live in [docs/dev](dev/README.md).
 
+## Code layout (Old 3DS)
+
+The Old 3DS has 16 KB caches without L2, so code and data addresses matter for
+speed. `psx3d/core-first.ld` links the emulator core first at a fixed address,
+then the libraries, then the frontend, so frontend changes never move the core.
+After a frontend or library change (with devkitARM and a built core):
+
+```sh
+bash tools/layout/check.sh                       # a grown frontend must not move the core
+python3 tools/layout/compare.py old.elf new.elf  # two builds: what moved
+```
+
+Changes inside `core/` still move the core's later code and need an Old 3DS
+A/B/A. See [core-first layout](dev/core-first.md).
+
 ## Emulation identity gates
 
 The ARM Linux simulator requires an ARMv6 hard-float cross compiler, static

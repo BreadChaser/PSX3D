@@ -153,9 +153,9 @@ remote `put` command can drop files there.
 At startup `game_presets_init()` reads both `VERSION` files and parses every
 preset file once into a serial index. When the core identifies the disc
 (the `CD-ROM ID:` log line, also after a disc swap) the serial is looked up;
-nothing is read or parsed in the frame loop. The loader is compiled with `-Os`:
-it runs once, and frontend code must stay inside the padding before the core's
-aligned start (`zz_core_align.s`) to keep the Old 3DS code layout.
+nothing is read or parsed in the frame loop. The frontend links after the core
+(`psx3d/core-first.ld`), so the loader's size does not affect the Old 3DS code
+layout.
 
 ## Checks
 

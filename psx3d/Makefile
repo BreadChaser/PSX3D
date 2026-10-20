@@ -63,7 +63,9 @@ CFLAGS	+=	$(INCLUDE) -D__3DS__ $(EXTRA_DEFS) -I$(COREDIR)/deps/libretro-common/i
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
 
 ASFLAGS	:=	-g $(ARCH)
-PICA_SPECS := 3dsx.specs
+# Core first, then libraries, then the frontend (core-first.ld): frontend
+# changes never move the core. Check: tools/layout/check.sh.
+PICA_SPECS := $(TOPDIR)/core-first.specs
 ifeq ($(PICA_LAYOUT),section)
 PICA_SPECS := $(TOPDIR)/build/pica-hot.specs
 endif
@@ -220,7 +222,7 @@ $(OUTPUT).3dsx	:	$(OUTPUT).elf $(_3DSXDEPS)
 
 $(OFILES_SOURCES) : $(HFILES)
 
-$(OUTPUT).elf	:	$(OFILES) $(CORELIB)
+$(OUTPUT).elf	:	$(OFILES) $(CORELIB) $(TOPDIR)/core-first.ld $(TOPDIR)/core-first.specs
 ifeq ($(PICA_LAYOUT),section)
 $(OUTPUT).elf: $(TOPDIR)/build/pica-hot-3dsx.ld
 endif
@@ -246,10 +248,6 @@ endif
 #---------------------------------------------------------------------------------
 	$(SILENTMSG) $(notdir $<)
 	$(bin2o)
-
-# Preset loading runs once per start and disc: size over speed, so frontend
-# growth stays inside the padding before the core (zz_core_align.s).
-presets.o: CFLAGS += -Os
 
 -include $(DEPSDIR)/*.d
 
