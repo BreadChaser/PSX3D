@@ -90,11 +90,11 @@ static void top_set_plain(C3D_RenderTarget *t, gfx3dSide_t side, bool plain)
 
 // Real 3D needs a VRAM render target for the right eye: two supersampled
 // top targets plus PS1 VRAM leave too little VRAM, so 3D gameplay uses
-// native ones (GPU thread, between frames). The library gets its
-// supersampled targets back when the game ends.
+// native ones (GPU thread, between frames). When the game ends the
+// library gets its supersampled targets back: all screen targets are made
+// again in video_init's order, the one layout known to fit (the bottom
+// target, left where it was, kept the second one from fitting).
 static bool stereo_native;
-bool video_stereo_on(void) { return stereo_on; }
-bool video_top_aa(void) { return top_aa; }
 bool video_stereo_targets(bool native)
 {
 	if (native ? (!top_aa || stereo_native) : !stereo_native)
@@ -102,10 +102,13 @@ bool video_stereo_targets(bool native)
 	C3D_RenderTargetDelete(top);
 	C3D_RenderTargetDelete(top_r);
 	top = top_r = NULL;
-	// like video_init: leave one contiguous 1 MB hole for the next game's
-	// PS1 VRAM target
-	void *pica_reserve = native ? NULL : vramAlloc(TEX_W * TEX_H * 2);
-	if (!native && pica_reserve) {
+	void *pica_reserve = NULL;
+	if (!native) {
+		C3D_RenderTargetDelete(bottom);
+		bottom = NULL;
+		pica_reserve = vramAlloc(TEX_W * TEX_H * 2);
+	}
+	if (pica_reserve) {
 		top = aa_target(GFX_LEFT);
 		top_r = aa_target(GFX_RIGHT);
 		if (!top || !top_r) {
@@ -119,13 +122,20 @@ bool video_stereo_targets(bool native)
 		top = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
 		top_r = C2D_CreateScreenTarget(GFX_TOP, GFX_RIGHT);
 	}
+	if (!bottom)
+		bottom = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
 	if (pica_reserve)
 		vramFree(pica_reserve);
 	stereo_native = native;
 	plain_now = false;
 	plain_ok = top_aa && !g_new3ds && !sw_aa;
-	return top && top_r;
+	log_printf("3D: %s top screen targets, VRAM %uK free\n", top_aa ? "supersampled" : "native",
+		(unsigned)(vramSpaceFree() / 1024));
+	return top && top_r && bottom;
 }
+
+bool video_stereo_on(void) { return stereo_on; }
+bool video_top_aa(void) { return top_aa; }
 
 // begin drawing on a top target in the usual 400x240 coordinates
 static void top_begin(C3D_RenderTarget *t)
