@@ -40,7 +40,7 @@ s = s.replace('psxMap(0x1f800000, 0x10000, 0, MAP_TAG_OTHER)',
 f.write_text(s)
 f = dst / 'core/libpcsxcore/new_dynarec/new_dynarec.c'
 f.write_text(f.read_text() + '\nunsigned sim_codegen_size(void) { return out - ndrc->translation_cache; }\n')
-shutil.copytree(repo / 'tools/idle-investigation/fake3ds', dst / 'fake3ds', dirs_exist_ok=True)
+shutil.copytree(repo / 'tools/dynarec-speed/fake3ds', dst / 'fake3ds', dirs_exist_ok=True)
 for name in ('cprof.py', 'hz.py', 'hotblk.py', 'lineprof.py', 'o3hw_off.ini'):
     shutil.copy2(dev / 'sim' / name, dst / name)
 for name in ('states', 'plugin'):
