@@ -53,7 +53,10 @@ int main(void)
   options_register(vars);
   assert(options_count()==1 && !strcmp(options_key(0),"example"));
   assert(options_get("pcsx_rearmed_gpu_unai_fast_lighting")==NULL);
+  // Real 3D asks the core for GTE depths on the New 3DS only.
   config_set_stereo_active(true);
+  assert(!strcmp(options_get("pcsx_rearmed_psx3d_stereo"),model?"enabled":"disabled"));
+  config_set_stereo_active(false);
   assert(!strcmp(options_get("pcsx_rearmed_psx3d_stereo"),"disabled"));
   file(PSX3D_DIR "/games/test.ini","renderer=sw\ncore.pcsx_rearmed_gpu_unai_lighting=disabled\n");
   config_game_begin("test");

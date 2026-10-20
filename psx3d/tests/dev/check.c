@@ -40,6 +40,8 @@ const emu_frontend_sample *emu_frontend_stats(void) { static emu_frontend_sample
 bool sw_prof, sw_stats, sw_fs1, sw_fs3, sw_noskip, sw_nosputhread, sw_acap;
 bool sw_nogputhread, sw_aa, sw_showright, sw_sbs, sw_gpu_async, sw_gpu_flush;
 float sw_slider;
+int sw_stereo = -1;
+void gpustereo_status(char *out, int n) { (void)n; out[0] = 0; }
 int sw_state = -1, sw_pmu0 = -1, sw_pmu1 = -1, sw_gldbg, sw_vramdump, sw_autosave_test;
 char sw_opt[8][48], sw_cdra[8], sw_clock[8];
 static u64 mock_ms;
@@ -139,6 +141,7 @@ bool devnet_shot(const char *path, bool bottom)
 	shot_calls++;
 	return true;
 }
+bool devnet_shot_eyes(const char *path) { return devnet_shot(path, true); }
 void devnet_start_update(const char *args) { (void)args; }
 void devnet_update_reply(const char *args) { (void)args; }
 void devnet_notification_done(void) {}

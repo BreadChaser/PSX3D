@@ -12,6 +12,7 @@
 #include "clip.h"
 #include "safefile.h"
 #include "statefile.h"
+#include "gpustereo.h"
 #include <sys/stat.h>
 #include "../../core/plugins/gpulib/psx3d_frameskip.h"
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
@@ -1321,17 +1322,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 				next_deadline = svcGetSystemTick();
 		}
 		pica_thread_sync();   // before menus, UI buffers, stereo and stats touch renderer/frontend state
-		{
-			// real 3D only costs anything while the slider is up; a little
-			// hysteresis so a slider resting near 0 doesn't toggle it
-			static int below;
-			float slider = slider_get();
-			below = slider < 0.02f ? below + 1 : 0;
-			if (g_cfg.stereo == 2 && slider >= 0.05f)
-				config_set_stereo_active(true);
-			else if (g_cfg.stereo != 2 || below > 30)
-				config_set_stereo_active(false);
-		}
+		gpustereo_frame();   // real 3D only costs anything while the slider is up
 		u64 t1 = svcGetSystemTick();
 		fps_frames++;
 		u64 run_ticks = t1 - t0;

@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <assert.h>
 #include <unistd.h>
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -36,6 +37,8 @@ typedef struct {
 #define GFX_TOP 0
 #define GFX_BOTTOM 1
 #define GFX_LEFT 0
+#define GFX_RIGHT 1
+typedef int gfx3dSide_t;
 typedef int gfxScreen_t;
 typedef struct {
 	struct in_addr ip, netmask, broadcast;
@@ -128,6 +131,8 @@ int test_bind(int fd, const struct sockaddr *addr, socklen_t len)
 }
 #define bind test_bind
 #define closesocket close
+static bool eye_queue_waited;
+void video_gpu_wait_previous(void) { eye_queue_waited = true; }
 void C3D_FrameSync(void) {}
 void gfxSetDoubleBuffering(int screen, bool enabled)
 {
@@ -136,13 +141,16 @@ void gfxSetDoubleBuffering(int screen, bool enabled)
 }
 u8 *gfxGetFramebuffer(int screen, int eye, u16 *rows, u16 *cols)
 {
-	(void)eye;
+	if (eye == GFX_RIGHT) {   /* the queue swapping both eyes was waited for */
+		assert(eye_queue_waited);
+		eye_queue_waited = false;
+	}
 	static u8 fb[400 * 240 * 3];
 	*rows = 240;
 	*cols = screen ? 320 : 400;
 	for (size_t i = 0; i < sizeof(fb); i += 3) {
 		fb[i] = 0;
-		fb[i + 1] = 128;
+		fb[i + 1] = eye == GFX_RIGHT ? 64 : 128;
 		fb[i + 2] = 255;
 	}
 	return fb;
@@ -222,7 +230,10 @@ int main(void)
 	while (true) {
 		char command[DEV_COMMAND_MAX];
 		if (devnet_take(command)) {
-			if (!strcmp(command, "shot both")) {
+			if (!strcmp(command, "shot eyes")) {
+				devnet_shot_eyes(NULL);
+				devnet_reply("{\"ok\":true}");
+			} else if (!strcmp(command, "shot both")) {
 				devnet_shot(NULL, true);
 				devnet_reply("{\"ok\":true}");
 			} else if (!strcmp(command, "busy on")) {

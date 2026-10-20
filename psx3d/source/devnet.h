@@ -19,7 +19,8 @@ bool devnet_take(char *command);
 void devnet_reply(const char *json);
 void devnet_status(const char *json);
 void devnet_sample(const dev_measurement *s, bool reset);
-bool devnet_shot(const char *path, bool bottom); /* main copies only; worker encodes */
+bool devnet_shot(const char *path, bool bottom);
+bool devnet_shot_eyes(const char *path);   /* top screen: left eye above, right eye below */ /* main copies only; worker encodes */
 bool devnet_import_active(void);
 void devnet_import_reply(const char *path, const char *sha256);
 void devnet_start_update(const char *args);

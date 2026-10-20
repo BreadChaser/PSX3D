@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include "psx3d.h"
 #include "widescreen.h"
+#include "gpustereo.h"
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
 #include "pica_shbin.h"
 #include "../../core/libpcsxcore/psx3d_depth.h"
@@ -85,6 +86,44 @@ static void top_set_plain(C3D_RenderTarget *t, gfx3dSide_t side, bool plain)
 		GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) | GX_TRANSFER_RAW_COPY(0) |
 		GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) |
 		GX_TRANSFER_SCALING(plain ? GX_TRANSFER_SCALE_NO : GX_TRANSFER_SCALE_XY));
+}
+
+// Real 3D needs a VRAM render target for the right eye: two supersampled
+// top targets plus PS1 VRAM leave too little VRAM, so 3D gameplay uses
+// native ones (GPU thread, between frames). The library gets its
+// supersampled targets back when the game ends.
+static bool stereo_native;
+bool video_stereo_on(void) { return stereo_on; }
+bool video_stereo_targets(bool native)
+{
+	if (native ? (!top_aa || stereo_native) : !stereo_native)
+		return true;
+	C3D_RenderTargetDelete(top);
+	C3D_RenderTargetDelete(top_r);
+	top = top_r = NULL;
+	// like video_init: leave one contiguous 1 MB hole for the next game's
+	// PS1 VRAM target
+	void *pica_reserve = native ? NULL : vramAlloc(TEX_W * TEX_H * 2);
+	if (!native && pica_reserve) {
+		top = aa_target(GFX_LEFT);
+		top_r = aa_target(GFX_RIGHT);
+		if (!top || !top_r) {
+			if (top) C3D_RenderTargetDelete(top);
+			if (top_r) C3D_RenderTargetDelete(top_r);
+			top = top_r = NULL;
+		}
+	}
+	top_aa = top && top_r;
+	if (!top_aa) {
+		top = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
+		top_r = C2D_CreateScreenTarget(GFX_TOP, GFX_RIGHT);
+	}
+	if (pica_reserve)
+		vramFree(pica_reserve);
+	stereo_native = native;
+	plain_now = false;
+	plain_ok = top_aa && !g_new3ds && !sw_aa;
+	return top && top_r;
 }
 
 // begin drawing on a top target in the usual 400x240 coordinates
@@ -183,6 +222,7 @@ void video_game_end(void)
 		video_hold();
 	}
 	video_gpu_idle();
+	gpustereo_game_end();
 	if (hardware_active) {
 		// Bind the UI while PICA's shader is still alive: citro3d compares
 		// the old program's DVLP when binding another shader. Library frames
@@ -194,6 +234,7 @@ void video_game_end(void)
 			GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA);
 		pica_exit();
 		hardware_active = false;
+		video_stereo_targets(false);
 		music_reload();
 	}
 	have_frame = false;
@@ -285,7 +326,9 @@ static bool snapshot_gpu(u16 *out, int w, int h, C3D_Tex *tex,
 	u16 *pixels = linearAlloc(tex->size);
 	if (!pixels) return false;
 	GSPGPU_FlushDataCache(pixels, tex->size);
+	gpustereo_copy_bypass = true;   // not the renderer's held picture
 	C3D_SyncTextureCopy(tex->data, 0, (u32 *)pixels, 0, tex->size, 8);
+	gpustereo_copy_bypass = false;
 	GSPGPU_InvalidateDataCache(pixels, tex->size);
 	int x0 = (int)(left * tex->width + 0.5f);
 	int y0 = (int)((1.0f - top) * tex->height + 0.5f);
@@ -410,7 +453,7 @@ static void draw_game_tex(C3D_Tex *t, float eye_dx)
 	C2D_DrawImageAt(img, x, y, 0.5f, NULL, dw / frame_w, dh / frame_h);
 }
 
-static void draw_game(float eye_dx)
+static void draw_game(float eye_dx, bool right)
 {
 	// hardware renderer: the picture is already a GPU texture
 	C3D_Tex *t;
@@ -420,6 +463,11 @@ static void draw_game(float eye_dx)
 		draw_game_tex(&tex, eye_dx);   // 24-bit (movies): the core's own picture
 	if (pic != PICA_PIC_GPU)
 		return;   // (PICA_PIC_NONE: the display is off, the screen stays black)
+	if (right && gpustereo_mode() == 2) {   // real 3D: the right eye's own picture
+		C3D_Tex *eye = gpustereo_right_for(t);
+		if (eye)
+			t = eye;
+	}
 	Tex3DS_SubTexture st = { (u16)w, (u16)h, l, tp, r, b };
 	C2D_Image img = { t, &st };
 	float dw = config_screen_mode() == 2 ? fminf(400, 240 * ws_aspect()) : config_screen_mode() ? 400 : 320;
@@ -526,7 +574,7 @@ void video_present_screens(bool show_game, bool repaint_top, void (*draw_top)(vo
 		// sees the picture shifted the opposite way.
 		float slider = slider_get();
 		bool ui3d = !show_game && ui_wants_3d && g_cfg.stereo && slider > 0.01f;
-		bool stereo = (show_game && g_cfg.stereo && slider > 0.01f) || ui3d;
+		bool stereo = (show_game && gpustereo_mode() && slider > 0.01f) || ui3d;
 		// layers span depth -1.2..3: keep the whole range within a few pixels
 		ui_parallax = ui3d ? slider * 1.5f : 0.0f;
 		if (stereo != stereo_on) {
@@ -534,7 +582,10 @@ void video_present_screens(bool show_game, bool repaint_top, void (*draw_top)(vo
 			stereo_on = stereo;
 		}
 		float depth = stereo ? slider * MAX_DEPTH_PX : 0.0f;
-		// Stored stereo=2 falls back to screen depth until GPU real 3D lands.
+		// Real 3D: the eyes differ by themselves; screen depth until the
+		// right eye is ready (and for movies, which have no right eye).
+		if (show_game && gpustereo_mode() == 2 && gpustereo_ready())
+			depth = 0.0f;
 		// gameplay at 1x on Old 3DS, menus supersampled
 		bool plain = renderer_is_gpu() && plain_ok && show_game && !in_menu_call;
 		if (plain != plain_now) {
@@ -546,7 +597,7 @@ void video_present_screens(bool show_game, bool repaint_top, void (*draw_top)(vo
 		C2D_TargetClear(tl, C2D_Color32(0, 0, 0, 255));
 		top_begin(tl);
 		if (show_game)
-			draw_game(-depth);
+			draw_game(-depth, false);
 		ui_eye = ui3d ? -1 : 0;
 		if (draw_top)
 			draw_top(ud);
@@ -555,7 +606,7 @@ void video_present_screens(bool show_game, bool repaint_top, void (*draw_top)(vo
 			C2D_TargetClear(tr, C2D_Color32(0, 0, 0, 255));
 			top_begin(tr);
 			if (show_game)
-				draw_game(depth);
+				draw_game(depth, true);
 			ui_eye = ui3d ? 1 : 0;
 			if (draw_top)
 				draw_top(ud);
@@ -574,8 +625,10 @@ void video_present_screens(bool show_game, bool repaint_top, void (*draw_top)(vo
 	C3D_FrameEnd(0);
 	frame_end_tick = svcGetSystemTick();
 	gpu_frame = false;
-	if (renderer_is_gpu())
+	if (renderer_is_gpu()) {
 		pica_frame_ended();
+		gpustereo_after_present();
+	}
 }
 
 // Menus and legacy callers repaint both requested screens.

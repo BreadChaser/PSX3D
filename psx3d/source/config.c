@@ -304,7 +304,7 @@ void config_sync_stereo(void)
 	// video.c consumes this same field, so Old 3DS never draws a second eye.
 	if (!g_new3ds) g_cfg.stereo = 0;
 	config_set_core_override("pcsx_rearmed_psx3d_stereo",
-		"disabled");
+		stereo_active ? "enabled" : "disabled");
 	options_mark_updated();
 }
 

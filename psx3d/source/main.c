@@ -110,6 +110,7 @@ static void show_error(const char *msg)
 // each turns one subsystem off so a problem can be bisected without
 // rebuilding.
 float sw_slider = -1;   // test: pretend the 3D slider is here
+int sw_stereo = -1;     // test: 3D mode 0/1/2 instead of the setting (New 3DS)
 // Legacy diagnostic storage retained for the validated Old 3DS code layout.
 bool sw_showright;
 bool sw_sbs;
@@ -150,6 +151,7 @@ static void parse_switches(int argc, char **argv)
 		if (!strcmp(a, "nonet")) sw_nonet = true;
 		else if (!strcmp(a, "csnd")) sw_csnd = true;   // test the no-firmware sound path
 		else if (!strncmp(a, "slider=", 7)) sw_slider = strtof(a + 7, NULL);
+		else if (!strncmp(a, "stereo=", 7)) sw_stereo = atoi(a + 7);
 		else if (!strcmp(a, "showright")) sw_showright = true;
 		else if (!strcmp(a, "sbs")) sw_sbs = true;
 		else if (clip_switch(a)) {}

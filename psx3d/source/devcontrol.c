@@ -5,6 +5,7 @@
 #include "clip.h"
 #include "benchstate.h"
 #include "widescreen.h"
+#include "gpustereo.h"
 #include <ctype.h>
 #include <errno.h>
 #include <malloc.h>
@@ -175,6 +176,7 @@ static void publish_status(void)
 	p += sprintf(p, ",\"texmask\":\"%s\",\"texmemo\":\"%s\"",
 	             pica_texmask ? "new" : "old", pica_texmemo ? "new" : "old");
 	clip_status_json(p, sizeof(settings)-(size_t)(p-settings)); p+=strlen(p);
+	gpustereo_status(p, sizeof(settings)-(size_t)(p-settings)); p+=strlen(p);
 	sprintf(p, ",\"rtt\":\"%s\",\"free_heap\":%u,\"free_linear\":%u",
 	        sw_gldbg & 262144 ? "old" : sw_gldbg & 1048576 ? "new" : "auto", heap_free(), linear_free());
 	snprintf(json, sizeof(json),
@@ -366,7 +368,7 @@ static bool runtime_set(const char *word)
 	// Conservative allowlist: renderer/thread/CD/SPU and arbitrary core option
 	// changes require a clean load. No pretending unsafe settings changed live.
 	if (!strncmp(word, "frameskip=", 10) || !strncmp(word, "clock=", 6) ||
-	    !strncmp(word, "o:frameskip_", 12) || !strncmp(word, "slider=", 7) || !strncmp(word, "gldbg=", 6)) {
+	    !strncmp(word, "o:frameskip_", 12) || !strncmp(word, "slider=", 7) || !strncmp(word, "stereo=", 7) || !strncmp(word, "gldbg=", 6)) {
 		bool ok = switches_set(word);
 		if (ok && !strncmp(word, "gldbg=", 6)) {
 			extern int pica_debug;
@@ -537,9 +539,9 @@ bool dev_tick(bool playing)
 			else
 				dev_reply("{\"ok\":true}");
 		} else if (!strcmp(command, "shot")) {
-			if (*args && strcmp(args, "both") && strcmp(args, "top"))
-				error_reply("shot [top|both]");
-			else if (!devnet_shot(NULL, (!*args || !strcmp(args, "both"))))
+			if (*args && strcmp(args, "both") && strcmp(args, "top") && strcmp(args, "eyes"))
+				error_reply("shot [top|both|eyes]");
+			else if (!(!strcmp(args, "eyes") ? devnet_shot_eyes(NULL) : devnet_shot(NULL, (!*args || !strcmp(args, "both")))))
 				error_reply("screenshot busy or allocation failed");
 			else
 				dev_reply("{\"ok\":true}"); // worker sends PNG instead of JSON

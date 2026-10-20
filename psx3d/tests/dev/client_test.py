@@ -56,6 +56,34 @@ class Protocol(unittest.TestCase):
         self.assertEqual(int.from_bytes(shot[16:20], 'big'), 400)
         self.assertEqual(int.from_bytes(shot[20:24], 'big'), 480)
 
+    def test_both_eyes_use_separate_buffers(self):
+        import zlib
+        png = self.client.request('shot eyes')
+        self.assertEqual(int.from_bytes(png[16:20], 'big'), 400)
+        self.assertEqual(int.from_bytes(png[20:24], 'big'), 480)
+        packed = b''; off = 8
+        while off < len(png):
+            size = int.from_bytes(png[off:off+4], 'big')
+            if png[off+4:off+8] == b'IDAT': packed += png[off+8:off+8+size]
+            off += size+12
+        raw = zlib.decompress(packed); previous = bytearray(1200); first = []
+        for y in range(480):
+            mode = raw[y*1201]; row = bytearray(raw[y*1201+1:(y+1)*1201])
+            for x in range(1200):
+                a = row[x-3] if x >= 3 else 0
+                b = previous[x]; c = previous[x-3] if x >= 3 else 0
+                if mode == 1: predictor = a
+                elif mode == 2: predictor = b
+                elif mode == 3: predictor = (a+b)//2
+                elif mode == 4:
+                    q = a+b-c; da, db, dc = abs(q-a), abs(q-b), abs(q-c)
+                    predictor = a if da <= db and da <= dc else b if db <= dc else c
+                else: predictor = 0
+                row[x] = (row[x]+predictor)&255
+            first.append(bytes(row[:3])); previous = row
+        self.assertEqual(first[0], bytes([255,128,0]))     # left eye (top half)
+        self.assertEqual(first[240], bytes([255,64,0]))    # right eye (bottom half)
+
     def test_update_failure_releases_mailbox(self):
         with self.assertRaisesRegex(ControlError, 'mock update rejected'):
             self.client.request('update mock')

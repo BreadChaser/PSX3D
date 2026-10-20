@@ -2,6 +2,7 @@
 // Two command-list regions allow CPU recording while the previous frame runs.
 #include "c3d_abi.h"
 #include "psx3d.h"
+#include "gpustereo.h"
 #include <c3d/base.h>
 #include <c3d/renderqueue.h>
 #include <stdlib.h>
@@ -37,6 +38,7 @@ static void runQueue(void)
 }
 
 static bool inFrame, inSafeTransfer, measureGpuTime;
+unsigned video_frame_serial;   // gpustereo.c: vertex copies live two frames
 static bool needSwapTop, needSwapBot, isTopStereo;
 static float framerate = 60.0f;
 static float framerateCounter[2] = { 60.0f, 60.0f };
@@ -244,6 +246,7 @@ bool C3D_FrameBegin(u8 flags)
 	ctx->cmdBufSize = extraQueue.entries ? commandWords / 2 : commandWords;
 	ctx->cmdBuf = commandBase + (buildQueue == &extraQueue ? ctx->cmdBufSize : 0);
 	inFrame = true;
+	video_frame_serial++;
 	osTickCounterStart(&cpuTime);
 	GPUCMD_SetBuffer(ctx->cmdBuf, ctx->cmdBufSize, 0);
 	return true;
@@ -307,6 +310,7 @@ void C3D_FrameEnd(u8 flags)
 	flags = video_cache_frame_end(flags);
 	if (frameEndCb)
 		frameEndCb(frameEndCbData);
+	gpustereo_frame_end();
 
 	splitFrame(flags);
 	GPUCMD_SetBuffer(NULL, 0, 0);

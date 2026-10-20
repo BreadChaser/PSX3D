@@ -67,7 +67,7 @@ static const int groups[] = {
 static const char *const tips[] = {
  [F_SCREEN]="Widescreen only in games with a widescreen fix.",
  [F_SMOOTH]="Soften pixels when enlarging the picture.",
- [F_STEREO]="Use the 3D slider for screen depth.",
+ [F_STEREO]="Use the 3D slider for depth.",
  [F_FPS]="Show the frame counter on the bottom screen.",
  [F_SIDE]="Choose the side for touch buttons.",
  [F_AUDIO]="Keep sound smooth when the game runs slowly.",
@@ -79,7 +79,7 @@ static const char *const tips[] = {
 static const char *const helps[] = {
  [F_SCREEN]="4:3 keeps the original shape. Stretch fills the screen. Widescreen shows a wider view in games that have a widescreen fix; other games use 4:3.",
  [F_SMOOTH]="Soften enlarged pixels. Turn off for a sharper picture.",
- [F_STEREO]="Screen depth puts the picture behind the screen when you raise the 3D slider.",
+ [F_STEREO]="Screen depth puts the whole picture behind the screen. Real 3D gives each object its own depth; the 3D slider sets how strong.",
  [F_FPS]="FPS shows new pictures per second and game speed on the bottom screen. Detailed adds more numbers. Tap the counter to switch views.",
  [F_SIDE]="Place the touch buttons on the right or left side. The menu button and logo move to the other side.",
  [F_AUDIO]="Keep sound flowing when a game runs slowly; music and voices slow down with it.",
@@ -254,7 +254,7 @@ static const char *row_value(int i, void *ud)
 	case F_SMOOTH:
 		return g_cfg.smooth ? "On" : "Off";
 	case F_STEREO:
-		return g_cfg.stereo ? "Screen depth" : "Off";
+		return (const char *const[]){"Off", "Screen depth", "Real 3D"}[g_cfg.stereo];
 	case F_FPS:
 		return (const char *const[]){"Off", "FPS", "Detailed"}[g_cfg.show_fps];
 	case F_SIDE:
@@ -379,7 +379,7 @@ static void change(settings_ui_t *s, int item, int dir)
 		g_cfg.smooth ^= 1;
 		break;
 	case F_STEREO:
-		g_cfg.stereo = (g_cfg.stereo + dir + 2) % 2;
+		g_cfg.stereo = (g_cfg.stereo + dir + 3) % 3;
 		config_sync_stereo();
 		break;
 	case F_FPS:

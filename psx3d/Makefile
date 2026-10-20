@@ -75,7 +75,7 @@ LDFLAGS += -Wl,--wrap=fread
 # save states and memory cards through PSX3D (statefile.c, emu.c)
 LDFLAGS += -Wl,--wrap=retro_serialize,--wrap=retro_unserialize,--wrap=LoadMcd
 LDFLAGS += -Wl,--wrap=C3D_UpdateUniforms,--wrap=C3Di_LoadShaderUniforms,--wrap=C3Di_DirtyUniforms
-LDFLAGS += -Wl,--wrap=C3D_DrawArrays
+LDFLAGS += -Wl,--wrap=C3D_DrawArrays,--wrap=GX_TextureCopy
 
 LIBS	:= $(CORELIB) -lcitro2d -lcitro3d -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lpng16 -lz -lctru -lm
 

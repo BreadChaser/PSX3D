@@ -94,7 +94,8 @@ static const u32 draw_template[22] = {
 };
 
 void __real_C3D_DrawArrays(GPU_Primitive_t primitive, int first, int size);
-void __wrap_C3D_DrawArrays(GPU_Primitive_t primitive, int first, int size)
+// Called by the real 3D wrapper (gpustereo.c), which owns --wrap=C3D_DrawArrays.
+void picadirect_draw_arrays(GPU_Primitive_t primitive, int first, int size)
 {
 	C3D_Context *ctx = C3Di_GetContext();
 	u32 flags = ctx->flags;

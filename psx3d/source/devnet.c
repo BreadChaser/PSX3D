@@ -188,20 +188,34 @@ void devnet_update_reply(const char *args)
 
 // gfx's display-transfer output is already CPU-addressable RGB8. This copies
 // exactly once per requested shot, not every frame. PNG compression is worker-only.
+static bool shot_eyes;
+void video_gpu_wait_previous(void);
+bool devnet_shot_eyes(const char *path)
+{
+	shot_eyes = true;
+	bool ok = devnet_shot(path, true);
+	shot_eyes = false;
+	return ok;
+}
+
 bool devnet_shot(const char *path, bool bottom)
 {
 	int height = bottom ? 480 : 240;
 	u8 *rgb = calloc(400 * height, 3);
 	if (!rgb)
 		return false;
+	// both eyes swap in the GPU queue's completion callback: let it finish
+	if (shot_eyes)
+		video_gpu_wait_previous();
 	C3D_FrameSync();
 	for (int screen = 0; screen <= (int)bottom; screen++) {
 		u16 rows, cols;
-		gfxScreen_t scr = screen ? GFX_BOTTOM : GFX_TOP;
+		gfxScreen_t scr = screen && !shot_eyes ? GFX_BOTTOM : GFX_TOP;
+		gfx3dSide_t side = screen && shot_eyes ? GFX_RIGHT : GFX_LEFT;
 		gfxSetDoubleBuffering(scr, false);
-		u8 *fb = gfxGetFramebuffer(scr, GFX_LEFT, &rows, &cols);
+		u8 *fb = gfxGetFramebuffer(scr, side, &rows, &cols);
 		gfxSetDoubleBuffering(scr, true);
-		if (!fb || rows != 240 || cols != (screen ? 320 : 400)) {
+		if (!fb || rows != 240 || cols != (screen && !shot_eyes ? 320 : 400)) {
 			free(rgb);
 			return false;
 		}

@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 extern float sw_slider;
+extern int sw_stereo;
 extern unsigned pica_submit;
 extern int psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay;
 extern bool sw_aa, sw_showright, sw_sbs;
@@ -61,6 +62,8 @@ bool switches_set(const char *word)
 		if (!word[7] || *end || !isfinite(value) || value < 0 || value > 1)
 			return false;
 	}
+	if (!strncmp(word, "stereo=", 7) && (!word[7] || word[8] || word[7] < '0' || word[7] > '2'))
+		return false;
 	if (!strncmp(word, "pmu=", 4)) {
 		unsigned a, b;
 		int n = 0;
@@ -84,7 +87,7 @@ bool switches_set(const char *word)
 	                              "nogputhread",  "gputhread", "nosputhread", "acap", "renderer=sw",
 	                              "renderer=gpu", "state0",    "showright",   "sbs",  "gpuasync",
 	                              "nogpuasync",   "gpuflush",  "nogpuflush",  "aa", "rtt=old", "rtt=new", "rtt=auto", "rttcache=old", "rttcache=new", "rtfs", "rtfs=old", "rtfs=new", "rtfs=model", "rtfs=dense", "frontend=old", "frontend=new", "audio=old", "audio=new", "ff=on", "ff=off", "submitstate=old", "submitstate=new", "submitclip=old", "submitclip=new", "submittex=old", "submittex=new", "pmuclass=on", "pmuclass=off", "pmurender=on", "pmurender=off", "pica_prims_old", "pica_prims_fast", "pica_prims_copy", "pica_prims_clip", "pica_prims_round", "skipgate=old", "skipgate=new", "texmask=old", "texmask=new", "texmemo=old", "texmemo=new", "idle=on", "idle=off", "idleptr=on", "idleptr=off", "idledelay=on", "idledelay=off"};
-	static const char *prefix[] = {"slider=", "state=", "autosavetest=", "gldbg=", "vramdump=", "pmu=", "cdra=", "clock="};
+	static const char *prefix[] = {"slider=", "stereo=", "state=", "autosavetest=", "gldbg=", "vramdump=", "pmu=", "cdra=", "clock="};
 	bool known = false;
 	for (unsigned k = 0; k < sizeof(flags) / sizeof(*flags); k++)
 		if (!strcmp(word, flags[k]))
@@ -105,7 +108,7 @@ bool switches_set(const char *word)
  * replay= ignored local input, state= loaded a benchmark slot, o: options stuck). */
 static struct {
 	bool saved;
-	int idle_skip, idle_pointer, idle_delay, rtfslevel, rtfscap, state, autosave_test, pmu0, pmu1, gldbg, vramdump, skipgate;
+	int idle_skip, idle_pointer, idle_delay, rtfslevel, rtfscap, state, autosave_test, pmu0, pmu1, gldbg, vramdump, skipgate, stereo;
 	int clip_requested, clip_seconds;
 	unsigned submit, prims;
 	bool rtfsdense, rtfsmodel, rtfswindow, rtfs, ff, floataudio, frontend, fsmart, prof, stats, fs1, fs3, noskip;
@@ -128,7 +131,7 @@ static struct {
 		TO(acap, sw_acap); TO(nogputhread, sw_nogputhread); TO(aa, sw_aa); TO(showright, sw_showright);        \
 		TO(sbs, sw_sbs); TO(gpu_async, sw_gpu_async); TO(gpu_flush, sw_gpu_flush); TO(pmuphase, sw_pmuphase);  \
 		TO(pmuclass, sw_pmuclass); TO(texmask, pica_texmask); TO(texmemo, pica_texmemo);                       \
-		TO(clip_enabled, clip_enabled); TO(slider, sw_slider);                                                 \
+		TO(clip_enabled, clip_enabled); TO(slider, sw_slider); TO(stereo, sw_stereo);                          \
 		FROM(opt, sw_opt); FROM(cdra, sw_cdra); FROM(clock, sw_clock);                                         \
 	} while (0)
 #define SAVE_VALUE(field, var) local.field = var
@@ -158,6 +161,7 @@ bool switches_run(char *line, char *game, size_t len, char *error, size_t error_
 	sw_nogputhread = sw_aa = sw_showright = sw_sbs = false;
 	sw_gpu_async = sw_gpu_flush = true;
 	sw_slider = -1;
+	sw_stereo = -1;
 	sw_state = sw_pmu0 = sw_pmu1 = -1;
 	sw_autosave_test = 0;
 	sw_gldbg = sw_vramdump = 0;
