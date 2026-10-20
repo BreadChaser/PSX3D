@@ -258,7 +258,7 @@ void cheats_load(const char *key)
 	char path[PATH_LEN];
 	cheats_unload();
 	snprintf(game, sizeof(game), "%s", key);
-	ws_load("romfs:/widescreen", CdromId, CdromExeHash, g_new3ds);
+	ws_load("romfs:/widescreen", CdromId, CdromExeHash, game_capabilities().widescreen);
 	psx3d_widescreen_state_hook = ws_state_loaded;
 
 /* Bounded truncation is intentional; preserve the validated release code layout. */
@@ -358,7 +358,7 @@ void cheats_disc_changed(void)
 {
 	psx3d_widescreen_hook = NULL;
 	psx3d_widescreen_state_hook = NULL;
-	ws_load("romfs:/widescreen", CdromId, CdromExeHash, g_new3ds);
+	ws_load("romfs:/widescreen", CdromId, CdromExeHash, game_capabilities().widescreen);
 	psx3d_widescreen_state_hook = ws_state_loaded;
 	config_ws_sync();
 }

@@ -4,7 +4,6 @@ PSX3D-WS-1
 # Licence: Original authors retain rights; collection provides no blanket patch licence.
 # Unsupported: projection and GTE fallback leave missing edge geometry; SLST repair pending.
 aspect=16:9
-models=0,0
 [complete bundle]
 A7017A4C E4340C00
 A7017A4E 0C002402

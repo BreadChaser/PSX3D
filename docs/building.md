@@ -45,6 +45,8 @@ PSX3D_MOCKUPS=/tmp/psx3d-bottom bash psx3d/tests/host/run.sh
 bash psx3d/tests/dev/run.sh
 PSX3D_SETTINGS_OUTPUT=/tmp/psx3d-settings python3 tests/settings/run.py
 bash tests/renderer_config.sh
+bash tests/widescreen/run.sh
+bash tests/presets/run.sh
 bash psx3d/tests/covers/run.sh
 python3 psx3d/tests/covers/worker.py
 python3 psx3d/tests/vout/check.py

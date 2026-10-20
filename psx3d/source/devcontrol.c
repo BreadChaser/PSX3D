@@ -168,6 +168,8 @@ static void publish_status(void)
 	p += sprintf(p, ",\"remote_game\":%s", remote_game ? "true" : "false");
 	p += sprintf(p, ",\"wsbundle\":\"%s\",\"wsscreen\":%d,\"ws_identity\":\"%s\"", sw_wsbundle ? "on" : "off", running ? config_screen_mode() : sw_wsscreen, ws_identity());
 	p += sprintf(p, ",\"version\":\"%s\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
+	p += sprintf(p, ",\"preset\":\"%s\",\"preset_version\":%d,\"preset_pack\":%d", game_preset_source(),
+	             game_preset_version(), game_presets_pack());
 	p += sprintf(p, ",\"pica_prims\":%u,\"idle\":%d,\"idleptr\":%d,\"idledelay\":%d", pica_prims, psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay);
 	p += sprintf(p, ",\"skipgate\":\"%s\"", psx3d_skipgate ? "new" : "old");
 	p += sprintf(p, ",\"texmask\":\"%s\",\"texmemo\":\"%s\"",

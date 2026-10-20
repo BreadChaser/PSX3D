@@ -107,6 +107,7 @@ int main(void)
 {
 	mkdir("sdmc:", 0700);
 	mkdir("sdmc:/3ds", 0700);
+	game_presets_init(PSX3D_TEST_PRESETS, PSX3D_DIR "/presets");
 	mkdir(PSX3D_DIR, 0700);
 	assert(!FT_Init_FreeType(&ft));
 	assert(!FT_New_Face(ft, getenv("PSX3D_TITLE_FONT"), 0, &title_face));

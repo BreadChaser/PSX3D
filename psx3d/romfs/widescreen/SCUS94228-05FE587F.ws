@@ -9,7 +9,6 @@ PSX3D-WS-1
 # HUD/2D: No separate HUD fix
 # Issues: upstream DuckStation patch warns "May Cause Crashes"; scene-limited testing cannot rule this out.
 aspect=16:9
-models=0,0
 [complete bundle]
 A701EDDE 0000241B
 A701EDDC 00000C00

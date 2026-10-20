@@ -3,7 +3,6 @@ PSX3D-WS-1
 # Source: duckstation/chtdb@8b2f1dd257ab9130d16b72e0caeb5a07af8bcbdc/patches/SCUS-94467_91574833CC8DAFB2.cht [Widescreen 16:9]
 # Licence: Original authors retain rights; collection provides no blanket patch licence.
 aspect=16:9
-models=1,1
 [complete bundle]
 A704F744 000A2081
 A704F746 A5C20800

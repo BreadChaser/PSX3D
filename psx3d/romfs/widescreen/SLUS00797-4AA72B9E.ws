@@ -9,6 +9,5 @@ PSX3D-WS-1
 # HUD/2D: No HUD correction available
 # Issues: 16:9 uses 400x225 letterboxing; scene-limited verification only.
 aspect=16:9
-models=1,1
 [complete bundle]
 A706E458 10000E00

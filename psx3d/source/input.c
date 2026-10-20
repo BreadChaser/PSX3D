@@ -484,6 +484,9 @@ void input_touch_begin(void)
 // exact message; no filename guesses, pad-read heuristics or per-frame lookup.
 void input_touch_disc_log(const char *message)
 {
+#ifdef PSX3D_PS1_OVERCLOCK_PRESETS
+	game_presets_core_log(message);
+#endif
 	if (strncmp(message, "CD-ROM ID: ", 11))
 		return;
 	game_preset_options_t before = game_capabilities();

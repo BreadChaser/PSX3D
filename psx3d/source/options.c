@@ -296,6 +296,16 @@ const char *options_get(const char *key)
 	// Core-only legacy/fast-forward policy knobs; never read saved values.
 	if (!strcmp(key, "pcsx_rearmed_frameskip_interval")) return "2";
 	if (!strcmp(key, "pcsx_rearmed_frameskip_threshold")) return "33";
+#ifdef PSX3D_PS1_OVERCLOCK_PRESETS
+	// Technical setting: the game's clock preset beats the all-games value,
+	// the player's own per-game value beats the preset (docs/presets.md).
+	static char preset_clock[8];
+	if (!ov && config_in_game() && !strcmp(key, "pcsx_rearmed_psxclock") &&
+	    !gamecfg_get(options_game_key(key)) && game_capabilities().psxclock > 0) {
+		snprintf(preset_clock, sizeof(preset_clock), "%d", game_capabilities().psxclock);
+		ov = preset_clock;
+	}
+#endif
 	if (!ov)
 		ov = saved_value(key);
 	// Old 3DS: one 268MHz core runs the CPU, GPU and sound. Defaults that

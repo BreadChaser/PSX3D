@@ -14,7 +14,7 @@ export FONTCONFIG_FILE="$test_tmp/fonts.conf"
 cc -std=gnu11 -Wall -Wextra -Wno-format-truncation -Wno-sign-compare \
   -fsanitize=address,undefined -g \
   -I"$repo_root/psx3d/tests/host" -I"$repo_root/core/deps/libretro-common/include" \
-  -I"$repo_root/psx3d/source" \
+  -I"$repo_root/psx3d/source" -DPSX3D_TEST_PRESETS="\"$repo_root/psx3d/romfs/presets\"" \
   $(pkg-config --cflags freetype2) "$repo_root/psx3d/tests/host/check.c" \
   "$repo_root/psx3d/source/clip.c" "$repo_root/tools/input-replay/mock-core.c" \
   $(pkg-config --libs freetype2) -lz -lm -o "$test_tmp/check"

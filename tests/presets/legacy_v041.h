@@ -1,22 +1,24 @@
-// Curated per-console profiles, normalized disc serials (not filenames).
-// Fields -1 inherit defaults; touch_bindings use -2 for inheritance, -1 Hide.
-// Existing evidence covers stick clicks only;
-// other Old 3DS touch requirements remain at the full safe default.
+// Frozen copy of v0.4.1 psx3d/source/game_presets.h (main 78592e1) and its
+// game_capabilities() logic: the reference for tests/presets/identical.c.
+// Do not edit; the data now lives in psx3d/romfs/presets/*.ini.
+typedef struct {
+	int fast_forward, rewind, touch_controls;
+	int needs_l2r2, needs_l3r3, needs_right_stick;
+	int touch_bindings[6];
+	int frameskip;
+	int widescreen; // 0 inherits, 1 supported, -1 unsupported
+} legacy_options_t;
+typedef struct { const char *serial; legacy_options_t old3ds, new3ds; } legacy_preset_t;
+#undef GAME_PRESET_SAME
+#define GAME_PRESET_SAME(disc, ...) { .serial = disc, .old3ds = __VA_ARGS__, .new3ds = __VA_ARGS__ }
+#define LEGACY_AUTO 0 /* TOUCH_CONTROLS_AUTO */
 #define INHERIT_SLOTS { -2, -2, -2, -2, -2, -2 }
-#define INHERIT_OPTIONS { -1, -1, -1, -1, -1, -1, INHERIT_SLOTS, -1, 0 }
-// GAME_PRESET_SAME("ABCD12345", { ff, rw, policy, l2r2, l3r3, stick, INHERIT_SLOTS, -1, 0 })
-// is shorthand for equal Old/New options (technical limits still apply).
 #define CLICKS(disc) { .serial = disc, \
  .old3ds = { 0, 0, -1, -1, -1, -1, INHERIT_SLOTS, -1, 0 }, \
- .new3ds = { -1, -1, TOUCH_CONTROLS_AUTO, 0, 1, 0, INHERIT_SLOTS, -1, 0 } }
-// Future TESTED Old FF example (not enabled):
-// { "ABCD12345", { 1, -1, -1, -1, -1, -1, INHERIT_SLOTS, -1, 0 }, INHERIT_OPTIONS },
-// Sources and regional coverage: docs/bottom-screen/README.md.
-// Confidence below describes L3/R3 use, not serial identity. All IDs checked
-// against PlayStation DataCenter. Add a source before extending this list.
+ .new3ds = { -1, -1, LEGACY_AUTO, 0, 1, 0, INHERIT_SLOTS, -1, 0 } }
 #define FLAT2D(disc) GAME_PRESET_SAME(disc, { -1, -1, -1, -1, -1, -1, INHERIT_SLOTS, -1, -1 })
 #define SOTN(disc) GAME_PRESET_SAME(disc, { -1, -1, -1, -1, -1, -1, INHERIT_SLOTS, -1, -1 })
-static const game_preset_t game_presets[] = {
+static const legacy_preset_t legacy_presets[] = {
 	// SotN: GPU rendering verified in the USA prologue fight.
 	// GPU is used on both models.
 	// Regional identities: libretro-database metadat/redump/Sony - PlayStation.dat;
@@ -57,9 +59,26 @@ static const game_preset_t game_presets[] = {
 	// Supercross Circuit: LOW, same demo-disc report; only US verified.
 	CLICKS("SCUS94453"),
 };
+#undef GAME_PRESET_SAME
 
-#undef FLAT2D
-#undef SOTN
-#undef CLICKS
-#undef INHERIT_OPTIONS
-#undef INHERIT_SLOTS
+// v0.4.1 presets.c game_capabilities() for one table entry (NULL = uncurated).
+static legacy_options_t legacy_capabilities(const legacy_preset_t *preset, int new3ds)
+{
+	legacy_options_t result = {
+		.frameskip = 1, .fast_forward = 1, .rewind = new3ds, .touch_controls = LEGACY_AUTO,
+		.needs_l2r2 = !new3ds, .needs_l3r3 = 2, .needs_right_stick = new3ds ? 0 : 2,
+		.touch_bindings = {-2, -2, -2, -2, -2, -2}, .widescreen = 1,
+	};
+	if (preset) {
+		legacy_options_t p = new3ds ? preset->new3ds : preset->old3ds;
+#define RESOLVE(field) if (p.field >= 0) result.field = p.field
+		RESOLVE(frameskip); RESOLVE(fast_forward); RESOLVE(rewind); RESOLVE(touch_controls);
+		RESOLVE(needs_l2r2); RESOLVE(needs_l3r3); RESOLVE(needs_right_stick);
+#undef RESOLVE
+		if (p.widescreen) result.widescreen = p.widescreen > 0;
+		for (int i = 0; i < 6; i++)
+			if (p.touch_bindings[i] != -2) result.touch_bindings[i] = p.touch_bindings[i];
+	}
+	if (!new3ds) result.rewind = 0;
+	return result;
+}

@@ -197,8 +197,10 @@ static void draw_top(void *ud)
 	(void)ud;
 	C2D_DrawRectSolid(0, 0, 0.1f, 400, 240, C2D_Color32(6, 9, 24, 255));
 	ui_text_ex(libui_font(), 16, 14, 0.8f, C2D_Color32(235, 238, 255, 255), 0, "PSX3D");
-	ui_text_ex(NULL, 16, 46, 0.42f, C2D_Color32(130, 150, 190, 255), 0,
-		"Version " PSX3D_VERSION ", based on PCSX-ReARMed (GPL v2)");
+	char version[64];
+	snprintf(version, sizeof(version), "Version " PSX3D_VERSION " (game presets %d), based on PCSX-ReARMed (GPL v2)",
+		game_presets_pack());
+	ui_text_ex(NULL, 16, 46, 0.42f, C2D_Color32(130, 150, 190, 255), 0, version);
 	ui_text_ex(NULL, 16, 70, 0.39f, C2D_Color32(110, 120, 160, 255), 0, "Games folder");
 	ui_text_ex(NULL, 16, 84, 0.42f, C2D_Color32(170, 185, 220, 255), 0,
 		g_cfg.games_dir[0] ? ui_fit(g_cfg.games_dir, .42f, 368) : "None chosen yet");

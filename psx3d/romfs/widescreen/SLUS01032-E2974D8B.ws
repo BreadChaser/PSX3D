@@ -4,6 +4,5 @@ PSX3D-WS-1
 # Licence: Original authors retain rights; collection provides no blanket patch licence.
 # Research-only pending independent revision and picture checks.
 aspect=16:9
-models=0,0
 [complete bundle]
 A7136F64 10000C00

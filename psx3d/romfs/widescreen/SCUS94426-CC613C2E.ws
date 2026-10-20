@@ -4,9 +4,7 @@ PSX3D-WS-1
 # Licence: Original authors; no blanket patch licence is provided.
 # All projection, frustum, HUD/font helpers and overlay guard kept together.
 # Declared originals read from CC613C2E executable; overlay check still pending.
-# Old 3DS: held back after >5% measured fps loss (models 3 = off to keep speed); New remains experimental.
 aspect=16:9
-models=3,1
 [complete bundle]
 A706C2F8 10000C00
 A706C2EE 12603000

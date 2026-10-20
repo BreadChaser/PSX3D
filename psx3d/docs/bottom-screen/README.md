@@ -179,23 +179,15 @@ All resets ask for a fresh A; B cancels.
 
 ## Preset structure
 
-`source/presets.c` resolves `source/game_presets.h`. Every record contains
-separate `old3ds` and `new3ds` option records:
+Per-game data lives in one file per game, `romfs/presets/<title>.ini`
+([format](../../../docs/presets.md)). `source/presets.c` indexes the files at
+startup and resolves the identified serial into separate Old and New 3DS
+records (`game_preset_options_t`): fast_forward, rewind, touch_controls,
+l2r2/l3r3/stick needs, the six touch slot bindings, frameskip, widescreen and
+psxclock. An absent key inherits the console default.
 
-```c
-typedef struct {
-    int fast_forward, rewind, touch_controls;
-    int needs_l2r2, needs_l3r3, needs_right_stick;
-    int touch_bindings[INPUT_TOUCH_N];
-} game_preset_options_t;
-typedef struct {
-    const char *serial;
-    game_preset_options_t old3ds, new3ds;
-} game_preset_t;
-```
-
-Boolean fields use -1 inherit /0 false /1 true. The retained **built-in**
-`touch_controls` policy uses -1 inherit or Auto0/On1/Off2 as an initializer
+Boolean fields are `no`/`yes` (absent = inherit). The **built-in**
+`touch_controls` policy is `auto`, `on` or `off` as a
 shorthand. It is not a per-game visibility mask. Auto uses needs fields and
 explicit preset slot bindings; On initializes the full console layout; Off
 initializes it empty. User slot edits take precedence.
@@ -274,8 +266,8 @@ confidence candidates. Every regional ID listed here was checked against
 [PlayStation DataCenter US](https://psxdatacenter.com/ulist.html),
 [PAL](https://psxdatacenter.com/plist.html),
 [Japan/Asia](https://psxdatacenter.com/jlist.html), and/or the linked title page.
-IDs are stored without punctuation in `psx3d/source/game_presets.h`; each title
-has an explicit confidence comment. No unverified demo IDs are included.
+IDs are stored without punctuation in the title's `psx3d/romfs/presets/*.ini`
+file; each file has an explicit confidence comment. No unverified demo IDs are included.
 
 | Title | L3/R3 confidence | Verified serials included |
 |---|---|---|

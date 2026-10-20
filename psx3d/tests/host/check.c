@@ -18,6 +18,9 @@ int ws_console_policy(void) { return test_ws_policy; }
 bool cheats_widescreen(bool on) { (void)on; return false; }
 #endif
 const char *emu_game_title(void) { return "Crash Bandicoot"; }
+#ifndef PSX3D_TEST_PRESETS
+#error "build with -DPSX3D_TEST_PRESETS=\"<repo>/psx3d/romfs/presets\""
+#endif
 #include "../../source/presets.c"
 #include "../../source/input.c"
 #include "../../source/config.c"
@@ -244,11 +247,11 @@ static bool contains(const char *path,const char *needle)
 #define INHERIT_TEST_SLOTS { -2,-2,-2,-2,-2,-2 }
 // Fixtures never enter the compiled retail table.
 static const game_preset_t l2_fixture=GAME_PRESET_SAME("TEST00001",
- {0,0,0,1,0,0,INHERIT_TEST_SLOTS});
+ {0,0,0,1,0,0,INHERIT_TEST_SLOTS,0,-1});
 static const game_preset_t blank_fixture=GAME_PRESET_SAME("TEST00002",
- {0,0,0,0,0,0,INHERIT_TEST_SLOTS});
+ {0,0,0,0,0,0,INHERIT_TEST_SLOTS,0,-1});
 static const game_preset_t enabled_fixture=GAME_PRESET_SAME("TEST00003",
- {1,1,0,1,1,1,INHERIT_TEST_SLOTS});
+ {1,1,0,1,1,1,INHERIT_TEST_SLOTS,0,-1});
 static void paint(const char *name) { shot(name); touch_buttons_draw(); statsview_draw(); shot_end(); }
 static void clean_input(bool model)
 {
@@ -466,20 +469,22 @@ static void serial_config_checks(void)
  clean_input(false); config_reset_defaults(); config_load();
  assert(input_map_raw(10)==-2 && g_cfg.touch_stick==-1);
  assert(contains(PSX3D_CONFIG,"touch_slots=1\n") && contains(PSX3D_CONFIG,"map_TOUCH_L2=-2\n"));
- for(size_t i=0;i<sizeof(game_presets)/sizeof(game_presets[0]);i++) {
-  char msg[64]; snprintf(msg,sizeof(msg),"CD-ROM ID: %s\n",game_presets[i].serial);
+ // Every serial of the shipped data files resolves through the startup index.
+ game_presets_init(PSX3D_TEST_PRESETS, PSX3D_DIR "/presets"); assert(nindex > 40 && game_presets_pack() > 0);
+ for(int i=0;i<nindex;i++) {
+  char msg[64]; snprintf(msg,sizeof(msg),"CD-ROM ID: %s\n",index_[i].serial);
   input_touch_disc_log(msg);
-  assert(current_preset == &game_presets[i] && input_map_raw(10)==-2);
-  assert(game_capabilities().fast_forward == (game_presets[i].old3ds.fast_forward != 0));
-  if (game_presets[i].old3ds.widescreen < 0) { assert(!game_capabilities().widescreen); g_new3ds=true; assert(!game_capabilities().widescreen); g_new3ds=false; }
+  assert(current_preset && !strcmp(current_preset->serial,index_[i].serial) && input_map_raw(10)==-2);
+  assert(game_capabilities().fast_forward == (current_preset->old3ds.fast_forward != 0));
+  if (current_preset->old3ds.widescreen == WS_HIDDEN && current_preset->new3ds.widescreen == WS_HIDDEN) { assert(game_capabilities().widescreen == WS_HIDDEN); g_new3ds=true; assert(game_capabilities().widescreen == WS_HIDDEN); g_new3ds=false; }
  }
  input_touch_disc_log("CD-ROM ID: scus_944.23\n"); assert(current_preset);
  input_touch_disc_log("CD-ROM ID: SCUS944230\n"); assert(!current_preset);
  input_touch_disc_log("CD-ROM ID: SLUS99999\n"); assert(game_capabilities().fast_forward);
  // Explicit preset assignments, separate consoles and shorthand inheritance.
  static const game_preset_t assigned={"TEST00004",
-  {0,0,0,0,0,0,{12,13,-1,-1,-1,-1},-1},
-  {1,1,0,0,0,0,{-1,-1,9,-1,16,18},-1}};
+  {0,0,0,0,0,0,{12,13,-1,-1,-1,-1},-1,-1},
+  {1,1,0,0,0,0,{-1,-1,9,-1,16,18},-1,-1}, true};
  current_preset=&assigned; assert(input_map_get(10)==12 && input_map_get(12)==-1);
  input_map_set(12,9); config_save(); config_load(); assert(input_map_get(12)==9);
  config_game_begin("Dynamic slots"); current_preset=&l2_fixture;
@@ -569,7 +574,7 @@ static void frameskip_checks(void)
   {"pcsx_rearmed_frameskip_threshold", "Threshold; 33|50"},
   {"pcsx_rearmed_frameskip_interval", "Interval; 2|4"}, {NULL,NULL}};
  static const game_preset_t fs_fixture={.serial="TEST00005",
-  .old3ds={.frameskip=-1}, .new3ds={.frameskip=0}};
+  .old3ds={.frameskip=-1}, .new3ds={.frameskip=0}, .curated=true};
  for(int model=0;model<2;model++) {
   clean_input(model); config_game_end(); config_reset_defaults(); options_register(fsvars);
   assert(options_count()==1 && !strcmp(options_value(0),"Auto"));
@@ -598,6 +603,7 @@ static void frameskip_checks(void)
 int main(void)
 {
  assert(!mkdir("sdmc:",0700)); assert(!mkdir("sdmc:/3ds",0700)); assert(!mkdir(PSX3D_DIR,0700));
+ game_presets_init(PSX3D_TEST_PRESETS, PSX3D_DIR "/presets");
  assert(!FT_Init_FreeType(&ft));
  assert(!FT_New_Face(ft,getenv("PSX3D_TITLE_FONT"),0,&title_face));
  assert(!FT_New_Face(ft,getenv("PSX3D_BODY_FONT"),0,&body_face));

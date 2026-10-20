@@ -30,7 +30,7 @@ cheat list and its saved selections do not own or expose the bundle.
 See [the format reference](../tools/widescreen/README.md).
 
 Native bundles fit 16:9 into 400×225; GTE fallback retains 5:3.
-`models=Old,New` combines with per-console presets to hide unsupported modes. Per console: 0 hidden, 1 offered, 2 offered with a speed warning, 3 held back to keep the speed up (Settings explains it).
+Whether a bundle is offered is part of the game's preset file (`widescreen = hidden|on|warn|off`, per console; see [presets](presets.md)); bundles carry codes only. The `models x,y` values in the table below are the v0.4.1 per-console values (Old,New: 0 hidden, 1 offered, 2 offered with a speed warning, 3 held back to keep the speed up), which the preset files reproduce.
 CTR and Silent Hill remain New-only after Old cost failures. Crash 1, Spyro 1,
 Musashi, Digimon World and NFS High Stakes are explicitly hidden. The catalog
 also records 32 hidden identities for 2D-only presentations; Stretch remains
@@ -585,5 +585,5 @@ GPU command traces from the release core and the rebased core are identical.
 The test build is `widescreen-11-split` (counter 4099). Old cost checks and New
 picture checks for the bundles that haven't been checked on hardware are still
 pending: the Old queue is reserved for v0.4.0 and the New is in a user playtest.
-The per-console hide decisions will be recorded in `game_presets.h` once the
-cost checks have run.
+The per-console hide decisions were later recorded as bundle `models=` values
+and now live in the preset files ([presets](presets.md)).

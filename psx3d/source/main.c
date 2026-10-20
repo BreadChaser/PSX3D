@@ -365,6 +365,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	romfsInit();
+	game_presets_init("romfs:/presets", PSX3D_DIR "/presets");
 	ui_init();
 	libui_init();
 	if (!sw_nocovers)

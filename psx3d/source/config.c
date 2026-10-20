@@ -325,8 +325,9 @@ bool config_ws_fix(void) { return ws_fix; }
 // After the game's cheats load and whenever its screen mode changes.
 void config_ws_sync(void)
 {
-	// Preset or console can rule widescreen out (2D games; costly on Old).
-	bool ok = in_game && ws_available() && game_capabilities().widescreen;
+	// The preset can rule widescreen out (2D games) or hold it back (Old speed).
+	int policy = game_capabilities().widescreen;
+	bool ok = in_game && ws_available() && (policy == WS_OFFERED || policy == WS_COSTLY);
 	ws_fix = cheats_widescreen(ok && config_widescreen()) && ok;
 }
 

@@ -304,8 +304,8 @@ const char *input_control_value(int i, void *ud);
 u32 input_control_color(int row);
 void input_control_cycle(int i, int dir);
 
-// presets.c: curated per-console serial profiles. Boolean/policy fields use
-// -1 to inherit the uncurated console defaults.
+// presets.c: curated per-game data files (romfs:/presets/*.ini, docs/presets.md),
+// resolved per console. Fields use -1 to inherit the uncurated console defaults.
 // needs_l3r3/needs_right_stick: shown only while the game uses analog mode.
 #define NEEDS_ANALOG 2
 typedef struct {
@@ -313,19 +313,29 @@ typedef struct {
 	int needs_l2r2, needs_l3r3, needs_right_stick;
 	int touch_bindings[INPUT_TOUCH_N]; // -2 inherits needs_* shorthand; -1 hides.
 	int frameskip; // -1: console default Auto, 0: Off, 1: Auto.
-	int widescreen; // 0 inherits, 1 supported, -1 unsupported; per console.
-	// Add future frameskip/clock parameters with explicit inheritance.
+	int widescreen; // WS_* policy (widescreen.h); default offered when a fix exists.
+	// PS1 CPU clock in % (pcsx_rearmed_psxclock), 0 inherits. Applied only with
+	// PSX3D_PS1_OVERCLOCK_PRESETS; never over a core database override.
+	int psxclock;
 } game_preset_options_t;
 typedef struct {
 	const char *serial;
 	game_preset_options_t old3ds, new3ds;
+	bool curated; // the preset owns the game's option list (frameskip hidden)
 } game_preset_t;
 // Variadic initializer allows designated fields and comma-separated values.
-#define GAME_PRESET_SAME(disc, ...) { .serial = disc, .old3ds = __VA_ARGS__, .new3ds = __VA_ARGS__ }
+#define GAME_PRESET_SAME(disc, ...) { .serial = disc, .old3ds = __VA_ARGS__, .new3ds = __VA_ARGS__, .curated = true }
+void game_presets_init(const char *builtin_dir, const char *sd_dir);
+int game_presets_pack(void);
+int game_preset_version(void);
+const char *game_preset_source(void);
 game_preset_options_t game_capabilities(void);
 bool game_preset_curated(void);
 void game_presets_reset(void);
 void game_presets_disc_log(const char *message);
+#ifdef PSX3D_PS1_OVERCLOCK_PRESETS
+void game_presets_core_log(const char *message);
+#endif
 
 // ui.c - text drawing on the bottom screen
 void ui_init(void);

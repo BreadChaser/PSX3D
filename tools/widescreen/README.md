@@ -36,16 +36,16 @@ entries; none is shipped in this branch.
 ```
 PSX3D-WS-1
 aspect=16:9
-models=1,1
 [complete bundle]
 A7012340 10000C00
 ```
 
-`models=Old,New` takes one value per console: 0 hides Widescreen (no usable
-fix), 1 offers it, 2 offers it with a "can lower the speed" warning in
-Settings, and 3 holds it back to keep the speed up (Settings says so instead
-of "no widescreen fix"). Hidden values never silently substitute GTE. Presets may independently hide the
-feature. Both permissions must allow it. Aspect is fitted into 400×240.
+Whether Widescreen is offered is not bundle data: the game's preset file says
+so per console (`widescreen = hidden|on|warn|off`, docs/presets.md; `on` is
+the default for a game with a bundle). `warn` offers it with a "can lower the
+speed" note in Settings, `off` holds it back to keep the speed up (Settings says
+so instead of "no widescreen fix"). Hidden values never silently substitute
+GTE. A bundle that still has a `models=` line is rejected. Aspect is fitted into 400×240.
 
 The interpreter accepts `30` byte, `80` halfword and `90` word writes;
 `D0` equality skips one following write; `A4` word equality guards a block

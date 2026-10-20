@@ -7,7 +7,6 @@ PSX3D-WS-1
 # Tested: HLE mission, 3600 controlled movement frames, PICA capture, 31/31 exercised writes roll back.
 # Remaining: full edge/HUD and hardware cost acceptance; original-author redistribution rights unclear.
 aspect=16:9
-models=1,1
 [complete bundle]
 A4048FE8 8FA20030
 A7048FEC 0000B892

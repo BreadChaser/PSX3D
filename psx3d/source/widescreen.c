@@ -74,9 +74,10 @@ void ws_unload(void)
 	enabled = false; count = 0; allowed = true; policy = -1; identity[0] = 0;
 	aspect_n = 5; aspect_d = 3;
 }
-bool ws_load(const char *directory, const char *serial, uint32_t fingerprint, bool new3ds)
+bool ws_load(const char *directory, const char *serial, uint32_t fingerprint, int console_policy)
 {
 	ws_unload();
+	if (console_policy < WS_HIDDEN || console_policy > WS_TOO_SLOW) return false;
 	// Serial strings originate in discs. Reject path separators and malformed IDs.
 	if (!serial || strlen(serial) != 9) return false;
 	char normalized[10];
@@ -89,22 +90,16 @@ bool ws_load(const char *directory, const char *serial, uint32_t fingerprint, bo
 	FILE *f = fopen(path, "r");
 	if (!f) { snprintf(path, sizeof(path), "%s/%s.ws", directory, serial); f = fopen(path, "r"); }
 	if (!f) return false;
-	bool valid = true, header = false, model = false, aspect = false;
+	bool valid = true, header = false, aspect = false;
 	unsigned depth = 0;
 	while (fgets(line, sizeof(line), f)) {
 		line[strcspn(line, "\r\n")] = 0;
 		if (!line[0] || line[0] == '#' || line[0] == '[') continue;
 		if (!strcmp(line, "PSX3D-WS-1")) { header = true; continue; }
-		unsigned n, d; int old, newer, used = 0;
+		unsigned n, d; int used = 0;
 		if (sscanf(line, "aspect=%u:%u%n", &n, &d, &used) == 2 && !line[used]) {
 			if (n < 4 || n > 32 || d < 3 || d > 16) { valid = false; break; }
 			aspect_n = n; aspect_d = d; aspect = true; continue;
-		}
-		used = 0;
-		if (sscanf(line, "models=%d,%d%n", &old, &newer, &used) == 2 && !line[used]) {
-			if (old < WS_HIDDEN || old > WS_TOO_SLOW || newer < WS_HIDDEN || newer > WS_TOO_SLOW) { valid = false; break; }
-			policy = new3ds ? newer : old;
-			allowed = policy == WS_OFFERED || policy == WS_COSTLY; model = true; continue;
 		}
 		unsigned op, val;
 		used = 0;
@@ -125,9 +120,12 @@ bool ws_load(const char *directory, const char *serial, uint32_t fingerprint, bo
 		    (codes[i + 1].op == 0 || (codes[i + 1].op >> 24) == 0xD0 || (codes[i + 1].op >> 24) == 0xA4)) valid = false;
 	if (ferror(f)) valid = false;
 	fclose(f);
-	if (!valid || !header || !model || !aspect || depth || !count || (codes[count - 1].op >> 24) == 0xD0) {
+	if (!valid || !header || !aspect || depth || !count || (codes[count - 1].op >> 24) == 0xD0) {
 		ws_unload(); return false;
 	}
+	// The game's preset decides per console (docs/presets.md); bundles hold codes only.
+	policy = console_policy;
+	allowed = policy == WS_OFFERED || policy == WS_COSTLY;
 	snprintf(identity, sizeof(identity), "%s-%08X", serial, (unsigned)fingerprint);
 	return true;
 }

@@ -247,6 +247,10 @@ endif
 	$(SILENTMSG) $(notdir $<)
 	$(bin2o)
 
+# Preset loading runs once per start and disc: size over speed, so frontend
+# growth stays inside the padding before the core (zz_core_align.s).
+presets.o: CFLAGS += -Os
+
 -include $(DEPSDIR)/*.d
 
 #---------------------------------------------------------------------------------------

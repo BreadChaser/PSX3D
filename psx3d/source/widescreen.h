@@ -3,11 +3,12 @@
 #define PSX3D_WIDESCREEN_H
 #include <stdbool.h>
 #include <stdint.h>
-bool ws_load(const char *directory, const char *serial, uint32_t fingerprint, bool new3ds);
+// console_policy: this console's WS_* value from the game's preset.
+bool ws_load(const char *directory, const char *serial, uint32_t fingerprint, int console_policy);
 void ws_unload(void);
 bool ws_enable(bool enabled);
 bool ws_available(void);
-// A bundle's models=<old>,<new> value for this console. Speed decisions stay
+// The preset's widescreen value for this console. Speed decisions stay
 // visible to the user: a costly bundle is offered with a warning, and one
 // held back for speed is explained instead of called missing.
 enum { WS_HIDDEN, WS_OFFERED, WS_COSTLY, WS_TOO_SLOW };

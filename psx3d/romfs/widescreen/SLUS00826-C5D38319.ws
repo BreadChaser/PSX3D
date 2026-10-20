@@ -9,7 +9,6 @@ PSX3D-WS-1
 # HUD/2D: companion coordinates included; no independent HUD patch found.
 # Issues: Flares/smoke/sun unscaled. Separate menu patch lacks clear redistribution grant.
 aspect=16:9
-models=0,0
 [complete bundle]
 A7085C80 DC00D200
 A7085CC4 0018000C
