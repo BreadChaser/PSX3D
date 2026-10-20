@@ -380,6 +380,7 @@ static void emit_loadreg(int r, int hr)
     case CCREG: addr = &cycle_count; break;
     case INVCP: addr = &invc_ptr; break;
     case ROREG: addr = &ram_offset; break;
+    case LDTMP: addr = (u_char *)&dynarec_local + LO_ldtmp; break;
     default:
       assert(r < 34);
       addr = &psxRegs.GPR.r[r];
@@ -400,6 +401,7 @@ static void emit_storereg(int r, int hr)
   //case HIREG: addr = &hi; break;
   //case LOREG: addr = &lo; break;
   case CCREG: addr = &cycle_count; break;
+  case LDTMP: addr = (u_char *)&dynarec_local + LO_ldtmp; break;
   default: assert(r < 34u); addr = &psxRegs.GPR.r[r]; break;
   }
   uintptr_t offset = (char *)addr - (char *)&dynarec_local;

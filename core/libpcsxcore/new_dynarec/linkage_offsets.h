@@ -41,6 +41,7 @@
 #define LO_hash_table_ptr	(LO_ram_offset + PTRSZ)
 #define LO_unused2		(LO_hash_table_ptr + PTRSZ)
 #define LO_mini_ht		(LO_unused2 + PTRSZ)
-#define LO_dynarec_local_size	(LO_mini_ht + PTRSZ*32*2)
+#define LO_ldtmp		(LO_mini_ht + PTRSZ*32*2)   // LDTMP home (new_dynarec.c)
+#define LO_dynarec_local_size	(LO_ldtmp + 4)
 
 #define LO_cop2_to_gte_divider_tab_ptr	(LO_gte_divider_tab_ptr - LO_reg_cop2d)

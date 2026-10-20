@@ -374,7 +374,10 @@ struct compile_state
   /* 1-31 gpr */
 #define LOREG 32 // lo
 #define HIREG 33 // hi
-//#define FSREG 34 // FPU status (FCSR)
+// The old value of a register loaded by MFC2/CFC2, for a branch right
+// after the load that still reads the old value (see ld_delay_rename()).
+// Treated like a guest register with its own home in dynarec_local.
+#define LDTMP 34
 //#define CSREG 35 // Coprocessor status
 #define CCREG 36 // Cycle count
 #define INVCP 37 // Pointer to invalid_code
@@ -2530,6 +2533,13 @@ static void cop2_alloc(struct compile_state *st, struct regstat *current, int i)
   {
     alloc_cc(current,i); // for stalls
     dirty_reg(current,CCREG);
+    if (dops[i].rt2 == LDTMP) {
+      // the old value of rt1 (also rs1) for the next instruction
+      alloc_reg(st, current, i, dops[i].rs1);
+      alloc_reg(st, current, i, LDTMP);
+      dirty_reg(current, LDTMP);
+      clear_const(current, LDTMP);
+    }
     if(dops[i].rt1){
       clear_const(current,dops[i].rt1);
       alloc_reg(st,current,i,dops[i].rt1);
@@ -2664,7 +2674,7 @@ static void wb_valid(signed char pre[],signed char entry[],u_int dirty_pre,u_int
   int hr, r;
   for (hr = 0; hr < HOST_REGS; hr++) {
     r = pre[hr];
-    if (r < 1 || r > 33 || ((u >> r) & 1))
+    if (r < 1 || r > LDTMP || ((u >> r) & 1))
       continue;
     if (((dirty_pre & ~dirty) >> hr) & 1)
       emit_storereg(r, hr);
@@ -4573,6 +4583,19 @@ static void cop2_assemble(struct compile_state *st, int i, const struct regstat 
 {
   u_int copr = (st->source[i]>>11) & 0x1f;
   signed char temp = get_reg_temp(i_regs->regmap);
+
+  if (dops[i].rt2 == LDTMP) {
+    // keep the old value of rt1 for the next instruction (load delay)
+    signed char t = get_reg_w(i_regs->regmap, LDTMP);
+    signed char s = get_reg(i_regs->regmap, dops[i].rs1);
+    assert(t >= 0 && dops[i].rs1 == dops[i].rt1);
+    if (s < 0)
+      emit_loadreg(dops[i].rs1, t);
+    else if ((i_regs->wasconst >> s) & 1)
+      emit_movimm(constmap[i][s], t);
+    else
+      emit_mov(s, t);
+  }
 
   if (!HACK_ENABLED(NDHACK_NO_STALLS)) {
     u_int reglist = reglist_exclude(get_host_reglist(i_regs->regmap), temp, -1);
@@ -6972,7 +6995,22 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
       load_regs(regs[i].regmap,branch_regs[i].regmap,CCREG,INVCP);
       ds_assemble(st, i+1, &branch_regs[i]);
       cc=get_reg(branch_regs[i].regmap,CCREG);
-      if (cc == -1) {
+      if (dops[i+1].rt2 == LDTMP) {
+        // The next instruction still needs the old value in LDTMP: no exit
+        // here (a block starting there would read the new value), the next
+        // branch checks these cycles
+        if (cc == -1) {
+          emit_loadreg(CCREG,HOST_CCREG);
+          emit_addimm(HOST_CCREG, cinfo[i].ccadj + CLOCK_ADJUST(2), HOST_CCREG);
+          emit_storereg(CCREG,HOST_CCREG);
+        }
+        else {
+          cc=get_reg(i_regmap,CCREG);
+          assert(cc==HOST_CCREG);
+          emit_addimm(cc, cinfo[i].ccadj + CLOCK_ADJUST(2), cc);
+        }
+      }
+      else if (cc == -1) {
         // Cycle count isn't in a register, temporarily load it then write it out
         emit_loadreg(CCREG,HOST_CCREG);
         emit_addimm_and_set_flags(cinfo[i].ccadj + CLOCK_ADJUST(2), HOST_CCREG);
@@ -8228,6 +8266,58 @@ static void disassemble_one(struct compile_state *st, int i, u_int src)
     }
 }
 
+// Load delay: "mfc2 r" (or cfc2) followed by a conditional branch that
+// reads the old r, typically on the not-taken side of a branch that has the
+// MFC2 in its delay slot (Tekken 3's polygon loop). Instead of interpreting,
+// the MFC2 also copies the old r to LDTMP and the branch reads LDTMP; r gets
+// the new value as before, which is what the branch's delay slot and every
+// later instruction see. Done only when nothing else can enter at the branch
+// (checked after pass1b, see ld_delay_check()).
+static u_int ld_delay_deny[8];
+static int ld_delay_deny_cnt;
+
+static int ld_delay_rename(const struct compile_state *st, int i)
+{
+  const struct decoded_insn *ld = &dops[i-1], *op = &dops[i];
+  u_int pc = st->start + i*4;
+  int k, r = ld->rt1;
+  if (ld->itype != COP2 || (ld->opcode2 != 0 && ld->opcode2 != 2)
+      || ld->rs1 != 0 || ld->rt2 != 0 || op->itype != CJUMP)
+    return 0;
+  if (i >= 2 && dops[i-2].is_delay_load)
+    return 0;
+  // In a delay slot: only of a branch that reads r too, so the slot is
+  // assembled after the test (in order) on both paths, see cjump_assemble()
+  if (i >= 2 && dops[i-2].is_jump && (dops[i-2].itype != CJUMP
+      || (dops[i-2].rs1 != r && dops[i-2].rs2 != r)))
+    return 0;
+  if (ld_delay_deny_cnt > ARRAY_SIZE(ld_delay_deny)) // too many: none
+    return 0;
+  for (k = 0; k < ld_delay_deny_cnt; k++)
+    if (ld_delay_deny[k] == pc)
+      return 0;
+  dops[i-1].rs1 = r;
+  dops[i-1].rt2 = LDTMP;
+  if (op->rs1 == r) dops[i].rs1 = LDTMP;
+  if (op->rs2 == r) dops[i].rs2 = LDTMP;
+  return 1;
+}
+
+// A renamed branch must be reached only from its MFC2/CFC2: returns the pc
+// of one that is a branch target or was cut off the block (0 = all fine)
+static u_int ld_delay_check(const struct compile_state *st)
+{
+  int i;
+  // (a trailing branch without its delay slot is cut off at index slen)
+  for (i = 1; i <= st->slen && i < MAXBLOCK; i++) {
+    if (dops[i-1].rt2 != LDTMP || dops[i-1].itype != COP2)
+      continue;
+    if (i >= st->slen || dops[i].bt)
+      return st->start + i*4;
+  }
+  return 0;
+}
+
 static noinline void pass1a_disassemble(struct compile_state *st, u_int pagelimit)
 {
   int i, j, done = 0;
@@ -8326,7 +8416,8 @@ static noinline void pass1a_disassemble(struct compile_state *st, u_int pagelimi
     }
     else if (i > 0 && dops[i-1].is_delay_load
              && is_ld_use_hazard(&dops[i-1], &dops[i])
-             && (i < 2 || !dops[i-2].is_ujump)) {
+             && (i < 2 || !dops[i-2].is_ujump)
+             && (HACK_ENABLED(NDHACK_NO_LD_DELAY) || !ld_delay_rename(st, i))) {
       int ignored = HACK_ENABLED(NDHACK_NO_LD_DELAY);
       SysPrintf_lim("load delay @%08x (%08x%s)\n", start + i*4, start,
           ignored ? ", ignored" : "");
@@ -8559,6 +8650,9 @@ static noinline void pass2b_unneeded_regs(struct compile_state *st,
       // SYSCALL instruction, etc or conditional exception
       u=1;
     }
+    // LDTMP is only live from its MFC2/CFC2 to the next instruction
+    if (dops[i].rs1 != LDTMP && dops[i].rs2 != LDTMP)
+      u |= 1ull << LDTMP;
     // Source-target dependencies
     // R0 is always unneeded
     u|=1;
@@ -9482,7 +9576,7 @@ static noinline void pass5a_preallocate1(struct compile_state *st)
               for(j=t;j<=i;j++)
               {
                 //printf("Test %x -> %x, %x %d/%d\n",start+i*4,cinfo[i].ba,start+j*4,hr,r);
-                if(r<34&&((st->unneeded_reg[j]>>r)&1)) break;
+                if(r<=LDTMP&&((st->unneeded_reg[j]>>r)&1)) break;
                 assert(r < 64);
                 if(regs[j].regmap[hr]==f_regmap[hr]&&f_regmap[hr]<TEMPREG) {
                   //printf("Hit %x -> %x, %x %d/%d\n",start+i*4,cinfo[i].ba,start+j*4,hr,r);
@@ -10033,7 +10127,7 @@ static noinline void pass6_clean_registers_r(struct compile_state *st,
                 if(regs[i].regmap[r]!=regmap_pre[i][r]) {
                   temp_will_dirty&=~(1<<r);
                   temp_wont_dirty&=~(1<<r);
-                  if(regmap_pre[i][r]>0 && regmap_pre[i][r]<34) {
+                  if(regmap_pre[i][r]>0 && regmap_pre[i][r]<=LDTMP) {
                     temp_will_dirty|=((st->unneeded_reg[i]>>regmap_pre[i][r])&1)<<r;
                     temp_wont_dirty|=((st->unneeded_reg[i]>>regmap_pre[i][r])&1)<<r;
                   } else {
@@ -10229,7 +10323,7 @@ static noinline void pass6_clean_registers_r(struct compile_state *st,
         else {
           will_dirty_i&=~(1<<r);
           wont_dirty_i&=~(1<<r);
-          if(regmap_pre[i][r]>0 && regmap_pre[i][r]<34) {
+          if(regmap_pre[i][r]>0 && regmap_pre[i][r]<=LDTMP) {
             will_dirty_i|=((st->unneeded_reg[i]>>regmap_pre[i][r])&1)<<r;
             wont_dirty_i|=((st->unneeded_reg[i]>>regmap_pre[i][r])&1)<<r;
           } else {
@@ -10533,8 +10627,25 @@ static int noinline new_recompile_block_(u_int addr)
 
   /* Pass 1 disassembly */
 
-  pass1a_disassemble(&st, pagelimit);
-  pass1b_bt(&st);
+  {
+    // a rename that cannot be kept: decode again without it, exactly as
+    // the block would be decoded without renames
+    u_int saved_ni_count = ni_count, deny_pc;
+    int saved_stop_after_jal = stop_after_jal;
+    ld_delay_deny_cnt = 0;
+    for (;;) {
+      pass1a_disassemble(&st, pagelimit);
+      pass1b_bt(&st);
+      deny_pc = ld_delay_check(&st);
+      if (!deny_pc)
+        break;
+      if (ld_delay_deny_cnt < ARRAY_SIZE(ld_delay_deny))
+        ld_delay_deny[ld_delay_deny_cnt] = deny_pc;
+      ld_delay_deny_cnt++;
+      ni_count = saved_ni_count;
+      stop_after_jal = saved_stop_after_jal;
+    }
+  }
 
   int clear_hack_addr = apply_hacks(&st);
 
@@ -10565,7 +10676,9 @@ static int noinline new_recompile_block_(u_int addr)
     if(dops[i].itype==CJUMP||dops[i].itype==SJUMP)
     {
       // Conditional branch
-      if((st.source[i]>>16)!=0x1000&&i<st.slen-2) {
+      // (not after a renamed load delay: no exit there, see cjump_assemble,
+      // and an entry would read a stale LDTMP)
+      if((st.source[i]>>16)!=0x1000&&i<st.slen-2&&dops[i+1].rt2!=LDTMP) {
         // Mark this address as a branch target since it may be called
         // upon return from interrupt
         dops[i+2].bt=1;
