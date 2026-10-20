@@ -303,6 +303,8 @@ unsigned pica_prims = 7;   // named pica_prims_* experiments, separate from gldb
 unsigned pica_rcpu;
 #define RCPU_DEFER 1u   // blended passes wait in addq: masked additive, subtract/quarter pass 1
 #define RCPU_ADDMASK 2u // additive batches of textured primitives write the mask bit in their one pass
+#define RCPU_EVICT 8u   // atlas eviction search by sliding maxima (same choice)
+#define RCPU_ROWS 16u   // texture squares start at 8-row alignment below GPU-drawn rows
 #define RCPU(bit) (pica_rcpu & (bit))
 // Set by the frontend: opens a GPU frame (waiting for the previous one to
 // finish). Called when the first drawing command of a frame arrives, so the
@@ -1336,7 +1338,44 @@ static PICA_COLD tcache *take_rect(int cw, int ch)
 			f &= ~m >> k;   // bit x: cells x..x+cw-1 are free
 		if (f) { bx = __builtin_ctz(f); by = y; }
 	}
-	if (bx < 0) {
+	if (bx < 0 && RCPU(RCPU_EVICT)) {
+		// The same window, found cheaply: each cell's value once, then
+		// maxima over cw columns and ch rows by doubling spans in place
+		// (a window of w is the maximum of two overlapping power-of-two
+		// spans), then the first smallest window in the same scan order.
+		static u64 m[CELLS][CELLS];
+		for (int y = 0; y < CELLS; y++)
+			for (int x = 0; x < CELLS; x++) {
+				int o = cell_owner[y * CELLS + x];
+				m[y][x] = o == CELL_PLAIN ? ~0ull : o < 0 ? 0 :
+					((u64)(cache[o].used_seq > synced_seq) << 32) | cache[o].lru;
+			}
+		int p = 1;
+		for (; 2 * p <= cw; p *= 2)
+			for (int y = 0; y < CELLS; y++)
+				for (int x = 0; x + 2 * p <= CELLS; x++)
+					if (m[y][x + p] > m[y][x]) m[y][x] = m[y][x + p];
+		if (p < cw)
+			for (int y = 0; y < CELLS; y++)
+				for (int x = 0; x + cw <= CELLS; x++)
+					if (m[y][x + cw - p] > m[y][x]) m[y][x] = m[y][x + cw - p];
+		for (p = 1; 2 * p <= ch; p *= 2)
+			for (int y = 0; y + 2 * p <= CELLS; y++)
+				for (int x = 0; x + cw <= CELLS; x++)
+					if (m[y + p][x] > m[y][x]) m[y][x] = m[y + p][x];
+		if (p < ch)
+			for (int y = 0; y + ch <= CELLS; y++)
+				for (int x = 0; x + cw <= CELLS; x++)
+					if (m[y + ch - p][x] > m[y][x]) m[y][x] = m[y + ch - p][x];
+		u64 best = ~0ull;
+		for (int y = 0; y + ch <= CELLS; y++)
+			for (int x = 0; x + cw <= CELLS; x++)
+				if (m[y][x] < best) { best = m[y][x]; bx = x; by = y; }
+		for (int y = by; y < by + ch; y++)
+			for (int x = bx; x < bx + cw; x++)
+				if (cell_owner[y * CELLS + x] >= 0)
+					evict(&cache[cell_owner[y * CELLS + x]]);
+	} else if (bx < 0) {
 		// row maxima over cw cells, then the best window over ch rows
 		static u64 hmax[CELLS * CELLS];
 		for (int y = 0; y < CELLS; y++)
@@ -1379,11 +1418,37 @@ static PICA_COLD tcache *take_rect(int cw, int ch)
 	return c;
 }
 
+static inline bool region_cache(void);
+
+// rcpu bit 16: a square starting 32-row aligned can take in rows above the
+// request that the GPU draws (CTR keeps textures right below its 216-row
+// framebuffer). Those rows then invalidated it every frame and made each
+// decode read the framebuffer back, a full GPU wait, for texels never drawn
+// with. Start it at the request's 8-row tile instead when that leaves such
+// rows out and the square still ends inside the page.
+static void avoid_drawn_rows(int depth, u16 pg, int v0, int v1, int rx, int cw, int *ry, int *ch)
+{
+	int r8 = v0 & ~7, c8 = ((v1 - r8) >> 5) + 1;
+	if (r8 == *ry || r8 + 32 * c8 > 256)
+		return;
+	int sh = 2 - depth, px = (pg & 15) * 64, py = (pg >> 4) * 256;
+	int x0 = (px + (rx >> sh)) >> 3, x1 = (px + ((rx + 32 * cw - 1) >> sh)) >> 3;
+	for (int y = (py + *ry) >> 3; y < (py + r8) >> 3; y++)
+		for (int x = x0; x <= x1; x++)
+			if (fine_draw_gen[y & 63][x & 127]) {
+				*ry = r8;
+				*ch = c8;
+				return;
+			}
+}
+
 // a new entry for u0..u1 x v0..v1 of the page
-static tcache *take_entry(int u0, int u1, int v0, int v1, int *rx, int *ry)
+static tcache *take_entry(int depth, u16 pg, int u0, int u1, int v0, int v1, int *rx, int *ry)
 {
 	int cw, ch;
 	rect_for(u0, u1, v0, v1, rx, ry, &cw, &ch);
+	if (RCPU(RCPU_ROWS) && region_cache())
+		avoid_drawn_rows(depth, pg, v0, v1, *rx, cw, ry, &ch);
 	return take_rect(cw, ch);
 }
 
@@ -1410,7 +1475,7 @@ static PICA_COLD tcache *texture_new(int depth, u16 pg, u16 cl, u32 win, int u0,
 {
  tcache *c;
 		int rx, ry;
-		c = take_entry(u0, u1, v0, v1, &rx, &ry);
+		c = take_entry(depth, pg, u0, u1, v0, v1, &rx, &ry);
 		c->gpu_tiles = false;
 		c->depth = depth;
 		c->page = pg;
@@ -1492,7 +1557,7 @@ static noinline tcache *PICA_HOT(texture_for_slow) texture_for_slow(u32 page, u3
   c = texture_new(depth, pg, cl, win, u0, u1, v0, v1);
 #else
 		int rx, ry;
-		c = take_entry(u0, u1, v0, v1, &rx, &ry);
+		c = take_entry(depth, pg, u0, u1, v0, v1, &rx, &ry);
 		c->gpu_tiles = false;
 		c->depth = depth;
 		c->page = pg;
@@ -1559,8 +1624,10 @@ static noinline tcache *PICA_HOT(texture_for_impl) texture_for_impl(u32 page, u3
 		u1 = u0 + 32 * c->cw - 1;
 		v1 = v0 + 32 * c->ch - 1;
 	}
+	// the decoded tiles around the request, counted from the square's origin
 	*m = (__typeof__(*m)){ key, ps.texwin, gen_clock, texmemo_epoch, c,
-		u0 & ~31, u1 | 31, v0 & ~31, v1 | 31 };
+		c->rx + ((u0 - c->rx) & ~31), c->rx + ((u1 - c->rx) | 31),
+		c->ry + ((v0 - c->ry) & ~31), c->ry + ((v1 - c->ry) | 31) };
 	return c;
 }
 
