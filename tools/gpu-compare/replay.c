@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <assert.h>
 #include "commands.h"
+#ifdef STEREO_REPLAY
+#include "stereo-sim.h"
+#endif
 #ifdef PICA
 #include "citro3d.h"
 #include "plugins/gpu_pica/gpu_pica.h"
@@ -90,6 +93,9 @@ int main(int argc,char **argv)
         switch(tag) {
         case 1: {
             int sum=0,last=0,cmd=0;
+#ifdef STEREO_REPLAY
+            stereo_sim_list(data,bytes/4,ex);
+#endif
             int used=renderer_do_cmd_list(data,bytes/4,ex,&sum,&last,&cmd);
             if(used!=(int)bytes/4) { fprintf(stderr,"short replay %d/%u command %x\n",used,bytes/4,cmd); return 2; }
             break;
@@ -113,6 +119,9 @@ int main(int argc,char **argv)
         }
         case 5:
             renderer_flush_queues(); ppm(argv[2],data);
+#ifdef STEREO_REPLAY
+            stereo_sim_frame(argv[2],data);
+#endif
 #ifdef PICA
             { static unsigned previous;
               static unsigned previous_setups;
@@ -154,6 +163,11 @@ int main(int argc,char **argv)
 #endif
             break;
         }
+        case 10: // real 3D: polygon corner depths for the next command list
+#ifdef STEREO_REPLAY
+            stereo_sim_depths(data,bytes);
+#endif
+            break;
         case 9: // Synthetic state-replacement barrier, before the VRAM upload.
             assert(bytes==0);
 #ifdef PICA

@@ -71,6 +71,10 @@ void C3D_TexBind(int u, C3D_Tex *t) { assert(u < 2); if(t) textures[u] = *t; els
 C3D_RenderTarget *C3D_RenderTargetCreateFromTex(C3D_Tex *t, int f, int l, int d)
 { (void)f; (void)l; (void)d; assert(ntargets<8); C3D_RenderTarget *p=&targets[ntargets++]; p->tex=t; return p; }
 bool C3D_FrameDrawOn(C3D_RenderTarget *t) { rt = *t; return true; }
+// stereo-sim.c: the current target and vertex buffer
+C3D_Tex *sim_rt_tex(void) { return rt.tex; }
+const void *sim_buf_data(void) { return buf.data; }
+void sim_buf_set(const void *d) { buf.data = d; }
 C3D_BufInfo *C3D_GetBufInfo(void) { return &buf; }
 int BufInfo_Add(C3D_BufInfo *b, const void *d, int s, int n, u64 p)
 { assert(n == 3 && p == 0x210); b->data=d; b->stride=s; return 0; }
