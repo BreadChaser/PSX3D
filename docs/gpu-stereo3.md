@@ -62,6 +62,16 @@ cost one load and one predictable branch per draw call.
 
 See `devtools/gpu-stereo3/REPORT.md` for the numbers.
 
+- **Old 3DS A/B/A** against v0.4.1 on the 13 heavy scenes, frameskip off and Auto, for builds 1,
+  2 and 4 (the candidate, `gpu-stereo3-4`): every scene within about ±1% (build 4: off worst
+  −0.78%, Auto worst −0.72%); requesting 3D on the Old changes nothing.
+- **New 3DS**, 13 heavy scenes: 100% game speed and unchanged pictures per second with Real 3D
+  at slider 0, ½ and full, frameskip off and Auto, except GT2 heavy at 98.9% (frameskip off,
+  full 3D; 100.4% with Auto). Main-thread frame time grows by 1.5–5 ms (GT2: 9.4 → 14.3 ms).
+  Widescreen + 3D (R4, GT2, CTR, SH): 99.9%. Both eyes captured on the console in every scene
+  (`shot eyes`): depth in every 3D game including R4; SotN menus and fights have two identical,
+  complete eyes; the frameskip held picture has its right eye too.
+
 - **Mono output identical**: with 3D on, the left eye (canonical VRAM) is identical to mono on
   every frame of 22 traces (13 heavy, 6 standard, SotN title/menus) — full-VRAM hash per frame and
   the draw hash. With 3D off nothing in the renderer path changes (code comparison above).
