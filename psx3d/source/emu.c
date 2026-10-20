@@ -940,7 +940,8 @@ static void autosave_reset(void)
 // the progress is not on the SD card yet: try again in a minute, and say so
 static void autosave_failed(const char *what)
 {
-	autosave.last = osGetTime() - autosave_min_ms() + AUTOSAVE_RETRY_MS;
+	u64 min = autosave_min_ms();
+	autosave.last = osGetTime() - (min > AUTOSAVE_RETRY_MS ? min - AUTOSAVE_RETRY_MS : 0);
 	autosave.due = false;
 	log_printf("auto-save failed (%s): trying again in %d s\n", what, AUTOSAVE_RETRY_MS / 1000);
 	osd(!strcmp(what, "write") ? "Auto-save failed. Is the SD card full?" : "Auto-save failed: not enough memory");
