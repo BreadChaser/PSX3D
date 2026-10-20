@@ -159,7 +159,7 @@ extern int sw_rtfscap, sw_rtfslevel;
 extern bool sw_fsmart;
 extern bool sw_rtfs, sw_rtfswindow, sw_rtfsmodel;
 extern bool sw_prof, sw_stats, sw_o3ds, sw_fs1, sw_fs3, sw_noskip, sw_nosputhread, sw_acap;
-extern int sw_state, sw_gldbg, sw_vramdump;
+extern int sw_state, sw_gldbg, sw_vramdump, sw_autosave_test;
 extern unsigned pica_prims;
 extern bool pica_texmask, pica_texmemo;
 extern int psx3d_skipgate;

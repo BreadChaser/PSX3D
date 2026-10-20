@@ -42,8 +42,8 @@ bool switches_set(const char *word)
 		sw_fs1 = sw_fs3 = false;
 		word = sw_noskip ? "o:frameskip_type=disabled" : "o:frameskip_type=auto";
 	}
-	const char *integer_keys[] = {"state=", "clock=", "cdra=", "gldbg=", "vramdump="};
-	const long limits[] = {9, 100, 1024, 0x7fffffff, 1000000};
+	const char *integer_keys[] = {"state=", "clock=", "cdra=", "gldbg=", "vramdump=", "autosavetest="};
+	const long limits[] = {9, 100, 1024, 0x7fffffff, 1000000, 3600};
 	for (unsigned i = 0; i < sizeof(limits) / sizeof(*limits); i++) {
 		size_t n = strlen(integer_keys[i]);
 		if (!strncmp(word, integer_keys[i], n)) {
@@ -84,7 +84,7 @@ bool switches_set(const char *word)
 	                              "nogputhread",  "gputhread", "nosputhread", "acap", "renderer=sw",
 	                              "renderer=gpu", "state0",    "showright",   "sbs",  "gpuasync",
 	                              "nogpuasync",   "gpuflush",  "nogpuflush",  "aa", "rtt=old", "rtt=new", "rtt=auto", "rttcache=old", "rttcache=new", "rtfs", "rtfs=old", "rtfs=new", "rtfs=model", "rtfs=dense", "frontend=old", "frontend=new", "audio=old", "audio=new", "ff=on", "ff=off", "submitstate=old", "submitstate=new", "submitclip=old", "submitclip=new", "submittex=old", "submittex=new", "pmuclass=on", "pmuclass=off", "pmurender=on", "pmurender=off", "pica_prims_old", "pica_prims_fast", "pica_prims_copy", "pica_prims_clip", "pica_prims_round", "skipgate=old", "skipgate=new", "texmask=old", "texmask=new", "texmemo=old", "texmemo=new", "idle=on", "idle=off", "idleptr=on", "idleptr=off", "idledelay=on", "idledelay=off"};
-	static const char *prefix[] = {"slider=", "state=", "gldbg=", "vramdump=", "pmu=", "cdra=", "clock="};
+	static const char *prefix[] = {"slider=", "state=", "autosavetest=", "gldbg=", "vramdump=", "pmu=", "cdra=", "clock="};
 	bool known = false;
 	for (unsigned k = 0; k < sizeof(flags) / sizeof(*flags); k++)
 		if (!strcmp(word, flags[k]))
@@ -105,7 +105,7 @@ bool switches_set(const char *word)
  * replay= ignored local input, state= loaded a benchmark slot, o: options stuck). */
 static struct {
 	bool saved;
-	int idle_skip, idle_pointer, idle_delay, rtfslevel, rtfscap, state, pmu0, pmu1, gldbg, vramdump, skipgate;
+	int idle_skip, idle_pointer, idle_delay, rtfslevel, rtfscap, state, autosave_test, pmu0, pmu1, gldbg, vramdump, skipgate;
 	int clip_requested, clip_seconds;
 	unsigned submit, prims;
 	bool rtfsdense, rtfsmodel, rtfswindow, rtfs, ff, floataudio, frontend, fsmart, prof, stats, fs1, fs3, noskip;
@@ -118,6 +118,7 @@ static struct {
 	do {                                                                                                         \
 		TO(idle_skip, psx3d_idle_skip); TO(idle_pointer, psx3d_idle_pointer); TO(idle_delay, psx3d_idle_delay); \
 		TO(rtfslevel, sw_rtfslevel); TO(rtfscap, sw_rtfscap); TO(state, sw_state); TO(pmu0, sw_pmu0);           \
+		TO(autosave_test, sw_autosave_test);                                                                   \
 		TO(pmu1, sw_pmu1); TO(gldbg, sw_gldbg); TO(vramdump, sw_vramdump); TO(skipgate, psx3d_skipgate);       \
 		TO(clip_requested, clip_requested); TO(clip_seconds, clip_seconds); TO(submit, pica_submit);           \
 		TO(prims, pica_prims); TO(rtfsdense, sw_rtfsdense); TO(rtfsmodel, sw_rtfsmodel);                       \
@@ -158,6 +159,7 @@ bool switches_run(char *line, char *game, size_t len, char *error, size_t error_
 	sw_gpu_async = sw_gpu_flush = true;
 	sw_slider = -1;
 	sw_state = sw_pmu0 = sw_pmu1 = -1;
+	sw_autosave_test = 0;
 	sw_gldbg = sw_vramdump = 0;
 	pica_prims = 7; sw_pmuphase = sw_pmuclass = false;
 	pica_texmask = pica_texmemo = true; psx3d_skipgate = 1;

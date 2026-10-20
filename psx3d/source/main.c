@@ -133,6 +133,7 @@ int sw_gldbg;           // test: hardware renderer debug bits (1 no alpha test, 
 char sw_game[64];       // test: start the first library game whose title contains this
 int sw_vramdump;         // test: dump PS1 VRAM this many frames after the game starts
 int sw_pmu0 = -1, sw_pmu1 = -1;   // test: ARM11 performance counter events (pmu=AA,BB, hex)
+int sw_autosave_test;    // test: periodic auto-save every N s into slot 9, also in remote games
 int sw_state = -1;       // test: load this save state slot when the game starts (state0, state=N)
 bool sw_nogputhread;
 bool sw_gpu_async = true;
@@ -195,6 +196,7 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "renderer=sw") || !strcmp(a, "renderer=gpu")) { /* legacy key: GPU only */ }
 		else if (!strcmp(a, "state0")) sw_state = 0;
 		else if (!strncmp(a, "state=", 6)) sw_state = atoi(a + 6);
+		else if (!strncmp(a, "autosavetest=", 13)) sw_autosave_test = atoi(a + 13);
 		else if (!strcmp(a, "rtt=old")) sw_gldbg = (sw_gldbg | 262144) & ~1048576;
 		else if (!strcmp(a, "rtt=new")) sw_gldbg = (sw_gldbg & ~262144) | 1048576;
 		else if (!strcmp(a, "rtt=auto")) sw_gldbg &= ~(262144 | 1048576);

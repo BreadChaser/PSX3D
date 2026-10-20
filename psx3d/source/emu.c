@@ -371,22 +371,24 @@ static void srm_load(void)
 		memcpy(srm_shadow, mem, size);
 }
 
-static void srm_save(bool force)
+// true when the card changed and was written
+static bool srm_save(bool force)
 {
 	char path[PATH_LEN];
 	void *mem = retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
 	size_t size = retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
 
 	if (!mem || !size || clip_replay_session)
-		return;
+		return false;
 	if (!force && srm_shadow && memcmp(srm_shadow, mem, size) == 0)
-		return;
+		return false;
 	make_path(path, sizeof(path), PSX3D_SAVE_DIR, ".srm");
-	if (write_file(path, mem, size)) {
-		if (srm_shadow)
-			memcpy(srm_shadow, mem, size);
-		log_printf("saved memory card %s\n", path);
-	}
+	if (!write_file(path, mem, size))
+		return false;
+	if (srm_shadow)
+		memcpy(srm_shadow, mem, size);
+	log_printf("saved memory card %s\n", path);
+	return true;
 }
 
 static int state_slot;
@@ -540,6 +542,8 @@ static void menu_draw_bottom(void *ud)
 										  : "A select    B resume");
 }
 static bool game_menu_open;
+static bool autosave_is_due(void);
+static void autosave_start(const char *why);
 
 // Returns false when the user wants to leave the game.
 static bool menu_run(int initial_screen)
@@ -561,6 +565,8 @@ static bool menu_run(int initial_screen)
 	sfx_play(SFX_SELECT);
 	audio_pause(true);
 	srm_save(false);
+	if (autosave_is_due())
+		autosave_start("pause menu");
 	if (initial_screen == DEV_UI_SETTINGS && settings_ui_run(true, NULL))
 		goto resume;
 	while (aptMainLoop()) {
@@ -784,6 +790,7 @@ static void set_game_name(const char *path)
 // needs the GPU (its drawing is read back, the thumbnail is a GPU copy), so
 // the auto-save is taken on the way to HOME and written only if we are then
 // closed. Coming back drops it.
+static void autosave_wait(void);
 static void *home_state;
 static size_t home_state_size;
 static u16 *home_thumb;
@@ -796,39 +803,229 @@ static void home_save_drop(void)
 	home_thumb = NULL;
 }
 
+// State and thumbnail of this moment into RAM (needs the GPU)
+static bool save_take(const char *who, void **state, size_t *state_size, u16 **thumb, u64 *thumb_ms)
+{
+	size_t size = retro_serialize_size();
+	void *buf = size ? malloc(size) : NULL;
+	if (!buf || !retro_serialize(buf, size)) {
+		log_printf("%s: no auto-save (%s)\n", who, buf ? "state failed" : "no memory");
+		free(buf);
+		return false;
+	}
+	*state = buf;
+	*state_size = size;
+	u64 t0 = osGetTime();
+	*thumb = state_thumb_take();
+	if (thumb_ms)
+		*thumb_ms = osGetTime() - t0;
+	return true;
+}
+
 static void home_save_take(void)
 {
 	home_save_drop();
 	if (clip_replay_session || dev_remote_game())
 		return;
 	u64 t0 = osGetTime();
-	size_t size = retro_serialize_size();
-	void *buf = size ? malloc(size) : NULL;
-	if (!buf || !retro_serialize(buf, size)) {
-		log_printf("home: no auto-save (%s)\n", buf ? "state failed" : "no memory");
-		free(buf);
-		return;
-	}
-	home_state = buf;
-	home_state_size = size;
-	home_thumb = state_thumb_take();
-	log_printf("home: auto-save taken in %llums\n", osGetTime() - t0);
+	if (save_take("home", &home_state, &home_state_size, &home_thumb, NULL))
+		log_printf("home: auto-save taken in %llums\n", osGetTime() - t0);
+}
+
+// State + thumbnail to <slot> (crash-safe, previous version kept as backup)
+static bool save_put(int slot, const void *state, size_t size, const u16 *thumb)
+{
+	char path[PATH_LEN], ext[16];
+	state_ext(ext, sizeof(ext), slot);
+	make_path(path, sizeof(path), PSX3D_STATE_DIR, ext);
+	if (!write_file(path, state, size))
+		return false;
+	make_path(path, sizeof(path), PSX3D_STATE_DIR, "");
+	if (!(thumb && state_thumb_save(path, slot, thumb)))
+		log_printf("state: saved slot %d without a thumbnail\n", slot);
+	return true;
 }
 
 static bool home_save_write(void)
 {
-	char path[PATH_LEN], ext[16];
-	bool ok = false;
-	if (home_state) {
-		state_ext(ext, sizeof(ext), STATE_AUTO);
-		make_path(path, sizeof(path), PSX3D_STATE_DIR, ext);
-		ok = write_file(path, home_state, home_state_size);
-		make_path(path, sizeof(path), PSX3D_STATE_DIR, "");
-		if (ok && !(home_thumb && state_thumb_save(path, STATE_AUTO, home_thumb)))
-			log_printf("state: saved slot -1 without a thumbnail\n");
-	}
+	autosave_wait();
+	bool ok = home_state && save_put(STATE_AUTO, home_state, home_state_size, home_thumb);
 	home_save_drop();
 	return ok;
+}
+
+// Auto-save while playing, so a crash, flat battery or power cut loses at
+// most AUTOSAVE_MAX_MS of play. Once AUTOSAVE_MIN_MS have passed it waits for
+// a moment where a short pause can't be seen (the game saved to its memory
+// card, the disc is loading, a still or dark screen, the pause menu); at
+// AUTOSAVE_MAX_MS it saves anyway. The main thread only takes the state into
+// RAM (the unavoidable part: it needs the GPU); a low-priority thread writes
+// it to the SD card while the game goes on.
+#define AUTOSAVE_MIN_MS (210 * 1000)
+#define AUTOSAVE_MAX_MS (300 * 1000)
+static struct {
+	Thread thread;
+	volatile bool done;
+	void *state;
+	size_t size;
+	u16 *thumb;
+	int slot;
+	bool ok;
+	const char *why;
+	u64 snapshot_ms, thumb_ms, write_ms;
+	// moment detection, only while due
+	u64 last;           // osGetTime of the last auto-save
+	bool due;
+	u32 pictures, cd_reads;
+	int still, dark, probe;
+} autosave;
+
+// File reads, i.e. disc image reads while a game runs (linker wrap, also
+// called by the CD read-ahead thread: a rough count is all it is used for)
+static unsigned cd_reads;
+size_t __real_fread(void *ptr, size_t size, size_t n, FILE *f);
+size_t __wrap_fread(void *ptr, size_t size, size_t n, FILE *f)
+{
+	cd_reads++;
+	return __real_fread(ptr, size, n, f);
+}
+
+static u64 autosave_min_ms(void)
+{
+	return sw_autosave_test > 0 ? sw_autosave_test * 1000ULL : AUTOSAVE_MIN_MS;
+}
+
+static void autosave_writer(void *arg)
+{
+	(void)arg;
+	u64 t0 = osGetTime();
+	autosave.ok = save_put(autosave.slot, autosave.state, autosave.size, autosave.thumb);
+	autosave.write_ms = osGetTime() - t0;
+	__atomic_store_n(&autosave.done, true, __ATOMIC_RELEASE);
+}
+
+static void autosave_free(void)
+{
+	free(autosave.state);
+	free(autosave.thumb);
+	autosave.state = NULL;
+	autosave.thumb = NULL;
+}
+
+// Collect a finished write (wait: block until it is finished)
+static void autosave_collect(bool wait)
+{
+	if (!autosave.thread || (!wait && !__atomic_load_n(&autosave.done, __ATOMIC_ACQUIRE)))
+		return;
+	threadJoin(autosave.thread, U64_MAX);
+	threadFree(autosave.thread);
+	autosave.thread = NULL;
+	log_printf("periodic auto-save (%s): snapshot %llu ms (thumbnail %llu ms), write %llu ms%s\n", autosave.why,
+		autosave.snapshot_ms, autosave.thumb_ms, autosave.write_ms, autosave.ok ? "" : ", FAILED");
+	autosave_free();
+}
+
+static void autosave_wait(void)
+{
+	autosave_collect(true);
+}
+
+static bool autosave_is_due(void)
+{
+	return osGetTime() - autosave.last >= autosave_min_ms();
+}
+
+// a Continue auto-save was just written some other way (sleep)
+static void autosave_reset(void)
+{
+	autosave.last = osGetTime();
+	autosave.due = false;
+}
+
+static void autosave_start(const char *why)
+{
+	bool test = sw_autosave_test > 0;   // test runs save to spare slot 9
+	if (autosave.thread || (!test && dev_remote_game()) || clip_replay_session || clip_active ||
+	    dev_batch_active() || sw_ff || input_fast_forward() || input_rewind())
+		return;
+	autosave_reset();   // also after a failure: try again next period, not every frame
+	u64 t0 = osGetTime();
+	if (!save_take("periodic", &autosave.state, &autosave.size, &autosave.thumb, &autosave.thumb_ms))
+		return;
+	autosave.snapshot_ms = osGetTime() - t0;
+	autosave.slot = test ? 9 : STATE_AUTO;
+	autosave.why = why;
+	autosave.done = false;
+	// Lowest priority on the game's core: it runs while the game waits for
+	// the next frame; the SD card work itself happens in the system.
+	autosave.thread = threadCreate(autosave_writer, NULL, 16 * 1024, 0x3F, -2, false);
+	if (!autosave.thread) {   // no thread: write now rather than lose it
+		autosave_writer(NULL);
+		log_printf("periodic auto-save (%s): no thread, wrote in %llu ms\n", why, autosave.write_ms);
+		autosave_free();
+	}
+	game_frames = 0;   // the frame timing starts over after the pause
+}
+
+// Every SRM_CHECK_FRAMES: due yet? card_saved: the game just saved.
+static void autosave_check(bool card_saved)
+{
+	autosave_collect(false);
+	u64 since = osGetTime() - autosave.last;
+	bool test = sw_autosave_test > 0;
+	if (since >= (test ? 2 * autosave_min_ms() : AUTOSAVE_MAX_MS))
+		autosave_start("timer");
+	else if (since >= autosave_min_ms()) {
+		if (card_saved)
+			autosave_start("memory card saved");
+		else if (!autosave.due) {
+			autosave.due = true;
+			autosave.still = autosave.dark = autosave.probe = 0;
+			autosave.pictures = psx3d_skip.pictures;
+			autosave.cd_reads = cd_reads;
+		}
+	}
+}
+
+// Every frame while due: a still or dark screen for half a second
+static void autosave_frame(void)
+{
+	if (psx3d_skip.pictures != autosave.pictures) {
+		autosave.pictures = psx3d_skip.pictures;
+		autosave.still = 0;
+		autosave.cd_reads = cd_reads;
+	} else
+		autosave.still++;
+	if (++autosave.probe >= 15) {   // top screen brightness, 0-255
+		autosave.probe = 0;
+		int lum = video_probe_top();
+		autosave.dark = lum >= 0 && lum < 8 ? autosave.dark + 15 : 0;
+	}
+	if (autosave.still >= 30)
+		autosave_start(cd_reads != autosave.cd_reads ? "disc loading" : "still screen");
+	else if (autosave.dark >= 30)
+		autosave_start("dark screen");
+}
+
+// Closing the lid: write the Continue auto-save and the memory card before
+// the console sleeps, in case the battery runs flat. The GPU is still ours.
+static void sleep_save(void)
+{
+	u64 t0 = osGetTime();
+	autosave_wait();
+	srm_save(false);
+	if (clip_replay_session || dev_remote_game() || !gspHasGpuRight())
+		return;
+	void *state;
+	size_t size;
+	u16 *thumb;
+	if (!save_take("sleep", &state, &size, &thumb, NULL))
+		return;
+	bool ok = save_put(STATE_AUTO, state, size, thumb);
+	autosave_reset();
+	free(state);
+	free(thumb);
+	log_printf("sleep: auto-save %s in %llu ms\n", ok ? "written" : "FAILED", osGetTime() - t0);
 }
 
 // save_name: base name for memory cards and states (NULL = from path);
@@ -847,7 +1044,12 @@ static void game_apt(APT_HookType hook, void *param)
 	if (hook == APTHOOK_ONSUSPEND) {
 		input_gameplay(false);
 		bottom_backlight(true);
+		autosave_wait();   // no SD file may stay open across the HOME Menu
 		home_save_take();
+	} else if (hook == APTHOOK_ONSLEEP) {
+		sleep_save();
+	} else if (hook == APTHOOK_ONWAKEUP) {
+		game_frames = 0;
 	} else if (hook == APTHOOK_ONRESTORE) {
 		home_save_drop();
 		game_frames = 0;
@@ -975,6 +1177,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	u64 smart_clock = next_deadline;
 	aptHookCookie apt_cookie;
 	aptHook(&apt_cookie, game_apt, NULL);
+	autosave_reset();
 	while (initial_state_ok && aptMainLoop()) {
 		if (dev_enabled() && dev_tick(true)) break;
 		// A disc swap may revoke a capability. Free its history at a safe point.
@@ -1190,8 +1393,9 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 
 		if (++srm_counter >= SRM_CHECK_FRAMES) {
 			srm_counter = 0;
-			srm_save(false);
-		}
+			autosave_check(srm_save(false));
+		} else if (autosave.due)
+			autosave_frame();
 		present_count++;
 		if (psx3d_skip.timing)
 			misc_ticks += svcGetSystemTick() - work_start - frame_pace - run_ticks - compose_ticks;
@@ -1368,6 +1572,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		log_resume();
 		audio_exit();
 		log_printf("game: closed from the HOME Menu\n");
+		autosave_wait();
 		if (!clip_replay_session && !dev_remote_game())
 			log_printf("auto-save: %s\n", home_save_write() ? "written" : "none");
 		home_save_drop();
@@ -1378,6 +1583,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		return true;
 	}
 	home_save_drop();
+	autosave_wait();
 	log_printf("game: leaving\n");
 	rewind_stop();
 	if (!clip_replay_session && !dev_remote_game())
