@@ -204,9 +204,9 @@ static void draw_top(void *ud)
 	ui_text_ex(NULL, 16, 70, 0.39f, C2D_Color32(110, 120, 160, 255), 0, "Games folder");
 	ui_text_ex(NULL, 16, 84, 0.42f, C2D_Color32(170, 185, 220, 255), 0,
 		g_cfg.games_dir[0] ? ui_fit(g_cfg.games_dir, .42f, 368) : "None chosen yet");
-	if (!__ctr_svchax)
+	if (slow_mode_notice(false))
 		ui_text_ex(NULL, 16, 108, 0.42f, C2D_Color32(255, 160, 120, 255), 0,
-			"Fast CPU mode needs Luma3DS: games will run slowly");
+			ui_fit(slow_mode_notice(true), .42f, 368));
 	ui_help_panel(150, "This folder", truncated ? "Over 4096 entries; the list is cut off" : NULL, cwd);
 }
 

@@ -379,6 +379,20 @@ static void draw_top(void *ud)
 		}
 	}
 
+	// fast mode off (PC emulator or no Luma3DS): say so on the first screen
+	if (slow_mode_notice(false)) {
+		// two lines: split the sentence at the comma or colon
+		char l1[96], l2[96];
+		const char *m = slow_mode_notice(false), *cut = strchr(m, ',');
+		if (!cut)
+			cut = strchr(m, ':');
+		snprintf(l1, sizeof(l1), "%.*s", cut ? (int)(cut - m) + 1 : (int)strlen(m), m);
+		snprintf(l2, sizeof(l2), "%s", cut ? cut + 2 : "");
+		C2D_DrawRectSolid(0, 0, 0.6f, 400, 32, C2D_Color32(40, 22, 14, 230));
+		ui_text_ex(NULL, 8, 2, 0.4f, C2D_Color32(255, 170, 120, 255), 0, ui_fit(l1, 0.4f, 384));
+		ui_text_ex(NULL, 8, 16, 0.4f, C2D_Color32(255, 170, 120, 255), 0, ui_fit(l2, 0.4f, 384));
+	}
+
 	// fade from/to black (open, launch)
 	float f = fade;
 	if (launch_t >= 0)

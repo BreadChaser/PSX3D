@@ -96,7 +96,9 @@ see [methodology](docs/performance.md).
 
 ## Install
 
-You need a 3DS or 2DS with Luma3DS and your own game images.
+You need a 3DS or 2DS with Luma3DS and your own game images. Luma3DS is what
+lets PSX3D use its fast mode; without it, or in a PC emulator such as Azahar,
+PSX3D still starts but runs much slower.
 
 In **FBI → Remote Install → Scan QR Code**, scan:
 

@@ -1178,7 +1178,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	}
 	// Only the slow case is worth a message on the clean game screen.
 	if (!__ctr_svchax)
-		osd("Interpreter mode (no Luma SVC access) - slow");
+		osd("%s", slow_mode_notice(true));
 
 	if (sw_pmu0 >= 0)
 		pmu_start(sw_pmu0, sw_pmu1 >= 0 ? sw_pmu1 : 0);

@@ -459,6 +459,11 @@ void emu_deinit(void);
 bool emu_run_game(const char *path, const char *save_name, const char *title);
 
 extern int __ctr_svchax;
+// Why fast mode (the dynarec) is off; SLOW_NONE when it is on.
+enum { SLOW_NONE, SLOW_EMULATOR, SLOW_NO_LUMA };
+extern int g_slow_reason;
+// Plain-language notice for the library/browser/game start, or NULL when fast mode is on.
+const char *slow_mode_notice(bool shortform);
 extern float sw_slider;
 extern int sw_stereo;
 extern bool sw_showright, sw_sbs;

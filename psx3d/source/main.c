@@ -68,6 +68,20 @@ void __system_allocateHeaps(void)
 // Set when we may use the kernel calls the dynarec needs (Luma3DS gives
 // homebrew full SVC access). Without it the core uses the slow interpreter.
 int __ctr_svchax;
+int g_slow_reason;
+
+const char *slow_mode_notice(bool shortform)
+{
+	switch (g_slow_reason) {
+	case SLOW_EMULATOR:
+		return shortform ? "PC emulator: fast mode is off, games run slowly" :
+			"Running in a PC emulator: fast mode is off, so games run much slower than on a real 3DS.";
+	case SLOW_NO_LUMA:
+		return shortform ? "Fast mode needs Luma3DS: games run slowly" :
+			"Fast mode needs Luma3DS: games will run slowly.";
+	}
+	return NULL;
+}
 bool g_new3ds;
 int g_syscore_pct;   // syscore (core 1) time granted to us, percent
 
@@ -333,7 +347,9 @@ int main(int argc, char **argv)
 	if (__ctr_svchax && running_in_emulator()) {
 		log_printf("running in Citra/Azahar: dynarec disabled\n");
 		__ctr_svchax = 0;
-	}
+		g_slow_reason = SLOW_EMULATOR;
+	} else if (!__ctr_svchax)
+		g_slow_reason = SLOW_NO_LUMA;
 	log_printf("svc access: %d\n", __ctr_svchax);
 	if (sw_stats) {
 		// test: how fast the CPU reads and writes normal vs GPU-visible (linear) memory
