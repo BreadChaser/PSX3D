@@ -22,6 +22,8 @@ static int seeded;
 static uint16_t *zs;
 static unsigned zn, zpos;
 static unsigned long long draws, mirrored, moved_draws;
+static FILE *dump;      // STEREO_DUMP: frame, triangle vertices before/after the shift
+static int dump_frame;
 
 static void init(void)
 {
@@ -29,6 +31,7 @@ static void init(void)
     if (getenv("STEREO_STRENGTH")) strength = atof(getenv("STEREO_STRENGTH"));
     if (getenv("STEREO_AGE")) max_age = atoi(getenv("STEREO_AGE"));
     on = strength > 0;
+    if (getenv("STEREO_DUMP")) dump = fopen(getenv("STEREO_DUMP"), "w");
     if (!on) return;
     assert(gs_core_alloc());
     assert(C3D_TexInit(&right, 1024, 512, GPU_RGBA5551));
@@ -100,6 +103,18 @@ void stereo_sim_draw(int primitive, int first, int n)
     C3D_RenderTarget back = { canon };
     C3D_FrameDrawOn(right_rt);
     if (moved) { sim_buf_set(shifted - first); moved_draws++; }
+    if (dump) {
+        const gs_vtx *src = (const gs_vtx *)data + first;
+        for (int i = 0; i + 3 <= n; i += 3) {
+            int poly = 1;
+            for (int k = 0; k < 3; k++) poly &= (src[i + k].x & 15) == 8 && (src[i + k].y & 15) == 7;
+            if (!poly) continue;
+            fprintf(dump, "%d %llu", dump_frame, draws);
+            for (int k = 0; k < 3; k++)
+                fprintf(dump, " %d %d %d", src[i + k].x, src[i + k].y, shifted[i + k].x - src[i + k].x);
+            fputc('\n', dump);
+        }
+    }
     C3D_DrawArrays(primitive, first, n);
     sim_buf_set(data);
     C3D_FrameDrawOn(&back);
@@ -142,11 +157,13 @@ void stereo_sim_frame(const char *dir, const int *info)
     init();
     if (!on) return;
     int frame = info[0], x = info[2], y = info[3], w = info[4], h = info[5];
-    gs_core_frame(strength);
-    unsigned lookups, found, shifted;
-    gs_core_counts(&lookups, &found, &shifted);
-    fprintf(stderr, "stereo %d focus %.1f corners %u found %u shifted %u draws %llu mirrored %llu moved %llu\n",
-        frame, gs_focus(), lookups, found, shifted, draws, mirrored, moved_draws);
+    dump_frame = frame + 1;
+    if (dump) fprintf(dump, "F %d %d %d %d %d\n", frame, x, y, w, h);
+    gs_core_frame(strength, w > 0 ? w : 320);
+    unsigned lookups, found, shifted, rejected;
+    gs_core_counts(&lookups, &found, &shifted, &rejected);
+    fprintf(stderr, "stereo %d focus %.1f corners %u found %u shifted %u rejected %u draws %llu mirrored %llu moved %llu\n",
+        frame, gs_focus(), lookups, found, shifted, rejected, draws, mirrored, moved_draws);
     draws = mirrored = moved_draws = 0;
     if (getenv("GPU_HASH_VRAM")) {
         unsigned long long hash = 1469598103934665603ull;
@@ -157,7 +174,7 @@ void stereo_sim_frame(const char *dir, const int *info)
         }
         fprintf(stderr, "frame %d right VRAM hash %016llx\n", frame, hash);
     }
-    if (!selected(frame) || w <= 0 || h <= 0 || (info[1] & (1 << 21))) return;
+    if (selected(frame) && w > 0 && h > 0 && !(info[1] & (1 << 21))) {
     char path[4096]; snprintf(path, sizeof(path), "%s/frame-%04d-right.ppm", dir, frame);
     FILE *f = fopen(path, "wb"); assert(f);
     fprintf(f, "P6\n%d %d\n255\n", w, h);
@@ -167,4 +184,15 @@ void stereo_sim_frame(const char *dir, const int *info)
         assert(fwrite(rgb, 1, 3, f) == 3);
     }
     assert(fclose(f) == 0);
+    }
+    // STEREO_POISON: at each flip the right eye's new back buffer (the
+    // picture shown until now) becomes magenta; what the game doesn't draw
+    // into it (a stale strip) is magenta when it is shown again
+    static int px = -1, py = -1, pw, ph;
+    if (getenv("STEREO_POISON") && (x != px || y != py)) {
+        if (px >= 0)
+            for (int r = 0; r < ph; r++) for (int c = 0; c < pw; c++)
+                ((uint16_t *)right.data)[sim_tiled((px + c) & 1023, (py + r) & 511, 1024)] = 0xf83e;   // mask bit clear: mask-checking games draw over it
+        px = x; py = y; pw = w; ph = h;
+    }
 }
