@@ -71,6 +71,14 @@ u16 *state_thumb_take(void)
 
 #define THM_SIZE (sizeof(thm_hdr_t) + TW * TH * 2)
 
+static bool thm_head_ok(const void *head)
+{
+	thm_hdr_t h;
+	memcpy(&h, head, sizeof(h));
+	return h.magic == THM_MAGIC && h.w == TW && h.h == TH;
+}
+static const safe_format_t thm_fmt = { THM_SIZE, sizeof(thm_hdr_t), thm_head_ok };
+
 // ... saved next to state <slot>, crash-safe with the previous one as backup
 bool state_thumb_save(const char *prefix, int slot, const u16 *px)
 {
@@ -82,57 +90,49 @@ bool state_thumb_save(const char *prefix, int slot, const u16 *px)
 	memcpy(file, &h, sizeof(h));
 	memcpy(file + sizeof(h), px, TW * TH * 2);
 	slot_path(path, sizeof(path), prefix, slot, true);
-	bool ok = safe_write(path, file, THM_SIZE, true);
+	bool ok = safe_write(path, &thm_fmt, file, true);
 	free(file);
 	return ok;
 }
 
-// thumbnail of <slot> into px (TW x TH); skip_current: only its backup
+// thumbnail of <slot> into px (TW x TH); skip_current: only its backup (or
+// an unfinished copy)
 static bool thumb_read(const char *prefix, int slot, u16 *px, thm_hdr_t *h, bool skip_current)
 {
 	char path[PATH_LEN];
-	u8 *file = malloc(THM_SIZE);
-	bool ok = false;
 	slot_path(path, sizeof(path), prefix, slot, true);
-	if (file && safe_read(path, file, THM_SIZE, skip_current, false, NULL) != SAFE_NONE) {
-		memcpy(h, file, sizeof(*h));
-		ok = h->magic == THM_MAGIC && h->w == TW && h->h == TH;
-		if (ok)
-			memcpy(px, file + sizeof(*h), TW * TH * 2);
-	}
+	u8 *file = safe_load(path, &thm_fmt, skip_current ? 1u << SAFE_CURRENT : 0, NULL);
+	if (!file)
+		return false;
+	memcpy(h, file, sizeof(*h));
+	memcpy(px, file + sizeof(*h), TW * TH * 2);
 	free(file);
-	return ok;
+	return true;
 }
 
 // the state was loaded from its backup: bring the matching thumbnail back too
 void state_thumb_restore(const char *prefix, int slot)
 {
 	char path[PATH_LEN];
-	u16 *px = malloc(TW * TH * 2);
-	thm_hdr_t h;
-	if (px && thumb_read(prefix, slot, px, &h, true)) {
-		u8 *file = malloc(THM_SIZE);
-		if (file) {
-			memcpy(file, &h, sizeof(h));
-			memcpy(file + sizeof(h), px, TW * TH * 2);
-			slot_path(path, sizeof(path), prefix, slot, true);
-			safe_repair(path, file, THM_SIZE);
-			free(file);
-		}
-	}
-	free(px);
+	safe_info_t info;
+	slot_path(path, sizeof(path), prefix, slot, true);
+	u8 *file = safe_load(path, &thm_fmt, 1u << SAFE_CURRENT, &info);
+	if (file)
+		safe_repair(path, &thm_fmt, file, info.from);
+	free(file);
 }
 
-// saved time of a state: its file, else its backup
+// saved time of a state: its file, else its backup, else a good unfinished
+// copy (a first save cut off before it was put in place)
 static bool state_stat(const char *prefix, int slot, u32 *saved)
 {
-	char path[PATH_LEN], bak[PATH_LEN + 8];
-	struct stat st;
+	char path[PATH_LEN];
+	safe_format_t fmt = emu_state_format();
+	time_t t;
 	slot_path(path, sizeof(path), prefix, slot, false);
-	snprintf(bak, sizeof(bak), "%s.bak", path);
-	if (stat(path, &st) != 0 && stat(bak, &st) != 0)
+	if (!safe_stat(path, &fmt, &t))
 		return false;
-	*saved = (u32)st.st_mtime;
+	*saved = (u32)t;
 	return true;
 }
 

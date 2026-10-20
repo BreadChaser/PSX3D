@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "libretro.h"
+#include "safefile.h"
 
 #define PSX3D_VERSION  "0.4.1"
 #define PSX3D_DIR      "sdmc:/3ds/PSX3D"
@@ -225,8 +226,16 @@ bool cheats_forced(int i);
 // dspdump.c
 bool dsp_firmware_ensure(void);
 
+// cards.c - memory cards on the SD card, crash-safe
+void cards_begin(const char *srm_path);   // a game starts: read its cards
+bool cards_check(void);                   // write changed cards; true if one was
+void cards_save_now(void);                // leaving, sleep, HOME, pause menu
+void cards_end(void);
+void emu_osd(const char *text);           // emu.c: short message in the game
+
 // savestates.c - save state browser with screenshots
 #define STATE_AUTO -1
+safe_format_t emu_state_format(void);   // emu.c: what a good state file is
 bool state_thumb_write(const char *prefix, int slot);
 u16 *state_thumb_take(void);
 bool state_thumb_save(const char *prefix, int slot, const u16 *px);

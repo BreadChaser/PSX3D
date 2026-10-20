@@ -514,7 +514,7 @@ target_: $(TARGET)
 
 $(TARGET): $(OBJS)
 ifeq ($(PARTIAL_LINKING), 1)
-	$(LD) $(if $(filter ctr,$(platform)),-z noexecstack) -o $(basename $(TARGET))1.o -r --gc-sections $(addprefix -u ,$(shell cat frontend/libretro-extern)) $(addprefix -u ,$(EXTRA_EXTERN_SYMS)) $^
+	$(LD) $(if $(filter ctr,$(platform)),-z noexecstack) -o $(basename $(TARGET))1.o -r --gc-sections $(addprefix -u ,$(shell cat frontend/libretro-extern)) $(addprefix -u ,$(EXTRA_EXTERN_SYMS)) $(addprefix --wrap=,$(EXTRA_WRAP_SYMS)) $^
 	$(OBJCOPY) --keep-global-symbols=frontend/libretro-extern $(addprefix -G ,$(EXTRA_EXTERN_SYMS)) $(basename $(TARGET))1.o $(basename $(TARGET)).o
 	$(AR) rcs $@ $(basename $(TARGET)).o
 else ifeq ($(STATIC_LINKING), 1)

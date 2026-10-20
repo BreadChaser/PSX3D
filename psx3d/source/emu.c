@@ -11,6 +11,7 @@
 #include "devtools.h"
 #include "clip.h"
 #include "safefile.h"
+#include "statefile.h"
 #include <sys/stat.h>
 #include "../../core/plugins/gpulib/psx3d_frameskip.h"
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
@@ -125,6 +126,11 @@ static void osd(const char *fmt, ...)
 	osd_frames = 120;
 	osd_dirty = true;
 	log_printf("osd: %s\n", osd_msg);
+}
+
+void emu_osd(const char *text)
+{
+	osd("%s", text);
 }
 
 static void clip_osd(const char *text)
@@ -336,59 +342,26 @@ static void make_path(char *out, size_t len, const char *dir, const char *ext)
 #pragma GCC diagnostic pop
 }
 
-// Memory cards and states: written crash-safe, the previous version kept as .bak
+// What a good state file is (safefile.h): its exact size and the header the
+// core looks at first. That is all a "good" backup means.
+static bool state_head_ok(const void *head)
+{
+	const char *h = head;
+	if (!strncmp(h, "RASTATE", 7))
+		h += 16;
+	return !strncmp(h, "STv4 PCSX", 9);
+}
+
+safe_format_t emu_state_format(void)
+{
+	return (safe_format_t){ retro_serialize_size(), 32, state_head_ok };
+}
+
+// States: written crash-safe, the previous version kept as .bak
 static bool write_file(const char *path, const void *data, size_t size)
 {
-	return safe_write(path, data, size, true);
-}
-
-// memory card 1 lives in the core's SAVE_RAM; we persist it as <game>.srm
-static u8 *srm_shadow;
-
-static void srm_load(void)
-{
-	char path[PATH_LEN];
-	void *mem = retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
-	size_t size = retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
-
-	free(srm_shadow);
-	srm_shadow = NULL;
-	if (!mem || !size)
-		return;
-	make_path(path, sizeof(path), PSX3D_SAVE_DIR, ".srm");
-	size_t got;
-	safe_source_t from = safe_read(path, mem, size, false, true, &got);
-	if (from == SAFE_BACKUP || from == SAFE_TEMP) {
-		// the card itself is missing or cut off: put the backup back in place
-		log_printf("memory card %s damaged: loaded the %s\n", path, from == SAFE_BACKUP ? "backup" : "unfinished copy");
-		if (!safe_repair(path, mem, size))
-			log_printf("memory card: could not repair %s\n", path);
-		osd("Save was damaged: restored the backup");
-	} else if (from == SAFE_CURRENT)
-		log_printf("loaded memory card %s\n", path);
-	srm_shadow = malloc(size);
-	if (srm_shadow)
-		memcpy(srm_shadow, mem, size);
-}
-
-// true when the card changed and was written
-static bool srm_save(bool force)
-{
-	char path[PATH_LEN];
-	void *mem = retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
-	size_t size = retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
-
-	if (!mem || !size || clip_replay_session)
-		return false;
-	if (!force && srm_shadow && memcmp(srm_shadow, mem, size) == 0)
-		return false;
-	make_path(path, sizeof(path), PSX3D_SAVE_DIR, ".srm");
-	if (!write_file(path, mem, size))
-		return false;
-	if (srm_shadow)
-		memcpy(srm_shadow, mem, size);
-	log_printf("saved memory card %s\n", path);
-	return true;
+	safe_format_t fmt = emu_state_format();
+	return fmt.size == size && safe_write(path, &fmt, data, true);
 }
 
 static int state_slot;
@@ -436,39 +409,57 @@ static bool state_save_to(int slot)
 static bool state_load_from(int slot)
 {
 	char path[PATH_LEN], ext[16];
-	size_t size = retro_serialize_size();
-	void *buf = size ? malloc(size) : NULL;
-	bool ok = false;
+	safe_format_t fmt = emu_state_format();
+	safe_info_t info;
+	unsigned skip = 0;
+	bool ok = false, found = false, version = false, changed = false, no_memory = false;
 
 	state_ext(ext, sizeof(ext), slot);
 	make_path(path, sizeof(path), PSX3D_STATE_DIR, ext);
-	if (!buf) {
-		log_printf("state: cannot allocate %u KiB to load slot %d\n", (unsigned)(size / 1024), slot);
-		osd("Not enough memory to load a state");
-	} else {
-		safe_source_t from = safe_read(path, buf, size, false, true, NULL);
-		ok = from != SAFE_NONE && retro_unserialize(buf, size);
-		if (!ok && from == SAFE_CURRENT) {   // damaged: try the previous version
-			from = safe_read(path, buf, size, true, false, NULL);
-			ok = from != SAFE_NONE && retro_unserialize(buf, size);
-			if (!ok)
-				from = SAFE_CURRENT;
+	// the newest good copy the core accepts; one buffer at a time (Old 3DS)
+	for (;;) {
+		void *buf = safe_load(path, &fmt, skip, &info);
+		found |= info.rejected;
+		no_memory |= info.failed;
+		if (!buf)
+			break;
+		found = true;
+		skip |= (2u << info.from) - 1;   // this copy and the ones before it
+		ok = retro_unserialize(buf, fmt.size);
+		if (!ok) {
+			log_printf("state: %s (%s) not loaded (%d)\n", path, info.from == SAFE_CURRENT ? "file" :
+				info.from == SAFE_BACKUP ? "backup" : "unfinished copy", state_last_result);
+			version |= state_last_result == STATE_VERSION;
+			changed |= state_last_result == STATE_PARTLY;
+			free(buf);
+			continue;
 		}
-		if (ok && from != SAFE_CURRENT) {
-			log_printf("state: %s damaged, loaded the %s\n", path, from == SAFE_BACKUP ? "backup" : "unfinished copy");
-			if (!safe_repair(path, buf, size))
+		if (info.from != SAFE_CURRENT) {
+			log_printf("state: %s damaged, loaded the %s\n", path, info.from == SAFE_BACKUP ? "backup" : "unfinished copy");
+			bool fixed = safe_repair(path, &fmt, buf, info.from);
+			if (!fixed)
 				log_printf("state: could not repair %s\n", path);
 			make_path(path, sizeof(path), PSX3D_STATE_DIR, "");
 			state_thumb_restore(path, slot);
-			osd("Save was damaged: restored the backup");
-		} else if (from == SAFE_NONE)
-			osd("Slot %d is empty", slot);
-		else if (!ok)
-			osd("That save is from an incompatible version");
+			osd(fixed ? "Save was damaged: restored the backup" : "Save was damaged: loaded the backup, could not fix the file");
+		}
+		free(buf);
+		break;
 	}
-	free(buf);
 	if (ok)
 		rewind_reset();
+	else if (changed) {
+		// never play on in a half-restored game (it could save its card)
+		log_printf("state: game was partly restored, restarting it\n");
+		retro_reset();
+		rewind_reset();
+		osd("That save is damaged: the game was restarted");
+	} else if (no_memory)
+		osd("Not enough memory to load a state");
+	else if (!found)
+		osd("Slot %d is empty", slot);
+	else
+		osd(version ? "That save is from an incompatible version" : "That save is damaged");
 	return ok;
 }
 
@@ -564,7 +555,7 @@ static bool menu_run(int initial_screen)
 		menu_disc = disk.get_image_index();
 	sfx_play(SFX_SELECT);
 	audio_pause(true);
-	srm_save(false);
+	cards_save_now();
 	if (autosave_is_due())
 		autosave_start("pause menu");
 	if (initial_screen == DEV_UI_SETTINGS && settings_ui_run(true, NULL))
@@ -763,6 +754,7 @@ bool emu_init(void)
 	retro_set_audio_sample_batch(audio_batch_cb);
 	retro_set_input_poll(input_poll_cb);
 	retro_set_input_state(input_state_cb);
+	state_stream_install();
 	return true;
 }
 
@@ -771,8 +763,7 @@ void emu_deinit(void)
 	if (core_initialized)
 		retro_deinit();
 	core_initialized = false;
-	free(srm_shadow);
-	srm_shadow = NULL;
+	cards_end();
 }
 
 static void set_game_name(const char *path)
@@ -791,6 +782,7 @@ static void set_game_name(const char *path)
 // the auto-save is taken on the way to HOME and written only if we are then
 // closed. Coming back drops it.
 static void autosave_wait(void);
+static void autosave_failed(const char *what);
 static void *home_state;
 static size_t home_state_size;
 static u16 *home_thumb;
@@ -863,6 +855,7 @@ static bool home_save_write(void)
 // it to the SD card while the game goes on.
 #define AUTOSAVE_MIN_MS (210 * 1000)
 #define AUTOSAVE_MAX_MS (300 * 1000)
+#define AUTOSAVE_RETRY_MS (60 * 1000)   // after a failed auto-save
 static struct {
 	Thread thread;
 	volatile bool done;
@@ -922,6 +915,8 @@ static void autosave_collect(bool wait)
 	autosave.thread = NULL;
 	log_printf("periodic auto-save (%s): snapshot %llu ms (thumbnail %llu ms), write %llu ms%s\n", autosave.why,
 		autosave.snapshot_ms, autosave.thumb_ms, autosave.write_ms, autosave.ok ? "" : ", FAILED");
+	if (!autosave.ok)
+		autosave_failed("write");
 	autosave_free();
 }
 
@@ -942,16 +937,27 @@ static void autosave_reset(void)
 	autosave.due = false;
 }
 
+// the progress is not on the SD card yet: try again in a minute, and say so
+static void autosave_failed(const char *what)
+{
+	autosave.last = osGetTime() - autosave_min_ms() + AUTOSAVE_RETRY_MS;
+	autosave.due = false;
+	log_printf("auto-save failed (%s): trying again in %d s\n", what, AUTOSAVE_RETRY_MS / 1000);
+	osd(!strcmp(what, "write") ? "Auto-save failed. Is the SD card full?" : "Auto-save failed: not enough memory");
+}
+
 static void autosave_start(const char *why)
 {
 	bool test = sw_autosave_test > 0;   // test runs save to spare slot 9
 	if (autosave.thread || (!test && dev_remote_game()) || clip_replay_session || clip_active ||
 	    dev_batch_active() || sw_ff || input_fast_forward() || input_rewind())
 		return;
-	autosave_reset();   // also after a failure: try again next period, not every frame
+	autosave_reset();
 	u64 t0 = osGetTime();
-	if (!save_take("periodic", &autosave.state, &autosave.size, &autosave.thumb, &autosave.thumb_ms))
+	if (!save_take("periodic", &autosave.state, &autosave.size, &autosave.thumb, &autosave.thumb_ms)) {
+		autosave_failed("snapshot");   // not every frame: in a minute
 		return;
+	}
 	autosave.snapshot_ms = osGetTime() - t0;
 	autosave.slot = test ? 9 : STATE_AUTO;
 	autosave.why = why;
@@ -962,6 +968,8 @@ static void autosave_start(const char *why)
 	if (!autosave.thread) {   // no thread: write now rather than lose it
 		autosave_writer(NULL);
 		log_printf("periodic auto-save (%s): no thread, wrote in %llu ms\n", why, autosave.write_ms);
+		if (!autosave.ok)
+			autosave_failed("write");
 		autosave_free();
 	}
 	game_frames = 0;   // the frame timing starts over after the pause
@@ -1013,7 +1021,7 @@ static void sleep_save(void)
 {
 	u64 t0 = osGetTime();
 	autosave_wait();
-	srm_save(false);
+	cards_save_now();
 	if (clip_replay_session || dev_remote_game() || !gspHasGpuRight())
 		return;
 	void *state;
@@ -1022,7 +1030,8 @@ static void sleep_save(void)
 	if (!save_take("sleep", &state, &size, &thumb, NULL))
 		return;
 	bool ok = save_put(STATE_AUTO, state, size, thumb);
-	autosave_reset();
+	if (ok)
+		autosave_reset();   // a failed one stays due
 	free(state);
 	free(thumb);
 	log_printf("sleep: auto-save %s in %llu ms\n", ok ? "written" : "FAILED", osGetTime() - t0);
@@ -1117,7 +1126,11 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	retro_get_system_av_info(&av);
 	fps_target = av.timing.fps;
 	has_audio = audio_init(av.timing.sample_rate);
-	srm_load();
+	{
+		char srm[PATH_LEN];
+		make_path(srm, sizeof(srm), PSX3D_SAVE_DIR, ".srm");
+		cards_begin(srm);
+	}
 	if (clip_replay_session) {
 		cheats_unload();
 		retro_cheat_reset();
@@ -1393,7 +1406,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 
 		if (++srm_counter >= SRM_CHECK_FRAMES) {
 			srm_counter = 0;
-			autosave_check(srm_save(false));
+			autosave_check(cards_check());
 		} else if (autosave.due)
 			autosave_frame(repaint_top);
 		present_count++;
@@ -1576,7 +1589,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		if (!clip_replay_session && !dev_remote_game())
 			log_printf("auto-save: %s\n", home_save_write() ? "written" : "none");
 		home_save_drop();
-		srm_save(false);
+		cards_save_now();
 		config_game_end();
 		clip_close();
 		core_initialized = false;   // emu_deinit must not tear the core down
@@ -1589,7 +1602,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	if (!clip_replay_session && !dev_remote_game())
 		log_printf("auto-save: %s\n", state_save_to(STATE_AUTO) ? "written" : "failed");
 	bottom_backlight(true);
-	srm_save(false);
+	cards_save_now();
 	cheats_unload();
 	retro_unload_game();
 	config_game_end();

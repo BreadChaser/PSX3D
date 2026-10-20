@@ -72,6 +72,8 @@ endif
 LDFLAGS	=	-specs=$(PICA_SPECS) -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 LDFLAGS += -Wl,--wrap=GSPGPU_FlushDataCache,--wrap=C3D_DrawElements,--wrap=C3D_GetCmdBufUsage,-z,noexecstack
 LDFLAGS += -Wl,--wrap=fread
+# save states and memory cards through PSX3D (statefile.c, emu.c)
+LDFLAGS += -Wl,--wrap=retro_serialize,--wrap=retro_unserialize,--wrap=LoadMcd
 LDFLAGS += -Wl,--wrap=C3D_UpdateUniforms,--wrap=C3Di_LoadShaderUniforms,--wrap=C3Di_DirtyUniforms
 
 LIBS	:= $(CORELIB) -lcitro2d -lcitro3d -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lpng16 -lz -lctru -lm
@@ -253,6 +255,8 @@ endif
 # Kept from the presets round: the frontend's code layout (not the core's)
 # with it is the one measured on the Old 3DS (docs/dev/core-first.md).
 presets.o: CFLAGS += -Os
+# the core's state layout (statefile.c reads core headers)
+statefile.o: CFLAGS += -I$(COREDIR)/include
 
 -include $(DEPSDIR)/*.d
 

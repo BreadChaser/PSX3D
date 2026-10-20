@@ -4,18 +4,35 @@
 // over an existing file, so the old version is renamed away first.
 //
 // Memory cards, states and their thumbnails keep the previous good version as
-// <name>.bak; loading falls back to it when <name> is missing or damaged.
+// <name>.bak; loading falls back to it (then to a complete <name>.tmp) when
+// <name> is missing or damaged. A damaged <name> is never deleted: it is kept
+// as <name>.bad when it has to make room.
 #ifndef SAFEFILE_H
 #define SAFEFILE_H
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <time.h>
 
 typedef enum { SAFE_NONE, SAFE_CURRENT, SAFE_BACKUP, SAFE_TEMP } safe_source_t;
 
-// Write size bytes. keep_backup: the replaced version stays as <name>.bak, but
-// only when it had this same size (a damaged file never becomes the backup).
-bool safe_write(const char *path, const void *data, size_t size, bool keep_backup);
+// What a good copy of a binary file is: exactly size bytes whose first head
+// bytes pass valid() (NULL: any content). This is all a "good" backup means.
+typedef struct {
+	size_t size;
+	size_t head;
+	bool (*valid)(const void *head);
+} safe_format_t;
+
+typedef struct {
+	safe_source_t from;   // where the returned copy came from
+	bool rejected;        // a copy was there but damaged (or could not be read)
+	bool failed;          // no memory to read it: nothing is known
+} safe_info_t;
+
+// Write size = fmt->size bytes. keep_backup: a good current version stays as
+// <name>.bak; a damaged one is kept as <name>.bad instead.
+bool safe_write(const char *path, const safe_format_t *fmt, const void *data, bool keep_backup);
 
 // Text files: fprintf into the returned <name>.tmp, then safe_finish() puts it
 // in place (ok = false or a write error throws it away). No .bak is kept.
@@ -24,17 +41,18 @@ bool safe_finish(FILE *f, const char *path, bool ok);
 // Before reading a text file: bring back <name> if a replace was interrupted.
 void safe_recover(const char *path);
 
-// Read exactly size bytes from the best complete copy: <name>, else <name>.bak,
-// else a complete <name>.tmp. skip_current: <name> failed to load, try the
-// others. tolerant: a lone <name> of another size is still read (up to size;
-// *got tells how much). Returns where the data came from.
-safe_source_t safe_read(const char *path, void *data, size_t size, bool skip_current,
-                        bool tolerant, size_t *got);
-// After loading from a backup or temp copy: make <name> a good copy of data
-// again, leaving <name>.bak alone.
-bool safe_repair(const char *path, const void *data, size_t size);
-// <name> or its backup exists
-bool safe_exists(const char *path);
+// The best good copy, in a new buffer of fmt->size bytes (NULL: none). Tries
+// <name>, then <name>.bak, then <name>.tmp, minus the sources in skip (bits
+// 1 << SAFE_CURRENT etc., for copies the caller could not use). Nothing on the
+// SD card changes.
+void *safe_load(const char *path, const safe_format_t *fmt, unsigned skip, safe_info_t *info);
+// After loading from <name>.bak or <name>.tmp (from): make <name> a good copy
+// again. The source copy is never rewritten or removed first: a .tmp is
+// renamed into place, a .bak is copied. A damaged <name> becomes <name>.bad.
+bool safe_repair(const char *path, const safe_format_t *fmt, const void *data, safe_source_t from);
+// A save is there: <name> or its backup, or a good <name>.tmp (a first save
+// cut off before it was put in place). *mtime: its time.
+bool safe_stat(const char *path, const safe_format_t *fmt, time_t *mtime);
 // Delete <name>, its backup and any leftover temp file
 void safe_remove(const char *path);
 
