@@ -267,7 +267,7 @@ edge-geometry gameplay acceptance or meaningful bundle-cost measurements.
 
 ### Old 3DS · widescreen-10
 
-Deferred by the coordinator’s Old priority queue. The waiting driver was
+Deferred: the Old 3DS was busy with other tests. The waiting driver was
 canceled before lock acquisition or console contact. No Round 3 Old run,
 final-code cost acceptance, or inactive-path hardware acceptance is claimed.
 Resume only after an explicit “Old queue released” policy update.

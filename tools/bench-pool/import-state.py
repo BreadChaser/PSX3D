@@ -56,7 +56,7 @@ def import_state(client,title,path,console,slot,rate=384*1024):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('console',choices=('old','new'));parser.add_argument('title');parser.add_argument('state',type=Path);parser.add_argument('--slot',type=int,required=True,choices=(5,6,7))
-    parser.add_argument('--expected-build',required=True,help='exact build identity supplied by coordinator')
+    parser.add_argument('--expected-build',required=True,help='exact build identity of the installed build')
     parser.add_argument('--out',type=Path,required=True,help='new evidence directory')
     args=parser.parse_args()
     root=DEV/'fastloop'

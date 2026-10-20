@@ -365,7 +365,7 @@ retrying. There is deliberately no overwrite or delete command.
 `tools/bench-pool/import-state.py` implements this handshake, throttles at
 384 KiB/s, holds `devtools/fastloop/lock.old|new`, checks the unavailable marker
 and an explicit expected build identity, and archives status plus a library
-screenshot. Example (after the coordinator installs a build with this command):
+screenshot. Example (with a build that has this command installed):
 
 ```
 python3 tools/bench-pool/import-state.py new 'Silent Hill' scene.st0 --slot 5 \
