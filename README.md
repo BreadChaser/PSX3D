@@ -14,9 +14,8 @@ PSX3D runs PlayStation games on Old and New 3DS with GPU rendering, a box-art
 library and per-game settings. It's built on PCSX-ReARMed and needs no
 RetroArch and no BIOS file.
 
-> **Work in progress.** Expect some drawing errors. New 3DS runs the heaviest
-> tested scenes at full speed (Need for Speed: High Stakes at 98%); demanding games
-> are slower on Old 3DS. Stereoscopic 3D is
+> **Work in progress.** Expect some drawing errors. New 3DS runs all the heaviest
+> tested scenes at full speed; demanding games are slower on Old 3DS. Stereoscopic 3D is
 > temporarily off while it's rebuilt for the GPU renderer.
 
 ## Screenshots
@@ -67,30 +66,30 @@ see [methodology](docs/performance.md).
 <!-- perf-table -->
 | Game | Console | Frameskip off: speed / FPS | Auto frameskip: speed / FPS |
 |---|---|---:|---:|
-| Crash Bandicoot | Old 3DS | 86.0% / 20.3 | 97.0% / 14.5 |
+| Crash Bandicoot | Old 3DS | 84.9% / 20.0 | 96.1% / 13.9 |
 | Crash Bandicoot | New 3DS | 100.0% / 24.8 | 100.0% / 24.8 |
-| Crash Bandicoot 2 | Old 3DS | 49.5% / 15.1 | 49.9% / 14.3 |
-| Crash Bandicoot 2 | New 3DS | 100.0% / 30.3 | 100.0% / 30.3 |
-| Crash Team Racing | Old 3DS | 61.2% / 18.4 | 69.5% / 15.2 |
+| Crash Bandicoot 2 | Old 3DS | 70.3% / 21.4 | 85.9% / 15.4 |
+| Crash Bandicoot 2 | New 3DS | 100.0% / 30.2 | 100.0% / 30.2 |
+| Crash Team Racing | Old 3DS | 75.4% / 22.3 | 85.2% / 15.1 |
 | Crash Team Racing | New 3DS | 100.0% / 26.3 | 100.0% / 26.3 |
-| Gran Turismo 2 | Old 3DS | 46.9% / 12.7 | 47.7% / 11.4 |
-| Gran Turismo 2 | New 3DS | 100.0% / 24.8 | 100.0% / 24.8 |
-| Ridge Racer Type 4 | Old 3DS | 73.4% / 22.3 | 83.8% / 15.7 |
-| Ridge Racer Type 4 | New 3DS | 100.0% / 30.3 | 100.0% / 30.3 |
-| Need for Speed: High Stakes | Old 3DS | 34.3% / 11.1 | 33.8% / 10.3 |
-| Need for Speed: High Stakes | New 3DS | 97.6% / 37.2 | 97.6% / 36.7 |
-| Tekken 3 | Old 3DS | 54.7% / 33.4 | 69.1% / 15.2 |
-| Tekken 3 | New 3DS | 100.0% / 60.8 | 100.0% / 60.7 |
-| Final Fantasy VII | Old 3DS | 100.0% / 15.1 | 100.0% / 15.2 |
-| Final Fantasy VII | New 3DS | 100.0% / 15.2 | 100.0% / 15.1 |
-| Klonoa | Old 3DS | 84.8% / 51.5 | 99.3% / 15.3 |
-| Klonoa | New 3DS | 100.0% / 60.8 | 100.0% / 60.8 |
-| Silent Hill (alley) | Old 3DS | 61.4% / 18.9 | 70.0% / 15.2 |
+| Gran Turismo 2 | Old 3DS | 50.3% / 13.4 | 50.7% / 12.2 |
+| Gran Turismo 2 | New 3DS | 99.9% / 24.8 | 99.9% / 24.8 |
+| Ridge Racer Type 4 | Old 3DS | 78.2% / 23.9 | 86.5% / 16.6 |
+| Ridge Racer Type 4 | New 3DS | 100.0% / 30.3 | 100.0% / 30.2 |
+| Need for Speed: High Stakes | Old 3DS | 35.2% / 11.7 | 35.5% / 11.1 |
+| Need for Speed: High Stakes | New 3DS | 99.8% / 38.4 | 100.0% / 38.0 |
+| Tekken 3 | Old 3DS | 63.7% / 38.7 | 87.2% / 15.1 |
+| Tekken 3 | New 3DS | 100.0% / 60.4 | 100.0% / 60.6 |
+| Final Fantasy VII | Old 3DS | 100.0% / 15.2 | 100.0% / 15.2 |
+| Final Fantasy VII | New 3DS | 100.0% / 15.1 | 100.0% / 15.1 |
+| Klonoa | Old 3DS | 83.5% / 50.6 | 97.8% / 15.1 |
+| Klonoa | New 3DS | 100.0% / 60.8 | 100.0% / 60.7 |
+| Silent Hill (alley) | Old 3DS | 67.4% / 20.5 | 77.8% / 15.2 |
 | Silent Hill (alley) | New 3DS | 100.0% / 29.7 | 100.0% / 29.7 |
-| Silent Hill (café) | Old 3DS | 61.8% / 14.6 | 61.3% / 14.6 |
+| Silent Hill (café) | Old 3DS | 68.4% / 16.1 | 69.8% / 15.3 |
 | Silent Hill (café) | New 3DS | 100.0% / 22.3 | 100.0% / 22.3 |
-| Symphony of the Night | Old 3DS | 98.4% / 59.5 | 100.0% / 54.1 |
-| Symphony of the Night | New 3DS | 100.0% / 60.7 | 100.0% / 60.7 |
+| Symphony of the Night | Old 3DS | 96.3% / 58.3 | 100.0% / 50.1 |
+| Symphony of the Night | New 3DS | 100.0% / 60.7 | 100.0% / 60.8 |
 <!-- /perf-table -->
 
 </details>

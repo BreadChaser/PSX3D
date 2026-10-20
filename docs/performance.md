@@ -2,7 +2,7 @@
 
 <picture><source media="(prefers-color-scheme: light)" srcset="performance-light.svg"><img src="performance-dark.svg" alt="PSX3D speed on Old 3DS and New 3DS" width="880"></picture>
 
-The v0.4.1 release candidate was measured on 2026-10-19 in each game's
+The v0.4.1 release candidate was measured on 2026-10-20 in each game's
 heaviest tested scene: save slot 5 (the heaviest scene per game), Silent Hill's
 alley (slot 6) and café (slot 7). Racing games use their attract-mode races,
 Symphony of the Night the prologue Dracula fight. Each run used a 3-second
@@ -10,6 +10,9 @@ warmup and a 12-second sample (Need for Speed: 1 + 5 seconds, its demo is
 short), clock auto, the New 3DS with its GPU worker thread. The consoles use
 the HLE BIOS; the runs load save states. The lighter scenes used up to v0.4.0
 (Old slot 2, New slot 0) are still measured as a reference.
+During the Old 3DS runs the console was also streaming its screen over Wi-Fi
+(a debugging aid), which costs it 1–3% speed; the comparison with the previous
+build was measured under the same condition.
 
 Exact values are in the [README table](../README.md#performance).
 
@@ -36,6 +39,13 @@ These are scene measurements, not whole-game compatibility guarantees.
   Since v0.4.1 the atlas stores each texture at its exact size and reuses space
   across sizes, which stopped the texture thrashing in busy scenes (Ridge Racer
   Type 4 races, Need for Speed, Tekken 3, long Silent Hill sessions).
+- Since v0.4.1 the renderer does less CPU work per frame: blended drawing
+  waits so it can be grouped with later drawing, additive effects need one pass,
+  shader settings are only re-sent when they change, and textures stay clear of
+  rows the GPU draws into (Crash Team Racing no longer waits for the GPU three
+  times a frame). Old 3DS, frameskip off: Crash Bandicoot 2 48% to 70% game
+  speed, Crash Team Racing 59% to 75%, Silent Hill +10–14%, Ridge Racer Type 4,
+  Gran Turismo 2 and Need for Speed about +10%.
 - Double-buffered command recording overlaps CPU and GPU work while protecting
   textures, vertices and readbacks. Cache flushes cover written buffers instead
   of the entire linear heap.
@@ -45,7 +55,9 @@ These are scene measurements, not whole-game compatibility guarantees.
   guarded fast path handles the relocated PS1 scratchpad used on 3DS. Since
   v0.4.1 the scratchpad sits at one ARM immediate, loads and stores through one
   base register share a single range check, and the ordering-table clear writes
-  four entries per step.
+  four entries per step. Tekken 3's polygon code reads a GTE register in a branch
+  delay slot; the dynarec now compiles that pattern exactly instead of falling
+  back to the interpreter (Old 3DS: 53% to 64%, 66% to 87% with Auto frameskip).
 - Safe wait-loop skipping avoids emulating known idle loops. Since v0.4.1 this
   includes the PsyQ library's `VSync(-1)` polling loop (Klonoa: 58% to 85% game
   speed on Old 3DS) and the older PsyQ `v_wait` loop (Crash Bandicoot: +3%);

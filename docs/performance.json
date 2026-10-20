@@ -7,10 +7,10 @@
       "name": "Crash Bandicoot",
       "native_fps": 30,
       "old": {
-        "off_speed": 86.0,
-        "off_fps": 20.3,
-        "auto_speed": 97.0,
-        "auto_fps": 14.5
+        "off_speed": 84.9,
+        "off_fps": 20.0,
+        "auto_speed": 96.1,
+        "auto_fps": 13.9
       },
       "new": {
         "off_speed": 100.0,
@@ -23,26 +23,26 @@
       "name": "Crash Bandicoot 2",
       "native_fps": 30,
       "old": {
-        "off_speed": 49.5,
-        "off_fps": 15.1,
-        "auto_speed": 49.9,
-        "auto_fps": 14.3
+        "off_speed": 70.3,
+        "off_fps": 21.4,
+        "auto_speed": 85.9,
+        "auto_fps": 15.4
       },
       "new": {
         "off_speed": 100.0,
-        "off_fps": 30.3,
+        "off_fps": 30.2,
         "auto_speed": 100.0,
-        "auto_fps": 30.3
+        "auto_fps": 30.2
       }
     },
     {
       "name": "Crash Team Racing",
       "native_fps": 30,
       "old": {
-        "off_speed": 61.2,
-        "off_fps": 18.4,
-        "auto_speed": 69.5,
-        "auto_fps": 15.2
+        "off_speed": 75.4,
+        "off_fps": 22.3,
+        "auto_speed": 85.2,
+        "auto_fps": 15.1
       },
       "new": {
         "off_speed": 100.0,
@@ -55,15 +55,15 @@
       "name": "Gran Turismo 2",
       "native_fps": 30,
       "old": {
-        "off_speed": 46.9,
-        "off_fps": 12.7,
-        "auto_speed": 47.7,
-        "auto_fps": 11.4
+        "off_speed": 50.3,
+        "off_fps": 13.4,
+        "auto_speed": 50.7,
+        "auto_fps": 12.2
       },
       "new": {
-        "off_speed": 100.0,
+        "off_speed": 99.9,
         "off_fps": 24.8,
-        "auto_speed": 100.0,
+        "auto_speed": 99.9,
         "auto_fps": 24.8
       }
     },
@@ -71,42 +71,74 @@
       "name": "Ridge Racer Type 4",
       "native_fps": 30,
       "old": {
-        "off_speed": 73.4,
-        "off_fps": 22.3,
-        "auto_speed": 83.8,
-        "auto_fps": 15.7
+        "off_speed": 78.2,
+        "off_fps": 23.9,
+        "auto_speed": 86.5,
+        "auto_fps": 16.6
       },
       "new": {
         "off_speed": 100.0,
         "off_fps": 30.3,
         "auto_speed": 100.0,
-        "auto_fps": 30.3
+        "auto_fps": 30.2
       }
     },
     {
       "name": "Need for Speed: High Stakes",
       "native_fps": 60,
       "old": {
-        "off_speed": 34.3,
-        "off_fps": 11.1,
-        "auto_speed": 33.8,
-        "auto_fps": 10.3
+        "off_speed": 35.2,
+        "off_fps": 11.7,
+        "auto_speed": 35.5,
+        "auto_fps": 11.1
       },
       "new": {
-        "off_speed": 97.6,
-        "off_fps": 37.2,
-        "auto_speed": 97.6,
-        "auto_fps": 36.7
+        "off_speed": 99.8,
+        "off_fps": 38.4,
+        "auto_speed": 100.0,
+        "auto_fps": 38.0
       }
     },
     {
       "name": "Tekken 3",
       "native_fps": 60,
       "old": {
-        "off_speed": 54.7,
-        "off_fps": 33.4,
-        "auto_speed": 69.1,
+        "off_speed": 63.7,
+        "off_fps": 38.7,
+        "auto_speed": 87.2,
+        "auto_fps": 15.1
+      },
+      "new": {
+        "off_speed": 100.0,
+        "off_fps": 60.4,
+        "auto_speed": 100.0,
+        "auto_fps": 60.6
+      }
+    },
+    {
+      "name": "Final Fantasy VII",
+      "native_fps": 15,
+      "old": {
+        "off_speed": 100.0,
+        "off_fps": 15.2,
+        "auto_speed": 100.0,
         "auto_fps": 15.2
+      },
+      "new": {
+        "off_speed": 100.0,
+        "off_fps": 15.1,
+        "auto_speed": 100.0,
+        "auto_fps": 15.1
+      }
+    },
+    {
+      "name": "Klonoa",
+      "native_fps": 60,
+      "old": {
+        "off_speed": 83.5,
+        "off_fps": 50.6,
+        "auto_speed": 97.8,
+        "auto_fps": 15.1
       },
       "new": {
         "off_speed": 100.0,
@@ -116,44 +148,12 @@
       }
     },
     {
-      "name": "Final Fantasy VII",
-      "native_fps": 15,
-      "old": {
-        "off_speed": 100.0,
-        "off_fps": 15.1,
-        "auto_speed": 100.0,
-        "auto_fps": 15.2
-      },
-      "new": {
-        "off_speed": 100.0,
-        "off_fps": 15.2,
-        "auto_speed": 100.0,
-        "auto_fps": 15.1
-      }
-    },
-    {
-      "name": "Klonoa",
-      "native_fps": 60,
-      "old": {
-        "off_speed": 84.8,
-        "off_fps": 51.5,
-        "auto_speed": 99.3,
-        "auto_fps": 15.3
-      },
-      "new": {
-        "off_speed": 100.0,
-        "off_fps": 60.8,
-        "auto_speed": 100.0,
-        "auto_fps": 60.8
-      }
-    },
-    {
       "name": "Silent Hill (alley)",
       "native_fps": 30,
       "old": {
-        "off_speed": 61.4,
-        "off_fps": 18.9,
-        "auto_speed": 70.0,
+        "off_speed": 67.4,
+        "off_fps": 20.5,
+        "auto_speed": 77.8,
         "auto_fps": 15.2
       },
       "new": {
@@ -167,10 +167,10 @@
       "name": "Silent Hill (caf\u00e9)",
       "native_fps": 30,
       "old": {
-        "off_speed": 61.8,
-        "off_fps": 14.6,
-        "auto_speed": 61.3,
-        "auto_fps": 14.6
+        "off_speed": 68.4,
+        "off_fps": 16.1,
+        "auto_speed": 69.8,
+        "auto_fps": 15.3
       },
       "new": {
         "off_speed": 100.0,
@@ -183,16 +183,16 @@
       "name": "Symphony of the Night",
       "native_fps": 60,
       "old": {
-        "off_speed": 98.4,
-        "off_fps": 59.5,
+        "off_speed": 96.3,
+        "off_fps": 58.3,
         "auto_speed": 100.0,
-        "auto_fps": 54.1
+        "auto_fps": 50.1
       },
       "new": {
         "off_speed": 100.0,
         "off_fps": 60.7,
         "auto_speed": 100.0,
-        "auto_fps": 60.7
+        "auto_fps": 60.8
       }
     }
   ]
