@@ -48,6 +48,8 @@ state_muts={
  'no spu check': ('	if (spu <= SPU_MIN || spu > SPU_MAX || spu > size - SPU_SIZE_AT - sizeof(spu))', '	if (0)'),
  'tail error ignored': ('	if (stream_refused) {   // a record', '	if (0) {   // a record'),
  'negative seek': ('(offs < 0 ? (size_t)-(offs + 1) >= base :', '(offs < 0 ? false :'),
+ 'tail unchecked': ('	return check_tail(p, size, SPU_SIZE_AT + sizeof(spu) + spu);', '	return STATE_OK;'),
+ 'pads unchecked': ('		if (saved > size - pos)\n			return STATE_DAMAGED;', ''),
 }
 os.makedirs(tmp+'/x/y', exist_ok=True)
 os.symlink(os.path.join(root, 'core'), tmp+'/core')

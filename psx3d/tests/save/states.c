@@ -19,12 +19,12 @@ struct PcsxSaveFuncs SaveFuncs;
 #define VERSION 0x8b410006u
 #define STATE_SIZE 0x440000u
 #define TAIL_FIXED (300 + 2000 + 4 + 200 + 1000)   // sio, cdr, rcnt, mdec
-#define PAD_SIZE 64
+#define PAD_SIZE ((int)sizeof(PadDataS))
 
 // the "running game": everything LoadState restores
 static struct {
 	unsigned char *ram, *bios, *hw, *regs, *gpu, *vram, *spu_hdr, *spu_ram, *spu2, *tail, *addrs;
-	unsigned char pad[2][PAD_SIZE];
+	PadDataS pad[PADS];
 	unsigned spu_size, ndrc_blocks;
 } live;
 static size_t sizes[] = { 0x200000, 0x80000, 0x10000, offsetof(psxRegisters, gteBusyCycle),
@@ -57,8 +57,8 @@ static unsigned long long live_hash(void)
 		}
 		for (; k < sizes[i]; k++) h = (h ^ p[i][k]) * 1099511628211ull;
 	}
-	for (int i = 0; i < 2; i++)
-		for (int k = 0; k < PAD_SIZE; k++) h = (h ^ live.pad[i][k]) * 1099511628211ull;
+	for (int i = 0; i < PADS; i++)
+		for (int k = 0; k < PAD_SIZE; k++) h = (h ^ ((unsigned char *)&live.pad[i])[k]) * 1099511628211ull;
 	return (h ^ live.spu_size) * 31 + live.ndrc_blocks;
 }
 
@@ -91,10 +91,9 @@ bool __real_retro_serialize(void *data, size_t size)
 	int32_t n = live.ndrc_blocks * 8;
 	SaveFuncs.write(f, &n, 4);
 	SaveFuncs.write(f, live.addrs, n);
-	for (int i = 0; i < 2; i++) {                    // pad.c: saveSize first
-		u32 sz = PAD_SIZE;
-		memcpy(live.pad[i], &sz, 4);
-		SaveFuncs.write(f, live.pad[i], PAD_SIZE);
+	for (int i = 0; i < PADS; i++) {                 // pad.c padFreeze
+		live.pad[i].saveSize = sizeof(PadDataS);
+		SaveFuncs.write(f, &live.pad[i], PAD_SIZE);
 	}
 	SaveFuncs.close(f);
 	return true;
@@ -147,11 +146,10 @@ bool __real_retro_unserialize(const void *data, size_t size)
 			if (SaveFuncs.read(f, live.addrs, n) == n) live.ndrc_blocks = n / 8;
 		}
 	}
-	for (int i = 0; i < 2; i++) {
-		SaveFuncs.read(f, live.pad[i], PAD_SIZE);
-		u32 sz;
-		memcpy(&sz, live.pad[i], 4);
-		if (sz != PAD_SIZE) SaveFuncs.seek(f, (long)sz - PAD_SIZE, SEEK_CUR);
+	for (int i = 0; i < PADS; i++) {
+		SaveFuncs.read(f, &live.pad[i], PAD_SIZE);
+		if (live.pad[i].saveSize != sizeof(PadDataS))   // as pad.c (32-bit ARM long)
+			SaveFuncs.seek(f, (long)live.pad[i].saveSize - PAD_SIZE, SEEK_CUR);
 	}
 	SaveFuncs.close(f);
 	return true;
@@ -229,20 +227,16 @@ static void boundaries(void)
 	size_t b[] = { 0, 15, 16, 31, 32, 36, 37, STATE_HEAD + EX_SCREENPIC_SIZE, STATE_HEAD + EX_SCREENPIC_SIZE + 0x200000,
 		SPU_SIZE_AT - 1, SPU_SIZE_AT, SPU_SIZE_AT + 3, SPU_SIZE_AT + 4, SPU_SIZE_AT + 4 + sizeof(SPUFreeze_t),
 		spu_end - 1, spu_end, tail_at + 300, tail_at + TAIL_FIXED, ndrc_size_at, ndrc_size_at + 4,
-		pad_at, pad_at + PAD_SIZE, pad_at + 2 * PAD_SIZE - 1 };
+		pad_at, pad_at + PAD_SIZE, pad_at + PADS * PAD_SIZE - 1 };
 	for (size_t i = 0; i < sizeof(b) / sizeof(b[0]); i++)
 		for (int d = -1; d <= 1; d++) {
 			size_t n = b[i] + d;
-			if ((long)n < 0 || n >= pad_at + 2 * PAD_SIZE) continue;
+			if ((long)n < 0 || n >= pad_at + PADS * PAD_SIZE) continue;
 			unsigned char *cut = malloc(n ? n : 1);   // exactly n bytes: ASan guards the end
 			memcpy(cut, good, n);
 			snprintf(ctx, sizeof(ctx), "cut at %zu", n);
 			state_result_t r = try_load(cut, n);
-			CHECK(r != STATE_OK);
-			if (n < spu_end)   // everything up to the SPU block: nothing changed
-				CHECK(r == STATE_NOT_A_STATE || r == STATE_DAMAGED);
-			else
-				CHECK(r == STATE_PARTLY);
+			CHECK(r == STATE_NOT_A_STATE || r == STATE_DAMAGED);   // nothing changed
 			free(cut);
 			CHECK(try_load(good, STATE_SIZE) == STATE_OK);   // back to the good state
 		}
@@ -284,18 +278,42 @@ static void bad_sizes(void)
 		memcpy(s + ndrc_size_at, &ndrc[i], 4);
 		snprintf(ctx, sizeof(ctx), "ndrc size %d", ndrc[i]);
 		state_result_t r = try_load(s, STATE_SIZE);
-		CHECK(r == STATE_OK || r == STATE_PARTLY);
+		CHECK(r == STATE_OK || r == STATE_DAMAGED);
 		CHECK(try_load(good, STATE_SIZE) == STATE_OK);
 	}
-	u32 pads[] = { 0, 1, 0xffffffff, 0x80000000, STATE_SIZE };
-	for (size_t i = 0; i < sizeof(pads) / sizeof(pads[0]); i++) {
+	unsigned short pads[] = { 0, 1, PAD_SIZE - 1, PAD_SIZE + 1, 0x8000, 0xffff };
+	for (size_t i = 0; i < sizeof(pads) / sizeof(pads[0]); i++)
+		for (int k = 0; k < PADS; k += 7) {
+			memcpy(s, good, STATE_SIZE);
+			memcpy(s + pad_at + k * PAD_SIZE + offsetof(PadDataS, saveSize), &pads[i], 2);
+			snprintf(ctx, sizeof(ctx), "pad %d size %u", k, pads[i]);
+			state_result_t r = try_load(s, STATE_SIZE);
+			CHECK(r == STATE_OK || r == STATE_DAMAGED);   // in-bounds garbage loads, as in pad.c
+		}
+	// the end of the last pad record cut off: refused before anything changes
+	{
+		size_t end = pad_at + PADS * PAD_SIZE;
 		memcpy(s, good, STATE_SIZE);
-		memcpy(s + pad_at, &pads[i], 4);
-		snprintf(ctx, sizeof(ctx), "pad size %u", pads[i]);
-		state_result_t r = try_load(s, STATE_SIZE);
-		CHECK(r == STATE_OK || r == STATE_PARTLY);   // in-bounds garbage, as in pad.c
-		CHECK(pads[i] < 0x10000 || r == STATE_PARTLY);
+		unsigned short big = PAD_SIZE + 64;
+		memcpy(s + end - PAD_SIZE + offsetof(PadDataS, saveSize), &big, 2);
+		snprintf(ctx, sizeof(ctx), "last pad past the end");
+		CHECK(try_load(s, end + 63) == STATE_DAMAGED);
+		CHECK(try_load(s, end + 64) == STATE_OK);
 		CHECK(try_load(good, STATE_SIZE) == STATE_OK);
+	}
+	// before the layout after the SPU block is known, a damaged record is
+	// still caught by the stream: the game is reported partly restored
+	{
+		size_t learned = tail_fixed;
+		tail_fixed = 0;
+		memcpy(s, good, STATE_SIZE);
+		memcpy(s + ndrc_size_at - 8, "ARIBLKS", 8);   // no block list to find
+		unsigned short big = 0xffff;
+		memcpy(s + tail_at + TAIL_FIXED + offsetof(PadDataS, saveSize), &big, 2);
+		snprintf(ctx, sizeof(ctx), "unknown tail");
+		CHECK(try_load(s, pad_at + 100) == STATE_PARTLY);
+		CHECK(tail_fixed == 0);   // a damaged state teaches nothing
+		CHECK(try_load(good, STATE_SIZE) == STATE_OK && tail_fixed == learned);
 	}
 	free(s);
 }
@@ -324,6 +342,8 @@ static void fuzz(void)
 	}
 	printf("fuzz: ok %d, not a state %d, version %d, damaged %d, partly %d\n",
 		results[0], results[1], results[2], results[3], results[4]);
+	snprintf(ctx, sizeof(ctx), "fuzz totals");
+	CHECK(results[STATE_PARTLY] == 0);   // the layout is known: all caught first
 	free(s);
 }
 
