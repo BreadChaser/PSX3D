@@ -249,12 +249,44 @@ bool C3D_FrameDrawOn(C3D_RenderTarget* target)
 	return true;
 }
 
-void C3D_FrameSplit(u8 flags)
+// citro3d updates its usage only at a split; the renderer checks it after
+// every batch, so report the words recorded so far in this bank instead.
+float __real_C3D_GetCmdBufUsage(void);
+float __wrap_C3D_GetCmdBufUsage(void)
+{
+	C3D_Context* ctx = C3Di_GetContext();
+	if (!inFrame) return __real_C3D_GetCmdBufUsage();
+	return 1.0f - (float)(gpuCmdBufSize - gpuCmdBufOffset) / ctx->cmdBufSize;
+}
+
+static void splitFrame(u8 flags)
 {
 	u32 *cmdBuf, cmdBufSize;
-	if (!inFrame) return;
 	if (C3Di_SplitFrame(&cmdBuf, &cmdBufSize))
 		GX_ProcessCommandList(cmdBuf, cmdBufSize*4, video_cache_command_list(cmdBuf, cmdBufSize*4, flags));
+}
+
+// The queue starts only at FrameEnd, so a split frees neither command words
+// nor queue entries, and libctru panics when its 32 entries are full. A frame
+// that outgrows either (thousands of batches, or a texture decode per split)
+// is submitted and waited for first, like the renderer's readback syncs; its
+// vertices stay valid. Leave room for a split plus a copy, then FrameEnd and
+// presentation: a 24-bit movie transfer, the picture and three screens.
+#define QUEUE_ROOM 10
+static unsigned earlySubmits;
+
+void C3D_FrameSplit(u8 flags)
+{
+	if (!inFrame) return;
+	if (buildQueue->maxEntries - buildQueue->numEntries < QUEUE_ROOM || __wrap_C3D_GetCmdBufUsage() > 0.8f)
+	{
+		C3D_FrameEnd(0);
+		C3D_FrameBegin(0);
+		earlySubmits++;
+		if (!(earlySubmits & (earlySubmits - 1)))   // 1, 2, 4, ...
+			log_printf("GPU: frame too large for one submission, sent early (%u)\n", earlySubmits);
+	}
+	splitFrame(flags);
 }
 
 void C3D_FrameEnd(u8 flags)
@@ -266,7 +298,7 @@ void C3D_FrameEnd(u8 flags)
 	if (frameEndCb)
 		frameEndCb(frameEndCbData);
 
-	C3D_FrameSplit(flags);
+	splitFrame(flags);
 	GPUCMD_SetBuffer(NULL, 0, 0);
 	osTickCounterUpdate(&cpuTime);
 	inFrame = false;
