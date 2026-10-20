@@ -57,21 +57,36 @@ static void slot_path(char *out, size_t len, const char *prefix, int slot, bool 
 		snprintf(out, len, "%s.st%d%s", prefix, slot, thm ? ".thm" : "");
 }
 
-// screenshot of the paused game, saved next to state <slot>
-bool state_thumb_write(const char *prefix, int slot)
+// screenshot of the paused game (needs the GPU), NULL without a picture
+u16 *state_thumb_take(void)
+{
+	u16 *px = malloc(TW * TH * 2);
+	if (px && !video_snapshot(px, TW, TH)) {
+		free(px);
+		px = NULL;
+	}
+	return px;
+}
+
+// ... saved next to state <slot>
+bool state_thumb_save(const char *prefix, int slot, const u16 *px)
 {
 	char path[PATH_LEN];
-	u16 *px = malloc(TW * TH * 2);
 	bool ok = false;
-	if (px && video_snapshot(px, TW, TH)) {
-		slot_path(path, sizeof(path), prefix, slot, true);
-		FILE *f = fopen(path, "wb");
-		if (f) {
-			thm_hdr_t h = { THM_MAGIC, TW, TH, (u32)time(NULL) };
-			ok = fwrite(&h, sizeof(h), 1, f) == 1 && fwrite(px, 2, TW * TH, f) == TW * TH;
-			fclose(f);
-		}
+	slot_path(path, sizeof(path), prefix, slot, true);
+	FILE *f = fopen(path, "wb");
+	if (f) {
+		thm_hdr_t h = { THM_MAGIC, TW, TH, (u32)time(NULL) };
+		ok = fwrite(&h, sizeof(h), 1, f) == 1 && fwrite(px, 2, TW * TH, f) == TW * TH;
+		fclose(f);
 	}
+	return ok;
+}
+
+bool state_thumb_write(const char *prefix, int slot)
+{
+	u16 *px = state_thumb_take();
+	bool ok = px && state_thumb_save(prefix, slot, px);
 	free(px);
 	return ok;
 }

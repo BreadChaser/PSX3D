@@ -453,6 +453,11 @@ int main(int argc, char **argv)
 			break;
 	}
 
+	// Close in the HOME Menu leaves the GPU with it (video_exit) and skips
+	// the restore hook that reopens the log.
+	if (!gspHasGpuRight())
+		log_resume();
+	log_printf("exit: %s\n", aptShouldClose() ? "closed by the system" : "quit");
 	// Remote UI captures may have enabled curl on the control server's SOC.
 	// Close its connections before dev_shutdown releases that shared session.
 	covers_stop_wait();

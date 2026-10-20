@@ -771,6 +771,58 @@ static void set_game_name(const char *path)
 		*dot = 0;
 }
 
+// Close in the HOME Menu (also Power off from there) wakes us without the
+// GPU: the HOME Menu keeps it for its "Closing software" screen. A state
+// needs the GPU (its drawing is read back, the thumbnail is a GPU copy), so
+// the auto-save is taken on the way to HOME and written only if we are then
+// closed. Coming back drops it.
+static void *home_state;
+static size_t home_state_size;
+static u16 *home_thumb;
+
+static void home_save_drop(void)
+{
+	free(home_state);
+	free(home_thumb);
+	home_state = NULL;
+	home_thumb = NULL;
+}
+
+static void home_save_take(void)
+{
+	home_save_drop();
+	if (clip_replay_session || dev_remote_game())
+		return;
+	u64 t0 = osGetTime();
+	size_t size = retro_serialize_size();
+	void *buf = size ? malloc(size) : NULL;
+	if (!buf || !retro_serialize(buf, size)) {
+		log_printf("home: no auto-save (%s)\n", buf ? "state failed" : "no memory");
+		free(buf);
+		return;
+	}
+	home_state = buf;
+	home_state_size = size;
+	home_thumb = state_thumb_take();
+	log_printf("home: auto-save taken in %llums\n", osGetTime() - t0);
+}
+
+static bool home_save_write(void)
+{
+	char path[PATH_LEN], ext[16];
+	bool ok = false;
+	if (home_state) {
+		state_ext(ext, sizeof(ext), STATE_AUTO);
+		make_path(path, sizeof(path), PSX3D_STATE_DIR, ext);
+		ok = write_file(path, home_state, home_state_size);
+		make_path(path, sizeof(path), PSX3D_STATE_DIR, "");
+		if (ok && !(home_thumb && state_thumb_save(path, STATE_AUTO, home_thumb)))
+			log_printf("state: saved slot -1 without a thumbnail\n");
+	}
+	home_save_drop();
+	return ok;
+}
+
 // save_name: base name for memory cards and states (NULL = from path);
 // title: shown in the menu (NULL = save name)
 // The HOME Menu draws on the bottom screen too: light it up while we're
@@ -787,7 +839,9 @@ static void game_apt(APT_HookType hook, void *param)
 	if (hook == APTHOOK_ONSUSPEND) {
 		input_gameplay(false);
 		bottom_backlight(true);
+		home_save_take();
 	} else if (hook == APTHOOK_ONRESTORE) {
+		home_save_drop();
 		game_frames = 0;
 		input_touch_reset();
 		input_gameplay(!game_menu_open);
@@ -1299,6 +1353,23 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	input_gameplay(false);
 	options_fast_forward(false);
 	pmu_stop();
+	// Closed from the HOME Menu: no GPU (see home_state). Stop the sound and
+	// keep what needs no GPU. Tearing the core and renderer down would wait
+	// for the GPU forever, so they stay as they are; the system ends us.
+	if (!gspHasGpuRight()) {
+		log_resume();
+		audio_exit();
+		log_printf("game: closed from the HOME Menu\n");
+		if (!clip_replay_session && !dev_remote_game())
+			log_printf("auto-save: %s\n", home_save_write() ? "written" : "none");
+		home_save_drop();
+		srm_save(false);
+		config_game_end();
+		clip_close();
+		core_initialized = false;   // emu_deinit must not tear the core down
+		return true;
+	}
+	home_save_drop();
 	log_printf("game: leaving\n");
 	rewind_stop();
 	if (!clip_replay_session && !dev_remote_game())

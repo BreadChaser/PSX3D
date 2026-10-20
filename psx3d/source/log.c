@@ -22,6 +22,14 @@ static void log_apt(APT_HookType hook, void *param)
 		log_fp = fopen(PSX3D_LOG, "a");
 	}
 }
+// The HOME Menu's Close wakes us without the restore hook, so the log would
+// stay shut for the exit. log_apt closes it again at exit.
+void log_resume(void)
+{
+	if (!log_fp)
+		log_fp = fopen(PSX3D_LOG, "a");
+}
+
 // Netloaded with 3dslink: the log is also sent to the PC. Never block on
 // it: if the PC stops reading, a blocking send froze the whole game.
 static int link_fd = -1;

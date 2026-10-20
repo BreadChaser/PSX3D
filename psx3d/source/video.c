@@ -200,6 +200,13 @@ void video_game_end(void)
 
 void video_exit(void)
 {
+	// Closed from the HOME Menu: the GPU stays with it, and a game's
+	// renderer may still own GPU work that can never finish. Its teardown
+	// would wait forever; the process ends anyway. gfxExit checks the GPU.
+	if (!gspHasGpuRight()) {
+		gfxExit();
+		return;
+	}
 	C3D_TexDelete(&tex);
 	for (int i = 0; i < 2; i++) {
 		if (fbs[i])

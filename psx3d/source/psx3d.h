@@ -24,6 +24,7 @@ void log_init(void);
 bool log_linked(void);
 void log_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void log_close(void);
+void log_resume(void);
 
 // config.c - frontend settings plus core option overrides
 typedef struct {
@@ -227,6 +228,8 @@ bool dsp_firmware_ensure(void);
 // savestates.c - save state browser with screenshots
 #define STATE_AUTO -1
 bool state_thumb_write(const char *prefix, int slot);
+u16 *state_thumb_take(void);
+bool state_thumb_save(const char *prefix, int slot, const u16 *px);
 bool states_resume_prompt(const char *prefix);
 int states_run(bool saving, const char *prefix, const char *title, int *slot);
 
