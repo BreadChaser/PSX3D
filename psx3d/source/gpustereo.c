@@ -22,6 +22,7 @@
 
 bool video_stereo_targets(bool native);   // video.c: native top targets free VRAM
 bool video_stereo_on(void);               // video.c: the top screen shows 3D
+bool video_top_aa(void);                  // video.c: supersampled top targets
 
 // mirroring state; written by the GPU thread between frames
 static volatile bool mirror;
@@ -317,8 +318,9 @@ void gpustereo_status(char *out, int n)
 	gs_core_counts(&lookups, &found, &shifted);
 	snprintf(out, n, ",\"stereo_mode\":%d,\"stereo\":{\"want\":%.3f,\"tracking\":%s,\"mirror\":%s,"
 		"\"seeded\":%s,\"hold\":%s,\"failed\":%s,\"focus\":%.1f,\"lookups\":%u,\"found\":%u,\"shifted\":%u,"
-		"\"display3d\":%s,\"free_vram\":%u}",
+		"\"display3d\":%s,\"top_aa\":%s,\"free_vram\":%u}",
 		gpustereo_mode(), want, tracking ? "true" : "false", mirror ? "true" : "false",
 		seeded ? "true" : "false", hold_valid ? "true" : "false", failed ? "true" : "false",
-		gs_focus(), lookups, found, shifted, video_stereo_on() ? "true" : "false", (unsigned)vramSpaceFree());
+		gs_focus(), lookups, found, shifted, video_stereo_on() ? "true" : "false",
+		video_top_aa() ? "true" : "false", (unsigned)vramSpaceFree());
 }

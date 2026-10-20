@@ -94,6 +94,7 @@ static void top_set_plain(C3D_RenderTarget *t, gfx3dSide_t side, bool plain)
 // supersampled targets back when the game ends.
 static bool stereo_native;
 bool video_stereo_on(void) { return stereo_on; }
+bool video_top_aa(void) { return top_aa; }
 bool video_stereo_targets(bool native)
 {
 	if (native ? (!top_aa || stereo_native) : !stereo_native)
