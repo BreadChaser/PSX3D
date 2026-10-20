@@ -1413,16 +1413,21 @@ static PICA_COLD tcache *take_rect(int cw, int ch)
 		if (f) { bx = __builtin_ctz(f); by = y; }
 	}
 	if (bx < 0 && RCPU(RCPU_EVICT)) {
-		// The same window, found cheaply: each cell's value once, then
-		// maxima over cw columns and ch rows by doubling spans in place
+		// The same window, found cheaply: each cell's value once (from the
+		// entries in use, each read once: their cells are exactly theirs),
+		// then maxima over cw columns and ch rows by doubling spans in place
 		// (a window of w is the maximum of two overlapping power-of-two
 		// spans), then the first smallest window in the same scan order.
 		static u64 m[CELLS][CELLS];
-		for (int y = 0; y < CELLS; y++)
-			for (int x = 0; x < CELLS; x++) {
-				int o = cell_owner[y * CELLS + x];
-				m[y][x] = o == CELL_PLAIN ? ~0ull : o < 0 ? 0 :
-					((u64)(cache[o].used_seq > synced_seq) << 32) | cache[o].lru;
+		memset(m, 0, sizeof(m));
+		m[plain->ay >> 5][plain->ax >> 5] = ~0ull;
+		for (int lg = 0; lg < NSIZES; lg++)
+			for (int i = 0; i < nactive[lg]; i++) {
+				const tcache *o = &cache[active[lg][i]];
+				u64 v = ((u64)(o->used_seq > synced_seq) << 32) | o->lru;
+				for (int y = o->ay >> 5; y < (o->ay >> 5) + o->ch; y++)
+					for (int x = o->ax >> 5; x < (o->ax >> 5) + o->cw; x++)
+						m[y][x] = v;
 			}
 		int p = 1;
 		for (; 2 * p <= cw; p *= 2)
