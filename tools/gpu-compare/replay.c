@@ -119,7 +119,7 @@ int main(int argc,char **argv)
               fprintf(stderr,"frame %d draw calls %u dither setups %u\n",*(int*)data,sim_c3d_draws-previous,sim_dither_setups-previous_setups);
               previous_setups=sim_dither_setups;
               previous=sim_c3d_draws; }
-            if(getenv("GPU_DUMP_VRAM")) {
+            if(getenv("GPU_DUMP_VRAM") && (!getenv("GPU_DUMP_FRAME") || atoi(getenv("GPU_DUMP_FRAME"))==*(int*)data)) {
                 FILE *dump=fopen(getenv("GPU_DUMP_VRAM"),"wb"); assert(dump);
                 for(int y=0;y<512;y++)for(int x=0;x<1024;x++) { u16 pixel=sim_target_pixel(x,y); fwrite(&pixel,2,1,dump); }
                 assert(!fclose(dump));
