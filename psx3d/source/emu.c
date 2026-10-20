@@ -857,7 +857,7 @@ static bool home_save_write(void)
 // Auto-save while playing, so a crash, flat battery or power cut loses at
 // most AUTOSAVE_MAX_MS of play. Once AUTOSAVE_MIN_MS have passed it waits for
 // a moment where a short pause can't be seen (the game saved to its memory
-// card, the disc is loading, a still or dark screen, the pause menu); at
+// card, the disc is loading, a still or black screen, the pause menu); at
 // AUTOSAVE_MAX_MS it saves anyway. The main thread only takes the state into
 // RAM (the unavoidable part: it needs the GPU); a low-priority thread writes
 // it to the SD card while the game goes on.
@@ -876,7 +876,7 @@ static struct {
 	// moment detection, only while due
 	u64 last;           // osGetTime of the last auto-save
 	bool due;
-	u32 pictures, cd_reads;
+	u32 cd_reads;
 	int still, dark, probe;
 } autosave;
 
@@ -981,17 +981,16 @@ static void autosave_check(bool card_saved)
 		else if (!autosave.due) {
 			autosave.due = true;
 			autosave.still = autosave.dark = autosave.probe = 0;
-			autosave.pictures = psx3d_skip.pictures;
 			autosave.cd_reads = cd_reads;
 		}
 	}
 }
 
-// Every frame while due: a still or dark screen for half a second
-static void autosave_frame(void)
+// Every frame while due: a still or black screen for half a second.
+// new_picture: the top screen got a new game picture (also movie frames).
+static void autosave_frame(bool new_picture)
 {
-	if (psx3d_skip.pictures != autosave.pictures) {
-		autosave.pictures = psx3d_skip.pictures;
+	if (new_picture) {
 		autosave.still = 0;
 		autosave.cd_reads = cd_reads;
 	} else
@@ -999,12 +998,13 @@ static void autosave_frame(void)
 	if (++autosave.probe >= 15) {   // top screen brightness, 0-255
 		autosave.probe = 0;
 		int lum = video_probe_top();
-		autosave.dark = lum >= 0 && lum < 8 ? autosave.dark + 15 : 0;
+		// near black only: dark games (Silent Hill) must not count
+		autosave.dark = lum >= 0 && lum < 3 ? autosave.dark + 15 : 0;
 	}
 	if (autosave.still >= 30)
 		autosave_start(cd_reads != autosave.cd_reads ? "disc loading" : "still screen");
 	else if (autosave.dark >= 30)
-		autosave_start("dark screen");
+		autosave_start("black screen");
 }
 
 // Closing the lid: write the Continue auto-save and the memory card before
@@ -1395,7 +1395,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			srm_counter = 0;
 			autosave_check(srm_save(false));
 		} else if (autosave.due)
-			autosave_frame();
+			autosave_frame(repaint_top);
 		present_count++;
 		if (psx3d_skip.timing)
 			misc_ticks += svcGetSystemTick() - work_start - frame_pace - run_ticks - compose_ticks;
