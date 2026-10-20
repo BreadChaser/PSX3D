@@ -5,6 +5,7 @@
 
 .constf consts(0.5, 1.0, 0.00392156862745, 0.0)
 .constf dither_scale(0.0078125, 0.0078125, 0.0, 0.0)
+.constf uv_bias(0.015625, 0.015625, 0.0, 0.0)
 .fvec texscale
 
 .out outpos position
@@ -24,8 +25,14 @@
 	dp4 outpos.y, proj[1], r0
 	dp4 outpos.z, proj[2], r0
 	dp4 outpos.w, proj[3], r0
-	; u / size: the GPU samples at pixel centres, which land on texel centres
-	mul r1.xy, texscale.xy, intex.xy
+	; (u + 1/64) / size. Polygons are sampled where the PS1 samples, so
+	; 1:1 mapped ones sample exactly on texel edges; the GPU's interpolated
+	; coordinate lands a hair below there and took the texel to the left
+	; or above, outside the polygon: seams and black dots along mesh edges.
+	; 1/64 texel lifts those samples into their own texel. Rectangles
+	; sample texel centres, unaffected.
+	add r1.xy, uv_bias.xy, intex.xy
+	mul r1.xy, texscale.xy, r1.xy
 	mov r1.zw, consts.ww
 	mov outtc0, r1
 	; Sixteenth-pixel position / 128 maps one VRAM pixel to one 8x8 texel.

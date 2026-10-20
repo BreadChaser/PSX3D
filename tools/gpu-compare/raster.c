@@ -3,6 +3,7 @@
  * not PICA precision, its texture cache, command processor, or hardware bugs. */
 #include "citro3d.h"
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 
@@ -222,8 +223,18 @@ void C3D_DrawArrays(int primitive,int first,int n)
             long long den=llround(area*16);
             long long un=llround((b[1]*(v[1].u-v[0].u)+b[2]*(v[2].u-v[0].u))*16);
             long long vn=llround((b[1]*(v[1].v-v[0].v)+b[2]*(v[2].v-v[0].v))*16);
+            // The shader adds 1/64 texel (pica.v.pica uv_bias) before
+            // nearest selection: floor(u + 1/64) on the exact coordinate.
+            // RASTER_UV_BIAS (texels) adds a test error of a real interpolator.
+            static double uv_bias=-1e9;
+            if(uv_bias==-1e9) uv_bias=getenv("RASTER_UV_BIAS")?atof(getenv("RASTER_UV_BIAS")):0;
+            un=un*64+den; vn=vn*64+den; den*=64;
             long long ui=(long long)v[0].u+(un>=0 ? un/den : -((-un+den-1)/den));
             long long vi=(long long)v[0].v+(vn>=0 ? vn/den : -((-vn+den-1)/den));
+            if(uv_bias) {
+                ui=(long long)floor(v[0].u+(double)un/den+uv_bias);
+                vi=(long long)floor(v[0].v+(double)vn/den+uv_bias);
+            }
             for(int k=0;k<3;k++)b[k]/=area;
             float tc[4],dt[4],pc[4],s[4]={0},d[4];
             sample(0,ui,vi,tc);
