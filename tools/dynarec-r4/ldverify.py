@@ -7,9 +7,9 @@ import sys
 from pathlib import Path
 d = Path(sys.argv[1]) / 'core/libpcsxcore/new_dynarec'
 p = d / 'linkage_offsets.h'; s = p.read_text()
-old = '#define LO_dynarec_local_size\t(LO_ldtmp + 4)'
+old = '#define LO_dynarec_local_size\t(LO_mini_ht + PTRSZ*32*2)'
 assert old in s
-s = s.replace(old, '#define LO_ldshadow\t\t(LO_ldtmp + 4)\n#define LO_ldcount\t\t(LO_ldshadow + 4)\n#define LO_dynarec_local_size\t(LO_ldcount + 4)')
+s = s.replace(old, '#define LO_ldshadow\t\t(LO_mini_ht + PTRSZ*32*2)\n#define LO_ldcount\t\t(LO_ldshadow + 4)\n#define LO_dynarec_local_size\t(LO_ldcount + 4)')
 p.write_text(s)
 p = d / 'new_dynarec.c'; s = p.read_text()
 old = '''    else
