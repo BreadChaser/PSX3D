@@ -83,7 +83,11 @@ def main():
     ref = b if cross else a
     if one(ref, '__psx3d_core_text_start') is None:
         sys.exit('neither ELF was built with psx3d/core-first.ld')
-    S = lambda n: one(ref, n)
+    def S(name):
+        v = one(ref, name)
+        if v is None:
+            sys.exit(f'{name} missing: build with the current psx3d/core-first.ld')
+        return v
     regions = [  # name, start, end, rule (in ref's addresses)
         ('core code (assembly)', S('__psx3d_core_text_start'), S('__psx3d_core_asm_end'), 'fixed'),
         ('core code (C)', S('psx3d_core_align') + 0x4f0, S('__psx3d_core_text_end'), 'fixed'),
@@ -112,7 +116,8 @@ def main():
         count = sum(deltas.values())
         if not deltas:
             if hi > lo:
-                print(f'FAIL {name}: no symbols matched'); fail = True
+                print(f"{'    ' if cross else 'FAIL'} {name:22} {hi - lo:8d} B no symbols to match")
+                fail |= not cross
             continue
         d, _ = deltas.most_common(1)[0]
         shift[name] = (lo, hi, d if len(deltas) == 1 else None, d)

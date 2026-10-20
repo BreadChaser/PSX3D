@@ -17,22 +17,25 @@ risked moving the whole core by 4 KiB.
 ## Layout
 
 `psx3d/core-first.ld` (based on devkitARM's `3dsx.ld`; selected by
-`psx3d/core-first.specs`) puts the core
-(`pcsx_rearmed_libretro_ctr.a`: dynarec with its assembly, GTE, PS1 memory and
-hardware, gpu_pica + gpulib, dfsound, libretro glue) first in every section,
-then the libraries, then the frontend:
+`psx3d/core-first.specs`) puts the core (`pcsx_rearmed_libretro_ctr.a`:
+dynarec with its assembly, GTE, PS1 memory and hardware, gpu_pica + gpulib,
+dfsound, libretro glue) first in every section, then the libraries, then the
+frontend:
 
 | Section | Order | Core start |
 |---|---|---|
 | `.text` | crt0, core assembly, core C, library assembly, library C, frontend | 0x1000b0 (assembly), 0x1034f0 (C) |
-| `.rodata` | core constants, core strings, library constants, frontend constants and other strings | page offset 0xdf8 / 0x45c |
-| `.data` | core, libraries, frontend | page offset 0x1c0 |
-| `.bss` | core (`dynarec_local`, `psxRegs` first), libraries, frontend | page offset 0x4a0 / 0x058 |
+| `.rodata` | core constants, library constants, core tables, library tables, core strings; then a page with the frontend's constants and all other strings | page offsets 0xdf8, 0x45c, 0x400 |
+| `.data` | core, libraries, frontend (from a page start) | page offset 0x1c0 |
+| `.bss` | core (`dynarec_local`, `psxRegs` first), library plain bss, core, library, frontend | page offsets 0x4a0, 0x058; frontend 0x658 |
 
 Each block starts at a fixed offset within a page (`. = . + ((OFFSET - .) &
-0xfff)`, at most 4095 bytes of padding). The offsets are those of v0.4.1 RC4,
-so the core and the libraries keep RC4's cache sets; the frontend starts at its
-RC4 page offset too. The linker script ASSERTs the code addresses and the data
+0xfff)`, at most 4095 bytes of padding; inside an output section `.` counts
+from the section's start, so every section that pins starts on a page). The
+offsets are those of v0.4.1 RC4, so every core and library code, constant,
+data and bss symbol keeps RC4's cache set (`compare.py` against the RC4 ELF).
+Only the core's strings (cold), the library strings and the frontend sit at
+different offsets. The linker script ASSERTs the code addresses and the data
 page offsets.
 
 - **Code**: core and library code have fixed addresses; frontend growth only
@@ -45,18 +48,22 @@ page offsets.
   joining the shared pool would move the core's.
 - **Libraries**: linking a library function the app did not use before
   (e.g. the frontend calls a new libm function) adds that library member and
-  moves the library code after it. The core does not move.
+  moves the library code after it, and possibly the next core data block by a
+  whole page. The core's code does not move.
 
-## What still moves the core
+## What still moves code
 
-Changes in `core/` itself move the core's later code and need an Old 3DS A/B/A.
-`NDRC_LAYOUT_PAD` in `new_dynarec.c` stays: it pads the dynarec object so that
-the code after it keeps its cache sets. Recompute it whenever `new_dynarec.c`'s
-code size changes (4096 minus the growth, see `docs/dev/dynarec-r4.md`).
-
-Frontend wrappers that the core calls on hot paths (`--wrap` of citro3d
-functions, GPU submission in `renderqueue.c`) are frontend code and move with
-frontend changes, as before.
+- Changes in `core/` move the core's later code and need an Old 3DS A/B/A.
+  `NDRC_LAYOUT_PAD` in `new_dynarec.c` stays: it pads the dynarec object so the
+  code after it keeps its cache sets. Recompute it whenever `new_dynarec.c`'s
+  code size changes (4096 minus the growth, see `docs/dev/dynarec-r4.md`).
+- Frontend changes move later frontend code. The frontend has hot code too
+  (`--wrap` of citro3d functions in `gpu_cache.c`, `renderqueue.c`, audio,
+  video, input), so frontend changes to hot paths can still cost or gain up to
+  about 1% on the Old 3DS. The first core-first build showed it: `presets.o`
+  built `-O2` instead of `-Os` shifted the frontend code after it by 432 bytes,
+  and Crash 2 lost 1.6%. `presets.o` keeps `-Os` so the frontend maps as it
+  did in the measured presets build.
 
 ## Checks
 
@@ -69,24 +76,50 @@ python3 tools/layout/compare.py old.elf new.elf  # any two builds
 `check.sh` builds the frontend three times in a temporary copy against the
 built core: as is, with ~6 KB more code + 6 KB constants + 2 KB data + 4 KB bss,
 and the same plus a new libm function. `compare.py` requires every core (and,
-without `--allow-lib-moves`, library) code symbol at the same address, the core's
-constants/data/bss shifted by whole pages only, and every core code word
-identical except calls and pointers to symbols that moved. Against a build from
-before this layout (e.g. RC4) it reports how far each region moved and how many
-symbols kept their cache set.
+without `--allow-lib-moves`, library) code symbol at the same address, each
+core constant/data/bss block shifted by whole pages only, and every core code
+word identical except calls and pointers to symbols that moved. Against a build
+from before this layout (e.g. RC4) it reports how far each region moved and how
+many symbols kept their cache set. A negative control (frontend linked in front
+of the core, same grown frontend) fails: the core moves +4 KiB.
 
 ## Integrating a branch
 
-1. Rebase or merge as usual. Frontend-only branches need no layout work: no
-   padding to recompute, no slack to watch.
+1. Rebase or merge as usual. There is no padding to recompute and no frontend
+   slack to watch.
 2. `make`, then `bash tools/layout/check.sh` (the layout itself still holds).
 3. `python3 tools/layout/compare.py <previous release ELF> psx3d/PSX3D.elf`:
-   if `core/` did not change, every core symbol keeps its address and cache set.
-   If it did, Old 3DS A/B/A (heavy scenes, off + Auto) against the previous
-   release, as for any core change; recompute `NDRC_LAYOUT_PAD` if
-   `new_dynarec.c` changed.
-4. Do not reintroduce padding objects or dummy tables in the frontend.
+   without `core/` changes every core symbol keeps its address and cache set.
+4. Old 3DS A/B/A (heavy scenes, off + Auto) against the previous release for
+   core changes (recompute `NDRC_LAYOUT_PAD` if `new_dynarec.c` changed) and
+   for frontend changes to hot paths.
+5. Do not reintroduce padding objects or dummy tables in the frontend.
 
-## Hardware
+## Hardware (Old 3DS, 2026-10-20)
 
-Measured in `devtools/core-first/` (ignored); summary in the round report.
+13 heavy scenes, frameskip off and Auto, game speed %, A/B/A RC4 → candidate →
+RC4 on the same session conditions (low NTR stream as left by other rounds).
+Candidate vs the mean of the two RC4 runs:
+
+| Scene | core-first-1 off | core-first-2 off | core-first-2 Auto |
+|---|---:|---:|---:|
+| Crash 1 | −0.68% | −0.10% | −0.15% |
+| CTR | +0.02% | −0.02% | +0.36% |
+| R4 | −0.11% | −0.69% | −0.11% |
+| SotN | −0.36% | −0.61% | −0.02% |
+| SH garage | −0.17% | −0.21% | −0.47% |
+| SH alley | −0.40% | +0.29% | +0.12% |
+| SH café | −0.68% | −0.09% | −0.10% |
+| GT2 | +0.15% | −0.26% | −0.39% |
+| Tekken 3 | −0.68% | −0.44% | −0.41% |
+| FFVII | +0.01% | +0.00% | +0.01% |
+| Klonoa | −0.68% | −0.37% | +0.51% |
+| Crash 2 | −1.59% | −0.26% | +0.16% |
+| NFS HS (5 s) | −1.21% | +0.06% | +0.21% |
+
+core-first-1 (library constants after the core strings, `presets.o -O2`) lost
+up to 1.6%; core-first-2 (this layout) is within ±0.7% everywhere, RC4 brackets
+drifting ≤0.4%. CPU counters for core-first-2: instruction cache misses follow
+the presets build's pattern; data-hazard stalls are still +0.4–1.6% in every
+scene, a small data-side residue with no identified cause (core and library
+data keep RC4's cache sets).

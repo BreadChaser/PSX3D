@@ -81,8 +81,8 @@ bash tools/layout/check.sh                       # a grown frontend must not mov
 python3 tools/layout/compare.py old.elf new.elf  # two builds: what moved
 ```
 
-Changes inside `core/` still move the core's later code and need an Old 3DS
-A/B/A. See [core-first layout](dev/core-first.md).
+Changes inside `core/`, and frontend changes to hot paths, still need an Old
+3DS A/B/A. See [core-first layout](dev/core-first.md).
 
 ## Emulation identity gates
 
