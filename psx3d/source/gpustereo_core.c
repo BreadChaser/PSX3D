@@ -29,6 +29,7 @@ static inline uint32_t slot_of(uint32_t key) { return ((key * 2654435761u) >> (3
 static inline uint64_t load(unsigned i) { return __atomic_load_n(&table[i], __ATOMIC_RELAXED); }
 static inline void store(unsigned i, uint64_t e) { __atomic_store_n(&table[i], e, __ATOMIC_RELAXED); }
 #define E_VALID (1ull << 56)
+#define E_EDGE  (1ull << 57)   // on the drawing area's left/right edge: no disparity
 static inline bool fresh(uint64_t e, uint16_t now) { return (e & E_VALID) && (uint16_t)(now - (uint16_t)(e >> 40)) <= 1; }
 
 bool gs_core_alloc(void)
@@ -54,7 +55,11 @@ void gs_core_clear(void)
 	samples = 0;
 }
 
-static void put(int x, int y, float z)
+// Vertices on the drawing area's left/right edge keep their position in
+// the right eye: the scene still reaches the picture's edges (a shifted
+// edge would leave a strip the right eye never draws), and the depth goes
+// to the screen there, where the eyes see different parts of the scene.
+static void put(int x, int y, float z, bool edge)
 {
 	uint32_t key = key_of(x, y);
 	unsigned s = slot_of(key);
@@ -64,9 +69,10 @@ static void put(int x, int y, float z)
 		s ^= 1;
 	int zi = (int)lrintf(z);
 	zi = zi < 1 ? 1 : zi > 65535 ? 65535 : zi;
-	store(s, E_VALID | ((uint64_t)gen << 40) | ((uint64_t)zi << 24) | key);
+	store(s, E_VALID | (edge ? E_EDGE : 0) | ((uint64_t)gen << 40) | ((uint64_t)zi << 24) | key);
 }
 
+// depth (0: unknown); negative on the drawing area's left/right edge
 static float get(int x, int y, uint16_t now)
 {
 	uint32_t key = key_of(x, y);
@@ -74,7 +80,7 @@ static float get(int x, int y, uint16_t now)
 	for (int w = 0; w < 2; w++) {
 		uint64_t e = load(s ^ w);
 		if (fresh(e, now) && (uint32_t)(e & 0xffffff) == key)
-			return (float)((e >> 24) & 0xffff);
+			return (e & E_EDGE ? -1.0f : 1.0f) * (float)((e >> 24) & 0xffff);
 	}
 	return 0;
 }
@@ -127,7 +133,7 @@ static void clip_put(const pt *t, int x0, int y0, int x1, int y1)
 	for (int i = 0; i < n; i++) {
 		float z = depth_at(a[i].x, a[i].y);
 		if (z > 0)
-			put(a[i].x, a[i].y, z);
+			put(a[i].x, a[i].y, z, a[i].x == x0 || a[i].x == x1);
 	}
 }
 
@@ -190,7 +196,7 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 			continue;
 		if (lx >= x0 && hx <= x1 && ly >= y0 && hy <= y1) {
 			for (int k = 0; k < 3; k++)
-				put(tri[k].x, tri[k].y, 1 / tri_a[k][2]);
+				put(tri[k].x, tri[k].y, 1 / tri_a[k][2], tri[k].x == x0 || tri[k].x == x1);
 		} else
 			clip_put(tri, x0, y0, x1, y1);
 	}
@@ -234,6 +240,7 @@ int gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 		return 0;
 	for (int t = 0; t + 3 <= n; t += 3) {
 		float z[3], sum = 0;
+		bool edge[3];
 		int found = 0;
 		for (int i = 0; i < 3; i++) {
 			const gs_vtx *v = &src[t + i];
@@ -247,13 +254,15 @@ int gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 					z[i] = get(x + ax[j], y + ay[j], now);
 				}
 			}
+			edge[i] = z[i] < 0;
+			z[i] = fabsf(z[i]);
 			if (z[i]) { sum += 1 / z[i]; found++; }
 		}
 		if (!found)
 			continue;
 		for (int i = 0; i < 3; i++) {
 			float zz = z[i] ? z[i] : found / sum;
-			float d = 1 - f / zz;
+			float d = edge[i] ? 0 : 1 - f / zz;
 			d = d < -MAX_FRONT ? -MAX_FRONT : d > 1 ? 1 : d;
 			int x = dst[t + i].x + (int)lrintf(k * d);
 			dst[t + i].x = x < 0 ? 0 : x > 1024 * 16 - 1 ? 1024 * 16 - 1 : x;
