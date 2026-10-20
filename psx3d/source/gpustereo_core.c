@@ -205,24 +205,10 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 	if (found < 2)
 		return;
 	inv /= found;
-	union { float f; uint32_t u; } bits = { .f = 1 / inv };
-	unsigned b = (bits.u - 0x3f800000) >> 19;
-	b = b < HBINS ? b : HBINS - 1;
-	put_flags = 0;
-	if (bd_count && nseq < bd_count && b < bd_bin) {
-		put_flags = E_FAR;
-		bd_found++;
-	} else {
-		hist[b] += found;
-		samples += found;
-	}
-	if (nseq < MAXSEQ)
-		seq[nseq] = b;
-	nseq++;
 	int ox = sext11(e5), oy = sext11(e5 >> 11);
 	pt v[4];
 	float iz[4];
-	int i = 1;
+	int i = 1, minx = 9999, maxx = -9999, miny = 9999, maxy = -9999;
 	for (int k = 0; k < n; k++) {
 		if (k && (cmd & 0x10))
 			i++;   // gouraud colour
@@ -232,9 +218,30 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 		v[k].x = sext11(xy) + ox;
 		v[k].y = sext11(xy >> 16) + oy;
 		iz[k] = z[k] ? 1.0f / z[k] : inv;
+		minx = v[k].x < minx ? v[k].x : minx; maxx = v[k].x > maxx ? v[k].x : maxx;
+		miny = v[k].y < miny ? v[k].y : miny; maxy = v[k].y > maxy ? v[k].y : maxy;
 	}
 	int x0 = e3 & 0x3ff, y0 = (e3 >> 10) & 0x1ff;
 	int x1 = (e4 & 0x3ff) + 1, y1 = ((e4 >> 10) & 0x1ff) + 1;
+	put_flags = 0;
+	// The scene's depth range and the draw order count only what is drawn:
+	// geometry outside the drawing area (behind or beside the camera) would
+	// pull the near depth in and push the visible scene back.
+	if (maxx > x0 && minx < x1 && maxy > y0 && miny < y1) {
+		union { float f; uint32_t u; } bits = { .f = 1 / inv };
+		unsigned b = (bits.u - 0x3f800000) >> 19;
+		b = b < HBINS ? b : HBINS - 1;
+		if (bd_count && nseq < bd_count && b < bd_bin) {
+			put_flags = E_FAR;
+			bd_found++;
+		} else {
+			hist[b] += found;
+			samples += found;
+		}
+		if (nseq < MAXSEQ)
+			seq[nseq] = b;
+		nseq++;
+	}
 	static const int idx[2][3] = { { 0, 1, 2 }, { 1, 3, 2 } };
 	for (int t = 0; t < n - 2; t++) {
 		pt tri[3];
