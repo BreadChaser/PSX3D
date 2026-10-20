@@ -533,7 +533,7 @@ static bool put_allowed(const char *path)
 	return false;
 }
 /* Receive into <path>.tmp, then swap it in. 3DS FAT rename does not replace an
- * existing file, so keep the old one as <path>.bak until the new one is in
+ * existing file, so keep the old one as <path>.putold until the new one is in
  * place, and put it back if that fails (the updater's switches pattern). */
 /* extra: bytes the command reader already received past the '\n'. */
 static void put_file(int fd, const char *args, const u8 *extra, size_t extra_len)
@@ -568,7 +568,8 @@ static void put_file(int fd, const char *args, const u8 *extra, size_t extra_len
 	}
 	char tmp[PATH_LEN + 8], backup[PATH_LEN + 8];
 	snprintf(tmp, sizeof(tmp), "%s.tmp", path);
-	snprintf(backup, sizeof(backup), "%s.bak", path);
+	/* Not .bak: that name is the save's own backup copy (safefile.c). */
+	snprintf(backup, sizeof(backup), "%s.putold", path);
 	FILE *f = fopen(tmp, "wb");
 	if (!f) {
 		send_json(fd, "{\"error\":\"cannot create temporary file\"}");
