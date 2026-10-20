@@ -131,3 +131,22 @@ size_t audio_resample(audio_resampler *rs, const int16_t *in, size_t frames,
 	memcpy(rs->hist, src + frames * 2, sizeof(rs->hist));
 	return n;
 }
+
+size_t audio_repeat_tail(int16_t *out, size_t n)
+{
+	if (n < AUDIO_REPEAT + AUDIO_FADE)
+		return n;
+	// The copy ends where the next input continues. Before it, fade the last
+	// AUDIO_FADE frames over to the frames just ahead of the copied part, so
+	// the signal arrives at the copy's start without a jump.
+	memcpy(out + n * 2, out + (n - AUDIO_REPEAT) * 2, AUDIO_REPEAT * 4);
+	int16_t *end = out + (n - AUDIO_FADE) * 2, *from = end - AUDIO_REPEAT * 2;
+	for (int i = 0; i < AUDIO_FADE; i++) {
+		int w = (i + 1) * 32768 / (AUDIO_FADE + 1);
+		for (int c = 0; c < 2; c++) {
+			int a = end[i * 2 + c], b = from[i * 2 + c];
+			end[i * 2 + c] = a + (((b - a) * w + 16384) >> 15);
+		}
+	}
+	return n + AUDIO_REPEAT;
+}

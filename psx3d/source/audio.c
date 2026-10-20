@@ -7,8 +7,9 @@
 // The PS1 runs at 59.94Hz and the 3DS screen at ~59.83Hz, so the amount of
 // queued audio slowly drifts. A fixed-point cubic resampler on the CPU speeds
 // playback up or down by at most 0.5% to keep the queue at its target. When
-// emulation falls behind, optional frontend stretching slows sound further; the
-// DSP's own rate is never changed, because changing it makes the DSP click.
+// emulation falls behind, optional frontend stretching slows sound by up to 5%
+// and repeats short pieces at normal pitch beyond that; the DSP's own rate is
+// never changed, because changing it makes the DSP click.
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
@@ -54,7 +55,7 @@ static double tone_phase;
 
 // per-interval diagnostics, read and reset by audio_stats()
 static struct {
-	u32 calls, frames_in, dropped, underruns, min_q, max_q, repeats, nonzero;
+	u32 calls, frames_in, dropped, underruns, min_q, max_q, repeats, nonzero, fills;
 	u64 max_gap;
 	float rate;
 } st = { .min_q = ~0u };
@@ -431,12 +432,22 @@ size_t audio_write(const int16_t *data, size_t frames)
 	float step = audio_resample_step(&rs, err, g_cfg.audio_stretch, frames, (float)base_rate, seconds);
 	st.rate = (float)(base_rate * step);
 
+	// Stretch lowers the pitch only a little. If the queue still runs low,
+	// the game is slower than that covers: play the newest sound once more
+	// at normal pitch instead of letting the DSP run dry.
+	bool fill = g_cfg.audio_stretch && q < TARGET_QUEUE / 3;
+
 	// The core may deliver a large batch after a worker sync. Stretching a
 	// 4096-frame batch can exceed the old output buffer; consume it in chunks.
 	for (size_t at = 0; at < frames; ) {
 		size_t count = frames - at;
 		if (count > AUDIO_CHUNK) count = AUDIO_CHUNK;
 		size_t nout = audio_resample(&rs, data + at * 2, count, step, out);
+		if (fill && nout >= AUDIO_REPEAT + AUDIO_FADE) {
+			nout = audio_repeat_tail(out, nout);
+			fill = false;
+			if (statsview_collecting()) st.fills++;
+		}
 		submit((const u32 *)out, nout);
 		at += count;
 	}
@@ -459,11 +470,11 @@ void audio_stats(char *buf, size_t len)
 		snprintf(buf, len, "audio off");
 		return;
 	}
-	snprintf(buf, len, "audio in=%lu/%lu calls queue=%lu..%lu (target %d) underruns=%lu drop=%lu rate=%.0f repeat=%.1f%% maxgap=%.1fms",
+	snprintf(buf, len, "audio in=%lu/%lu calls queue=%lu..%lu (target %d) underruns=%lu drop=%lu rate=%.0f repeat=%.1f%% maxgap=%.1fms fill=%lu",
 		st.frames_in, st.calls, st.min_q == ~0u ? 0 : st.min_q, st.max_q,
 		TARGET_QUEUE, st.underruns, st.dropped, st.rate,
 		st.nonzero ? st.repeats * 100.0 / st.nonzero : 0.0,
-		st.max_gap / (double)CPU_TICKS_PER_MSEC);
+		st.max_gap / (double)CPU_TICKS_PER_MSEC, st.fills);
 	memset(&st, 0, sizeof(st));
 	st.min_q = ~0u;
 }

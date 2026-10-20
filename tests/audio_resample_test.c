@@ -62,5 +62,20 @@ int main(void)
 		for (size_t k = i > 1 ? 0 : 4; k < n; k++)
 			assert(dst.out[k*2] == 12345 && dst.out[k*2+1] == 12345);
 	}
+	// Repeating the tail keeps pitch and joins both seams without a jump:
+	// no step between samples exceeds the sine's own steepest step.
+	{
+		size_t n = 735;
+		double slope = 12000 * 2 * M_PI * 440 / 44100;
+		for (size_t i = 0; i < n; i++)
+			dst.out[i*2] = dst.out[i*2+1] = (int16_t)lrint(12000 * sin(2 * M_PI * 440 / 44100 * i));
+		size_t m = audio_repeat_tail(dst.out, n);
+		assert(m == n + AUDIO_REPEAT);
+		for (size_t i = 1; i < m; i++)
+			assert(fabs((double)dst.out[i*2] - dst.out[i*2-2]) <= slope + 2);
+		double next = 12000 * sin(2 * M_PI * 440 / 44100 * n);   // the input that follows
+		assert(fabs(next - dst.out[m*2-2]) <= slope + 2);
+		assert(audio_repeat_tail(dst.out, AUDIO_REPEAT + AUDIO_FADE - 1) == AUDIO_REPEAT + AUDIO_FADE - 1);
+	}
 	puts("audio resampler: OK");
 }
