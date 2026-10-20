@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include "psx3d.h"
+#include "safefile.h"
 
 #define DIR_ PSX3D_DIR "/games"
 #define MAX_KEYS 64
@@ -30,6 +31,7 @@ void gamecfg_load(const char *name)
 	snprintf(game, sizeof(game), "%s", name);
 	nkv = 0;
 	path_of(path, sizeof(path));
+	safe_recover(path);
 	FILE *f = fopen(path, "r");
 	if (!f)
 		return;
@@ -57,12 +59,12 @@ static void save(void)
 		return;
 	mkdir(DIR_, 0777);
 	path_of(path, sizeof(path));
-	FILE *f = fopen(path, "w");
+	FILE *f = safe_begin(path);
 	if (!f)
 		return;
 	for (int i = 0; i < nkv; i++)
 		fprintf(f, "%s=%s\n", kv[i].key, kv[i].value);
-	fclose(f);
+	safe_finish(f, path, true);
 }
 
 const char *gamecfg_get(const char *key)
@@ -128,6 +130,9 @@ bool gamecfg_reset(void)
 	if (!game[0]) return false;
 	path_of(path, sizeof(path));
 	if (remove(path) && errno != ENOENT) return false;
+	char other[PATH_LEN + 8];
+	snprintf(other, sizeof(other), "%s.bak", path);
+	remove(other);   // or an interrupted save would bring the settings back
 	nkv = 0;
 	return true;
 }

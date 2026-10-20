@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include "psx3d.h"
 #include "devtools.h"
+#include "safefile.h"
 
 #define SLOTS 10
 #define TW 256          // thumbnail size, 4:3
@@ -68,19 +69,71 @@ u16 *state_thumb_take(void)
 	return px;
 }
 
-// ... saved next to state <slot>
+#define THM_SIZE (sizeof(thm_hdr_t) + TW * TH * 2)
+
+// ... saved next to state <slot>, crash-safe with the previous one as backup
 bool state_thumb_save(const char *prefix, int slot, const u16 *px)
 {
 	char path[PATH_LEN];
+	u8 *file = malloc(THM_SIZE);
+	if (!file)
+		return false;
+	thm_hdr_t h = { THM_MAGIC, TW, TH, (u32)time(NULL) };
+	memcpy(file, &h, sizeof(h));
+	memcpy(file + sizeof(h), px, TW * TH * 2);
+	slot_path(path, sizeof(path), prefix, slot, true);
+	bool ok = safe_write(path, file, THM_SIZE, true);
+	free(file);
+	return ok;
+}
+
+// thumbnail of <slot> into px (TW x TH); skip_current: only its backup
+static bool thumb_read(const char *prefix, int slot, u16 *px, thm_hdr_t *h, bool skip_current)
+{
+	char path[PATH_LEN];
+	u8 *file = malloc(THM_SIZE);
 	bool ok = false;
 	slot_path(path, sizeof(path), prefix, slot, true);
-	FILE *f = fopen(path, "wb");
-	if (f) {
-		thm_hdr_t h = { THM_MAGIC, TW, TH, (u32)time(NULL) };
-		ok = fwrite(&h, sizeof(h), 1, f) == 1 && fwrite(px, 2, TW * TH, f) == TW * TH;
-		fclose(f);
+	if (file && safe_read(path, file, THM_SIZE, skip_current, false, NULL) != SAFE_NONE) {
+		memcpy(h, file, sizeof(*h));
+		ok = h->magic == THM_MAGIC && h->w == TW && h->h == TH;
+		if (ok)
+			memcpy(px, file + sizeof(*h), TW * TH * 2);
 	}
+	free(file);
 	return ok;
+}
+
+// the state was loaded from its backup: bring the matching thumbnail back too
+void state_thumb_restore(const char *prefix, int slot)
+{
+	char path[PATH_LEN];
+	u16 *px = malloc(TW * TH * 2);
+	thm_hdr_t h;
+	if (px && thumb_read(prefix, slot, px, &h, true)) {
+		u8 *file = malloc(THM_SIZE);
+		if (file) {
+			memcpy(file, &h, sizeof(h));
+			memcpy(file + sizeof(h), px, TW * TH * 2);
+			slot_path(path, sizeof(path), prefix, slot, true);
+			safe_repair(path, file, THM_SIZE);
+			free(file);
+		}
+	}
+	free(px);
+}
+
+// saved time of a state: its file, else its backup
+static bool state_stat(const char *prefix, int slot, u32 *saved)
+{
+	char path[PATH_LEN], bak[PATH_LEN + 8];
+	struct stat st;
+	slot_path(path, sizeof(path), prefix, slot, false);
+	snprintf(bak, sizeof(bak), "%s.bak", path);
+	if (stat(path, &st) != 0 && stat(bak, &st) != 0)
+		return false;
+	*saved = (u32)st.st_mtime;
+	return true;
 }
 
 bool state_thumb_write(const char *prefix, int slot)
@@ -119,27 +172,18 @@ static bool make_tex(C3D_Tex *t, const u16 *img)
 
 static void scan(browser_t *b, const char *prefix)
 {
-	char path[PATH_LEN];
-	struct stat st;
 	u16 *px = malloc(TW * TH * 2);
 
 	for (int i = 0; i < SLOTS; i++) {
 		slot_t *s = &b->slot[i];
-		slot_path(path, sizeof(path), prefix, i, false);
-		s->used = stat(path, &st) == 0;
-		s->saved = s->used ? (u32)st.st_mtime : 0;
+		s->used = state_stat(prefix, i, &s->saved);
 		if (!s->used || !px)
 			continue;
-		slot_path(path, sizeof(path), prefix, i, true);
-		FILE *f = fopen(path, "rb");
 		thm_hdr_t h;
-		if (f && fread(&h, sizeof(h), 1, f) == 1 && h.magic == THM_MAGIC && h.w == TW && h.h == TH &&
-		    fread(px, 2, TW * TH, f) == TW * TH && make_tex(&s->tex, px)) {
+		if (thumb_read(prefix, i, px, &h, false) && make_tex(&s->tex, px)) {
 			s->tex_ok = s->thumb = true;
 			s->saved = h.saved;
 		}
-		if (f)
-			fclose(f);
 	}
 	if (px && video_snapshot(px, TW, TH))
 		b->now_ok = make_tex(&b->now, px);
@@ -344,9 +388,9 @@ int states_run(bool saving, const char *prefix, const char *title, int *slot)
 			if (b.confirm && b.confirm_delete) {
 				char path[PATH_LEN];
 				slot_path(path, sizeof(path), prefix, b.sel, false);
-				remove(path);
+				safe_remove(path);
 				slot_path(path, sizeof(path), prefix, b.sel, true);
-				remove(path);
+				safe_remove(path);
 				if (s->tex_ok)
 					C3D_TexDelete(&s->tex);
 				memset(s, 0, sizeof(*s));
@@ -406,25 +450,16 @@ static void resume_bottom(void *ud)
 // Returns true to load the auto-save.
 bool states_resume_prompt(const char *prefix)
 {
-	char path[PATH_LEN];
-	struct stat st;
-	slot_path(path, sizeof(path), prefix, STATE_AUTO, false);
-	if (stat(path, &st) != 0)
-		return false;
 	static resume_t r;
 	memset(&r, 0, sizeof(r));
-	r.saved = (u32)st.st_mtime;
+	if (!state_stat(prefix, STATE_AUTO, &r.saved))
+		return false;
 	u16 *px = malloc(TW * TH * 2);
-	slot_path(path, sizeof(path), prefix, STATE_AUTO, true);
-	FILE *f = fopen(path, "rb");
 	thm_hdr_t h;
-	if (f && px && fread(&h, sizeof(h), 1, f) == 1 && h.magic == THM_MAGIC && h.w == TW && h.h == TH &&
-	    fread(px, 2, TW * TH, f) == TW * TH) {
+	if (px && thumb_read(prefix, STATE_AUTO, px, &h, false)) {
 		r.tex_ok = make_tex(&r.tex, px);
 		r.saved = h.saved;
 	}
-	if (f)
-		fclose(f);
 	free(px);
 	bool resume = false;
 	while (aptMainLoop()) {

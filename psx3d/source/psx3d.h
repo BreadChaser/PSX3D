@@ -230,6 +230,7 @@ bool dsp_firmware_ensure(void);
 bool state_thumb_write(const char *prefix, int slot);
 u16 *state_thumb_take(void);
 bool state_thumb_save(const char *prefix, int slot, const u16 *px);
+void state_thumb_restore(const char *prefix, int slot);
 bool states_resume_prompt(const char *prefix);
 int states_run(bool saving, const char *prefix, const char *title, int *slot);
 

@@ -12,6 +12,7 @@
 #include <strings.h>
 #include <sys/stat.h>
 #include "psx3d.h"
+#include "safefile.h"
 #include "widescreen.h"
 extern char CdromId[10];
 extern uint32_t CdromExeHash;
@@ -230,13 +231,13 @@ static void save_on(void)
 	char path[PATH_LEN];
 	mkdir(USER_DIR, 0777);
 	on_path(path, sizeof(path));
-	FILE *f = fopen(path, "w");
+	FILE *f = safe_begin(path);
 	if (!f)
 		return;
 	for (int i = 0; i < ncheats; i++)
 		if (cheats[i].on)
 			fprintf(f, "%s\n", cheats[i].desc);
-	fclose(f);
+	safe_finish(f, path, true);
 }
 
 void cheats_unload(void)
@@ -338,6 +339,7 @@ void cheats_load(const char *key)
 	log_printf("cheats: %d for %s (%d files, best %s)\n", ncheats, key, nf, best[0] ? best : "none");
 
 	on_path(path, sizeof(path));
+	safe_recover(path);
 	FILE *f = fopen(path, "r");
 	if (f) {
 		char line[512];

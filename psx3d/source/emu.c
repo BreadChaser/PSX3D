@@ -10,6 +10,7 @@
 #include "statsview.h"
 #include "devtools.h"
 #include "clip.h"
+#include "safefile.h"
 #include <sys/stat.h>
 #include "../../core/plugins/gpulib/psx3d_frameskip.h"
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
@@ -335,26 +336,10 @@ static void make_path(char *out, size_t len, const char *dir, const char *ext)
 #pragma GCC diagnostic pop
 }
 
+// Memory cards and states: written crash-safe, the previous version kept as .bak
 static bool write_file(const char *path, const void *data, size_t size)
 {
-	FILE *f = fopen(path, "wb");
-	bool ok;
-	if (!f)
-		return false;
-	ok = fwrite(data, 1, size, f) == size;
-	fclose(f);
-	return ok;
-}
-
-static size_t read_file(const char *path, void *data, size_t size)
-{
-	FILE *f = fopen(path, "rb");
-	size_t n;
-	if (!f)
-		return 0;
-	n = fread(data, 1, size, f);
-	fclose(f);
-	return n;
+	return safe_write(path, data, size, true);
 }
 
 // memory card 1 lives in the core's SAVE_RAM; we persist it as <game>.srm
@@ -371,7 +356,15 @@ static void srm_load(void)
 	if (!mem || !size)
 		return;
 	make_path(path, sizeof(path), PSX3D_SAVE_DIR, ".srm");
-	if (read_file(path, mem, size))
+	size_t got;
+	safe_source_t from = safe_read(path, mem, size, false, true, &got);
+	if (from == SAFE_BACKUP || from == SAFE_TEMP) {
+		// the card itself is missing or cut off: put the backup back in place
+		log_printf("memory card %s damaged: loaded the %s\n", path, from == SAFE_BACKUP ? "backup" : "unfinished copy");
+		if (!safe_repair(path, mem, size))
+			log_printf("memory card: could not repair %s\n", path);
+		osd("Save was damaged: restored the backup");
+	} else if (from == SAFE_CURRENT)
 		log_printf("loaded memory card %s\n", path);
 	srm_shadow = malloc(size);
 	if (srm_shadow)
@@ -450,12 +443,27 @@ static bool state_load_from(int slot)
 	if (!buf) {
 		log_printf("state: cannot allocate %u KiB to load slot %d\n", (unsigned)(size / 1024), slot);
 		osd("Not enough memory to load a state");
-	} else if (read_file(path, buf, size) == 0)
-		osd("Slot %d is empty", slot);
-	else if (!retro_unserialize(buf, size))
-		osd("That save is from an incompatible version");
-	else
-		ok = true;
+	} else {
+		safe_source_t from = safe_read(path, buf, size, false, true, NULL);
+		ok = from != SAFE_NONE && retro_unserialize(buf, size);
+		if (!ok && from == SAFE_CURRENT) {   // damaged: try the previous version
+			from = safe_read(path, buf, size, true, false, NULL);
+			ok = from != SAFE_NONE && retro_unserialize(buf, size);
+			if (!ok)
+				from = SAFE_CURRENT;
+		}
+		if (ok && from != SAFE_CURRENT) {
+			log_printf("state: %s damaged, loaded the %s\n", path, from == SAFE_BACKUP ? "backup" : "unfinished copy");
+			if (!safe_repair(path, buf, size))
+				log_printf("state: could not repair %s\n", path);
+			make_path(path, sizeof(path), PSX3D_STATE_DIR, "");
+			state_thumb_restore(path, slot);
+			osd("Save was damaged: restored the backup");
+		} else if (from == SAFE_NONE)
+			osd("Slot %d is empty", slot);
+		else if (!ok)
+			osd("That save is from an incompatible version");
+	}
 	free(buf);
 	if (ok)
 		rewind_reset();

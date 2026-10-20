@@ -6,6 +6,7 @@
 #include <string.h>
 #include <errno.h>
 #include "psx3d.h"
+#include "safefile.h"
 #include "widescreen.h"
 
 #define MAX_OVERRIDES 128
@@ -103,6 +104,7 @@ void config_load(void)
 
 	clear_overrides();
 	set_defaults();
+	safe_recover(PSX3D_CONFIG);
 	f = fopen(PSX3D_CONFIG, "r");
 	if (!f)
 		return;
@@ -187,7 +189,7 @@ void config_save(void)
 			*game_fields[i] = default_fields[i];
 		}
 	}
-	FILE *f = fopen(PSX3D_CONFIG, "w");
+	FILE *f = safe_begin(PSX3D_CONFIG);
 	if (!f)
 		goto done;
 	fprintf(f, "# PSX3D settings\ntouch_slots=1\n");
@@ -224,7 +226,7 @@ void config_save(void)
 		else if (!is_default)
 			fprintf(f, "core.%s=%s\n", ovr[i].key, ovr[i].value);
 	}
-	fclose(f);
+	safe_finish(f, PSX3D_CONFIG, true);
 done:
 	if (in_game)
 		for (int i = 0; i < GAME_FIELDS; i++) *game_fields[i] = game_values[i];
@@ -353,6 +355,7 @@ static int game_screen_get(const char *game)
 {
 	char line[PATH_LEN + 16];
 	int mode = -1;
+	safe_recover(GAMES_INI);
 	FILE *f = fopen(GAMES_INI, "r");
 	if (!f)
 		return -1;
@@ -474,9 +477,10 @@ void config_controls_defaults(void)
 // Remove the pre-0.2 screen entry too, otherwise it would reappear next launch.
 static bool forget_legacy_screen(void)
 {
+	safe_recover(GAMES_INI);
 	FILE *in = fopen(GAMES_INI, "r");
 	if (!in) return errno == ENOENT;
-	FILE *out = fopen(GAMES_INI ".tmp", "w");
+	FILE *out = safe_begin(GAMES_INI);
 	if (!out) { fclose(in); return false; }
 	char line[PATH_LEN + 16];
 	bool ok = true, found = false;
@@ -490,14 +494,8 @@ static bool forget_legacy_screen(void)
 	}
 	if (ferror(in)) ok = false;
 	fclose(in);
-	if (fclose(out)) ok = false;
-	// FAT can't rename over an existing file; leave games.ini alone without an entry.
-	if (ok && (!found || (remove(GAMES_INI) == 0 && rename(GAMES_INI ".tmp", GAMES_INI) == 0))) {
-		remove(GAMES_INI ".tmp");
-		return true;
-	}
-	remove(GAMES_INI ".tmp");
-	return false;
+	// leave games.ini alone without an entry
+	return safe_finish(out, GAMES_INI, ok && found) || (ok && !found);
 }
 
 bool config_game_reset(void)
