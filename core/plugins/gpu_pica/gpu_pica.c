@@ -230,6 +230,7 @@ static u32 fine_drawn[64][4], fine_snapshot[64][4];
 static unsigned st_gpu_tiles, st_gpu_copies;
 static bool gpu_readable;
 static int known_fx0 = 1, known_fx1, known_fy0, known_fy1;
+static int alt_fx0 = 1, alt_fx1, alt_fy0, alt_fy1;   // a second one (rcpu bit 32)
 static unsigned st_read_pixels, st_read_bytes;
 static inline bool rtt_old(void)
 {
@@ -305,6 +306,7 @@ unsigned pica_rcpu;
 #define RCPU_ADDMASK 2u // additive batches of textured primitives write the mask bit in their one pass
 #define RCPU_EVICT 8u   // atlas eviction search by sliding maxima (same choice)
 #define RCPU_ROWS 16u   // texture squares start at 8-row alignment below GPU-drawn rows
+#define RCPU_KNOWN 32u  // the known drawn rectangle grows to the union of covered drawing
 #define RCPU(bit) (pica_rcpu & (bit))
 // Set by the frontend: opens a GPU frame (waiting for the previous one to
 // finish). Called when the first drawing command of a frame arrives, so the
@@ -532,6 +534,72 @@ static u16 drawn[32];   // bit bx of row by: block (bx, by) is newer on the GPU
 static int known_bx0 = 1, known_bx1 = 0, known_by0, known_by1;   // blocks known to be all marked
 static unsigned st_readbacks;
 
+// rcpu bit 32: the known rectangle skips tile bookkeeping for primitives
+// inside it, but it was only ever replaced by a bigger one, so drawing into
+// the other framebuffer of a double-buffered game, or anywhere outside the
+// first big primitive, walked tiles already marked (200-370 times a frame
+// in GT2, CTR, FF7, SH). Grow it to the union with a just-marked rectangle
+// when all of the union is marked; otherwise grow a second rectangle the
+// same way, which takes over when it is as large (the other framebuffer).
+// This changes nothing but the shortcut.
+static bool all_marked(int x0, int y0, int x1, int y1)
+{
+	for (int by = y0; by <= y1; by++)
+		for (int word = x0 >> 5; word <= (x1 >> 5); word++) {
+			int lo = word == (x0 >> 5) ? (x0 & 31) : 0;
+			int hi = word == (x1 >> 5) ? (x1 & 31) : 31;
+			u32 mask = (~0u << lo) & (~0u >> (31-hi));
+			if (mask & (~fine_drawn[by][word] | fine_snapshot[by][word]))
+				return false;
+		}
+	return true;
+}
+
+// grow rectangle r (x0, y0, x1, y1; empty when x0 > x1) by a marked one
+static bool grow_rect(int *r, int bx0, int by0, int bx1, int by1)
+{
+	if (r[0] > r[1]) {
+		r[0] = bx0; r[1] = bx1; r[2] = by0; r[3] = by1;
+		return true;
+	}
+	int x0 = bx0 < r[0] ? bx0 : r[0], x1 = bx1 > r[1] ? bx1 : r[1];
+	int y0 = by0 < r[2] ? by0 : r[2], y1 = by1 > r[3] ? by1 : r[3];
+	if (x0 == r[0] && x1 == r[1] && y0 == r[2] && y1 == r[3])
+		return true;
+	if (!all_marked(x0, y0, x1, y1))
+		return false;
+	r[0] = x0; r[1] = x1; r[2] = y0; r[3] = y1;
+	return true;
+}
+
+static PICA_COLD void grow_known(int bx0, int by0, int bx1, int by1)
+{
+	int k[4] = { known_fx0, known_fx1, known_fy0, known_fy1 };
+	int a[4] = { alt_fx0, alt_fx1, alt_fy0, alt_fy1 };
+	if (!grow_rect(k, bx0, by0, bx1, by1) && !grow_rect(a, bx0, by0, bx1, by1) &&
+		(bx1 - bx0 + 1) * (by1 - by0 + 1) > (a[1] - a[0] + 1) * (a[3] - a[2] + 1)) {
+		a[0] = bx0; a[1] = bx1; a[2] = by0; a[3] = by1;
+	}
+	if (a[0] <= a[1] && (a[1] - a[0] + 1) * (a[3] - a[2] + 1) >= (k[1] - k[0] + 1) * (k[3] - k[2] + 1)) {
+		int t[4]; memcpy(t, k, sizeof(t)); memcpy(k, a, sizeof(k)); memcpy(a, t, sizeof(a));
+	}
+	known_fx0 = k[0]; known_fx1 = k[1]; known_fy0 = k[2]; known_fy1 = k[3];
+	alt_fx0 = a[0]; alt_fx1 = a[1]; alt_fy0 = a[2]; alt_fy1 = a[3];
+}
+
+// inside the second rectangle: make it the known one
+static inline bool in_alt(int bx0, int by0, int bx1, int by1)
+{
+	if (!RCPU(RCPU_KNOWN) || !(bx0 >= alt_fx0 && bx1 <= alt_fx1 && by0 >= alt_fy0 && by1 <= alt_fy1))
+		return false;
+	int t;
+	t = known_fx0; known_fx0 = alt_fx0; alt_fx0 = t;
+	t = known_fx1; known_fx1 = alt_fx1; alt_fx1 = t;
+	t = known_fy0; known_fy0 = alt_fy0; alt_fy0 = t;
+	t = known_fy1; known_fy1 = alt_fy1; alt_fy1 = t;
+	return true;
+}
+
 // the GPU is about to draw into pixels x0..x1, y0..y1 (inclusive)
 #ifdef PICA_LAYOUT_SPLIT
 static PICA_COLD void mark_drawn_fine(int x0, int y0, int x1, int y1)
@@ -540,6 +608,7 @@ static PICA_COLD void mark_drawn_fine(int x0, int y0, int x1, int y1)
 		gpu_readable = false;
 		int bx0 = x0 >> 3, bx1 = x1 >> 3, by0 = y0 >> 3, by1 = y1 >> 3;
 		if (bx0 >= known_fx0 && bx1 <= known_fx1 && by0 >= known_fy0 && by1 <= known_fy1) return;
+		if (in_alt(bx0, by0, bx1, by1)) return;
 		// Keep the largest covered rectangle, rather than replacing a
 		// framebuffer-sized hit with each tiny sprite outside it.
 		if (known_fx0 > known_fx1 || (bx1-bx0+1)*(by1-by0+1) >
@@ -567,6 +636,7 @@ static PICA_COLD void mark_drawn_fine(int x0, int y0, int x1, int y1)
 			}
 		}
 		if (changed) gen_clock = stamp;
+		if (RCPU(RCPU_KNOWN)) grow_known(bx0, by0, bx1, by1);
 }
 #endif
 
@@ -586,6 +656,7 @@ static noinline void PICA_HOT(mark_drawn_slow) mark_drawn_slow(int x0, int y0, i
 		gpu_readable = false;
 		int bx0 = x0 >> 3, bx1 = x1 >> 3, by0 = y0 >> 3, by1 = y1 >> 3;
 		if (bx0 >= known_fx0 && bx1 <= known_fx1 && by0 >= known_fy0 && by1 <= known_fy1) return;
+		if (in_alt(bx0, by0, bx1, by1)) return;
 		// Keep the largest covered rectangle, rather than replacing a
 		// framebuffer-sized hit with each tiny sprite outside it.
 		if (known_fx0 > known_fx1 || (bx1-bx0+1)*(by1-by0+1) >
@@ -613,6 +684,7 @@ static noinline void PICA_HOT(mark_drawn_slow) mark_drawn_slow(int x0, int y0, i
 			}
 		}
 		if (changed) gen_clock = stamp;
+		if (RCPU(RCPU_KNOWN)) grow_known(bx0, by0, bx1, by1);
 #endif
 		return;
 	}
@@ -767,6 +839,7 @@ static void PICA_COLD readback_fine(int x, int y, int w, int h)
 		}
 	}
 	known_fx0 = 1; known_fx1 = 0;
+	alt_fx0 = 1; alt_fx1 = 0;
 	st_readbacks++;
 }
 
@@ -793,6 +866,7 @@ static void PICA_COLD activate_rtt(void)
 	for (unsigned i = 0; i < sizeof(cache)/sizeof(cache[0]); i++)
 		cache[i].stamp = cache[i].checked = 0;
 	known_fx0 = 1; known_fx1 = 0;
+	alt_fx0 = 1; alt_fx1 = 0;
 	have_last = false;
 	gpu_readable = false;
 	rtt_detected = true;
@@ -2235,6 +2309,7 @@ static bool decode_gpu(tcache *c, u64 need)
 				fine_snapshot[(yy>>3)&63][xx>>8] |= 1u << ((xx>>3)&31);
 	}
 	known_fx0=1; known_fx1=0;
+	alt_fx0=1; alt_fx1=0;
 	if (base_dirty) apply_base();
 	C3D_FrameSplit(0);
 	st_splits++;
@@ -2840,6 +2915,7 @@ static void copy_on_thread(void *data)
 	// Mark only complete native tiles; the source was never read by the CPU.
 	mark_vram(dx,dy,w,h);
 	known_fx0=1; known_fx1=0;
+	alt_fx0=1; alt_fx1=0;
 	mark_drawn(dx,dy,dx+w-1,dy+h-1);
 	clear_tex_cache();
 	base_dirty=state_dirty=true; sent_valid=false;
@@ -3068,6 +3144,7 @@ static void pica_drop_fills_local(void)
 	memset(fine_draw_gen, 0, sizeof(fine_draw_gen));
 	memset(cpu_row_gen, 0, sizeof(cpu_row_gen));
 	known_fx0 = 1; known_fx1 = 0;
+	alt_fx0 = 1; alt_fx1 = 0;
 	known_bx0 = 1; known_bx1 = 0;
 	have_last = false;
 }
