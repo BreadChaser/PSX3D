@@ -8,3 +8,6 @@ cc -std=gnu11 -Wall -Wextra -Werror -fsanitize=address,undefined -g -DSAFEFILE_T
   -I"$repo_root/psx3d/source" "$repo_root/psx3d/tests/save/check.c" \
   "$repo_root/psx3d/source/safefile.c" -o "$tmp/check"
 "$tmp/check"
+cc -std=gnu11 -O2 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
+  "$repo_root/psx3d/tests/save/thumb.c" -o "$tmp/thumb"
+"$tmp/thumb"

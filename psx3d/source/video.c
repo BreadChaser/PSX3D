@@ -287,22 +287,35 @@ static bool snapshot_gpu(u16 *out, int w, int h, C3D_Tex *tex,
 	GSPGPU_InvalidateDataCache(pixels, tex->size);
 	int x0 = (int)(left * tex->width + 0.5f);
 	int y0 = (int)((1.0f - top) * tex->height + 0.5f);
+	// Texel offsets of the two sample columns of each x and rows of each y,
+	// worked out once (per sample this was float math and a division).
+	unsigned *col = malloc((w + h) * 2 * sizeof(unsigned)), *row = col + w * 2;
+	if (!col) {
+		linearFree(pixels);
+		return false;
+	}
+	for (int x = 0; x < w; x++)
+		for (int i = 0; i < 2; i++) {
+			unsigned sx = (x0 + (int)((x + 0.25f + 0.5f * i) * width / w)) % tex->width;
+			col[x * 2 + i] = ((sx >> 3) << 6) | (sx & 1) | ((sx & 2) << 1) | ((sx & 4) << 2);
+		}
+	for (int y = 0; y < h; y++)
+		for (int j = 0; j < 2; j++) {
+			unsigned sy = (y0 + (int)((y + 0.25f + 0.5f * j) * height / h)) % tex->height;
+			row[y * 2 + j] = (((sy >> 3) * (tex->width >> 3)) << 6) | ((sy & 1) << 1) | ((sy & 2) << 2) | ((sy & 4) << 3);
+		}
 	for (int y = 0; y < h; y++) {
 		for (int x = 0; x < w; x++) {
 			unsigned r = 0, g = 0, b = 0;
 			for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) {
-				unsigned sx = (x0 + (int)((x + 0.25f + 0.5f * i) * width / w)) % tex->width;
-				unsigned sy = (y0 + (int)((y + 0.25f + 0.5f * j) * height / h)) % tex->height;
-				unsigned tile = (((sy >> 3) * (tex->width >> 3) + (sx >> 3)) << 6) |
-					(sx & 1) | ((sy & 1) << 1) | ((sx & 2) << 1) |
-					((sy & 2) << 2) | ((sx & 4) << 2) | ((sy & 4) << 3);
-				u16 p = pixels[tile]; // GPU_RGBA5551; alpha is the PS1 mask bit
+				u16 p = pixels[row[y * 2 + j] + col[x * 2 + i]]; // GPU_RGBA5551; alpha is the PS1 mask bit
 				r += p >> 11; g += (p >> 6) & 31; b += (p >> 1) & 31;
 			}
 			unsigned green = g / 4;
 			out[y * w + x] = ((r / 4) << 11) | ((green * 2 + (green >> 4)) << 5) | (b / 4);
 		}
 	}
+	free(col);
 	linearFree(pixels);
 	return true;
 }
