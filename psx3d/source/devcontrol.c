@@ -170,7 +170,6 @@ static void publish_status(void)
 	p += sprintf(p, ",\"version\":\"%s\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
 	p += sprintf(p, ",\"pica_prims\":%u,\"idle\":%d,\"idleptr\":%d,\"idledelay\":%d", pica_prims, psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay);
 	p += sprintf(p, ",\"skipgate\":\"%s\"", psx3d_skipgate ? "new" : "old");
-	p += sprintf(p, ",\"rcpu\":%u", pica_rcpu);
 	p += sprintf(p, ",\"texmask\":\"%s\",\"texmemo\":\"%s\"",
 	             pica_texmask ? "new" : "old", pica_texmemo ? "new" : "old");
 	clip_status_json(p, sizeof(settings)-(size_t)(p-settings)); p+=strlen(p);

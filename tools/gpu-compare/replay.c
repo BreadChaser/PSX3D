@@ -79,7 +79,6 @@ int main(int argc,char **argv)
     extern bool pica_texmask, pica_texmemo;
     if(getenv("TEXMASK"))pica_texmask=atoi(getenv("TEXMASK"));
     if(getenv("TEXMEMO"))pica_texmemo=atoi(getenv("TEXMEMO"));
-    { extern unsigned pica_rcpu; if(getenv("RCPU"))pica_rcpu=strtoul(getenv("RCPU"),NULL,0); }
     pica_frame_started();
 #endif
     uint32_t ex[8]={0}; int rect[5]={0}; unsigned header[2];

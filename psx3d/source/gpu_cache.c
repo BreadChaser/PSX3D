@@ -119,8 +119,7 @@ u8 video_cache_frame_end(u8 flags)
 
 // citro3d updates the shader uniforms on every draw, twice (vertex and
 // geometry stage), scanning 96 + 4 dirty flags a byte at a time; nearly
-// always nothing is dirty. Skip the call then (rcpu bit 4): the commands
-// are the same. The shader constants' dirty flag is private to citro3d,
+// always nothing is dirty. Skip the call then: the commands are the same. The shader constants' dirty flag is private to citro3d,
 // so the two functions that set it are wrapped to note it.
 static bool shader_consts_dirty[2] = { true, true };
 void __real_C3D_UpdateUniforms(GPU_SHADER_TYPE type);
@@ -156,7 +155,7 @@ static bool any_set(const bool *flags, unsigned n)
 
 void __wrap_C3D_UpdateUniforms(GPU_SHADER_TYPE type)
 {
-	if ((pica_rcpu & 4) && !shader_consts_dirty[type] && !C3D_BoolUnifsDirty[type] &&
+	if (!shader_consts_dirty[type] && !C3D_BoolUnifsDirty[type] &&
 		!any_set(C3D_FVUnifDirty[type], C3D_FVUNIF_COUNT) && !any_set(C3D_IVUnifDirty[type], C3D_IVUNIF_COUNT))
 		return;
 	shader_consts_dirty[type] = false;

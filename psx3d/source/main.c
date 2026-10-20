@@ -217,7 +217,6 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "texmemo=new")) pica_texmemo = true;
 		else if (!strcmp(a, "texmask=old")) pica_texmask = false;
 		else if (!strcmp(a, "texmask=new")) pica_texmask = true;
-		else if (!strncmp(a, "rcpu=", 5)) pica_rcpu = strtoul(a + 5, NULL, 0);
 		else if (!strncmp(a, "gldbg=", 6)) sw_gldbg = atoi(a + 6);
 		else if (!strncmp(a, "vramdump=", 9)) sw_vramdump = atoi(a + 9);
 		else if (!strncmp(a, "pmu=", 4)) sscanf(a + 4, "%x,%x", (unsigned *)&sw_pmu0, (unsigned *)&sw_pmu1);

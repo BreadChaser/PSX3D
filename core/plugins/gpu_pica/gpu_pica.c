@@ -230,7 +230,7 @@ static u32 fine_drawn[64][4], fine_snapshot[64][4];
 static unsigned st_gpu_tiles, st_gpu_copies;
 static bool gpu_readable;
 static int known_fx0 = 1, known_fx1, known_fy0, known_fy1;
-static int alt_fx0 = 1, alt_fx1, alt_fy0, alt_fy1;   // a second one (rcpu bit 32)
+static int alt_fx0 = 1, alt_fx1, alt_fy0, alt_fy1;   // a second one (see grow_known)
 static unsigned st_read_pixels, st_read_bytes;
 static inline bool rtt_old(void)
 {
@@ -263,7 +263,7 @@ typedef struct {
 static drawstate cur, sent;
 static bool sent_valid;
 static bool batch_semi;   // any primitive in this batch actually enables blending
-static bool batch_untex;  // ...is an untextured effect (rcpu bit 2)
+static bool batch_untex;  // ...is an untextured effect (see flush_current)
 // Additive effects may wait behind later, disjoint solid/half primitives.
 // Cached staging avoids reading back the write-only linear vertex buffer.
 #define ADD_PRIMS 32
@@ -300,14 +300,6 @@ unsigned pica_prims = 7;   // named pica_prims_* experiments, separate from gldb
 #else
 #define PRIM_TEST(mask) (pica_prims & (mask))
 #endif
-// Renderer CPU experiments (switch rcpu=N, a bit per change) for same-binary A/B.
-unsigned pica_rcpu;
-#define RCPU_DEFER 1u   // blended passes wait in addq: masked additive, subtract/quarter pass 1
-#define RCPU_ADDMASK 2u // additive batches of textured primitives write the mask bit in their one pass
-#define RCPU_EVICT 8u   // atlas eviction search by sliding maxima (same choice)
-#define RCPU_ROWS 16u   // texture squares start at 8-row alignment below GPU-drawn rows
-#define RCPU_KNOWN 32u  // the known drawn rectangle grows to the union of covered drawing
-#define RCPU(bit) (pica_rcpu & (bit))
 // Set by the frontend: opens a GPU frame (waiting for the previous one to
 // finish). Called when the first drawing command of a frame arrives, so the
 // GPU finishes the last frame while the game's own code runs.
@@ -534,7 +526,7 @@ static u16 drawn[32];   // bit bx of row by: block (bx, by) is newer on the GPU
 static int known_bx0 = 1, known_bx1 = 0, known_by0, known_by1;   // blocks known to be all marked
 static unsigned st_readbacks;
 
-// rcpu bit 32: the known rectangle skips tile bookkeeping for primitives
+// The known rectangle skips tile bookkeeping for primitives
 // inside it, but it was only ever replaced by a bigger one, so drawing into
 // the other framebuffer of a double-buffered game, or anywhere outside the
 // first big primitive, walked tiles already marked (200-370 times a frame
@@ -590,7 +582,7 @@ static PICA_COLD void grow_known(int bx0, int by0, int bx1, int by1)
 // inside the second rectangle: make it the known one
 static inline bool in_alt(int bx0, int by0, int bx1, int by1)
 {
-	if (!RCPU(RCPU_KNOWN) || !(bx0 >= alt_fx0 && bx1 <= alt_fx1 && by0 >= alt_fy0 && by1 <= alt_fy1))
+	if (!(bx0 >= alt_fx0 && bx1 <= alt_fx1 && by0 >= alt_fy0 && by1 <= alt_fy1))
 		return false;
 	int t;
 	t = known_fx0; known_fx0 = alt_fx0; alt_fx0 = t;
@@ -636,7 +628,7 @@ static PICA_COLD void mark_drawn_fine(int x0, int y0, int x1, int y1)
 			}
 		}
 		if (changed) gen_clock = stamp;
-		if (RCPU(RCPU_KNOWN)) grow_known(bx0, by0, bx1, by1);
+		grow_known(bx0, by0, bx1, by1);
 }
 #endif
 
@@ -684,7 +676,7 @@ static noinline void PICA_HOT(mark_drawn_slow) mark_drawn_slow(int x0, int y0, i
 			}
 		}
 		if (changed) gen_clock = stamp;
-		if (RCPU(RCPU_KNOWN)) grow_known(bx0, by0, bx1, by1);
+		grow_known(bx0, by0, bx1, by1);
 #endif
 		return;
 	}
@@ -1412,12 +1404,14 @@ static PICA_COLD tcache *take_rect(int cw, int ch)
 			f &= ~m >> k;   // bit x: cells x..x+cw-1 are free
 		if (f) { bx = __builtin_ctz(f); by = y; }
 	}
-	if (bx < 0 && RCPU(RCPU_EVICT)) {
-		// The same window, found cheaply: each cell's value once (from the
-		// entries in use, each read once: their cells are exactly theirs),
-		// then maxima over cw columns and ch rows by doubling spans in place
-		// (a window of w is the maximum of two overlapping power-of-two
-		// spans), then the first smallest window in the same scan order.
+	if (bx < 0) {
+		// The window whose newest occupant is oldest: each cell's value
+		// once (from the entries in use, each read once: their cells are
+		// exactly theirs), then maxima over cw columns and ch rows by
+		// doubling spans in place (a window of w is the maximum of two
+		// overlapping power-of-two spans), then the first smallest window.
+		// Looking up every cell's owner cw and ch times per window cost
+		// NFS ~9 ms a frame after loading, when it evicts many times.
 		static u64 m[CELLS][CELLS];
 		memset(m, 0, sizeof(m));
 		m[plain->ay >> 5][plain->ax >> 5] = ~0ull;
@@ -1454,32 +1448,6 @@ static PICA_COLD tcache *take_rect(int cw, int ch)
 			for (int x = bx; x < bx + cw; x++)
 				if (cell_owner[y * CELLS + x] >= 0)
 					evict(&cache[cell_owner[y * CELLS + x]]);
-	} else if (bx < 0) {
-		// row maxima over cw cells, then the best window over ch rows
-		static u64 hmax[CELLS * CELLS];
-		for (int y = 0; y < CELLS; y++)
-			for (int x = 0; x + cw <= CELLS; x++) {
-				u64 m = 0;
-				for (int k = 0; k < cw; k++) {
-					int o = cell_owner[y * CELLS + x + k];
-					u64 v = o == CELL_PLAIN ? ~0ull : o < 0 ? 0 :
-						((u64)(cache[o].used_seq > synced_seq) << 32) | cache[o].lru;
-					if (v > m) m = v;
-				}
-				hmax[y * CELLS + x] = m;
-			}
-		u64 best = ~0ull;
-		for (int y = 0; y + ch <= CELLS; y++)
-			for (int x = 0; x + cw <= CELLS; x++) {
-				u64 m = 0;
-				for (int k = 0; k < ch && m < best; k++)
-					if (hmax[(y + k) * CELLS + x] > m) m = hmax[(y + k) * CELLS + x];
-				if (m < best) { best = m; bx = x; by = y; }
-			}
-		for (int y = by; y < by + ch; y++)
-			for (int x = bx; x < bx + cw; x++)
-				if (cell_owner[y * CELLS + x] >= 0)
-					evict(&cache[cell_owner[y * CELLS + x]]);
 	}
 	int lg = cw > ch ? cw : ch;
 	lg = lg <= 1 ? 0 : lg <= 2 ? 1 : lg <= 4 ? 2 : 3;
@@ -1499,7 +1467,7 @@ static PICA_COLD tcache *take_rect(int cw, int ch)
 
 static inline bool region_cache(void);
 
-// rcpu bit 16: a square starting 32-row aligned can take in rows above the
+// A square starting 32-row aligned can take in rows above the
 // request that the GPU draws (CTR keeps textures right below its 216-row
 // framebuffer). Those rows then invalidated it every frame and made each
 // decode read the framebuffer back, a full GPU wait, for texels never drawn
@@ -1526,7 +1494,7 @@ static tcache *take_entry(int depth, u16 pg, int u0, int u1, int v0, int v1, int
 {
 	int cw, ch;
 	rect_for(u0, u1, v0, v1, rx, ry, &cw, &ch);
-	if (RCPU(RCPU_ROWS) && region_cache())
+	if (region_cache())
 		avoid_drawn_rows(depth, pg, v0, v1, *rx, cw, ry, &ch);
 	return take_rect(cw, ch);
 }
@@ -1958,11 +1926,11 @@ static void flush_current(void)
 	u8 original_mask = cur.mask;
 	if (cur.blend == BL_HALF && !batch_semi)
 		cur.blend = BL_OPAQUE;
-	// rcpu bit 2: the alpha an additive batch blends with is 0 for opaque
-	// texels and 1 for STP ones, the PS1 mask bit itself; without untextured
-	// primitives (alpha tagged 0 for the mask pass) it can be written directly
-	if (cur.blend == BL_ADD && !(cur.mask & 3) && !batch_untex &&
-		(pica_rcpu & (RCPU_DEFER | RCPU_ADDMASK)) == (RCPU_DEFER | RCPU_ADDMASK))
+	// The alpha an additive batch blends with is 0 for opaque texels and 1
+	// for STP ones, the PS1 mask bit itself; without untextured primitives
+	// (alpha tagged 0 for the mask pass) it is written directly (mask 4),
+	// saving the second draw.
+	if (cur.blend == BL_ADD && !(cur.mask & 3) && !batch_untex)
 		cur.mask = 4;
 	if (!sent_valid || sent.blend != cur.blend || sent.mask != cur.mask)
 		state_dirty = true;
@@ -2182,8 +2150,7 @@ static bool add_overlap(int x0, int y0, int x1, int y1)
 	return false;
 }
 
-// rcpu bit 1: a blended pass (additive, or pass 1 of subtract/quarter) may
-// wait in addq while later disjoint primitives draw, so alternating effects
+// A blended pass (additive, or pass 1 of subtract/quarter) may wait in addq while later disjoint primitives draw, so alternating effects
 // stop ending a batch each. E6 mask setting is a per-pixel write and is kept
 // in the queued state; only mask checking needs the original order. Queued
 // entries share one state. Plain additive ones may overlap each other, as
@@ -2191,7 +2158,7 @@ static bool add_overlap(int x0, int y0, int x1, int y1)
 // blending commutes.
 static inline bool defer_allowed(void)
 {
-	return RCPU(RCPU_DEFER) && !(ps.mask & 2) && !(pica_debug & 65536);
+	return !(ps.mask & 2) && !(pica_debug & 65536);
 }
 
 // the batch being filled already has this state: draw straight into it
@@ -2228,41 +2195,15 @@ static noinline pvtx *defer_verts(int blend, int pass, bool dither, tcache *tex,
 static noinline pvtx *effect_verts(int blend, tcache *tex, int nv,
 	int bx0, int by0, int bx1, int by1, bool dither)
 {
-	if (RCPU(RCPU_DEFER)) {
-		if (blend == BL_ADD && defer_allowed() && !batch_is(BL_ADD, 0, dither))
-			return defer_verts(BL_ADD, 0, dither, tex, nv, bx0, by0, bx1, by1);
-		if (addq.n && ((ps.mask & 2) || ps.area_gen != addq.area_gen || add_overlap(bx0, by0, bx1, by1)))
-			flush();
-		use_state(0, blend == BL_ADD ? BL_ADD : BL_HALF, TX_MOD, 0, dither);
-		pvtx *o = alloc_verts(nv);
-		if (o) {
-			batch_semi |= blend != BL_OPAQUE;
-			batch_untex |= tex == plain;
-		}
-		return o;
-	}
-	bool defer = blend == BL_ADD && !(ps.mask & 3) && !(pica_debug & 65536);
-	if (addq.n && (ps.mask || ps.area_gen != addq.area_gen || dither != addq.state.dither ||
-		addq.n == ADD_PRIMS || (!defer && add_overlap(bx0, by0, bx1, by1))))
+	if (blend == BL_ADD && defer_allowed() && !batch_is(BL_ADD, 0, dither))
+		return defer_verts(BL_ADD, 0, dither, tex, nv, bx0, by0, bx1, by1);
+	if (addq.n && ((ps.mask & 2) || ps.area_gen != addq.area_gen || add_overlap(bx0, by0, bx1, by1)))
 		flush();
-	pvtx *o;
-	if (defer && cur.blend != BL_ADD) {
-		if (!addq.n) {
-			addq.state = (drawstate){ .atlas = 0, .blend = BL_ADD, .texmode = TX_MOD, .dither = dither,
-				.sc = { ps.dx1, ps.dy1, ps.dx2, ps.dy2 } };
-			addq.area_gen = ps.area_gen;
-		}
-		s16 *b = addq.bounds[addq.n];
-		b[0] = bx0; b[1] = by0; b[2] = bx1; b[3] = by1;
-		addq.tex[addq.n++] = tex;
-		o = addq.verts + addq.nv;
-		addq.nv += nv;
-	} else {
-		use_state(0, blend == BL_ADD ? BL_ADD : BL_HALF, TX_MOD, 0, dither);
-		o = alloc_verts(nv);
-		if (!o)
-			return NULL;
+	use_state(0, blend == BL_ADD ? BL_ADD : BL_HALF, TX_MOD, 0, dither);
+	pvtx *o = alloc_verts(nv);
+	if (o) {
 		batch_semi |= blend != BL_OPAQUE;
+		batch_untex |= tex == plain;
 	}
 	return o;
 }
@@ -2513,7 +2454,7 @@ static void noinline PICA_HOT(emit_tris) emit_tris(const pvtx *v, int ntri, int 
 	}
 	const int qx0 = lx, qy0 = ly, qx1 = hx, qy1 = hy;   // bounds against queued passes
 	// (an additive primitive that will wait in the queue itself is checked there)
-	if (addq.n && (!RCPU(RCPU_DEFER) || (ps.mask & 2) || ps.area_gen != addq.area_gen ||
+	if (addq.n && ((ps.mask & 2) || ps.area_gen != addq.area_gen ||
 		(!(blend == BL_ADD && defer_allowed()) && add_overlap(lx, ly, hx, hy))))
 		flush();
 	{
