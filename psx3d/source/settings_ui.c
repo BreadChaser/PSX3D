@@ -3,6 +3,7 @@
 #include "psx3d.h"
 #include "statsview.h"
 #include "widescreen.h"
+#include "audio_resample.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -82,7 +83,7 @@ static const char *const helps[] = {
  [F_STEREO]="Screen depth puts the whole picture behind the screen. Real 3D gives each object its own depth; the 3D slider sets how strong.",
  [F_FPS]="FPS shows new pictures per second and game speed on the bottom screen. Detailed adds more numbers. Tap the counter to switch views.",
  [F_SIDE]="Place the touch buttons on the right or left side. The menu button and logo move to the other side.",
- [F_AUDIO]="Keep sound flowing when a game runs slowly; music and voices slow down with it.",
+ [F_AUDIO]="Slow the sound a little (at most 3%) to cover short slowdowns, so music and voices keep their pitch.",
  [F_SOUNDS]="Play a sound when you move through menus or select an item.",
  [F_MUSIC]="Play background music while browsing your games.",
  [F_REWIND]="Save recent moments so you can hold the Rewind button to go back. Needs free memory.",
@@ -396,7 +397,7 @@ static void change(settings_ui_t *s, int item, int dir)
 		input_touch_reset();
 		break;
 	case F_AUDIO:
-		g_cfg.audio_stretch = g_cfg.audio_stretch ? 0 : 50;
+		g_cfg.audio_stretch = g_cfg.audio_stretch ? 0 : AUDIO_STRETCH_MAX;
 		break;
 	case F_SOUNDS:
 		g_cfg.sounds ^= 1;

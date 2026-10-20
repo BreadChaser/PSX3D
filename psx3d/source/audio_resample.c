@@ -9,7 +9,7 @@ float audio_resample_step(audio_resampler *rs, float err, int percent,
 	if (err > 1.0f) err = 1.0f;
 	if (err < -1.0f) err = -1.0f;
 	if (percent < 0) percent = 0;
-	if (percent > 50) percent = 50;
+	if (percent > AUDIO_STRETCH_MAX) percent = AUDIO_STRETCH_MAX;
 	if (seconds < 0) seconds = 0;
 	// SPU worker callbacks can be bunched together. Measure their combined
 	// input over time, rather than mistaking each short gap for full speed.

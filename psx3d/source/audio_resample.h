@@ -8,6 +8,10 @@
 // A chunk at the minimum step (0.495) fits comfortably in 4096 output frames.
 #define AUDIO_CHUNK 1024
 #define AUDIO_OUT 4096
+// Audio stretch slows sound (and lowers its pitch) by at most this many
+// percent when the game runs slow; beyond that the sound underruns instead.
+// Up to 50% made voices and music sound deep in slow scenes.
+#define AUDIO_STRETCH_MAX 3
 
 typedef struct {
 	int16_t hist[6];

@@ -8,6 +8,7 @@
 #include "psx3d.h"
 #include "safefile.h"
 #include "widescreen.h"
+#include "audio_resample.h"
 
 #define MAX_OVERRIDES 128
 
@@ -79,7 +80,7 @@ static void set_defaults(void)
 	g_cfg.sounds = 1;
 	g_cfg.music = 1;
 	g_cfg.bottom_off = 1;
-	g_cfg.audio_stretch = 50; // both models: only used when sound runs low
+	g_cfg.audio_stretch = AUDIO_STRETCH_MAX; // both models: only used when sound runs low
 	g_cfg.touch_stick = -1;
 	input_map_reset();
 	for (size_t i = 0; i < sizeof(tuned_defaults) / sizeof(tuned_defaults[0]); i++)
@@ -158,7 +159,7 @@ void config_load(void)
 			g_cfg.bottom_off = atoi(v) != 0;
 		else if (strcmp(k, "audio_stretch") == 0) {
 			int n = atoi(v);
-			g_cfg.audio_stretch = n < 0 ? 0 : n > 50 ? 50 : n;
+			g_cfg.audio_stretch = n < 0 ? 0 : n > AUDIO_STRETCH_MAX ? AUDIO_STRETCH_MAX : n;
 		}
 		else if (strcmp(k, "debug") == 0)
 			g_cfg.debug = atoi(v) != 0;

@@ -9,14 +9,14 @@ int main(void)
 {
 	audio_resampler rs = {0};
 	// Full-speed production must never trigger slowdown, including a short
-	// queue dip. Sustained 60% production should settle near a 0.6 step.
+	// queue dip. Sustained 60% production slows sound by the 3% limit only.
 	for (int i = 0; i < 3600; i++)
 		assert(audio_resample_step(&rs, -0.75f, 50, 735, 44100, 1.0f/60) > 0.996f);
 	assert(rs.slow == 0);
 	float step = 1;
 	for (int i = 0; i < 1200; i++)
 		step = audio_resample_step(&rs, -1, 50, 735, 44100, 1.0f/36);
-	assert(fabsf(step - 0.585f) < 0.002f);
+	assert(fabsf(step - (0.995f - AUDIO_STRETCH_MAX * 0.01f)) < 0.002f);
 	assert(audio_resample_step(&rs, -1, 0, 735, 44100, 1.0f/36) == 0.995f);
 	assert(rs.slow == 0);
 	// Bursty worker deliveries preserve the measured production rate.
