@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Small GPU streams with independently checkable pixels; no game data needed."""
 import argparse
+import os
 from pathlib import Path
 import struct
 import subprocess
@@ -170,7 +171,26 @@ def generate(directory):
     # More than a page, both flipped: repeated wraps then clipping.
     t.commands([0xe100310a,0x65808080,xy(16,80),uv(0,0),xy(600,300)])
     t.finish()
-    return ["sprite-wrap", "ordered-dither", "texture-colours", "polygon-sampling", "transparent-add-mask", "stp-half-mask", "stp-mask-order", "forced-add-mask", "stp-sub-mask", "stp-quarter-mask", "stp-batch-order", "known-mask-half-blend"]
+    # 1:1 textured quads sharing edges, texels 8..39 inside an opaque black
+    # border. Run with a simulated interpolator error (RASTER_UV_BIAS): no
+    # sample may land on a border texel (black seams along mesh edges).
+    vram=[0]*(1024*512)
+    for v in range(48):
+        for u in range(48):
+            inside=8<=u<40 and 8<=v<40
+            vram[v*1024+640+u]=((10+(u&7))|((12+(v&7))<<5)|(20<<10)) if inside else 0x8000
+    t=Trace(directory/"texel-edges.gputrace")
+    t.init(vram)
+    t.commands([0xe100010a])
+    for j in range(4):
+        for i in range(4):
+            x,y,u,v=20+8*i,20+8*j,8+8*i,8+8*j
+            t.commands([0x2c808080,xy(x,y),uv(u,v),xy(x+8,y),uv(u+8,v,0x10a),xy(x,y+8),uv(u,v+8),xy(x+8,y+8),uv(u+8,v+8)])
+    # the same texture on two triangles at an offset, one quad diagonal shared
+    t.commands([0x24808080,xy(80,20),uv(8,8),xy(112,20),uv(40,8,0x10a),xy(80,52),uv(8,40),
+                0x24808080,xy(112,20),uv(40,8),xy(112,52),uv(40,40,0x10a),xy(80,52),uv(8,40)])
+    t.finish()
+    return ["texel-edges", "sprite-wrap", "ordered-dither", "texture-colours", "polygon-sampling", "transparent-add-mask", "stp-half-mask", "stp-mask-order", "forced-add-mask", "stp-sub-mask", "stp-quarter-mask", "stp-batch-order", "known-mask-half-blend"]
 
 
 def main():
@@ -201,16 +221,19 @@ def main():
                 im.save(dest/"frame-0001.ppm")
                 continue
             binary=args.pica if renderer=="pica" and args.pica else args.build/("replay-"+renderer)
-            subprocess.run([binary,args.output/(name+".gputrace"),dest],check=True)
+            env=dict(os.environ,RASTER_UV_BIAS="-0.004") if name=="texel-edges" and renderer=="pica" else None
+            subprocess.run([binary,args.output/(name+".gputrace"),dest],check=True,env=env)
         reference=args.output/name/"peops/frame-0001.ppm"
         pica=args.output/name/"pica/frame-0001.ppm"
         print(name,images(reference,pica,args.output,name,"PS1 modulo addressing" if name=="sprite-wrap" else "P.E.Op.S."))
+        if args.check and name=="texel-edges":
+            from PIL import Image,ImageChops
+            assert ImageChops.difference(Image.open(reference),Image.open(pica)).getbbox() is None, "texel edges"
         if args.check and name=="sprite-wrap":
             from PIL import Image,ImageChops
             assert ImageChops.difference(Image.open(reference),Image.open(pica)).getbbox() is None, "sprite wrap"
         if args.check and name=="ordered-dither":
             from PIL import Image
-            import os
             im=Image.open(pica)
             mode=int(os.environ.get("GPU_DITHER","1"))
             matrix=[[-4,0,-3,1],[2,-2,3,-1],[-3,1,-4,0],[3,-1,2,-2]]
