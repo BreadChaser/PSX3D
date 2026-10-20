@@ -59,6 +59,10 @@ static inline float fast_log2(float z)
 	return e + m * (1.3466f - 0.3466f * m);
 }
 
+// once per frame or per game: optimised for size (the frontend's code sits
+// before the core's aligned start, which must not move)
+#define GS_COLD __attribute__((cold))
+
 static inline int sext11(uint32_t v) { return ((int32_t)(v << 21)) >> 21; }
 static inline uint32_t key_of(int x, int y) { return ((uint32_t)(y & 0xfff) << 12) | (uint32_t)(x & 0xfff); }
 static inline uint32_t slot_of(uint32_t key) { return ((key * 2654435761u) >> (32 - GS_BITS)) & ~(GS_WAYS - 1u); }
@@ -70,7 +74,7 @@ static inline void store(unsigned i, uint64_t e) { __atomic_store_n(&table[i], e
 #define E_FAR   (1ull << 58)   // a backdrop's: at the back
 static inline unsigned age(uint64_t e, uint16_t now) { return e & E_VALID ? (uint16_t)(now - (uint16_t)(e >> 40)) : 0xffff; }
 
-bool gs_core_alloc(void)
+GS_COLD bool gs_core_alloc(void)
 {
 	if (!table)
 		table = calloc(GS_SIZE, sizeof(*table));
@@ -79,7 +83,7 @@ bool gs_core_alloc(void)
 	return table && seq;
 }
 
-void gs_core_free(void)
+GS_COLD void gs_core_free(void)
 {
 	free(table);
 	free(seq);
@@ -88,7 +92,7 @@ void gs_core_free(void)
 	strength = near_z = far_z = 0;
 }
 
-void gs_core_clear(void)
+GS_COLD void gs_core_clear(void)
 {
 	if (table)
 		memset(table, 0, GS_SIZE * sizeof(*table));
@@ -276,7 +280,7 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 }
 
 // z at the given share of this frame's depth samples (bin centre)
-static float percentile(unsigned share)
+GS_COLD static float percentile(unsigned share)
 {
 	unsigned want = samples * share / 100, sum = 0;
 	int b = 0;
@@ -288,7 +292,7 @@ static float percentile(unsigned share)
 
 // Hysteresis: small changes don't move the range; a new one (a camera cut)
 // is reached over about half a second.
-static void follow(float *now, float *aim, float z)
+GS_COLD static void follow(float *now, float *aim, float z)
 {
 	if (*now <= 0)
 		*now = *aim = z;
@@ -297,7 +301,7 @@ static void follow(float *now, float *aim, float z)
 	*now += (*aim - *now) * 0.04f;
 }
 
-static unsigned median_of(const uint16_t *h, unsigned n)
+GS_COLD static unsigned median_of(const uint16_t *h, unsigned n)
 {
 	unsigned sum = 0, b = 0;
 	while (b < HBINS - 1 && (sum += h[b]) <= n / 2)
@@ -306,7 +310,7 @@ static unsigned median_of(const uint16_t *h, unsigned n)
 }
 
 // the leading part of the frame's polygons nearer than the rest (see seq)
-static void find_backdrop(void)
+GS_COLD static void find_backdrop(void)
 {
 	static uint16_t all[HBINS], pre[HBINS];
 	unsigned n = nseq < MAXSEQ ? nseq : MAXSEQ, best = 0, best_k = 0, best_bin = 0;
@@ -335,7 +339,7 @@ static void find_backdrop(void)
 	nseq = 0;
 }
 
-void gs_core_frame(float s, int hres)
+GS_COLD void gs_core_frame(float s, int hres)
 {
 	find_backdrop();
 	if (samples >= 6) {
@@ -355,7 +359,7 @@ void gs_core_frame(float s, int hres)
 
 float gs_focus(void) { return near_z; }
 
-void gs_core_counts(unsigned *lookups, unsigned *found, unsigned *shifted, unsigned *rejected)
+GS_COLD void gs_core_counts(unsigned *lookups, unsigned *found, unsigned *shifted, unsigned *rejected)
 {
 	*lookups = n_lookups; *found = n_found; *shifted = n_shifted; *rejected = n_rejected;
 	n_lookups = n_found = n_shifted = n_rejected = 0;
