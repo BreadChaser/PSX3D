@@ -366,6 +366,8 @@ struct compile_state
   struct link_entry link_addr[MAXBLOCK];
   uint64_t unneeded_reg[MAXBLOCK];
   uint64_t branch_unneeded_reg[MAXBLOCK];
+  u_int ld_delay_deny[8];  // load delay renames not to repeat (ld_delay_rename)
+  int ld_delay_deny_cnt;
 };
 
   #define HACK_ENABLED(x) ((ndrc_g.hacks | ndrc_g.hacks_pergame) & (x))
@@ -376,8 +378,10 @@ struct compile_state
 #define HIREG 33 // hi
 // The old value of a register loaded by MFC2/CFC2, for a branch right
 // after the load that still reads the old value (see ld_delay_rename()).
-// Treated like a guest register with its own home in dynarec_local.
+// Treated like a guest register with its own home in dynarec_local
+// (LO_ldtmp, the otherwise unused zeromem_ptr word).
 #define LDTMP 34
+#define NDRC_LAYOUT_PAD "2460" // see new_dynarec_init()
 //#define CSREG 35 // Coprocessor status
 #define CCREG 36 // Cycle count
 #define INVCP 37 // Pointer to invalid_code
@@ -7502,6 +7506,14 @@ static int pgsize(void)
 void new_dynarec_init(void)
 {
   int align = pgsize() - 1;
+#if defined(__arm__) && defined(_3DS)
+  // Old 3DS layout pin (round 4): pads this object's code so that everything
+  // linked after it (renderer, SPU, ...) sits exactly 4 KiB later than in
+  // v0.4.1 RC3, i.e. in the same cache sets (the 16 KiB 4-way caches repeat
+  // every 4 KiB). Runs once; recompute the size whenever the code of this
+  // file changes (4096 minus its growth, arm-none-eabi-nm on the ELF).
+  __asm__ volatile("b 1f\n\t.space " NDRC_LAYOUT_PAD "\n1:");
+#endif
   SysPrintf("Init new dynarec, ndrc size %x, pgsize %d\n",
     (int)sizeof(*ndrc), align + 1);
 
@@ -8273,9 +8285,6 @@ static void disassemble_one(struct compile_state *st, int i, u_int src)
 // the new value as before, which is what the branch's delay slot and every
 // later instruction see. Done only when nothing else can enter at the branch
 // (checked after pass1b, see ld_delay_check()).
-static u_int ld_delay_deny[8];
-static int ld_delay_deny_cnt;
-
 static int ld_delay_rename(const struct compile_state *st, int i)
 {
   const struct decoded_insn *ld = &dops[i-1], *op = &dops[i];
@@ -8291,10 +8300,10 @@ static int ld_delay_rename(const struct compile_state *st, int i)
   if (i >= 2 && dops[i-2].is_jump && (dops[i-2].itype != CJUMP
       || (dops[i-2].rs1 != r && dops[i-2].rs2 != r)))
     return 0;
-  if (ld_delay_deny_cnt > ARRAY_SIZE(ld_delay_deny)) // too many: none
+  if (st->ld_delay_deny_cnt > ARRAY_SIZE(st->ld_delay_deny)) // too many: none
     return 0;
-  for (k = 0; k < ld_delay_deny_cnt; k++)
-    if (ld_delay_deny[k] == pc)
+  for (k = 0; k < st->ld_delay_deny_cnt; k++)
+    if (st->ld_delay_deny[k] == pc)
       return 0;
   dops[i-1].rs1 = r;
   dops[i-1].rt2 = LDTMP;
@@ -10632,16 +10641,16 @@ static int noinline new_recompile_block_(u_int addr)
     // the block would be decoded without renames
     u_int saved_ni_count = ni_count, deny_pc;
     int saved_stop_after_jal = stop_after_jal;
-    ld_delay_deny_cnt = 0;
+    st.ld_delay_deny_cnt = 0;
     for (;;) {
       pass1a_disassemble(&st, pagelimit);
       pass1b_bt(&st);
       deny_pc = ld_delay_check(&st);
       if (!deny_pc)
         break;
-      if (ld_delay_deny_cnt < ARRAY_SIZE(ld_delay_deny))
-        ld_delay_deny[ld_delay_deny_cnt] = deny_pc;
-      ld_delay_deny_cnt++;
+      if (st.ld_delay_deny_cnt < ARRAY_SIZE(st.ld_delay_deny))
+        st.ld_delay_deny[st.ld_delay_deny_cnt] = deny_pc;
+      st.ld_delay_deny_cnt++;
       ni_count = saved_ni_count;
       stop_after_jal = saved_stop_after_jal;
     }
@@ -11024,3 +11033,4 @@ static int noinline new_recompile_block_(u_int addr)
 }
 
 // vim:shiftwidth=2:expandtab
+
