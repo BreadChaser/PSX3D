@@ -94,30 +94,38 @@ SECTIONS
 
 	. = ALIGN(0x1000);
 
-	/* Core constants. Strings (mergeable sections) stay out: the linker
-	   merges them per output section, and a shared pool would let frontend
-	   strings move the core's. */
+	/* Core constants, each followed by the libraries' (as in RC4). Strings
+	   (mergeable sections) stay out: the linker merges them per output
+	   section, and a shared pool would let frontend strings move the core's.
+	   A library gaining constants (the frontend calls a new library
+	   function) moves later core constants by whole pages at most. */
 	.rodata :
 	{
 		. = . + ((0xdf8 - .) & 0xfff);
 		__psx3d_core_rodata_start = .;
 		INPUT_SECTION_FLAGS(!SHF_MERGE) *pcsx_rearmed_libretro_ctr.a:(.rodata)
+		__psx3d_core_rodata_plain_end = .;
+		INPUT_SECTION_FLAGS(!SHF_MERGE) *.a:(.rodata)
 		. = . + ((0x45c - .) & 0xfff);
+		__psx3d_core_tables_start = .;
 		INPUT_SECTION_FLAGS(!SHF_MERGE) *pcsx_rearmed_libretro_ctr.a:(.rodata.*)
+		__psx3d_core_tables_end = .;
+		INPUT_SECTION_FLAGS(!SHF_MERGE) *.a:(.rodata.*)
+		. = . + ((0x400 - .) & 0xfff);
 	} : rodata
 
 	/* The core's strings, merged among themselves. */
 	.rodata.core_strings :
 	{
+		__psx3d_core_strings_start = .;
 		*pcsx_rearmed_libretro_ctr.a:(.rodata .rodata.*)
 		__psx3d_core_rodata_end = .;
 	} : rodata
 
-	/* Library constants, then the frontend's and every other string. */
-	.rodata.frontend ALIGN(4) :
+	/* The frontend's constants and every other string, from a page start
+	   as in RC4. */
+	.rodata.frontend ALIGN(0x1000) :
 	{
-		INPUT_SECTION_FLAGS(!SHF_MERGE) *.a:(.rodata.*)
-		INPUT_SECTION_FLAGS(!SHF_MERGE) *.a:(.rodata)
 		__psx3d_frontend_rodata_start = .;
 		*(.rodata)
 		*(.roda)
@@ -217,16 +225,20 @@ SECTIONS
 	__bss_start__ = .;
 	.bss ALIGN(0x1000) :
 	{
-		/* Core first, as above: dynarec_local and psxRegs lead. */
+		/* Core first, as above: dynarec_local and psxRegs lead. The small
+		   plain .bss of libraries sits between the core's two blocks as in
+		   RC4; its growth moves the second block by whole pages at most. */
 		. = . + ((0x4a0 - .) & 0xfff);
 		__psx3d_core_bss_start = .;
 		*pcsx_rearmed_libretro_ctr.a:(.bss)
+		__psx3d_core_bss_plain_end = .;
+		*.a:(.bss)
+		*crtbegin.o(.bss .bss.*)
 		. = . + ((0x058 - .) & 0xfff);
+		__psx3d_core_bss2_start = .;
 		*pcsx_rearmed_libretro_ctr.a:(.bss.*)
 		__psx3d_core_bss_end = .;
 		*.a:(.bss.*)
-		*.a:(.bss)
-		*crtbegin.o(.bss .bss.*)
 		. = . + ((0x658 - .) & 0xfff);
 		__psx3d_frontend_bss_start = .;
 		*(.dynbss)

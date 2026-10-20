@@ -249,6 +249,10 @@ endif
 	$(SILENTMSG) $(notdir $<)
 	$(bin2o)
 
+# Kept from the presets round: the frontend's code layout (not the core's)
+# with it is the one measured on the Old 3DS (docs/dev/core-first.md).
+presets.o: CFLAGS += -Os
+
 -include $(DEPSDIR)/*.d
 
 #---------------------------------------------------------------------------------------

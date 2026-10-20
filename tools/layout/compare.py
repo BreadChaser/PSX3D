@@ -8,7 +8,7 @@ Regions come from the __psx3d_* symbols in BASE. Symbols are matched by name (na
 occur once in both ELFs). Rules:
   core code (assembly, C) ..... every symbol at the same address
   libraries' code ............. same addresses (with --allow-lib-moves: reported only)
-  core rodata / data / bss .... one shift for the whole region, a whole number of 4 KiB pages
+  core constants/data/bss ..... one shift per block, a whole number of 4 KiB pages
                                 (cache sets unchanged)
 Then the core's code words are compared. A word may differ only as a call/branch to, or a
 pointer to, the same symbol (or the same place in a core region) that moved.
@@ -88,9 +88,12 @@ def main():
         ('core code (assembly)', S('__psx3d_core_text_start'), S('__psx3d_core_asm_end'), 'fixed'),
         ('core code (C)', S('psx3d_core_align') + 0x4f0, S('__psx3d_core_text_end'), 'fixed'),
         ('library code', S('__psx3d_libs_text_start'), S('__psx3d_libs_text_end'), 'lib'),
-        ('core rodata', S('__psx3d_core_rodata_start'), S('__psx3d_core_rodata_end'), 'page'),
+        ('core constants', S('__psx3d_core_rodata_start'), S('__psx3d_core_rodata_plain_end'), 'page'),
+        ('core tables', S('__psx3d_core_tables_start'), S('__psx3d_core_tables_end'), 'page'),
+        ('core strings', S('__psx3d_core_strings_start'), S('__psx3d_core_rodata_end'), 'page'),
         ('core data', S('__psx3d_core_data_start'), S('__psx3d_core_data_end'), 'page'),
-        ('core bss', S('__psx3d_core_bss_start'), S('__psx3d_core_bss_end'), 'page'),
+        ('core bss', S('__psx3d_core_bss_start'), S('__psx3d_core_bss_plain_end'), 'page'),
+        ('core bss (2)', S('__psx3d_core_bss2_start'), S('__psx3d_core_bss_end'), 'page'),
     ]
     unique = {n: v[0] for n, v in a['syms'].items() if len(v) == 1 and len(b['syms'].get(n, [])) == 1}
     if cross:  # region bounds in BASE's addresses, by the region's most common shift
@@ -108,7 +111,9 @@ def main():
         deltas = collections.Counter(b['syms'][n][0] - ad for n, ad in unique.items() if lo <= ad < hi)
         count = sum(deltas.values())
         if not deltas:
-            print(f'FAIL {name}: no symbols matched'); fail = True; continue
+            if hi > lo:
+                print(f'FAIL {name}: no symbols matched'); fail = True
+            continue
         d, _ = deltas.most_common(1)[0]
         shift[name] = (lo, hi, d if len(deltas) == 1 else None, d)
         if cross:
