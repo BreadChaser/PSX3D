@@ -499,7 +499,10 @@ User, 2026-10-21 (answers to `devtools/settings-spec/REVIEW.md`, plus notes on
 the HTML mock):
 
 1. Sound echo: **On on both consoles** (the PS1 has it); no setting. Old cost
-   measured on heavy scenes and reported in `devtools/settings-impl/REPORT.md`.
+   (2026-10-21, 13 heavy scenes, same binary, echo on vs off between two
+   bracketing runs): mean −0.8% game speed with frameskip Off and with Auto;
+   most scenes within ±0.7%; worst Silent Hill café −2.4% (Off) / −4.2% (Auto)
+   and Need for Speed: High Stakes −4.0% / −3.9%.
 2. Game volume: **removed**.
 3. Rewind stays in Saves (New only), **default On** on New.
 4. Auto picture floor: no row; 15 for every game; presets may set it later.
@@ -507,7 +510,12 @@ the HTML mock):
    six, not four: Ace Combat 3, Ape Escape, Omega Boost, Supercross Circuit,
    Tomb Raider: The Last Revelation, Twisted Metal 4).
 6. Faster 3D calculations / Simpler 3D clipping: re-measured on the Old heavy
-   scenes before defaults version 1 (result in the report).
+   scenes. Turning both off costs a mean −3.0% (Off) / −3.9% (Auto), up to
+   −8.1% / −10.9% (Crash 2) and −7.6% / −9.3% (NFS); only Symphony of the
+   Night and FFVII (already at full speed) are unaffected. One at a time:
+   Faster 3D calculations off ±0.4%, Simpler 3D clipping off mean −1.1%
+   (worst −3.8%); the two work together. **Both stay On on Old 3DS** in
+   defaults version 1.
 7. Widescreen with a large Old cost (CTR, Silent Hill): offered per game with
    the note, never on by default, not switched on by the all-games choice.
 8. Controller Digital/Analog row; presets set it per game.
