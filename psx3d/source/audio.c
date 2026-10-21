@@ -346,7 +346,10 @@ static void submit(const u32 *frames, size_t n)
 		cur_fill += count;
 		at += count;
 		if (cur_fill == BUF_FRAMES) {
-			DSP_FlushDataCache(wb[cur].data_pcm16, BUF_FRAMES * 4);
+			// The DSP reads the buffer from memory. Write it back with the
+			// kernel call: DSP_FlushDataCache asks the DSP service to do the
+			// same, an IPC round trip to a system module.
+			svcStoreProcessDataCache(CUR_PROCESS_HANDLE, (u32)wb[cur].data_pcm16, BUF_FRAMES * 4);
 			ndspChnWaveBufAdd(0, &wb[cur]);
 			cur = (cur + 1) % NBUF;
 			cur_fill = 0;
