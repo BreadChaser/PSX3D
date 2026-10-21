@@ -267,7 +267,10 @@ static noinline void mirror_copy(u32 *src, u32 sdim, u32 *dst, u32 ddim, u32 siz
 			(u32 *)(r + ((u8 *)dst - (u8 *)canonical)), ddim, size, flags);
 	else if (in_canonical(dst))
 		__real_GX_TextureCopy(src, sdim, (u32 *)(r + ((u8 *)dst - (u8 *)canonical)), ddim, size, flags);
-	else if (in_canonical(src) && !gpustereo_copy_bypass) {
+	// The held picture is copied as whole VRAM rows (no stride); strided
+	// copies out of VRAM are the renderer's own snapshots (framebuffer
+	// sprites), which both eyes sample from the left eye's VRAM.
+	else if (in_canonical(src) && !sdim && !ddim && !gpustereo_copy_bypass) {
 		uintptr_t off = (u8 *)src - (u8 *)canonical;
 		void *base = (u8 *)dst - off;
 		if (base != hold) {
