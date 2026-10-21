@@ -19,7 +19,7 @@ serials = SCUS94455, SCUS94488
 ; Widescreen costs Old 3DS speed: offered with a warning.
 widescreen = warn
 [new]
-psxclock = 80   ; inert until overclock presets are enabled
+psxclock = 80
 ```
 
 - **One file per game**, named after the title in lower case with hyphens
@@ -63,10 +63,11 @@ they are offered. A game with a bundle and no preset gets `on`.
 
 ## PS1 clock
 
-`psxclock` entries are data only for now: they are parsed and shown in the
-host tests, but the app applies them only when built with
-`-DPSX3D_PS1_OVERCLOCK_PRESETS` (off). A clock entry does not make a game
-curated. Measurements: [PS1 overclock](dev/ps1-overclock.md).
+`psxclock` entries apply on the New 3DS (the build defines
+`PSX3D_PS1_OVERCLOCK_PRESETS`). The player's own per-game Game CPU speed beats
+the preset. A clock entry does not make a game curated. When two discs of one
+game need different values, they get separate files (Gran Turismo 2: Arcade
+has a measured clock, Simulation has none yet). Measurements: [PS1 overclock](dev/ps1-overclock.md).
 
 The core sets the clock of some games itself (`cycle_multiplier_overrides` in
 `core/libpcsxcore/database.c`: Brave Fencer Musashi, Digimon World, Legend of

@@ -59,6 +59,8 @@ PICA_LAYOUT ?= split
 CFLAGS += -DPICA_LAYOUT_NAME=\"$(PICA_LAYOUT)\"
 
 CFLAGS	+=	$(INCLUDE) -D__3DS__ $(EXTRA_DEFS) -I$(COREDIR)/deps/libretro-common/include
+# New 3DS per-game PS1 clock presets (docs/presets.md, docs/dev/ps1-overclock.md)
+CFLAGS	+=	-DPSX3D_PS1_OVERCLOCK_PRESETS
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
 
