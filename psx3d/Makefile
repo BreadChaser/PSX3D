@@ -140,9 +140,11 @@ export T3XHFILES		:=	$(patsubst %.t3s, $(BUILD)/%.h, $(GFXFILES))
 endif
 #---------------------------------------------------------------------------------
 
-# picadirect.o links after every other frontend object, so it moves no
-# existing frontend code (docs/dev/pica-direct.md).
-export OFILES_SOURCES 	:=	$(CPPFILES:.cpp=.o) $(filter-out picadirect.o,$(CFILES:.c=.o)) $(SFILES:.s=.o) picadirect.o
+# picadirect.o and presetupdate.o link after every other frontend object, so
+# they move no existing frontend code (docs/dev/pica-direct.md); presetupdate.o
+# runs only in the idle library.
+LATE_OFILES := picadirect.o presetupdate.o
+export OFILES_SOURCES 	:=	$(CPPFILES:.cpp=.o) $(filter-out $(LATE_OFILES),$(CFILES:.c=.o)) $(SFILES:.s=.o) $(LATE_OFILES)
 
 export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES)) \
 			$(PICAFILES:.v.pica=.shbin.o) $(SHLISTFILES:.shlist=.shbin.o) \
