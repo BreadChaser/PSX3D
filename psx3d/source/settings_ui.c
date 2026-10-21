@@ -229,7 +229,7 @@ static const char *preset_key(int item)
 	if (item >= CORE_ROW && item < CONTROL_ROW) {
 		const char *key = options_key(item - CORE_ROW);
 		if (!strcmp(key, "pcsx_rearmed_frameskip_type")) return "frameskip";
-		#ifdef PSX3D_PS1_OVERCLOCK_PRESETS
+	#ifdef PSX3D_PS1_OVERCLOCK_PRESETS
 		if (!strcmp(key, "pcsx_rearmed_psxclock")) return "psxclock";
 #endif
 	}
@@ -239,12 +239,18 @@ static const char *preset_key(int item)
 	if (item == F_FLOOR) return "auto_floor";
 	if (item >= CONTROL_ROW && item < CHEAT_ROW) {
 		const char *key = input_control_key(item - CONTROL_ROW);
-		if (key && !strcmp(key, "touch_stick")) return "stick";
 		int slot = input_control_slot(item - CONTROL_ROW) - INPUT_PHYSICAL_N;
+		bool stick = key && !strcmp(key, "touch_stick");
+		bool touch_mode = game_preset_sets("touch_controls");
+		if ((stick || (slot >= 0 && slot < 6)) && touch_mode &&
+		    game_capabilities().touch_controls != TOUCH_CONTROLS_AUTO)
+			return "touch_controls";
+		if (stick) return game_preset_sets("stick") ? "stick" : touch_mode ? "touch_controls" : "stick";
 		static const char *const keys[] = {"touch_l2", "touch_r2", "touch_l3", "touch_r3", "touch_x1", "touch_x2"};
 		if (slot >= 0 && slot < 6) {
 			if (game_preset_sets(keys[slot])) return keys[slot];
-			return slot < 2 ? "l2r2" : slot < 4 ? "l3r3" : slot == 4 ? "fast_forward" : "rewind";
+			const char *need = slot < 2 ? "l2r2" : slot < 4 ? "l3r3" : slot == 4 ? "fast_forward" : "rewind";
+			return game_preset_sets(need) ? need : touch_mode ? "touch_controls" : need;
 		}
 	}
 	return "";
@@ -252,6 +258,7 @@ static const char *preset_key(int item)
 static bool preset_row(settings_ui_t *s, int item)
 {
 	if (!s->game || !game_preset_sets(preset_key(item))) return false;
+	if (item != F_SCREEN && overridden(s, item)) return false;
 	if (item >= CONTROL_ROW && item < CHEAT_ROW) {
 		int slot = input_control_slot(item - CONTROL_ROW);
 		if (slot >= 0 && input_map_raw(slot) != INPUT_BIND_PRESET) return false;

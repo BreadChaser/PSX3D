@@ -179,6 +179,35 @@ int main(void)
 			}
 	fclose(inventory);
 
+ // Advanced changes a global preference, not effective preset values. A marker
+ // describes the current supplier; an explicit per-game value has its own *.
+ config_game_end();g_new3ds=false;config_reset_defaults();
+ settings_ui_t advanced={0};open_page(&advanced,CAT_ADVANCED);
+ assert(advanced.items[0]==F_ALL && !strcmp(row_value(0,&advanced),"Off"));
+ change(&advanced,F_ALL,1);
+ assert(g_cfg.show_all_settings && !strcmp(row_value(0,&advanced),"On"));
+ config_save();config_load();assert(g_cfg.show_all_settings);
+ config_game_begin("preset-marker");
+ settings_ui_t marked={.game=true};
+ input_touch_disc_log("CD-ROM ID: SLUS00707\n");
+ assert(preset_row(&marked,F_SCREEN)); // policy marker, not a screen-size value
+ input_touch_disc_log("CD-ROM ID: SCUS94449\n");
+ assert(preset_row(&marked,F_FF) && !game_capabilities().fast_forward);
+ change(&marked,F_FF,1);
+ assert(game_capabilities().fast_forward && overridden(&marked,F_FF));
+ assert(!preset_row(&marked,F_FF));
+ assert(config_game_clear("fast_forward") && preset_row(&marked,F_FF));
+ game_preset_t touch_mode_fixture;memset(&touch_mode_fixture,0xff,sizeof(touch_mode_fixture));
+ for(int k=0;k<6;k++) touch_mode_fixture.old3ds.touch_bindings[k]=-2;
+ touch_mode_fixture.old3ds.touch_controls=TOUCH_CONTROLS_OFF;
+ current_preset=&touch_mode_fixture;options_mark_updated();
+ for(int row=0;row<input_controls_count();row++)
+  if(input_control_slot(row)==INPUT_PHYSICAL_N)
+   assert(!strcmp(preset_key(CONTROL_ROW+row),"touch_controls") && preset_row(&marked,CONTROL_ROW+row));
+  else if(input_control_slot(row)>=0 && input_control_slot(row)<INPUT_PHYSICAL_N)
+   assert(!preset_row(&marked,CONTROL_ROW+row));
+ config_game_end();game_presets_reset();config_reset_defaults();
+
  // Preserve the full existing cheat capacity, not just the ordinary option count.
  settings_ui_t cheats_fixture={.game=true};cheat_fixture_count=256;
  open_page(&cheats_fixture,CAT_CHEATS);assert(cheats_fixture.count==256);
