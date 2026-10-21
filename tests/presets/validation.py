@@ -14,6 +14,11 @@ BASE = 'title = Fixture\nversion = 2\nserials = TEST00001\n'
 OPT = 'fast_forward = no\nfast_forward.source = Unassessed host fixture\nfast_forward.confidence = unassessed\n'
 cases = {
     'valid': (BASE+'[old]\n'+OPT, True),
+    'crlf': ((BASE+OPT).replace('\n', '\r\n'), True),
+    'carriage-content-end': (BASE+OPT+'; comment\rignored\n', True),
+    'vertical-tab-not-newline': (BASE+OPT+'\vunknown = no\n', False),
+    'six-digit-floor': (BASE+OPT+'auto_floor = 000012\nauto_floor.source = host\nauto_floor.confidence = low\n', True),
+    'seven-digit-floor': (BASE+OPT+'auto_floor = 0000012\nauto_floor.source = host\nauto_floor.confidence = low\n', False),
     'missing-title': (BASE.replace('title = Fixture\n', '')+OPT, False),
     'empty-title': (BASE.replace('Fixture', '')+OPT, False),
     'missing-version': (BASE.replace('version = 2\n', '')+OPT, False),

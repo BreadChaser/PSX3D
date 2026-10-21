@@ -51,14 +51,20 @@ def parse(text):
     data = {'common': {}, 'old': {}, 'new': {}}
     errors = []
     section = 'common'
-    if len(text.splitlines()) > 512:
+    # The C reader splits only on LF, then treats CR as end-of-content.
+    # Python splitlines() also splits VT/FF/CR, which would accept different data.
+    chunks = text.split('\n')
+    lines = [line + '\n' for line in chunks[:-1]]
+    if chunks[-1]:
+        lines.append(chunks[-1])
+    if len(lines) > 512:
         errors.append('more than 512 lines')
-    for number, raw in enumerate(text.splitlines(keepends=True), 1):
+    for number, raw in enumerate(lines, 1):
         if len(raw.encode('utf-8')) > 255:
             errors.append(f'line {number}: exceeds 255 bytes including newline')
         if '\x00' in raw or any(ord(c) > 127 for c in raw):
             errors.append(f'line {number}: only ASCII text is supported')
-        line = re.split('[;#]', raw, maxsplit=1)[0].strip()
+        line = re.split('[;#\r\n]', raw, maxsplit=1)[0].strip()
         if not line:
             continue
         if line.startswith('['):
@@ -146,7 +152,7 @@ def check_file(path, text, bundles, core_clock):
                     errors.append(f'{where}: missing {suffix}')
             values, old_default, new_default = OPTIONS[key]
             if values is None:
-                if not re.fullmatch(r'[0-9]+', value) or not SCHEMA[key][1] <= int(value) <= SCHEMA[key][2]:
+                if not re.fullmatch(r'[0-9]{1,6}', value) or not SCHEMA[key][1] <= int(value) <= SCHEMA[key][2]:
                     errors.append(f'{where}: must be a number {SCHEMA[key][1]}-{SCHEMA[key][2]}')
                     continue
             elif value not in values:
@@ -202,7 +208,7 @@ def main():
         if not NAME.match(path.name):
             problems.append(f'{path.name}: not a lower-case-hyphenated .ini file name')
             continue
-        texts[path.name] = path.read_text()
+        texts[path.name] = path.read_bytes().decode('utf-8')
         serials, version, errors = check_file(path, texts[path.name], bundles, core_clock)
         problems += [f'{path.name}: {e}' for e in errors]
         versions[path.name] = version
