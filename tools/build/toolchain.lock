@@ -1,0 +1,46 @@
+# PSX3D build toolchain lock. Read by tools/build/toolchain.py; see docs/building.md.
+#
+# image    the build container's base image, pinned by its multi-arch index digest
+#          (devkitpro/devkitarm tags "latest" and "20260610" on 2026-06-10).
+# package  every devkitPro package that ships files, with the version and a hash of the
+#          installed files. This machine's pacman and the image's dkp-pacman agree on all
+#          of them. Meta packages without files are pinned by version only:
+#          devkitARM r68-1, devkit-env 1.0.1-2, devkitpro-keyring 20241017-2.
+# abi      what the private citro3d code depends on (checked by every `make`).
+# tool     CIA packaging tools, built from source at these commits by the Dockerfile.
+#
+# Upgrading: docs/building.md, "Upgrading the SDK".
+image devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5
+
+package 3ds-cmake 1.5.2-1 39738609cebcd63db07faed23a9240c2d5da1d94947d61340264029e7658c5ae
+package 3ds-curl 8.4.0-1 30c91467395b0435943ed656b01624f4edc8963cb2b2654e7da5ef9a511169a3
+package 3ds-examples 20240917-1 7877c21d8b41d70f3e24c1803c7d5ca0028bb62b49da5fb70020a5f5a183f805
+package 3ds-libpng 1.6.53-1 2a9b01689ab1072f0ebbbdcbf908840f2d40cab296ea634d307246e119441c7c
+package 3ds-mbedtls 2.28.8-1 b375c8f2ad1f4394dffd6e9d71187927b3393ceeffa4058771a6b8b4c7878406
+package 3ds-pkg-config 0.28-5 c28bbba025ceac0969f75d64d7839af099c3c6dba750c894c380ac3ce055fafd
+package 3ds-zlib 1.3.1-1 6ba2635845a284b60b2747c2f057dc9e8484cce18da3eaf419a5d42df272580f
+package 3dslink 0.6.3-1 0b645069646335ade671fe6dee5b2ddba1b0a5a93a16cf199839d94588f502bf
+package 3dstools 1.3.1-3 64c5468ae04ddc31abbccf000eea59757d684bc4cc688c1d66ec4aa537a3900f
+package catnip 0.2.0-1 4b98fc9ea39cc31350ba03b1ac1e725331a3c66852163f7f293ce700bf739c71
+package citro2d 1.7.0-1 653a632b9941326f4e82f487bf49b0c77bebe0e85f95a7c499d7f043a1b77e4d
+package citro3d 1.7.1-2 6bf1dceb6c7991ac9cb851e74c5166131c6753e38d7930f182e957f5d077958a
+package devkitarm-binutils 2.46.0-1 d99685cc9786110f378a1f9ffbaeae5baaf6e556e15495d45f976edc2206b809
+package devkitarm-cmake 1.2.4-1 aed55a7d85cbe465c1d305b6bacd33e54149a296253eeeb9d5037128a855c59c
+package devkitarm-crtls 1.2.6-1 4aea72da546cbee32290625da55bf05d4878756ca9f1f18e03da074aad7cf69c
+package devkitarm-gcc 16.1.0-1 9c25fdf0aa1d0e2c3163c4b1c22a2908b3a09ffd51d9fca112d6a0252e4c116c
+package devkitARM-gdb 14.1-2 2678605e22fe37b81d02553410911182cc859f6c22af77c4b2e87674e0b7bf82
+package devkitarm-newlib 4.6.0.20260123-5 dcc19df9ba11d15bd304ba1125149ce38c818f81555e8aefeaaaade52d3dff29
+package devkitarm-rules 1.6.0-4 b397bca96d5d66e2cac065f10e6d56f7b334278263035fc4475e86c611015416
+package dkp-cmake-common-utils 1.5.3-1 bc15f1a8abb7aac0861eee2ffa2457345b8dd896ced8d53963cc0a1338e2aee1
+package general-tools 1.4.4-1 95927b073664cc1b46d15f2e8625c44b623d39ab48a2ef9caaab730e02e504ca
+package libctru 2.7.0-1 a848b0564f642b1ff4c0e8dfb469534295bd52ca13742cd2c549b35b8ace2d4e
+package picasso 2.7.2-3 212f9c17c55b8bc523f39a2c183f267cb233227cf63b883842582f2eb55ad938
+package tex3ds 2.3.0-4 e92bef6fa3b984766d1e22f5b48931e6e6003e782bbd5a3b53f55516b4ccf514
+
+abi file libctru/lib/libcitro3d.a 3f34eff859c1f1e60ebe597b6df9cf5e5e74563d9e64ca01a7b3292fde63016a
+abi file libctru/lib/libcitro2d.a f6c5352a838639c486b806b8dc847c74a1a190d98b09eb469d5c30a02ae6542f
+abi file libctru/lib/libctru.a 5e72cd24512b57908545e928cf0a1c1affbb8535f97773d7007be8f10f0e02bc
+abi tree libctru/include 97897f2ae86d8934228dd9f47b7fbfbbedd0744de008867a8a83db3d7609a782
+
+tool makerom https://github.com/3DSGuy/Project_CTR.git d52c2b0e788c2d085763d7c5dcc4b2edd9ffb7d8
+tool bannertool https://github.com/diasurgical/bannertool.git 16d8c5a0ce02a5e06e64ab42275132fca57c04a2

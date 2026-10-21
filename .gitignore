@@ -17,3 +17,5 @@ psx3d/romfs/gfx/
 /devtools/
 /core/*.o
 /core/*.a
+*.cxi
+/artifacts/

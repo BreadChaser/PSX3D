@@ -1,7 +1,21 @@
 # Builds the PCSX-ReARMed core as a static library, then the PSX3D app.
-.PHONY: all core app cia clean
+.PHONY: all core app cia cxi clean sdk-check host-tests
 
 all: app
+
+# The private citro3d code (psx3d/source/renderqueue.c, gpu_cache.c) needs the pinned SDK:
+# stop before compiling anything when libcitro3d, its headers or libctru differ from
+# tools/build/toolchain.lock. SDK_CHECK=0 skips it (deliberate SDK upgrades only).
+SDK_CHECK ?= 1
+sdk-check:
+	@python3 tools/build/toolchain.py check --abi
+ifeq ($(SDK_CHECK),1)
+core: sdk-check
+endif
+
+# Every host check that needs no ROM, BIOS or console (what CI runs).
+host-tests:
+	bash tools/build/host-tests.sh
 
 # GPU-only frontend.
 # Renderer-only compile/link experiments; prepare.py invalidates changed objects.
@@ -59,6 +73,12 @@ cia: app
 	$(BANNERTOOL) makesmdh -s "PSX3D" -l "PSX3D - PS1 emulator for 3DS" -p "BreadChaser" \
 		-i psx3d/meta/icon.png -o psx3d/build/icon.icn
 	$(MAKEROM) -f cia -o psx3d/PSX3D.cia -elf psx3d/PSX3D.elf -rsf psx3d/meta/app.rsf \
+		-icon psx3d/build/icon.icn -banner psx3d/build/banner.bnr -target t -ver $(VERSION)
+
+# The executable container inside the CIA. The CIA carries a randomized ticket, so two
+# CIAs of one build differ; two CXIs of one commit are byte-identical (docs/building.md).
+cxi: cia
+	$(MAKEROM) -f cxi -o psx3d/PSX3D.cxi -elf psx3d/PSX3D.elf -rsf psx3d/meta/app.rsf \
 		-icon psx3d/build/icon.icn -banner psx3d/build/banner.bnr -target t -ver $(VERSION)
 
 clean:

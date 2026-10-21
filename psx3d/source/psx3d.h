@@ -95,6 +95,8 @@ const char *options_cycle(int i, int dir);
 
 // video.c
 bool video_init(void);
+#define VIDEO_CMDBUF_BYTES 0x100000   // GPU command list bytes reserved by C3D_Init (c3d_abi.h checks it)
+extern bool c3d_abi_failed;   // renderqueue.c, set when the citro3d private ABI does not match
 bool video_game_begin(void);
 void video_game_end(void);
 bool renderer_is_gpu(void);   // GPU game buffers active; false in the library

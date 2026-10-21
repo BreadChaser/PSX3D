@@ -1,5 +1,6 @@
 // Measure citro3d's implicit whole-heap flush separately from GPU work.
 #include "psx3d.h"
+#include "c3d_abi.h"
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
 
 static u64 heap_ticks;

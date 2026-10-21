@@ -1,6 +1,6 @@
 // Adapted from citro3d 1.7.1 (zlib license in ../vendor/citro3d/LICENSE).
 // Two command-list regions allow CPU recording while the previous frame runs.
-#include "../vendor/citro3d/internal.h"
+#include "c3d_abi.h"
 #include "psx3d.h"
 #include <c3d/base.h>
 #include <c3d/renderqueue.h>
@@ -153,9 +153,19 @@ void C3Di_RenderQueueDisableVBlank(void)
 	gspSetEventCallback(GSPGPU_EVENT_VBlank1, NULL, NULL, false);
 }
 
+bool c3d_abi_failed;
+
 void C3Di_RenderQueueInit(void)
 {
 	C3D_Context* ctx = C3Di_GetContext();
+
+	const char *bad = c3d_abi_mismatch(ctx, VIDEO_CMDBUF_BYTES);
+	if (bad) {
+		// video_init() sees the flag and stops before anything is drawn.
+		log_printf("citro3d private ABI mismatch (%s); build with the pinned SDK\n", bad);
+		c3d_abi_failed = true;
+		return;
+	}
 
 	C3Di_RenderQueueEnableVBlank();
 

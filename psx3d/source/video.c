@@ -99,7 +99,9 @@ bool video_init(void)
 {
 	gfxInitDefault();
 	gfxSet3D(false);  // switched on per frame when the game is shown in 3D
-	if (!C3D_Init(0x100000))   // reserve room for GPU command lists
+	if (!C3D_Init(VIDEO_CMDBUF_BYTES))   // reserve room for GPU command lists
+		return false;
+	if (c3d_abi_failed)   // renderqueue.c: the linked citro3d is not the pinned one
 		return false;
 	// the library's live floor mesh alone is a few thousand primitives
 	if (!C2D_Init(16384))
