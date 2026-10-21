@@ -164,7 +164,7 @@ static void publish_status(void)
 	        running && !strcmp(opt("pcsx_rearmed_gpu_thread_rendering"), "enabled") ? "true" : "false",
 	        sw_nosputhread ? "true" : "false");
 	p += strlen(p);
-	p += sprintf(p, ",\"build\":\"release-v041-rc4\",\"rtfs\":%s,\"ff\":%s,\"frontend\":%s,\"floataudio\":%s", sw_rtfs ? "true" : "false", sw_ff ? "true" : "false", sw_frontend ? "true" : "false", sw_floataudio ? "true" : "false");
+	p += sprintf(p, ",\"build\":\"release-v050-pre1\",\"rtfs\":%s,\"ff\":%s,\"frontend\":%s,\"floataudio\":%s", sw_rtfs ? "true" : "false", sw_ff ? "true" : "false", sw_frontend ? "true" : "false", sw_floataudio ? "true" : "false");
 	p += sprintf(p, ",\"fsmart\":\"%s\"", sw_fsmart ? "new" : "old");
 	p += sprintf(p, ",\"remote_game\":%s", remote_game ? "true" : "false");
 	p += sprintf(p, ",\"wsbundle\":\"%s\",\"wsscreen\":%d,\"ws_identity\":\"%s\"", sw_wsbundle ? "on" : "off", running ? config_screen_mode() : sw_wsscreen, ws_identity());
