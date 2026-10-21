@@ -600,6 +600,23 @@ static void records(void)
 	CHECK(!strcmp(t.name, "Taken [SLUS00006]-2") && t.created);
 	CHECK(!strcmp(launch("sdmc:/r/t2/Taken.bin", NULL, "SLUS00006").name, "Taken [SLUS00006]-2"));
 
+	// every numbered name taken: one named after the disc's place, recorded
+	disc("sdmc:/r/full/Full.bin", 60);
+	disc("sdmc:/r/Full.bin", 61);
+	CHECK(!strcmp(launch("sdmc:/r/Full.bin", NULL, "SLUS00008").name, "Full"));
+	for (int k = 1; k <= ID_ALIASES; k++) {
+		char p[PATH_LEN];
+		if (k == 1) snprintf(p, sizeof(p), SAVES "/Full [SLUS00009].id");
+		else snprintf(p, sizeof(p), SAVES "/Full [SLUS00009]-%d.id", k);
+		put_text(p, "version=1\nsize=999\nfirst=SLUS00010\nserial=SLUS00010\n");
+	}
+	launch_t full = launch("sdmc:/r/full/Full.bin", NULL, "SLUS00009");
+	CHECK(!strncmp(full.name, "Full [SLUS00009-", 16) && full.created);
+	CHECK(!strcmp(launch("sdmc:/r/full/Full.bin", NULL, "SLUS00009").name, full.name));
+	char fid[PATH_LEN];
+	snprintf(fid, sizeof(fid), SAVES "/%s.id", full.name);
+	CHECK(exists(fid));
+
 	// many games with one name and one serial-less size each
 	for (int i = 0; i < 20; i++) {
 		char p[64];

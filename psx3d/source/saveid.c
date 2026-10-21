@@ -33,7 +33,7 @@
 #pragma GCC diagnostic ignored "-Wformat-truncation"
 
 #define ID_SERIALS 8
-#define ID_ALIASES 16      // other games' names for one file name ("[...]-2" ...)
+#define ID_ALIASES 99      // other games' names for one file name ("[...]-2" ...)
 #define CARD_BYTES (128 * 1024)
 
 typedef struct {
@@ -572,8 +572,15 @@ bool saveid_confirm(const char *core_serial, char *name, size_t len, bool *creat
 			*created = !r.ok;
 			rec_claim(final, &r, serial);
 		}
-		if (!final[0])   // all taken (never seen): keep the saves of the others safe
-			snprintf(final, sizeof(final), "%s [%s]-x", cur.base, tag);
+		if (!final[0]) {   // all taken (never seen): one named after where the disc is
+			u32 h = 2166136261u;
+			for (const char *p = cur.disc; *p; p++)
+				h = (h ^ (u8)*p) * 16777619u;
+			snprintf(final, sizeof(final), "%s [%s-%08lX]", cur.base, tag, (unsigned long)h);
+			rec_read(final, &r);
+			*created = !r.ok;
+			rec_claim(final, &r, serial);
+		}
 		log_printf("saves: this game saves as %s%s\n", final, *created ? " (new)" : "");
 	}
 	bool changed = strcmp(final, cur.name) != 0;

@@ -18,6 +18,7 @@ muts = {
  'cue size not data': ('		if (!strcasecmp(e, ".m3u") || !strcasecmp(e, ".cue")) {', '		if (!strcasecmp(e, ".m3u")) {'),
  'taken alias reused': ('				continue;   // taken by yet another game', '				;'),
  'case-sensitive names': ('		if (strcasecmp(g->cover_key, cur.base) || !g->ndiscs)', '		if (strcmp(g->cover_key, cur.base) || !g->ndiscs)'),
+ 'fallback unrecorded': ('			*created = !r.ok;\n			rec_claim(final, &r, serial);\n		}\n		log_printf', '		}\n		log_printf'),
  'fake serial is real': ('	if (n != 9 || (in && *in) || !strcmp(out, "SLUS99999"))', '	if (n != 9 || (in && *in))'),
 }
 tmp = tempfile.mkdtemp()
