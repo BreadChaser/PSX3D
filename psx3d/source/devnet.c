@@ -628,11 +628,128 @@ static void put_file(int fd, const char *args, const u8 *extra, size_t extra_len
 	snprintf(json + used, sizeof(json) - used, ",\"size\":%lld,\"replaced\":%s}", size, existed ? "true" : "false");
 	send_json(fd, json);
 }
+/* Dev-only game upload: disc files below the library root, up to the FAT32
+ * file limit. Received into <path>.part (the scanner ignores it) and renamed
+ * only once every byte arrived; an existing game file is kept unless the
+ * request ends in "overwrite". Aborts if a game or batch starts meanwhile. */
+static bool game_file_allowed(const char *path)
+{
+	static const char *const exts[] = {".cue", ".bin", ".chd", ".m3u", ".pbp", ".iso", ".img"};
+	char root[PATH_LEN];
+	if (!sd_path(g_cfg.games_dir[0] ? g_cfg.games_dir : "sdmc:/roms/psx", root, sizeof(root)))
+		return false;
+	size_t n = strlen(root), len = strlen(path);
+	if (strncmp(path, root, n) || path[n] != '/' || !path[n + 1] || len < 4)
+		return false;
+	for (unsigned i = 0; i < sizeof(exts) / sizeof(*exts); i++)
+		if (!strcasecmp(path + len - 4, exts[i]))
+			return true;
+	return false;
+}
+static void put_game(int fd, const char *args, const u8 *extra, size_t extra_len)
+{
+	char raw[PATH_LEN], path[PATH_LEN], line[PATH_LEN + 32];
+	size_t ln = strlen(args);
+	if (ln >= sizeof(line)) {
+		send_json(fd, "{\"error\":\"put-game path too long\"}");
+		return;
+	}
+	memcpy(line, args, ln + 1);
+	bool overwrite = ln > 10 && !strcmp(line + ln - 10, " overwrite");
+	if (overwrite)
+		line[ln - 10] = 0;
+	const char *space = strrchr(line, ' ');
+	char *end;
+	long long size = space ? strtoll(space + 1, &end, 10) : -1;
+	if (!space || space == line || (size_t)(space - line) >= sizeof(raw) || !space[1] || *end || size < 0 ||
+	    size > 0xFFFFFFFFLL) {
+		send_json(fd, "{\"error\":\"usage: put-game <sdmc:/games/path> <size 0..4294967295> [overwrite], then the bytes\"}");
+		return;
+	}
+	memcpy(raw, line, space - line);
+	raw[space - line] = 0;
+	if (!sd_path(raw, path, sizeof(path) - 8) || !game_file_allowed(path)) {
+		send_json(fd, "{\"error\":\"put-game only writes .cue/.bin/.chd/.m3u/.pbp/.iso/.img below the games folder\"}");
+		return;
+	}
+	struct stat st;
+	bool existed = !stat(path, &st);
+	if (existed && !overwrite) {
+		send_json(fd, "{\"error\":\"game file exists; add overwrite to replace it\"}");
+		return;
+	}
+	char dir[PATH_LEN];
+	strcpy(dir, path);
+	for (char *c = dir + 6; (c = strchr(c, '/')); c++) {
+		*c = 0;
+		mkdir(dir, 0777);
+		*c = '/';
+	}
+	char part[PATH_LEN + 8];
+	snprintf(part, sizeof(part), "%s.part", path);
+	FILE *f = fopen(part, "wb");
+	if (!f) {
+		send_json(fd, "{\"error\":\"cannot create the .part file\"}");
+		return;
+	}
+	/* Large FAT writes: far fewer SD round trips than 8 KiB fwrites. */
+	static u8 buffer[64 * 1024];
+	long long left = size;
+	size_t fill = extra_len < (unsigned long long)left ? extra_len : (size_t)left;
+	memcpy(buffer, extra, fill);
+	left -= fill;
+	bool ok = true;
+	while (ok && (left > 0 || fill)) {
+		if (fill == sizeof(buffer) || !left) {
+			ok = fwrite(buffer, 1, fill, f) == fill;
+			fill = 0;
+			continue;
+		}
+		if (files_busy) {
+			ok = false;
+			break;
+		}
+		size_t want = sizeof(buffer) - fill;
+		if ((long long)want > left)
+			want = (size_t)left;
+		u64 deadline = osGetTime() + 15000;
+		int n = -1;
+		while (!devnet_stopping()) {
+			n = recv(fd, buffer + fill, want, 0);
+			if (n > 0 || n == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) ||
+			    osGetTime() > deadline)
+				break;
+			svcSleepThread(1000000);
+		}
+		ok = n > 0;
+		if (ok) {
+			fill += n;
+			left -= n;
+		}
+	}
+	ok = !fclose(f) && ok;
+	if (!ok) {
+		remove(part);
+		send_json(fd, files_busy ? "{\"error\":\"put-game aborted: a game or batch started; nothing written\"}"
+		                         : "{\"error\":\"put-game transfer or write failed; nothing written\"}");
+		return;
+	}
+	if ((existed && remove(path)) || rename(part, path)) {
+		remove(part);
+		send_json(fd, "{\"error\":\"cannot rename the .part file into place\"}");
+		return;
+	}
+	char json[PATH_LEN + 64];
+	size_t used = snprintf(json, sizeof(json), "{\"ok\":true,\"path\":");
+	used += json_quote(json + used, sizeof(json) - used, path);
+	snprintf(json + used, sizeof(json) - used, ",\"size\":%lld,\"replaced\":%s}", size, existed ? "true" : "false");
+	send_json(fd, json);
+}
 static bool file_command(int fd, const char *command, const u8 *extra, size_t extra_len)
 {
 	char path[PATH_LEN];
 	if (!strcmp(command, "crashes") || !strcmp(command, "logs") || !strncmp(command, "ls ", 3) ||
-	    !strncmp(command, "get sdmc:", 9) || !strncmp(command, "put ", 4)) {
+	    !strncmp(command, "get sdmc:", 9) || !strncmp(command, "put ", 4) || !strncmp(command, "put-game ", 9)) {
 		if (!files_allowed(fd))
 			return true;
 	} else
@@ -667,6 +784,8 @@ static bool file_command(int fd, const char *command, const u8 *extra, size_t ex
 		list_dir(fd, PSX3D_DIR, log_name);
 	else if (!strncmp(command, "put ", 4))
 		put_file(fd, command + 4, extra, extra_len);
+	else if (!strncmp(command, "put-game ", 9))
+		put_game(fd, command + 9, extra, extra_len);
 	else if (!sd_path(command + (command[0] == 'l' ? 3 : 4), path, sizeof(path)))
 		send_json(fd, "{\"error\":\"path must be sdmc:/..., without . or .. components\"}");
 	else if (command[0] == 'l')
