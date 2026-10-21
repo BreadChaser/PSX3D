@@ -8,7 +8,7 @@
 #include "clip.h"
 
 #define MAX_OPTIONS 128
-#define MAX_VALUES  64
+#define MAX_VALUES  80   // psxclock has 72 (Auto, 30..100): 64 cut off 93..100
 #define RENDERER_KEY "psx3d_renderer"
 
 typedef struct {
