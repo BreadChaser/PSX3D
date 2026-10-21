@@ -12,7 +12,7 @@
 enum { BUILTIN, SD };
 static const char *preset_dirs[2];
 static int pack[2];   // VERSION of each pack; 0 = not used
-typedef struct file { struct file *next; game_preset_t preset; int layer, version; char evidence[2][16][160]; char name[]; } file_t;
+typedef struct file { struct file *next; game_preset_t preset; int layer, version; char *evidence[2][32]; char name[]; } file_t;
 static file_t *preset_files;
 typedef struct { char serial[10]; file_t *file[2]; } entry_t;
 static entry_t *index_;
@@ -36,6 +36,15 @@ static const struct { const char *name, *words; int lo, hi; } preset_keys[] = {
 #undef PRESET_KEY
 #define NKEYS (sizeof(preset_keys) / sizeof(preset_keys[0]))
 _Static_assert(NKEYS * sizeof(int) == sizeof(game_preset_options_t), "keys follow the struct");
+_Static_assert(NKEYS <= 32, "file_t evidence has room for every key");
+// Evidence text only for the keys a file sets (most set one or two).
+static void file_free(file_t *file)
+{
+	for (int c = 0; c < 2; c++)
+		for (unsigned k = 0; k < NKEYS; k++)
+			free(file->evidence[c][k]);
+	free(file);
+}
 enum { MAX_FILES = 256, MAX_SERIALS = 2048, MAX_LINE = 256, MAX_LINES = 512 };
 
 static int preset_word(const char *list, const char *v)
@@ -168,9 +177,14 @@ static void read_preset(int layer, const char *name)
 			if (seen[sec][k] && seen[sec][k] != 7) ok = false;
 		for (int c = 0; c < 2; c++) {
 			int sec = seen[c+1][k] ? c+1 : 0;
-			if (seen[sec][k]) opt[c][k] = values[sec][k];
-			if (seen[sec][k]) snprintf(file->evidence[c][k], sizeof(file->evidence[c][k]),
-				"%s: %s", confidence[sec][k], sources[sec][k]);
+			// Fast forward (key 0) is always allowed (docs/settings.md): an
+			// older SD pack may still say no; the value is checked and dropped.
+			if (seen[sec][k] && k) opt[c][k] = values[sec][k];
+			if (seen[sec][k]) {
+				char text[160];
+				snprintf(text, sizeof(text), "%s: %s", confidence[sec][k], sources[sec][k]);
+				if (!(file->evidence[c][k] = strdup(text))) ok = false;
+			}
 		}
 	}
 	char ids[26][10]; unsigned n = 0;
@@ -198,12 +212,12 @@ static void read_preset(int layer, const char *name)
 	}
 	if (!ok || nindex + additional > MAX_SERIALS) {
 		log_printf("presets: rejected %s (invalid metadata, option, evidence, serial or bounds)\n", path);
-		free(file); return;
+		file_free(file); return;
 	}
 	// Reserve all new index slots before publishing any serial from this file.
 	if (additional) {
 		entry_t *grown = realloc(index_, (nindex+additional) * sizeof(*index_));
-		if (!grown) { free(file); return; }
+		if (!grown) { file_free(file); return; }
 		index_ = grown;
 	}
 	file->layer = layer; file->version = version; strcpy(file->name, name);
@@ -225,7 +239,7 @@ static void scan_pack(int layer)
 	DIR *d = opendir(preset_dirs[layer]); struct dirent *de;
 	while (d && (de = readdir(d))) {
 		size_t len = strlen(de->d_name);
-		if (len <= 4 || strcmp(de->d_name + len - 4, ".ini")) continue;
+		if (len <= 4 || strcmp(de->d_name + len - 4, ".ini") || !strcmp(de->d_name, "defaults.ini")) continue;
 		if (n == MAX_FILES) { ok = false; break; }
 		names[n] = strdup(de->d_name);
 		if (!names[n]) { ok = false; break; }
@@ -243,7 +257,7 @@ void game_presets_init(const char *builtin, const char *sd)
 {
 	while (preset_files) {
 		file_t *next = preset_files->next;
-		free(preset_files);
+		file_free(preset_files);
 		preset_files = next;
 	}
 	free(index_);
@@ -251,6 +265,9 @@ void game_presets_init(const char *builtin, const char *sd)
 	nindex = 0;
 	preset_dirs[BUILTIN] = builtin;
 	preset_dirs[SD] = sd;
+	char path[PATH_LEN];
+	snprintf(path, sizeof(path), "%s/defaults.ini", builtin);   // built in only, never from SD
+	defaults_init(path);
 	scan_pack(BUILTIN);
 	scan_pack(SD);
 	game_presets_reset();
@@ -275,7 +292,8 @@ bool game_preset_sets(const char *key)
 const char *game_preset_evidence(const char *key)
 {
 	int k = key_index(key);
-	return current_file && k >= 0 ? current_file->evidence[g_new3ds][k] : "";
+	const char *e = current_file && k >= 0 ? current_file->evidence[g_new3ds][k] : NULL;
+	return e ? e : "";
 }
 int game_auto_floor(void)
 {
@@ -283,10 +301,36 @@ int game_auto_floor(void)
 		if (!strncmp(sw_opt[i], "auto_floor=", 11)) {
 			int n = preset_number(sw_opt[i]+11); if (n >= 1 && n <= 60) return n;
 		}
-	const char *v = config_in_game() ? gamecfg_get("o.auto_floor") : NULL;
-	if (!v && !game_preset_sets("auto_floor")) v = config_core_override("psx3d_auto_floor");
-	int n = v ? preset_number(v) : game_capabilities().auto_floor;
+	// No menu row: a tested preset value or the forced default (defaults.ini).
+	int n = game_capabilities().auto_floor;
 	return n >= 1 && n <= 60 ? n : 15;
+}
+bool game_preset_tested(void)
+{
+	int n = game_capabilities().tested_with;
+	return current_preset && n > 0 && n <= defaults_version();
+}
+// Technical core options a preset can set, by schema key (core key minus prefix).
+static int tech_key(const char *core_key)
+{
+	if (strncmp(core_key, "pcsx_rearmed_", 13)) return -1;
+	int k = key_index(core_key + 13);
+	return k >= key_index("alt_flip") && k <= key_index("nocompathacks") ? k : -1;
+}
+const char *game_preset_core_value(const char *core_key)
+{
+	int k = tech_key(core_key);
+	if (k < 0 || !current_preset) return NULL;
+	int v = ((const int *)(g_new3ds ? &current_preset->new3ds : &current_preset->old3ds))[k];
+	if (v < 0) return NULL;
+	const char *w = preset_keys[k].words;
+	for (int i = 0; i < v; i++) w += strcspn(w, "|") + 1;
+	size_t n = strcspn(w, "|");
+	if (n == 2 && !strncmp(w, "on", 2)) return "enabled";
+	if (n == 3 && !strncmp(w, "off", 3)) return "disabled";
+	static char word[16];
+	snprintf(word, sizeof(word), "%.*s", (int)n, w);
+	return word;
 }
 bool game_preset_curated(void) { return current_preset && current_preset->curated; }
 void game_presets_invalidate(void) { cached_model = -1; }
@@ -317,6 +361,8 @@ game_preset_options_t game_capabilities(void)
 		.touch_bindings = {-2, -2, -2, -2, -2, -2},
 		.widescreen = 1, // offered when the game has a widescreen fix
 	};
+	for (int *f = &result.controller; f <= &result.tested_with; f++) *f = -1;
+	result.auto_floor = defaults_word("auto_floor", "", 15);
 	if (current_preset) {
 		// Set values replace defaults; touch slots inherit at -2, the rest at -1.
 		const int *p = (const int *)(g_new3ds ? &current_preset->new3ds : &current_preset->old3ds);
@@ -332,10 +378,7 @@ game_preset_options_t game_capabilities(void)
 	if (core_clock)
 		result.psxclock = 0;
 #endif
-	const char *v = config_in_game() ? gamecfg_get("fast_forward") : NULL;
-	if (!v && !game_preset_sets("fast_forward")) v = config_core_override("preset_fast_forward");
-	if (v) result.fast_forward = atoi(v) != 0;
-	if (g_new3ds && config_in_game() && gamecfg_int("rewind", 0)) result.rewind = 1;
+	if (g_new3ds && config_in_game() && config_rewind_on()) result.rewind = 1;
 	cached = result;
 	cached_preset = current_preset;
 	cached_model = g_new3ds;
@@ -394,3 +437,84 @@ void game_presets_core_log(const char *message)
 	log_printf("preset: psxclock ignored, the core sets this game's clock\n");
 }
 #endif
+
+// ---------------------------------------------------------------- defaults.ini
+// Startup only. Sections [old] [new] [forced.old] [forced.new]; values are words.
+enum { DEF_KEYS = 96, DEF_WORD = 24 };
+static struct { char key[DEF_WORD], value[4][DEF_WORD]; } defs[DEF_KEYS];
+static int ndefs, defs_version;
+static bool defs_loaded;
+static char defs_path[PATH_LEN] = "romfs:/presets/defaults.ini";
+void defaults_init(const char *path)
+{
+	snprintf(defs_path, sizeof(defs_path), "%s", path);
+	ndefs = defs_version = 0;
+	memset(defs, 0, sizeof(defs));
+	defs_loaded = true;
+	FILE *f = fopen(defs_path, "r");
+	char line[MAX_LINE];
+	int section = -1, read, lines = 0;
+	bool ok = f != NULL;
+	while (ok && (read = preset_line(f, line)) != 0) {
+		if (read < 0 || ++lines > MAX_LINES) { ok = false; break; }
+		line[strcspn(line, ";#\r\n")] = 0;
+		char *key = preset_trim(line), *v = strchr(key, '=');
+		if (!*key) continue;
+		if (*key == '[') {
+			section = preset_word("[old]|[new]|[forced.old]|[forced.new]", key);
+			if (section < 0) ok = false;
+			continue;
+		}
+		if (!v) { ok = false; break; }
+		*v = 0; key = preset_trim(key); v = preset_trim(v + 1);
+		if (strlen(key) >= DEF_WORD || strlen(v) >= DEF_WORD || !*v) { ok = false; break; }
+		if (section < 0) {
+			if (strcmp(key, "defaults_version") || defs_version) { ok = false; break; }
+			defs_version = preset_number(v);
+			continue;
+		}
+		int i = 0;
+		while (i < ndefs && strcmp(defs[i].key, key)) i++;
+		if (i == ndefs) {
+			if (ndefs == DEF_KEYS) { ok = false; break; }
+			strcpy(defs[ndefs++].key, key);
+		}
+		if (defs[i].value[section][0]) { ok = false; break; }
+		strcpy(defs[i].value[section], v);
+	}
+	if (f) fclose(f);
+	if (!ok || defs_version <= 0) {
+		log_printf("defaults: %s unusable, core defaults apply\n", defs_path);
+		ndefs = defs_version = 0;
+	}
+}
+static const char *def_value(const char *key, int section)
+{
+	if (!defs_loaded) defaults_init(defs_path);
+	for (int i = 0; i < ndefs; i++)
+		if (!strcmp(defs[i].key, key))
+			return defs[i].value[section + g_new3ds][0] ? defs[i].value[section + g_new3ds] : NULL;
+	return NULL;
+}
+int defaults_version(void) { if (!defs_loaded) defaults_init(defs_path); return defs_version; }
+const char *defaults_get(const char *key) { return def_value(key, 0); }
+const char *defaults_forced(const char *key) { return def_value(key, 2); }
+const char *defaults_core(const char *core_key, bool *forced)
+{
+	const char *k = !strncmp(core_key, "pcsx_rearmed_", 13) ? core_key + 13 : core_key;
+	if (!strcmp(k, "frameskip_type")) k = "frameskip";
+	const char *v = defaults_forced(k);
+	*forced = v != NULL;
+	if (!v) v = defaults_get(k);
+	if (!v) return NULL;
+	return !strcmp(v, "on") ? "enabled" : !strcmp(v, "off") ? "disabled" : v;
+}
+// Index of this console's default word in "a|b|c" (a number when words is "").
+int defaults_word(const char *key, const char *words, int fallback)
+{
+	const char *v = defaults_forced(key);
+	if (!v) v = defaults_get(key);
+	if (!v) return fallback;
+	int n = *words ? preset_word(words, v) : preset_number(v);
+	return n < 0 ? fallback : n;
+}

@@ -41,10 +41,10 @@ typedef struct {
 	int  sounds;       // interface sounds
 	int  music;        // library music
 	int  bottom_off;   // backlight off on the bottom screen while playing
-	int  audio_stretch; // maximum slowdown in percent, 0 disables (0..50)
+	int  audio_stretch; // maximum slowdown in percent (forced on, defaults.ini)
 	int  touch_stick;  // Old 3DS virtual right stick
-	int  show_all_settings; // global Advanced preference
 	int  touch_click_left; // global New 3DS bottom-screen layout: 0 right, 1 left
+	int  controller;   // all-games Controller: 0 digital, 1 analog (DualShock at start)
 } psx3d_config;
 
 extern psx3d_config g_cfg;
@@ -57,6 +57,9 @@ void config_reset_defaults(void);
 bool config_game_reset(void);
 bool config_game_clear(const char *key);
 bool config_game_overridden(const char *key);
+int config_controller(void);     // effective Controller for this game (1 = analog)
+bool config_rewind_on(void);     // Rewind is on for the running game
+void config_game_reset_advanced(const char *const *keys, int n);
 bool config_control_overridden(int row);
 const char *input_control_key(int row);
 void config_control_clear(int row);
@@ -93,6 +96,7 @@ const char *options_info(int i);
 const char *options_impact(int i);
 void options_fast_forward(bool on);
 const char *options_key(int i);
+int options_index(const char *key);
 const char *options_game_key(const char *key);
 const char *options_desc(int i);
 const char *options_value(int i);
@@ -290,6 +294,7 @@ bool touch_buttons_active(void);
 bool menu_touched(void);
 bool input_stats_touched(void);
 bool input_fast_forward(void);
+void input_controller_apply(bool changed);
 void input_fast_forward_off(void);
 bool input_rewind(void);
 #define INPUT_PHYSICAL_N 10
@@ -344,6 +349,10 @@ typedef struct {
 	// PSX3D_PS1_OVERCLOCK_PRESETS; never over a core database override.
 	int psxclock;
 	int auto_floor; // pictures/s; absent = 15
+	// Technical settings in preset_schema.def order (word index, -1 unset).
+	int controller, alt_flip, gpu_slow_llists, cd_turbo, nostalls, nolddelay;
+	int gteregsunneeded, nogteflags, nosmccheck, icache_emulation, exception_emulation, nocompathacks;
+	int tested_with; // defaults_version these values were tested with; -1 untested
 } game_preset_options_t;
 typedef struct {
 	const char *serial;
@@ -361,6 +370,17 @@ bool game_preset_curated(void); // legacy metadata only; never gates options
 bool game_preset_sets(const char *key);
 const char *game_preset_evidence(const char *key);
 int game_auto_floor(void);
+bool game_preset_tested(void);   // this console's values were tested (tested_with)
+// The preset's value for a technical core option, as a core value; NULL when unset.
+const char *game_preset_core_value(const char *core_key);
+// defaults.ini (docs/settings.md section 6): this console's default and forced
+// values, in the preset vocabulary. defaults_core() maps them to core values.
+void defaults_init(const char *path);
+int defaults_version(void);
+const char *defaults_get(const char *key);
+const char *defaults_forced(const char *key);
+const char *defaults_core(const char *core_key, bool *forced);
+int defaults_word(const char *key, const char *words, int fallback);
 void game_presets_reset(void);
 void game_presets_invalidate(void);
 void game_presets_disc_log(const char *message);
@@ -383,6 +403,7 @@ void ui_text_pixels(C2D_Font font, float x, float baseline, float pixels, float 
 bool ui_input_symbol(int id, float x, float y, float size, u32 color);
 u32 ui_input_color(int id);
 void ui_menu_header(const char *title, const char *right);
+u32 ui_header_back(u32 keys);   // header tap -> KEY_B
 void ui_button_text(float x, float y, float pixels, float spacing, u32 color, int id);
 
 #define FLIST_MAX 2048

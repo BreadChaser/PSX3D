@@ -11,7 +11,7 @@ spec = importlib.util.spec_from_file_location('checker', ROOT/'tools/presets/che
 checker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(checker)
 BASE = 'title = Fixture\nversion = 2\nserials = TEST00001\n'
-OPT = 'fast_forward = no\nfast_forward.source = Unassessed host fixture\nfast_forward.confidence = unassessed\n'
+OPT = 'nostalls = on\nnostalls.source = Unassessed host fixture\nnostalls.confidence = unassessed\n'
 cases = {
     'valid': (BASE+'[old]\n'+OPT, True),
     'crlf': ((BASE+OPT).replace('\n', '\r\n'), True),
@@ -33,9 +33,11 @@ cases = {
     'bad-section': (BASE+'[weird]\n'+OPT, False),
     'metadata-in-section': (BASE+'[old]\nversion = 2\n'+OPT, False),
     'unknown-option': (BASE+OPT+'nonsense = yes\n', False),
-    'bad-value': (BASE+OPT.replace('= no\n', '= huh\n'), False),
-    'missing-evidence': (BASE+'fast_forward = no\n', False),
-    'orphan-evidence': (BASE+'fast_forward.source = fixture\n', False),
+    'bad-value': (BASE+OPT.replace('= on\n', '= huh\n'), False),
+    'missing-evidence': (BASE+'nostalls = on\n', False),
+    'orphan-evidence': (BASE+'nostalls.source = fixture\n', False),
+    'tested-with': (BASE+OPT+'tested_with = 1\ntested_with.source = host\ntested_with.confidence = high\n', True),
+    'controller': (BASE+'controller = analog\ncontroller.source = host\ncontroller.confidence = high\n', True),
     'bad-confidence': (BASE+OPT.replace('unassessed\n', 'proven\n'), False),
     'nul-byte': (BASE+OPT+';\x00hidden\n', False),
     'overlong-comment': (BASE+OPT+';'+'x'*254+'\n', False),

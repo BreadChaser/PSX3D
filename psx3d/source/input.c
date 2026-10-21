@@ -19,6 +19,7 @@ static int stick_x, stick_y;
 static unsigned touch_revision;
 static bool pad_analog;   // the game has the pad in analog mode
 int padAnalogMode(unsigned int index);
+int padToggleAnalog(unsigned int index);
 
 static touchPosition touch;
 
@@ -269,6 +270,16 @@ void input_poll(void)
 	touch_update();
 	touch_menu_update();
 	actions_update();
+}
+
+// Controller setting: Analog puts the pad in analog mode (like its ANALOG
+// button); Digital leaves the mode to the game. changed: the player just
+// switched the row, so an analog pad goes back to digital too.
+void input_controller_apply(bool changed)
+{
+	bool analog = padAnalogMode(0);
+	if (config_controller() ? !analog : changed && analog)
+		padToggleAnalog(0);
 }
 
 u32 input_keys_down(void) { return down; }
@@ -717,15 +728,15 @@ static int control_item(int row)
 			if (g_new3ds)
 				visible = t >= 2;
 			if (t == 4)
-				visible = game_capabilities().fast_forward || g_cfg.show_all_settings;
+				visible = game_capabilities().fast_forward;
 			else if (t == 5)
-				visible = g_new3ds && (game_capabilities().rewind || g_cfg.show_all_settings);
+				visible = g_new3ds && (game_capabilities().rewind);
 		} else if (i == INPUT_REMAP_N)
 			visible = !g_new3ds;
 		else if (i == INPUT_REMAP_N + 1)
-			visible = game_capabilities().fast_forward || g_cfg.show_all_settings;
+			visible = game_capabilities().fast_forward;
 		else if (i == INPUT_REMAP_N + 2)
-			visible = g_new3ds && (game_capabilities().rewind || g_cfg.show_all_settings);
+			visible = g_new3ds && (game_capabilities().rewind);
 		if (visible && n++ == row)
 			return i;
 	}

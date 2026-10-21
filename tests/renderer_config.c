@@ -24,13 +24,11 @@ const char *input_hotkey_key_name(int i) { return i ? "hotkey_rewind" : "hotkey_
 const char *input_hotkey_combo_name(int i) { return "off"; }
 void input_touch_begin(void) {}
 void input_touch_reset(void) {}
-game_preset_options_t game_capabilities(void) { return (game_preset_options_t){0}; }
-void game_presets_invalidate(void) {}
-bool game_preset_sets(const char *key) { (void)key;return false; }
 void ws_policy_override(bool on) { (void)on; }
 bool ws_available(void) { return false; }
+int ws_console_policy(void) { return -1; }
 bool cheats_widescreen(bool on) { (void)on; return false; }
-bool game_preset_curated(void) { return false; }
+void cheats_disc_changed(void) {}
 bool renderer_is_gpu(void) { return true; }
 bool settings_ui_debug_capture(void) { return false; }
 const char *input_control_key(int row) { (void)row;return NULL; }
@@ -45,6 +43,7 @@ static void file(const char *path, const char *text)
 
 int main(void)
 {
+ defaults_init(PSX3D_DEFAULTS);   // the real defaults.ini (docs/settings.md)
  for(int model=0;model<2;model++) {
   g_new3ds=model;
   file(PSX3D_CONFIG,"renderer=sw\nstereo=2\nhalf3d=1\ncore.pcsx_rearmed_gpu_unai_fast_lighting=enabled\n");
@@ -67,7 +66,7 @@ int main(void)
   assert(!strcmp(options_get("example"),"first"));
   config_game_end(); config_save(); config_load();
   assert(g_cfg.stereo==(model?2:0));
-  // Dithering follows the game by default on both consoles; a saved choice wins.
+  // Dithering is forced on both consoles (docs/settings.md): a saved choice is ignored.
   file(PSX3D_CONFIG,"renderer=gpu\n");
   config_load();
   struct retro_variable dither[]={{"pcsx_rearmed_dithering","Dithering; disabled|enabled|force"},{NULL,NULL}};
@@ -75,7 +74,7 @@ int main(void)
   assert(!strcmp(options_get("pcsx_rearmed_dithering"),"enabled"));
   file(PSX3D_CONFIG,"renderer=gpu\ncore.pcsx_rearmed_dithering=disabled\n");
   config_load();
-  assert(!strcmp(options_get("pcsx_rearmed_dithering"),"disabled"));
+  assert(!strcmp(options_get("pcsx_rearmed_dithering"),"enabled"));
  }
- puts("PASS: legacy renderer/unai configs ignored; GPU-only options; stored stereo mode preserved; dithering default");
+ puts("PASS: legacy renderer/unai configs ignored; GPU-only options; 3D follows the console (no setting); dithering forced");
 }

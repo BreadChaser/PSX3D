@@ -89,8 +89,8 @@ static void screen_note_checks(void)
 		assert(!config_ws_fix() && !strcmp(screen_note(), "This game has no widescreen fix."));
 		test_ws_policy = WS_TOO_SLOW;
 		config_ws_sync();
-		assert(!config_ws_fix() && !strcmp(screen_note(), model ? "Widescreen is off on New 3DS to keep the speed up."
-								: "Widescreen is off on Old 3DS to keep the speed up."));
+		assert(config_ws_fix() && !strcmp(screen_note(), model ? "Widescreen lowers the speed a lot on New 3DS."
+								: "Widescreen lowers the speed a lot on Old 3DS."));
 		test_ws_policy = WS_COSTLY;
 		config_ws_sync();
 		assert(config_ws_fix() && !strcmp(screen_note(), model ? "Widescreen can lower the speed on New 3DS."
@@ -119,146 +119,167 @@ int main(void)
 	char inventory_path[1024];
 	snprintf(inventory_path, sizeof(inventory_path), "%s/inventory.tsv", getenv("PSX3D_MOCKUPS"));
 	FILE *inventory = fopen(inventory_path, "w");
- char all_path[1024];snprintf(all_path,sizeof(all_path),"%s/all-options.tsv",getenv("PSX3D_MOCKUPS"));
- FILE *all=fopen(all_path,"w");assert(all);
- for(int i=0;i<nopts;i++) fprintf(all,"%s\t%s\t%s\n",opts[i].key,opts[i].desc,categories[core_group(opts[i].key)]);
- fclose(all);
 	assert(inventory);
 
+	static const int pages[] = {CAT_HOME, CAT_DISPLAY, CAT_CONTROLS, CAT_SAVES, CAT_ADVANCED, CAT_BINDINGS};
 	for (int model = 0; model < 2; model++)
-			for (int game = 0; game < 2; game++) {
-				g_new3ds = model;
-				config_reset_defaults();
-				if (game)
-					config_game_begin("navigation");
-				settings_ui_t s = {.game = game};
-				open_page(&s, CAT_HOME);
-				assert(s.count == 7);
-				assert(!has_row(&s, CATEGORY_ROW + CAT_CHEATS)); // pause menu only
-				int seen[MAX_OPTIONS] = {0}, n = options_count();
-				for (int page = CAT_DISPLAY; page < CAT_COUNT; page++)
-					if (page != CAT_RESET) {
-						open_page(&s, page);
-						for (int i = 0; i < s.count; i++) {
-							int item = s.items[i];
-							assert(item >= CATEGORY_ROW || item >= CORE_ROW || (item >= 0 && item < F_COUNT));
-							if (item >= CORE_ROW && item < CONTROL_ROW)
-								seen[item - CORE_ROW]++;
-							if (item >= 0 && item < F_COUNT)
-								assert(frontend_visible(&s, item));
-						}
-						if (page == CAT_DISPLAY)
-							assert(has_row(&s, F_STEREO) == model);
-						if (page == CAT_SAVES)
-							assert(has_row(&s, F_REWIND) == (model && game));
-						char name[100];
-						snprintf(name, sizeof(name), "%s-%s-%s-%d", model ? "new" : "old",
-								 game ? "game" : "global", categories[page], 0);
-						for (char *c = name; *c; c++)
-							if (*c == ' ' || *c == '&')
-								*c = '-';
-						check_rows(&s);
-						shot(name);
-						flist_snap(&s.list, 0, s.count, VISIBLE_ROWS);
-						draw_settings(&s);
-						shot_end();
-					}
-				for (int i = 0; i < n; i++) {
-					assert(seen[i] == 1);
-					fprintf(inventory, "%s\t%s\t%s\t%s\t%s\n", model ? "New" : "Old",
-							"GPU", options_key(i), options_desc(i),
-							categories[core_group(options_key(i))]);
-				} // No missing or duplicated core settings.
-				s.selected[CAT_SOUND] = 2;
-				open_page(&s, CAT_HOME);
-				open_page(&s, CAT_SOUND);
-				assert(s.selected[CAT_SOUND] == 2);
-				assert(parent(CAT_CPU) == CAT_ADVANCED && parent(CAT_BINDINGS) == CAT_CONTROLS &&
-					   parent(CAT_DISPLAY) == CAT_HOME);
-				if (game)
-					config_game_end();
+		for (int game = 0; game < 2; game++) {
+			g_new3ds = model;
+			config_reset_defaults();
+			if (game)
+				config_game_begin("navigation");
+			settings_ui_t s = {.game = game};
+			open_page(&s, CAT_HOME);
+			assert(s.count == 5);   // Display, Controls, Saves, Advanced, Reset
+			assert(!has_row(&s, CATEGORY_ROW + CAT_CHEATS)); // pause menu only
+			for (unsigned p = 0; p < sizeof(pages) / sizeof(pages[0]); p++) {
+				int page = pages[p];
+				open_page(&s, page);
+				for (int i = 0; i < s.count; i++) {
+					int item = s.items[i];
+					if (item >= 0 && item < F_COUNT)
+						assert(frontend_visible(&s, item) || item == F_HEADING);
+					if (item >= CORE_ROW && item < CONTROL_ROW)
+						fprintf(inventory, "%s\t%s\t%s\t%s\n", model ? "New" : "Old", game ? "game" : "library",
+							options_key(item - CORE_ROW), categories[page]);
+				}
+				if (page == CAT_SAVES)
+					assert(has_row(&s, F_REWIND) == (model && game));
+				if (page == CAT_CONTROLS)
+					assert(has_row(&s, F_SIDE) == model && has_row(&s, F_CONTROLLER));
+				if (page == CAT_ADVANCED)
+					assert(has_row(&s, F_HEADING) && !has_row(&s, F_RECOMMENDED));   // no tested preset here
+				char name[100];
+				snprintf(name, sizeof(name), "%s-%s-%s", model ? "new" : "old", game ? "game" : "global", categories[page]);
+				for (char *c = name; *c; c++)
+					if (*c == ' ' || *c == '&')
+						*c = '-';
+				check_rows(&s);
+				shot(name);
+				flist_snap(&s.list, 0, s.count, list_rows(&s));
+				draw_settings(&s);
+				shot_end();
 			}
+			s.selected[CAT_SAVES] = 1;
+			open_page(&s, CAT_HOME);
+			open_page(&s, CAT_SAVES);
+			assert(s.selected[CAT_SAVES] == 1);
+			assert(parent(CAT_DEBUG) == CAT_ADVANCED && parent(CAT_BINDINGS) == CAT_CONTROLS &&
+				   parent(CAT_DISPLAY) == CAT_HOME);
+			// The cursor never rests on the Compatibility heading.
+			open_page(&s, CAT_ADVANCED);
+			for (int i = 0; i < s.count; i++)
+				if (s.items[i] == F_HEADING) { s.selected[CAT_ADVANCED] = i; rebuild(&s); assert(!heading(s.selected[CAT_ADVANCED], &s)); }
+			if (game)
+				config_game_end();
+		}
 	fclose(inventory);
 
- // Advanced changes a global preference, not effective preset values. A marker
- // describes the current supplier; an explicit per-game value has its own *.
- config_game_end();g_new3ds=false;config_reset_defaults();
- settings_ui_t advanced={0};open_page(&advanced,CAT_ADVANCED);
- assert(advanced.items[0]==F_ALL && !strcmp(row_value(0,&advanced),"Off"));
- change(&advanced,F_ALL,1);
- assert(g_cfg.show_all_settings && !strcmp(row_value(0,&advanced),"On"));
- config_save();config_load();assert(g_cfg.show_all_settings);
- config_game_begin("preset-marker");
- settings_ui_t marked={.game=true};
- input_touch_disc_log("CD-ROM ID: SLUS00707\n");
- assert(preset_row(&marked,F_SCREEN)); // policy marker, not a screen-size value
- test_ws_policy=WS_TOO_SLOW;g_cfg.show_all_settings=0;
- config_set_screen_mode(2);config_ws_sync();
- assert(config_screen_mode()==0 && !test_ws_enabled && !config_ws_fix());
- change(&marked,F_ALL,1); // Reveal the withheld choice without applying it.
- assert(config_ws_fix() && config_screen_mode()==0 && !test_ws_enabled);
- config_game_set_screen(2);config_ws_sync();
- assert(config_screen_mode()==2 && test_ws_enabled);
- change(&marked,F_ALL,1);
- assert(config_screen_mode()==2 && test_ws_enabled); // Explicit override survives hiding.
- assert(config_game_clear("screen"));config_ws_sync();
- assert(config_screen_mode()==0 && !test_ws_enabled);
- test_ws_policy=-1;g_cfg.show_all_settings=1;
- input_touch_disc_log("CD-ROM ID: SCUS94449\n");
- assert(preset_row(&marked,F_FF) && !game_capabilities().fast_forward);
- change(&marked,F_FF,1);
- assert(game_capabilities().fast_forward && overridden(&marked,F_FF));
- assert(!preset_row(&marked,F_FF));
- for(int row=0;row<input_controls_count();row++)
-  if(input_control_slot(row)==INPUT_PHYSICAL_N+4)
-   assert(!preset_row(&marked,CONTROL_ROW+row));
- assert(config_game_clear("fast_forward") && preset_row(&marked,F_FF));
- game_preset_t touch_mode_fixture;memset(&touch_mode_fixture,0xff,sizeof(touch_mode_fixture));
- for(int k=0;k<6;k++) touch_mode_fixture.old3ds.touch_bindings[k]=-2;
- touch_mode_fixture.old3ds.touch_controls=TOUCH_CONTROLS_OFF;
- current_preset=&touch_mode_fixture;options_mark_updated();
- for(int row=0;row<input_controls_count();row++)
-  if(input_control_slot(row)==INPUT_PHYSICAL_N)
-   assert(!strcmp(preset_key(CONTROL_ROW+row),"touch_controls") && preset_row(&marked,CONTROL_ROW+row));
-  else if(input_control_slot(row)>=0 && input_control_slot(row)<INPUT_PHYSICAL_N)
-   assert(!preset_row(&marked,CONTROL_ROW+row));
- config_game_end();game_presets_reset();config_reset_defaults();
+	// A tested preset: P marker on its value, warning header, Reset to recommended.
+	for (int model = 0; model < 2; model++) {
+		g_new3ds = model;
+		config_reset_defaults();
+		config_game_begin("Silent Hill");
+		input_touch_disc_log("CD-ROM ID: SLUS00707\n");
+		settings_ui_t sh = {.game = true};
+		open_page(&sh, CAT_ADVANCED);
+		assert(game_preset_tested() == model);   // New: overclock entry tested_with = 1
+		assert(!strcmp(advanced_header(&sh), model ? advanced_tested : advanced_untested));
+		assert(has_row(&sh, F_RECOMMENDED) == model);
+		int clock = options_index("pcsx_rearmed_psxclock");
+		assert(clock >= 0);
+#ifdef PSX3D_PS1_OVERCLOCK_PRESETS
+		assert(preset_row(&sh, CORE_ROW + clock) == model);
+		if (model) assert(!strcmp(options_get("pcsx_rearmed_psxclock"), "100"));   // 93..100 reachable
+#endif
+		options_cycle(clock, 1);
+		assert(overridden(&sh, CORE_ROW + clock) && !preset_row(&sh, CORE_ROW + clock));
+		if (model) {
+			// Reset to recommended clears Advanced only: Display stays.
+			config_game_set_screen(1);
+			const char *keys[] = {options_game_key("pcsx_rearmed_psxclock")};
+			char k0[32]; snprintf(k0, sizeof(k0), "%s", keys[0]); keys[0] = k0;
+			config_game_reset_advanced(keys, 1);
+			assert(!overridden(&sh, CORE_ROW + clock) && config_game_overridden("screen"));
+			shot("new-tested-Advanced");
+			flist_snap(&sh.list, 0, sh.count, list_rows(&sh)); draw_settings(&sh); shot_end();
+		}
+		assert(config_game_reset());
+		config_game_end();
+		game_presets_reset();
+	}
 
- // Preserve the full existing cheat capacity, not just the ordinary option count.
- settings_ui_t cheats_fixture={.game=true};cheat_fixture_count=256;
- open_page(&cheats_fixture,CAT_CHEATS);assert(cheats_fixture.count==256);
- cheat_fixture_count=0;
- // Conditional rows still follow the existing parent option and debug gates.
- g_new3ds=true;config_reset_defaults();
- settings_ui_t conditional={0};
- config_set_core_override("pcsx_rearmed_frameskip_type","disabled");open_page(&conditional,CAT_PERFORMANCE);
- int base_count=conditional.count;
- config_set_core_override("pcsx_rearmed_frameskip_type","auto_threshold");open_page(&conditional,CAT_PERFORMANCE);
- assert(conditional.count==base_count);
- for(int model=0;model<2;model++) {
-  g_new3ds=model;
-  config_game_begin("Castlevania - Symphony of the Night");
-  settings_ui_t curated={.game=true};open_page(&curated,CAT_PERFORMANCE);
-  int unlisted_count=curated.count;
-  input_touch_disc_log("CD-ROM ID: SLUS00067\n");open_page(&curated,CAT_PERFORMANCE);
-  assert(curated.count==unlisted_count); // SotN sets no frameskip: preserve its ordinary option.
-  shot(model?"new-curated-Performance":"old-curated-Performance");
-  flist_snap(&curated.list,0,curated.count,VISIBLE_ROWS);draw_settings(&curated);shot_end();
-  config_game_end();
- }
- g_new3ds=true;
- assert(!strcmp(options_get("pcsx_rearmed_frameskip_type"),"auto"));
- open_page(&conditional,CAT_ADVANCED);assert(!has_row(&conditional,CATEGORY_ROW+CAT_DEBUG));
- g_cfg.debug=1;open_page(&conditional,CAT_ADVANCED);assert(has_row(&conditional,CATEGORY_ROW+CAT_DEBUG));
- g_cfg.debug=0;
-	// Isolated overrides, including preset renderer fallback and legacy screen.
+	// Widescreen "off" policy: offered with a note, not taken from the all-games choice.
 	g_new3ds = false;
+	config_reset_defaults();
+	config_set_screen_mode(2);   // all games: Widescreen
+	config_game_begin("ws-off");
+	test_ws_policy = WS_TOO_SLOW;
+	config_ws_sync();
+	assert(config_ws_fix() && config_screen_mode() == 0 && !test_ws_enabled);
+	assert(!strcmp(screen_note(), "Widescreen lowers the speed a lot on Old 3DS."));
+	config_game_set_screen(2);
+	config_ws_sync();
+	assert(config_screen_mode() == 2 && test_ws_enabled);   // explicit per-game choice
+	assert(config_game_clear("screen"));
+	config_ws_sync();
+	assert(config_screen_mode() == 0 && !test_ws_enabled);
+	// Migration: an old Show-all override still counts as an explicit choice.
+	gamecfg_set_int("preset_widescreen", 1);
+	config_ws_sync();
+	assert(test_ws_enabled);
+	assert(config_game_reset());
+	test_ws_policy = -1;
+	config_game_end();
+	config_reset_defaults();
+
+	// Controller: all-games choice, per-game override, preset layer.
+	g_new3ds = true;
+	config_reset_defaults();
+	assert(config_controller() == 0);
+	settings_ui_t lib = {0};
+	change(&lib, F_CONTROLLER, 1);
+	assert(g_cfg.controller == 1 && config_controller() == 1);
+	config_save(); config_load();
+	assert(g_cfg.controller == 1 && contains(PSX3D_CONFIG, "controller=1\n"));
+	config_game_begin("controller");
+	settings_ui_t pad = {.game = true};
+	assert(config_controller() == 1);
+	change(&pad, F_CONTROLLER, 1);
+	assert(config_controller() == 0 && overridden(&pad, F_CONTROLLER));
+	assert(config_game_clear("controller") && config_controller() == 1);
+	assert(config_game_reset());
+	config_game_end();
+	// Rewind is on by default on New, a per-game choice.
+	config_game_begin("rewind");
+	assert(config_rewind_on());
+	settings_ui_t rw = {.game = true};
+	change(&rw, F_REWIND, 1);
+	assert(!config_rewind_on() && gamecfg_int("rewind", 1) == 0);
+	assert(config_game_reset() && config_rewind_on());
+	config_game_end();
+	g_new3ds = false;
+	config_game_begin("rewind-old");
+	assert(!config_rewind_on());
+	config_game_end();
+	config_reset_defaults();
+
+	// Preserve the full existing cheat capacity, not just the ordinary option count.
+	settings_ui_t cheats_fixture={.game=true};cheat_fixture_count=256;
+	open_page(&cheats_fixture,CAT_CHEATS);assert(cheats_fixture.count==256);
+	cheat_fixture_count=0;
+	// Debug rows only with debug.
+	settings_ui_t conditional={0};
+	open_page(&conditional,CAT_ADVANCED);assert(!has_row(&conditional,CATEGORY_ROW+CAT_DEBUG));
+	g_cfg.debug=1;open_page(&conditional,CAT_ADVANCED);assert(has_row(&conditional,CATEGORY_ROW+CAT_DEBUG));
+	g_cfg.debug=0;
+	// Isolated overrides and legacy screen.
 	config_reset_defaults();
 	write_text(PSX3D_DIR "/games.ini", "navigation=2\n");
 	config_game_begin("navigation");
- assert(config_game_overridden("screen"));
- assert(config_game_clear("screen") && !config_game_overridden("screen"));
- config_game_set_screen(1);
+	assert(config_game_overridden("screen"));
+	assert(config_game_clear("screen") && !config_game_overridden("screen"));
+	config_game_set_screen(1);
 	gamecfg_set_int("rewind", 1);
 	gamecfg_set("other", "keep");
 	assert(config_game_clear("screen") && !gamecfg_get("screen") && config_screen_mode() == 0);
@@ -271,13 +292,21 @@ int main(void)
 	assert(!config_control_overridden(0) && input_map_is_default(0));
 	assert(config_game_reset() && !gamecfg_get("other"));
 	config_game_end();
-	// Raw core settings remain shared. Category navigation must not change their storage scope.
+	// Raw core settings in the library are all-games values.
 	int n = options_count();
 	for (int i = 0; i < n; i++)
 		if (!strcmp(options_key(i), "pcsx_rearmed_frameskip_type")) {
 			const char *v = options_cycle(i, 1);
 			assert(!strcmp(config_core_override(options_key(i)), v));
 		}
+	// Forced options have no row and ignore saved values (docs/settings.md section 3).
+	assert(options_index("pcsx_rearmed_dithering") < 0 && options_index("pcsx_rearmed_spu_reverb") < 0);
+	config_set_user_core_override("pcsx_rearmed_dithering", "disabled");
+	assert(!strcmp(options_get("pcsx_rearmed_dithering"), "enabled"));
+	assert(!strcmp(options_get("pcsx_rearmed_spu_reverb"), "enabled"));
+	assert(!strcmp(options_get("pcsx_rearmed_gteregsunneeded"), "enabled"));   // Old default
+	// Header tap means Back.
+	assert(ui_header_back(KEY_A) == KEY_A);
 	// Remote navigation keys go through input_remote_key() now; only the
 	// capture-only debug page toggle stays gated on an open Settings.
 	assert(!settings_ui_debug_key("debug-on"));
@@ -292,7 +321,7 @@ int main(void)
 	FT_Done_Face(body_face);
 	FT_Done_FreeType(ft);
 	screen_note_checks();
-	puts("PASS: widescreen notes (no fix, held back for speed, costly warning) on both consoles");
-	puts("PASS: category inventory, visibility, cursor memory, scope, individual override/reset, production "
-		 "drawing and remote UI key gate");
+	puts("PASS: widescreen notes (no fix, costly warning, large cost) on both consoles");
+	puts("PASS: page inventory, visibility, cursor memory and heading skip, tested-preset header/P/reset to "
+		 "recommended, widescreen off policy, Controller and Rewind layers, forced options, production drawing");
 }

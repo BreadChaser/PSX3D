@@ -3,12 +3,18 @@
 
   python3 tools/presets/check.py [--dir DIR] [--base REF]
 
-Checks every DIR/*.ini (default psx3d/romfs/presets): known keys and values,
+Checks every DIR/*.ini (default psx3d/romfs/presets) except defaults.ini: known keys and values,
 section placement, serial format, serials listed in two files, sparse files
 (no key equal to the console default), widescreen bundles for warn/off, no
 psxclock for games whose clock the core sets itself, and versions: VERSION is
 >= every file version, and a file that changed since REF (default: the last
 release tag) has a higher version than at REF, with a higher VERSION too.
+
+Defaults (docs/settings.md section 6): defaults.ini must equal
+tools/presets/defaults-history/<defaults_version>.ini, released history files
+never change, and a preset with tested_with = N below the current version must
+pin (set) every technical option whose default changed since N, and is
+rejected outright when a forced value changed, until it is retested.
 Exit status 1 on any error.
 """
 import argparse
@@ -21,28 +27,57 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SERIAL = re.compile(r'^[A-Z]{4}[0-9]{5}$')
 NAME = re.compile(r'^[a-z0-9]+(-[a-z0-9]+)*\.ini$')
 BINDS = 'hide b y select start up down left right a x l1 r1 l2 r2 l3 r3 ff ff_hold rewind'.split()
-# key: allowed values (None = number), Old default, New default (None = no default).
-OPTIONS = {
-    'fast_forward': (['no', 'yes'], 'yes', 'yes'),
-    'rewind': (['no', 'yes'], 'no', 'yes'),
-    'touch_controls': (['auto', 'on', 'off'], 'auto', 'auto'),
-    'l2r2': (['no', 'yes'], 'yes', 'no'),
-    'l3r3': (['no', 'yes', 'analog'], 'analog', 'analog'),
-    'stick': (['no', 'yes', 'analog'], 'analog', 'no'),
-    'frameskip': (['off', 'auto'], 'auto', 'auto'),
-    'widescreen': (['hidden', 'on', 'warn', 'off'], 'on', 'on'),
-    'psxclock': (None, '57', '57'),
-    'auto_floor': (None, '15', '15'),
-}
-for slot in ('l2', 'r2', 'l3', 'r3', 'x1', 'x2'):
-    OPTIONS['touch_' + slot] = (BINDS, None, None)
+
+
+def read_defaults(path):
+    """defaults.ini -> (version, {section: {key: word}}), mirroring presets.c."""
+    version, data, section = 0, {}, None
+    for raw in pathlib.Path(path).read_text().split('\n'):
+        line = re.split('[;#\r]', raw, maxsplit=1)[0].strip()
+        if not line:
+            continue
+        if line.startswith('['):
+            section = line[1:-1]
+            data.setdefault(section, {})
+            continue
+        key, value = (x.strip() for x in line.split('=', 1))
+        if section is None:
+            version = int(value) if key == 'defaults_version' and value.isdigit() else 0
+        else:
+            data[section][key] = value
+    return version, data
+
+
+DEFAULTS = ROOT / 'psx3d/romfs/presets/defaults.ini'
+HISTORY = ROOT / 'tools/presets/defaults-history'
+DEFAULTS_VERSION, DEFAULTS_DATA = read_defaults(DEFAULTS)
+# Technical settings (layer = tech in docs/settings.md); the rest of [old]/[new] is taste.
+TECH = {row.split('|')[2].strip() for row in re.search(r'```settings-menu\n(.*?)```',
+        (ROOT / 'docs/settings.md').read_text(), re.S).group(1).strip().split('\n')
+        if row.split('|')[8].strip() == 'tech'} - {'-', '>'}
+BINDS = 'hide b y select start up down left right a x l1 r1 l2 r2 l3 r3 ff ff_hold rewind'.split()
+CLOCK = {'auto': '57'}   # preset numbers for the defaults' auto words
+
+
+def console_default(key, console, data=None):
+    data = data or DEFAULTS_DATA
+    value = data.get('forced.' + console, {}).get(key, data.get(console, {}).get(key))
+    return CLOCK.get(value, value) if key == 'psxclock' else value
+
+
 # Vocabulary and numeric bounds are shared with the C runtime, not duplicated.
 SCHEMA = {}
+OPTIONS = {}
 for name, words, lo, hi in re.findall(r'PRESET_KEY\((\w+), "([^"\n]*)", (-?\d+), (\d+)\)',
         (ROOT / 'psx3d/source/preset_schema.def').read_text()):
     SCHEMA[name] = (words.split('|') if words else None, int(lo), int(hi))
-    old, new = OPTIONS[name][1:]
+    old, new = console_default(name, 'old'), console_default(name, 'new')
+    # Capability shorthands keep their documented defaults (docs/presets.md).
+    old, new = {'rewind': ('no', 'yes'), 'touch_controls': ('auto', 'auto'), 'l2r2': ('yes', 'no'),
+                'l3r3': ('analog', 'analog'), 'stick': ('analog', 'no'),
+                'widescreen': ('on', 'on')}.get(name, (old, new))
     OPTIONS[name] = (SCHEMA[name][0], old, new)
+RETIRED = {'fast_forward': 'fast forward is always allowed (docs/settings.md); remove it'}
 COMMON_ONLY = {'title', 'version', 'serials', 'curated'}
 
 
@@ -144,6 +179,9 @@ def check_file(path, text, bundles, core_clock):
                 if section != 'common':
                     errors.append(f'{where} belongs at the top, not in [{section}]')
                 continue
+            if key in RETIRED:
+                errors.append(f'{where}: {RETIRED[key]}')
+                continue
             if key not in OPTIONS:
                 errors.append(f'{where}: unknown key')
                 continue
@@ -160,7 +198,8 @@ def check_file(path, text, bundles, core_clock):
                 continue
             defaults = {'common': {old_default, new_default} if old_default == new_default else set(),
                         'old': {old_default}, 'new': {new_default}}[section]
-            if value in defaults:
+            pin = 'pinned at defaults' in keys.get(key + '.source', ('',))[0]
+            if value in defaults and not pin:
                 errors.append(f'{where} = {value} is the console default: leave it out')
             if section != 'common' and common.get(key, (None,))[0] == value:
                 errors.append(f'{where} repeats the common value')
@@ -172,7 +211,72 @@ def check_file(path, text, bundles, core_clock):
                 for serial in serials:
                     if serial in core_clock:
                         errors.append(f'{where}: the core sets the clock of {serial}; a preset must not')
+    errors += check_tested(data)
     return serials, (int(version) if version.isdigit() else 0), errors
+
+
+def history(version):
+    path = HISTORY / f'{version}.ini'
+    return read_defaults(path)[1] if path.exists() else None
+
+
+def check_tested(data):
+    """Section 6.3: a tested preset pins or retests every changed default."""
+    errors = []
+    for console in ('old', 'new'):
+        value = data[console].get('tested_with', data['common'].get('tested_with', (None, 0)))[0]
+        if value is None:
+            continue
+        if not value.isdigit():
+            continue   # reported as a bad number by the option check
+        tested = int(value)
+        if tested > DEFAULTS_VERSION:
+            errors.append(f'tested_with = {tested} in [{console}] is above defaults_version {DEFAULTS_VERSION}')
+            continue
+        then = history(tested)
+        if then is None:
+            errors.append(f'tested_with = {tested}: no tools/presets/defaults-history/{tested}.ini')
+            continue
+        if tested == DEFAULTS_VERSION:
+            continue
+        for key in sorted(set(then.get(console, {})) | set(DEFAULTS_DATA.get(console, {}))):
+            old, new = then.get(console, {}).get(key), DEFAULTS_DATA.get(console, {}).get(key)
+            if old == new or key not in TECH:
+                continue   # taste defaults never fail (section 6.3, rule 4)
+            if key not in data[console] and key not in data['common']:
+                errors.append(f'[{console}] tested_with {tested}: default {key} changed {old} -> {new}; '
+                              f'pin it ({key} = {old}, {key}.source = pinned at defaults {tested}) or retest')
+        for key in sorted(set(then.get('forced.' + console, {})) | set(DEFAULTS_DATA.get('forced.' + console, {}))):
+            old, new = then.get('forced.' + console, {}).get(key), DEFAULTS_DATA.get('forced.' + console, {}).get(key)
+            if old != new:
+                errors.append(f'[{console}] tested_with {tested}: forced {key} changed {old} -> {new}; '
+                              f'forced values cannot be pinned, retest (tested_with = {DEFAULTS_VERSION})')
+    return errors
+
+
+def check_defaults(base):
+    """defaults.ini equals its history file; released history files are frozen."""
+    problems = []
+    if DEFAULTS_VERSION <= 0:
+        return ['defaults.ini: missing or bad defaults_version']
+    archived = HISTORY / f'{DEFAULTS_VERSION}.ini'
+    if not archived.exists():
+        problems.append(f'defaults.ini: defaults_version {DEFAULTS_VERSION} has no {archived.relative_to(ROOT)}')
+    elif archived.read_bytes() != DEFAULTS.read_bytes():
+        problems.append(f'defaults.ini differs from {archived.relative_to(ROOT)}: a changed default needs '
+                        f'a new defaults_version and history file')
+    for console in ('old', 'new'):
+        if set(DEFAULTS_DATA.get(console, {})) != set(DEFAULTS_DATA.get('old', {})):
+            problems.append(f'defaults.ini: [old] and [{console}] list different settings')
+        if set(DEFAULTS_DATA.get('forced.' + console, {})) != set(DEFAULTS_DATA.get('forced.old', {})):
+            problems.append(f'defaults.ini: [forced.old] and [forced.{console}] list different keys')
+    if base:
+        listed = git('ls-tree', '--name-only', f'{base}:tools/presets/defaults-history')
+        for name in listed.stdout.split() if listed.returncode == 0 else []:
+            before = git('show', f'{base}:tools/presets/defaults-history/{name}').stdout
+            if not (HISTORY / name).exists() or (HISTORY / name).read_text() != before:
+                problems.append(f'defaults-history/{name} changed after release {base}; never edit a released version')
+    return problems
 
 
 def check_pack_version(data):
@@ -203,7 +307,7 @@ def main():
     if len(list(directory.glob('*.ini'))) > 256:
         problems.append('more than 256 files')
     for path in sorted(directory.iterdir()):
-        if path.name == 'VERSION':
+        if path.name in ('VERSION', 'defaults.ini'):
             continue
         if not NAME.match(path.name):
             problems.append(f'{path.name}: not a lower-case-hyphenated .ini file name')
@@ -224,6 +328,7 @@ def main():
 
     # Versions against a release: a changed file and the pack must both move up.
     base = args.base or git('describe', '--tags', '--abbrev=0').stdout.strip()
+    problems += check_defaults(base)
     try:
         relative = directory.resolve().relative_to(ROOT).as_posix()
     except ValueError:
@@ -232,7 +337,7 @@ def main():
         listed = git('ls-tree', '--name-only', f'{base}:{relative}')
         if listed.returncode == 0:
             old = {name: git('show', f'{base}:{relative}/{name}').stdout for name in listed.stdout.split()}
-            changed = sorted(set(texts) ^ set(n for n in old if n != 'VERSION') |
+            changed = sorted(set(texts) ^ set(n for n in old if n not in ('VERSION', 'defaults.ini')) |
                              {n for n in texts if n in old and old[n] != texts[n]})
             for name in changed:
                 if name in texts and name in old:

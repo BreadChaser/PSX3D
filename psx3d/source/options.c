@@ -24,21 +24,6 @@ static option_t opts[MAX_OPTIONS];
 static int nopts;
 static bool updated;
 
-// PSX3D only runs on the 3DS, so some options have exactly one right answer
-// here. They're fixed and not shown in the menu.
-static const char *const locked[][2] = {
-	{ "pcsx_rearmed_scale_hires", "enabled" },        // 240-line screen: never draw 480 lines
-	{ "pcsx_rearmed_spu_interpolation", "gaussian" }, // what the real SPU does
-	{ "pcsx_rearmed_spu_reverb", "enabled" },
-	{ "pcsx_rearmed_spu_thread", "disabled" },        // would share core 2 with the GPU
-	{ "pcsx_rearmed_gpu_thread_rendering", "enabled" },
-	{ "pcsx_rearmed_drc_thread", "disabled" },
-	{ "pcsx_rearmed_rgb32_output", "disabled" },      // frontend draws RGB565
-	{ "pcsx_rearmed_fractional_framerate", "auto" },  // frontend paces frames itself
-	{ "pcsx_rearmed_display_fps_v2", "disabled" },    // PSX3D has its own FPS counter
-	{ "pcsx_rearmed_3ds_appcputime", "35" },          // no effect from the Homebrew Launcher
-};
-
 // options for hardware or renderers this build doesn't have
 static const char *const hidden_prefix[] = {
 	"pcsx_rearmed_gpu_unai_",
@@ -55,39 +40,33 @@ static const char *const hidden_prefix[] = {
 	"pcsx_rearmed_drc",          // chosen automatically (Luma SVC access)
 };
 
-static const char *locked_value(const char *key)
+// PSX3D only runs on the 3DS: options with one right value per console are
+// fixed in defaults.ini [forced.*] and have no menu row (docs/settings.md).
+// Only the developer o: switch overrides them, per load.
+static const char *forced_value(const char *key)
 {
-	// Old 3DS: no core 2, and the syscore gives Homebrew Launcher apps no
-	// CPU time, so the core's helper threads would starve there. The CIA
-	// gets 30% of it: enough for sound and CD reads, not for drawing.
+	bool forced;
+	const char *v = defaults_core(key, &forced);
+	if (!forced)
+		return NULL;
+	// Console limits the file cannot know. Old 3DS: the syscore gives Homebrew
+	// Launcher apps no CPU time, so the core's helper threads would starve there.
+	// The CIA gets 30% of it: enough for sound and CD reads, not for drawing.
 	if (!g_new3ds) {
-		// The syscore only gives us 30% in time slices: drawing there made
-		// the game wait (25 fps vs 36). Sound is buffered and copes.
-		if (strcmp(key, "pcsx_rearmed_gpu_thread_rendering") == 0)
-			return "disabled";
 		// Sound mixing there pays off a little (Crash, GT2 +3%): it runs
 		// ahead in the slices, and we mix it here when it hasn't started.
-		// Not from the Homebrew Launcher: no syscore time at all there.
-		if (strcmp(key, "pcsx_rearmed_spu_thread") == 0)
-			return g_syscore_pct && !sw_nosputhread ? "enabled" : "disabled";
-		if (strcmp(key, "pcsx_rearmed_3ds_appcputime") == 0) {
+		if (!strcmp(key, "pcsx_rearmed_spu_thread") && (!g_syscore_pct || sw_nosputhread))
+			return "disabled";
+		if (!strcmp(key, "pcsx_rearmed_3ds_appcputime")) {
 			static char b[8];
 			snprintf(b, sizeof(b), "%d", g_syscore_pct ? g_syscore_pct : 35);
 			return b;
 		}
 		// CD reads there: CTR streams music, 1.3 -> 0.35ms a frame here
-		if (strcmp(key, "pcsx_rearmed_cd_readahead") == 0)
-			return sw_cdra[0] ? sw_cdra : g_syscore_pct ? "256" : "0";
-		// gaussian interpolation costs real time on a 268MHz core
-		if (strcmp(key, "pcsx_rearmed_spu_interpolation") == 0)
-			return "simple";
-		if (strcmp(key, "pcsx_rearmed_spu_reverb") == 0)
-			return NULL;   // a choice on Old 3DS (default off, below)
+		if (!strcmp(key, "pcsx_rearmed_cd_readahead"))
+			return sw_cdra[0] ? sw_cdra : g_syscore_pct ? v : "0";
 	}
-	for (size_t i = 0; i < sizeof(locked) / sizeof(locked[0]); i++)
-		if (strcmp(locked[i][0], key) == 0)
-			return locked[i][1];
-	return NULL;
+	return v;
 }
 
 // Options changed in a game's menu belong to that game: games/<game>.ini
@@ -97,11 +76,6 @@ const char *options_game_key(const char *key)
 	static char k[32];
 	snprintf(k, sizeof(k), "o.%s", !strncmp(key, "pcsx_rearmed_", 13) ? key + 13 : key);
 	return k;
-}
-static const char *saved_value(const char *key)
-{
-	const char *v = config_in_game() ? gamecfg_get(options_game_key(key)) : NULL;
-	return v ? v : config_core_override(key);
 }
 
 static bool option_is(const char *key, const char *value)
@@ -118,17 +92,11 @@ static bool is_hidden(const char *key)
 	    !strcmp(key, "pcsx_rearmed_psx3d_widescreen")) return true;
 	if (!strncmp(key, "pcsx_rearmed_screen_centering", sizeof("pcsx_rearmed_screen_centering") - 1)) return true;
 	if (!strcmp(key, "pcsx_rearmed_display_info") && !g_cfg.debug && !settings_ui_debug_capture()) return true;
-	if (config_in_game() && !g_cfg.show_all_settings &&
-	    ((!strcmp(key, "pcsx_rearmed_frameskip_type") && game_preset_sets("frameskip"))
-#ifdef PSX3D_PS1_OVERCLOCK_PRESETS
-	     || (!strcmp(key, "pcsx_rearmed_psxclock") && game_preset_sets("psxclock"))
-#endif
-	    )) return true;
 	if ((!strcmp(key, "pcsx_rearmed_screen_centering_x") ||
 	     !strcmp(key, "pcsx_rearmed_screen_centering_y") ||
 	     !strcmp(key, "pcsx_rearmed_screen_centering_h_adj")) &&
 	    !option_is("pcsx_rearmed_screen_centering", "manual")) return true;
-	if (locked_value(key))
+	if (forced_value(key))
 		return true;
 	for (size_t i = 0; i < sizeof(hidden_prefix) / sizeof(hidden_prefix[0]); i++)
 		if (strncmp(key, hidden_prefix[i], strlen(hidden_prefix[i])) == 0)
@@ -197,11 +165,6 @@ static void finish_register(void)
 			o->nvalues = 2;
 			free(o->def); o->def = strdup("auto");
 		}
-		// Shaded polygons without the PS1's dither quantize to 15-bit colour
-		// in tinted bands (Silent Hill's fogged ground). Follow the game.
-		if (!strcmp(o->key, "pcsx_rearmed_dithering")) {
-			free(o->def); o->def = strdup("enabled");
-		}
 	}
 	nvisible = 0;
 	for (int i = 0; i < nopts; i++)
@@ -265,7 +228,6 @@ const char *options_get(const char *key)
 	if (!strcmp(key, "pcsx_rearmed_gpu_thread_rendering") && (!g_new3ds || sw_nogputhread))
 		return "disabled";
 	if (!strcmp(key, RENDERER_KEY) || !strncmp(key, "pcsx_rearmed_gpu_unai_", sizeof("pcsx_rearmed_gpu_unai_") - 1)) return NULL;
-	const char *ov = locked_value(key);
 	option_t *o = find(key);
 
 	for (int k = 0; k < 8 && sw_opt[k][0]; k++) {
@@ -290,23 +252,24 @@ const char *options_get(const char *key)
 	if (sw_fs3 && !g_new3ds && !strcmp(key, "pcsx_rearmed_frameskip_interval"))
 		return "3";
 
+	const char *ov = forced_value(key);
+	const char *per_game = !ov && config_in_game() ? gamecfg_get(options_game_key(key)) : NULL;
+	bool forced;
 	if (!strcmp(key, "pcsx_rearmed_frameskip_type")) {
-		const char *per_game = config_in_game() ? gamecfg_get(options_game_key(key)) : NULL;
 		if (per_game) return !strcmp(per_game, "disabled") ? "disabled" : "auto";
 		if (config_in_game() && game_preset_sets("frameskip"))
 			return game_capabilities().frameskip ? "auto" : "disabled";
 		const char *saved = config_core_override(key);
+		if (!saved) saved = defaults_core(key, &forced);
 		return saved && !strcmp(saved, "disabled") ? "disabled" : "auto";
 	}
-	// Core-only legacy/fast-forward policy knobs; never read saved values.
-	if (!strcmp(key, "pcsx_rearmed_frameskip_interval")) return "2";
-	if (!strcmp(key, "pcsx_rearmed_frameskip_threshold")) return "33";
+	// Technical settings: the player's per-game value, then the game's tested
+	// value, then the all-games value, then defaults.ini (docs/settings.md).
+	if (!ov)
+		ov = per_game;
 #ifdef PSX3D_PS1_OVERCLOCK_PRESETS
-	// Technical setting: the game's clock preset beats the all-games value,
-	// the player's own per-game value beats the preset (docs/presets.md).
 	static char preset_clock[8];
-	if (!ov && config_in_game() && !strcmp(key, "pcsx_rearmed_psxclock") &&
-	    !gamecfg_get(options_game_key(key)) && game_capabilities().psxclock > 0) {
+	if (!ov && config_in_game() && !strcmp(key, "pcsx_rearmed_psxclock") && game_capabilities().psxclock > 0) {
 		if (atoi(preset_clock) != game_capabilities().psxclock) {
 			snprintf(preset_clock, sizeof(preset_clock), "%d", game_capabilities().psxclock);
 			log_printf("preset: PS1 clock %s\n", preset_clock);
@@ -314,21 +277,12 @@ const char *options_get(const char *key)
 		ov = preset_clock;
 	}
 #endif
+	if (!ov && config_in_game())
+		ov = game_preset_core_value(key);
 	if (!ov)
-		ov = saved_value(key);
-	// Old 3DS: one 268MHz core runs the CPU, GPU and sound. Defaults that
-	// trade a little accuracy for speed (all still changeable in the menu).
-	if (!ov && !g_new3ds) {
-		static const char *const o3ds[][2] = {
-			{ "pcsx_rearmed_spu_reverb", "disabled" },
-			// GTE speed hacks: rare glitches, measurable gain on a 268MHz core
-			{ "pcsx_rearmed_gteregsunneeded", "enabled" },
-			{ "pcsx_rearmed_nogteflags", "enabled" },
-		};
-		for (size_t i = 0; i < sizeof(o3ds) / sizeof(o3ds[0]); i++)
-			if (strcmp(key, o3ds[i][0]) == 0)
-				ov = o3ds[i][1];
-	}
+		ov = config_core_override(key);
+	if (!ov)
+		ov = defaults_core(key, &forced);
 	if (o && ov) {
 		// only hand the core values it actually knows about
 		for (int j = 0; j < o->nvalues; j++)
@@ -360,17 +314,20 @@ int options_count(void)
 	return nvisible;
 }
 const char *options_key(int i) { return opts[visible[i]].key; }
+// Menu index of a shown option, -1 when it is hidden or not registered.
+int options_index(const char *key)
+{
+	for (int i = 0; i < nvisible; i++)
+		if (!strcmp(opts[visible[i]].key, key))
+			return i;
+	return -1;
+}
 static const char *const player_names[][2] = {
-	{ "pcsx_rearmed_region", "Game region" }, { "pcsx_rearmed_bios", "BIOS" },
 	{ "pcsx_rearmed_memcard1", "Memory card 1" }, { "pcsx_rearmed_memcard2", "Memory card 2" },
-	{ "pcsx_rearmed_cd_readahead", "Read disc ahead" }, { "pcsx_rearmed_psxclock", "Game CPU speed" },
-	{ "pcsx_rearmed_dithering", "PS1 colour shading" },
-	{ "pcsx_rearmed_frameskip_type", "Skip frames when slow" },
+	{ "pcsx_rearmed_frameskip_type", "Frameskip" }, { "pcsx_rearmed_psxclock", "Game CPU speed" },
 	{ "pcsx_rearmed_display_info", "Debug: core messages" },
 	{ "pcsx_rearmed_alt_flip", "Flicker fix" },
 	{ "pcsx_rearmed_gpu_slow_llists", "Safe drawing" },
-	{ "pcsx_rearmed_spu_reverb", "Sound echo" },
-	{ "pcsx_rearmed_nocdaudio", "Disc music" }, { "pcsx_rearmed_noxadecoding", "Disc voices and effects" },
 	{ "pcsx_rearmed_analog_axis_modifier", "Stick response" },
 	{ "pcsx_rearmed_analog_combo", "Analog mode shortcut" },
 	{ "pcsx_rearmed_icache_emulation", "Accurate CPU cache" },
@@ -437,19 +394,12 @@ const char *options_cycle(int i, int dir)
 // it's selected. PSX3D's own notes win over the core's text; the impact
 // line is ours (measured on 3DS where it says so).
 static const char *const notes[][3] = {
-	{ "pcsx_rearmed_region", "Usually leave Auto", "Auto detects the disc's region. Choose a region manually only if a game starts with the wrong video timing." },
-	{ "pcsx_rearmed_bios", "Reopen the game to apply", "Auto uses an available PlayStation BIOS. The built-in BIOS needs no file, but some games need a real BIOS in the bios folder to boot correctly." },
 	{ "pcsx_rearmed_memcard1", "Reopen the game to apply", "Game save uses PSX3D's usual per-game save file. Per disc keeps a separate card for each disc; Shared uses one card across games. Off removes this card." },
 	{ "pcsx_rearmed_memcard2", "Reopen the game to apply", "Choose a separate card per disc, a card shared across games, or Off for an empty second memory-card slot." },
-	{ "pcsx_rearmed_psxclock", "Lower may slow the game itself", "How fast the game's PS1 CPU runs. Lower values may raise the frame count while slowing the game itself or causing glitches. Usually leave Auto." },
-	{ "pcsx_rearmed_frameskip_type", "Auto balances speed and smooth pictures", "Auto skips drawing to help game speed, while targeting a minimum picture rate (15/s by default) when possible. Off draws every picture and can slow busy scenes. Some games supply a preset; Advanced can reveal its setting." },
-	{ "pcsx_rearmed_dithering", "Smoother colour gradients", "Adds the PS1's fine colour pattern to shaded polygons. On follows the game; Always also enables it when the game turns it off." },
+	{ "pcsx_rearmed_psxclock", "Usually leave Auto", "How fast the game's PS1 CPU runs. Auto is the real PS1 speed. Higher can raise the picture rate on New 3DS; on Old 3DS any change usually slows the game." },
+	{ "pcsx_rearmed_frameskip_type", "Auto balances speed and smooth pictures", "Auto skips drawing to help game speed, while targeting at least 15 pictures per second when possible. Off draws every picture and can slow busy scenes." },
 	{ "pcsx_rearmed_alt_flip", "Usually leave Auto", "Changes when the game's picture is taken for the screen. Try Early or Late only if a game flickers or shows half-drawn pictures." },
 	{ "pcsx_rearmed_gpu_slow_llists", "May be slower", "Draws every part of the picture strictly in the game's order. Turn on only if parts of a game are missing or drawn wrongly." },
-	{ "pcsx_rearmed_spu_reverb", "Off can improve speed", "Play the PS1's echo effect. Off sounds drier and can help Old 3DS keep up." },
-	{ "pcsx_rearmed_nocdaudio", "Usually keep On", "Play music stored as audio tracks on the game disc." },
-	{ "pcsx_rearmed_noxadecoding", "Usually keep On", "Play compressed voices, music and effects stored on the game disc." },
-	{ "pcsx_rearmed_cd_readahead", "Can reduce loading pauses", "Read this many disc sectors ahead on a spare CPU core. Higher values use more memory. Old 3DS chooses this automatically." },
 	{ "pcsx_rearmed_analog_axis_modifier", "Changes stick response", "Choose the shape of the analog stick's movement range. Most games work best with Square." },
 	{ "pcsx_rearmed_analog_combo", "Controller shortcut", "Choose the PlayStation button combination that switches between digital and analog controls, or Off to disable the shortcut." },
 	{ "pcsx_rearmed_icache_emulation", "More accurate, may be slower", "Emulate the PS1 CPU's instruction cache. Some games need this to run correctly." },

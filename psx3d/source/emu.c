@@ -595,7 +595,7 @@ static bool menu_run(int initial_screen)
 			continue;
 		}
 		input_poll();
-		u32 k = input_keys_down();
+		u32 k = ui_header_back(input_keys_down());
 		if (k & KEY_TOUCH) {
 			touchPosition tp;
 			hidTouchRead(&tp);
@@ -1131,6 +1131,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	// DualShock: starts in digital mode, games switch it to analog themselves,
 	// and analog-only games (Ape Escape) need it plugged in
 	retro_set_controller_port_device(0, RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_ANALOG, 1));
+	input_controller_apply(false);   // Controller: Analog starts the pad in analog mode
 
 	retro_get_system_av_info(&av);
 	fps_target = av.timing.fps;
@@ -1168,7 +1169,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		if (clip_requested<0 && !dev_remote_game() && sw_state < 0 && states_resume_prompt(prefix) && state_load_from(STATE_AUTO))
 			osd("Continuing where you left off");
 	}
-	if (clip_requested<0 && game_capabilities().rewind && gamecfg_int("rewind", 0))
+	if (clip_requested<0 && game_capabilities().rewind && config_rewind_on())
 		rewind_start();
 	bool initial_state_ok = true;
 	clip_set_live_input(input_poll_cb,input_state);

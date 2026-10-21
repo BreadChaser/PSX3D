@@ -379,13 +379,14 @@ int main(int argc, char **argv)
 	log_printf("switches: csnd=%d nonet=%d nosound=%d noirrst=%d noaa=%d nolcd=%d nocovers=%d\n",
 		sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers);
 
+	// defaults.ini (romfs) supplies the settings' starting values: before config.
+	romfsInit();
+	game_presets_init("romfs:/presets", PSX3D_DIR "/presets");
 	config_load();
 	if (!video_init()) {
 		log_printf("video_init failed\n");
 		return 1;
 	}
-	romfsInit();
-	game_presets_init("romfs:/presets", PSX3D_DIR "/presets");
 	ui_init();
 	libui_init();
 	if (!sw_nocovers)

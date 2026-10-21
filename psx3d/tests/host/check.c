@@ -11,6 +11,7 @@
 #include "../../source/psx3d.h"
 void cheats_disc_changed(void) {}
 int padAnalogMode(unsigned int index) { (void)index; return 1; } // touch L3/R3 follow analog mode
+int padToggleAnalog(unsigned int index) { (void)index; return 1; }
 int test_ws_policy = -1;   // bundle models= value for this console, -1 = none
 static bool test_ws_override;
 bool ws_available(void) { return test_ws_policy == 1 || test_ws_policy == 2 || (test_ws_policy >= 0 && test_ws_override); }
@@ -321,9 +322,11 @@ static void layout_checks(void)
  input_map_set(10,12); input_map_set(10,-1); assert(!touch_button_visible(0));
  clean_input(false); paint("bottom-idle");
  input_touch_disc_log("CD-ROM ID: SCUS94423\n"); paint("bottom-curated-full");
- assert(!game_capabilities().fast_forward && !game_capabilities().rewind);
+ // Fast forward is always allowed now (docs/settings.md); Old 3DS still cannot rewind.
+ assert(game_capabilities().fast_forward && !game_capabilities().rewind);
  input_gameplay(true); poll(KEY_SELECT|KEY_R,0,0);
- assert(!input_fast_forward() && button(2) && button(11)); poll(0,0,0);
+ assert(input_fast_forward()); poll(0,0,0);
+ poll(KEY_SELECT|KEY_R,0,0); poll(0,0,0); assert(!input_fast_forward());
  poll(KEY_SELECT|KEY_L,0,0); assert(!input_rewind() && button(2) && button(10));
  poll(0,0,0); input_gameplay(false);
  puts("PASS: empty slot edits, curved stick, all 15 stick-free tilings/targets, stick binding, Hide and blank MENU");
@@ -595,13 +598,12 @@ static void frameskip_checks(void)
   }
   config_set_core_override("pcsx_rearmed_frameskip_type","disabled");
   config_game_begin("Frameskip fixture");current_preset=&fs_fixture;
-  assert(game_preset_curated() && options_count()==(model?0:1));
+  // Nothing is hidden by a preset (docs/settings.md): the tested value shows.
+  assert(game_preset_curated() && options_count()==1);
   assert(game_capabilities().frameskip==(model?0:1));
-  assert(!strcmp(options_get("pcsx_rearmed_frameskip_type"),"disabled"));
-  g_cfg.show_all_settings=1; assert(options_count()==1);
+  assert(!strcmp(options_get("pcsx_rearmed_frameskip_type"),model?"disabled":"disabled"));
   assert(!strcmp(options_cycle(0,1),"auto"));
   assert(!strcmp(options_get("pcsx_rearmed_frameskip_type"),"auto"));
-  g_cfg.show_all_settings=0; assert(options_count()==(model?0:1));
   gamecfg_unset("o.frameskip_type");
   config_game_end(); assert(options_count()==1);
   assert(!strcmp(options_get("pcsx_rearmed_frameskip_type"),"disabled"));
@@ -618,36 +620,35 @@ static void presets_v2_checks(void)
         !contains(PSX3D_CONFIG,"core."));
  g_cfg.show_fps=1; config_user_changed("show_fps");
  g_cfg.smooth=1; config_user_changed("smooth"); // deliberate factory value is still intent
- config_set_user_core_override("pcsx_rearmed_dithering","enabled");
+ config_set_user_core_override("pcsx_rearmed_nostalls","disabled");
+ config_set_user_core_override("pcsx_rearmed_dithering","disabled"); // forced: never kept
  config_save();config_load();config_save();
  assert(contains(PSX3D_CONFIG,"show_fps=1\n") && contains(PSX3D_CONFIG,"smooth=1\n") &&
-        contains(PSX3D_CONFIG,"core.pcsx_rearmed_dithering=enabled\n"));
+        contains(PSX3D_CONFIG,"core.pcsx_rearmed_nostalls=disabled\n") &&
+        !contains(PSX3D_CONFIG,"dithering") && contains(PSX3D_CONFIG,"settings_format=3\n"));
+ assert(!strcmp(options_get("pcsx_rearmed_dithering"),"enabled"));
  // Dense legacy migration preserves all represented choices, even default-valued ones.
  write_text(PSX3D_CONFIG,"touch_slots=1\nsmooth=1\nshow_fps=0\nmusic=1\nsounds=1\naudio_stretch=5\nmap_A=8\ncore.pcsx_rearmed_dithering=enabled\n");
  config_load();config_save();config_load();
+ // Removed settings (music, sounds, audio stretch, forced core options) are dropped.
  assert(contains(PSX3D_CONFIG,"smooth=1\n") && contains(PSX3D_CONFIG,"show_fps=0\n") &&
-        contains(PSX3D_CONFIG,"music=1\n") && contains(PSX3D_CONFIG,"sounds=1\n") &&
-        contains(PSX3D_CONFIG,"audio_stretch=5\n") && contains(PSX3D_CONFIG,"map_A=8\n"));
+        !contains(PSX3D_CONFIG,"music=") && !contains(PSX3D_CONFIG,"sounds=") &&
+        !contains(PSX3D_CONFIG,"audio_stretch=") && !contains(PSX3D_CONFIG,"dithering") &&
+        contains(PSX3D_CONFIG,"map_A=8\n"));
  config_reset_defaults();
  game_presets_init(PSX3D_TEST_PRESETS,PSX3D_DIR "/presets");
  config_set_user_core_override("pcsx_rearmed_frameskip_type","disabled");
  config_game_begin("Omega v2");input_touch_disc_log("CD-ROM ID: SCUS94449\n");
  assert(game_preset_curated() && !game_preset_sets("frameskip"));
  assert(!strcmp(options_get("pcsx_rearmed_frameskip_type"),"disabled"));
- assert(!game_capabilities().fast_forward);
- g_cfg.show_all_settings=1; config_user_changed("show_all_settings");
- assert(!game_capabilities().fast_forward); // revealing never changes a preset value
- gamecfg_set_int("fast_forward",1);options_mark_updated();
+ // Fast forward is always allowed; saved per-game blocks and floors are ignored.
+ assert(game_capabilities().fast_forward);
+ gamecfg_set_int("fast_forward",0);options_mark_updated();
  assert(game_capabilities().fast_forward);
  assert(game_auto_floor()==15);
- gamecfg_set_int("o.auto_floor",12);assert(game_auto_floor()==12);
- config_game_clear("o.auto_floor");assert(game_auto_floor()==15);
+ gamecfg_set_int("o.auto_floor",12);assert(game_auto_floor()==15);
  config_save();assert(!contains(PSX3D_CONFIG,"fast_forward=") && !contains(PSX3D_CONFIG,"map_TOUCH"));
- config_game_end();config_load();assert(g_cfg.show_all_settings);
- config_game_begin("Omega v2");input_touch_disc_log("CD-ROM ID: SCUS94449\n");
- assert(game_capabilities().fast_forward);
- assert(config_game_reset());input_touch_disc_log("CD-ROM ID: SCUS94449\n");
- assert(!game_capabilities().fast_forward);
+ assert(config_game_reset());
  config_game_end();config_reset_defaults();
  puts("PASS: sparse global config, conservative dense migration, Omega presence/override/reset and auto_floor inheritance");
 }

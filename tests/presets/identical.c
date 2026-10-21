@@ -22,6 +22,7 @@ void *ws_memory(void) { return ram; }
 void ws_invalidate(uint32_t a, unsigned n) { (void)a; (void)n; }
 void cheats_disc_changed(void) {}
 void options_mark_updated(void) {}
+bool config_rewind_on(void) { return false; }
 static bool quiet;
 void log_printf(const char *fmt, ...)
 {
@@ -64,7 +65,9 @@ static view_t legacy_view(const char *serial, int new3ds)
 	const bundle_t *b = bundle_of(serial);
 	int policy = b ? b->models[new3ds] : -1;
 	bool allowed = !b || policy == WS_OFFERED || policy == WS_COSTLY;
-	view_t v = { c.fast_forward, c.rewind, c.touch_controls, c.needs_l2r2, c.needs_l3r3, c.needs_right_stick,
+	// Settings v1 (docs/settings.md): fast forward is always allowed; the six
+	// unassessed v0.4.1 Old blocks were removed. Everything else is unchanged.
+	view_t v = { 1, c.rewind, c.touch_controls, c.needs_l2r2, c.needs_l3r3, c.needs_right_stick,
 		{0}, c.frameskip, p != NULL, allowed && c.widescreen, policy };
 	memcpy(v.binds, c.touch_bindings, sizeof(v.binds));
 	return v;
@@ -78,7 +81,8 @@ static view_t new_view(const char *dir, const char *serial, int new3ds)
 	const bundle_t *b = bundle_of(serial);
 	if (b) assert(ws_load(dir, serial, (uint32_t)strtoul(b->fp, NULL, 16), c.widescreen));
 	else ws_unload();
-	// config_ws_sync() and the settings note, as in config.c/settings_ui.c.
+	// Offered and following the all-games choice (config_ws_sync); "off" bundles
+	// are offered per game only, which ws_note (the policy) records.
 	bool ok = ws_available() && (c.widescreen == WS_OFFERED || c.widescreen == WS_COSTLY);
 	view_t v = { c.fast_forward, c.rewind, c.touch_controls, c.needs_l2r2, c.needs_l3r3, c.needs_right_stick,
 		{0}, c.frameskip, game_preset_curated(), ok, ws_console_policy() };
@@ -95,17 +99,18 @@ static void put(const char *path, const char *text)
 	for (char *line = strtok_r(copy, "\n", &ctx); line; line = strtok_r(NULL, "\n", &ctx)) {
 		fprintf(f, "%s\n", line);
 		char key[32];
-		if (sscanf(line, "%31s =", key) == 1 && (!strcmp(key, "fast_forward") || !strcmp(key, "rewind")))
+		if (sscanf(line, "%31s =", key) == 1 && (!strcmp(key, "l2r2") || !strcmp(key, "rewind")))
 			fprintf(f, "%s.source = host fixture\n%s.confidence = unassessed\n", key, key);
 	}
 	free(copy);
 	fclose(f);
 }
+// Tracer for which file won: 0 when the winning file sets l2r2 = no (Old).
 static int fast_forward_of(const char *serial)
 {
 	g_new3ds = false;
 	identify(serial);
-	return game_capabilities().fast_forward;
+	return game_capabilities().needs_l2r2;
 }
 
 static void precedence_checks(const char *tmp)
@@ -117,8 +122,8 @@ static void precedence_checks(const char *tmp)
 	mkdir(s, 0700);
 #define AT(dir, name) (snprintf(p, sizeof(p), "%s/%s", dir, name), p)
 	put(AT(b, "VERSION"), "2\n");
-	put(AT(b, "a.ini"), "title = A\nversion = 2\nserials = TEST00001, TEST00002\ncurated = yes\n[old]\nfast_forward = no\n");
-	put(AT(b, "c.ini"), "title = C\nversion = 1\nserials = TEST00003\n[old]\nfast_forward = no\nbogus = 1\nrewind = maybe\n");
+	put(AT(b, "a.ini"), "title = A\nversion = 2\nserials = TEST00001, TEST00002\ncurated = yes\n[old]\nl2r2 = no\n");
+	put(AT(b, "c.ini"), "title = C\nversion = 1\nserials = TEST00003\n[old]\nl2r2 = no\nbogus = 1\nrewind = maybe\n");
 	quiet = true;
 
 	// No SD pack: built-in data; a malformed built-in file is rejected whole.
@@ -141,16 +146,16 @@ static void precedence_checks(const char *tmp)
 	assert(fast_forward_of("TEST00001") == 0 && !strcmp(game_preset_source(), "builtin"));
 
 	// Malformed SD file (unknown key): rejected whole, built-in used.
-	put(AT(s, "a.ini"), "title = A\nversion = 3\nserials = TEST00001\nfast_forward = yes\nturbo = on\n");
+	put(AT(s, "a.ini"), "title = A\nversion = 3\nserials = TEST00001\nl2r2 = yes\nturbo = on\n");
 	game_presets_init(b, s);
 	assert(fast_forward_of("TEST00001") == 0 && !strcmp(game_preset_source(), "builtin"));
 	// SD file newer than its own pack: rejected.
-	put(AT(s, "a.ini"), "title = A\nversion = 9\nserials = TEST00001\nfast_forward = yes\n");
+	put(AT(s, "a.ini"), "title = A\nversion = 9\nserials = TEST00001\nl2r2 = yes\n");
 	game_presets_init(b, s);
 	assert(fast_forward_of("TEST00001") == 0 && !strcmp(game_preset_source(), "builtin"));
 
 	// Missing built-in: an SD-only game is used from the SD pack.
-	put(AT(s, "new.ini"), "title = New\nversion = 1\nserials = TEST00004\ncurated = yes\n[old]\nfast_forward = no\n");
+	put(AT(s, "new.ini"), "title = New\nversion = 1\nserials = TEST00004\ncurated = yes\n[old]\nl2r2 = no\n");
 	game_presets_init(b, s);
 	assert(fast_forward_of("TEST00004") == 0 && game_preset_curated() && !strcmp(game_preset_source(), "sd"));
 
@@ -203,7 +208,7 @@ static void index_limit_checks(const char *tmp)
 		FILE *f=fopen(path,"w");assert(f);
 		fputs("title = Full index\nversion = 2\nserials = ",f);
 		for(unsigned j=0;j<16;j++) fprintf(f,"%sTEST%05u",j?", ":"",file*16+j+1);
-		fputs("\n[old]\nfast_forward = no\nfast_forward.source = host boundary fixture\nfast_forward.confidence = unassessed\n",f);
+		fputs("\n[old]\nl2r2 = no\nl2r2.source = host boundary fixture\nl2r2.confidence = unassessed\n",f);
 		assert(!fclose(f));
 	}
 	quiet=true;

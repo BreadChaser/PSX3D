@@ -89,6 +89,16 @@ void ui_text_ex(C2D_Font font, float x, float y, float size, u32 color, u32 flag
 	C2D_DrawText(&text, C2D_WithColor | flags, x, y, 0.7f, size, size, color);
 }
 
+// A tap on the bottom screen's header (title and colour rule) means Back.
+u32 ui_header_back(u32 keys)
+{
+	if (!(keys & KEY_TOUCH))
+		return keys;
+	touchPosition p;
+	hidTouchRead(&p);
+	return p.py < 30 ? (keys & ~KEY_TOUCH) | KEY_B : keys;
+}
+
 // The same title font, colours and rule for Controls, Settings and the game menu.
 void ui_menu_header(const char *title, const char *right)
 {

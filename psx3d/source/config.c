@@ -51,15 +51,14 @@ bool config_in_game(void) { return in_game; }
 static int default_screen;
 static int default_maps[INPUT_REMAP_N], default_touch_stick;
 static int default_hotkeys[INPUT_HOTKEY_N];
+static int default_controller;   // the all-games Controller choice
 #define WS_KEY "pcsx_rearmed_psx3d_widescreen"
 
 // Frontend settings a game keeps for itself when changed in its menu
 // (games/<game>.ini stores only the ones that differ from all games).
-static int *const game_fields[] = { &g_cfg.smooth, &g_cfg.show_fps, &g_cfg.stereo,
-	&g_cfg.audio_stretch, &g_cfg.touch_click_left };
-static const char *const game_field_keys[] = { "smooth", "show_fps", "stereo",
-	"audio_stretch", "touch_click_left" };
-#define GAME_FIELDS 5
+static int *const game_fields[] = { &g_cfg.smooth, &g_cfg.show_fps, &g_cfg.touch_click_left };
+static const char *const game_field_keys[] = { "smooth", "show_fps", "touch_click_left" };
+#define GAME_FIELDS 3
 static int default_fields[GAME_FIELDS];
 static void game_fields_store(void)
 {
@@ -80,13 +79,33 @@ static void game_fields_restore(void)
 	input_touch_reset();
 }
 
-// Defaults tuned for the 3DS that differ from the core's own defaults.
-// (Options with only one sensible value on the 3DS are locked in options.c.)
-static const char *const tuned_defaults[][2] = {
-	// read ~600KB of disc ahead on the CD thread: fewer stalls when games
-	// stream from the SD card (Old 3DS turns the CD thread off, see options.c)
-	{ "pcsx_rearmed_cd_readahead", "256" },
-};
+// Starting values per console come from defaults.ini (docs/settings.md).
+static int factory(const char *key)
+{
+	static const char *const words[][2] = {
+		{ "smooth", "off|on" }, { "show_fps", "off|fps|detailed" }, { "stereo", "off|screen|real" },
+		{ "sounds", "off|on" }, { "music", "off|on" }, { "touch_click_left", "right|left" },
+		{ "screen", "original|stretch|widescreen" }, { "controller", "digital|analog" }, { "rewind", "off|on" },
+	};
+	for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++)
+		if (!strcmp(words[i][0], key))
+			return defaults_word(key, words[i][1], 0);
+	return 0;
+}
+// Retired settings: their saved values are ignored and never written again.
+static bool retired(const char *k)
+{
+	return !strcmp(k, "show_all_settings") || !strcmp(k, "audio_stretch") || !strcmp(k, "fast_forward") ||
+	       !strcmp(k, "stereo") || !strcmp(k, "sounds") || !strcmp(k, "music") ||
+	       !strcmp(k, "core.preset_fast_forward") || !strcmp(k, "core.psx3d_auto_floor");
+}
+// A core option fixed in defaults.ini: no player value is kept for it.
+static bool forced_core(const char *key)
+{
+	bool forced;
+	defaults_core(key, &forced);
+	return forced;
+}
 
 static void clear_overrides(void)
 {
@@ -101,18 +120,21 @@ static void set_defaults(void)
 {
 	memset(&g_cfg, 0, sizeof(g_cfg));
 	strcpy(g_cfg.last_dir, "sdmc:/");
-	g_cfg.smooth = 1;
-	g_cfg.show_fps = 0;
-	g_cfg.stereo = g_new3ds ? 1 : 0;
-	g_cfg.sounds = 1;
-	g_cfg.music = 1;
+	g_cfg.smooth = factory("smooth");
+	g_cfg.show_fps = factory("show_fps");
+	g_cfg.stereo = factory("stereo");
+	g_cfg.sounds = factory("sounds");
+	g_cfg.music = factory("music");
+	g_cfg.touch_click_left = factory("touch_click_left");
+	g_cfg.stretch = factory("screen") == 1;
+	g_cfg.controller = factory("controller");
 	g_cfg.bottom_off = 1;
-	g_cfg.audio_stretch = AUDIO_STRETCH_MAX; // both models: only used when sound runs low
+	// Forced on (defaults.ini): only used when sound runs low.
+	g_cfg.audio_stretch = defaults_word("audio_stretch", "off|on", 1) ? AUDIO_STRETCH_MAX : 0;
 	g_cfg.touch_stick = -1;
 	input_map_reset();
-	for (size_t i = 0; i < sizeof(tuned_defaults) / sizeof(tuned_defaults[0]); i++)
-		if (tuned_defaults[i][0])
-			config_set_core_override(tuned_defaults[i][0], tuned_defaults[i][1]);
+	if (factory("screen") == 2)
+		config_set_core_override(WS_KEY, "52429");
 }
 
 static char *trim(char *s)
@@ -143,6 +165,8 @@ void config_load(void)
 			continue;
 		*eq = 0;
 		char *k = trim(l), *v = trim(eq + 1);
+		if (retired(k) || (!strncmp(k, "core.", 5) && forced_core(k + 5)))
+			continue;
 		if (strcmp(k, "touch_slots") && strcmp(k, "settings_format")) config_user_changed(k);
 
 		if (strncmp(k, "core.", 5) == 0)
@@ -170,28 +194,16 @@ void config_load(void)
 			snprintf(g_cfg.games_dir, sizeof(g_cfg.games_dir), "%s", v);
 		else if (strcmp(k, "stretch") == 0)
 			g_cfg.stretch = atoi(v) != 0;
-		else if (strcmp(k, "sounds") == 0)
-			g_cfg.sounds = atoi(v) != 0;
-		else if (strcmp(k, "music") == 0)
-			g_cfg.music = atoi(v) != 0;
 		else if (strcmp(k, "bottom_off") == 0)
 			g_cfg.bottom_off = atoi(v) != 0;
-		else if (strcmp(k, "audio_stretch") == 0) {
-			int n = atoi(v);
-			g_cfg.audio_stretch = n < 0 ? 0 : n > AUDIO_STRETCH_MAX ? AUDIO_STRETCH_MAX : n;
-		}
-		else if (strcmp(k, "show_all_settings") == 0)
-			g_cfg.show_all_settings = atoi(v) != 0;
-		else if (strcmp(k, "fast_forward") == 0)
-			config_set_core_override("preset_fast_forward", atoi(v) ? "1" : "0");
+		else if (strcmp(k, "controller") == 0)
+			g_cfg.controller = atoi(v) == 1;
 		else if (strcmp(k, "debug") == 0)
 			g_cfg.debug = atoi(v) != 0;
 		else if (strcmp(k, "smooth") == 0)
 			g_cfg.smooth = atoi(v) != 0;
 		else if (strcmp(k, "show_fps") == 0)
 			g_cfg.show_fps = atoi(v) >= 0 && atoi(v) <= 2 ? atoi(v) : 0;
-		else if (strcmp(k, "stereo") == 0)
-			g_cfg.stereo = atoi(v) >= 0 && atoi(v) <= 2 ? atoi(v) : 0;
 
 	}
 	fclose(f);
@@ -216,7 +228,7 @@ void config_save(void)
 	FILE *f = safe_begin(PSX3D_CONFIG);
 	if (!f)
 		goto done;
-	fprintf(f, "# PSX3D settings\nsettings_format=2\ntouch_slots=1\n");
+	fprintf(f, "# PSX3D settings\nsettings_format=3\ntouch_slots=1\n");
 	fprintf(f, "last_dir=%s\n", g_cfg.last_dir);
 	if (g_cfg.games_dir[0])
 		fprintf(f, "games_dir=%s\n", g_cfg.games_dir);
@@ -224,18 +236,12 @@ void config_save(void)
 		fprintf(f, "last_title=%s\n", g_cfg.last_title);
 	int screen = in_game ? default_screen : config_screen_mode();
 #define SAVE_INT(key, value, factory) do { int v_ = (value); if (user_has(key) || v_ != (factory)) fprintf(f, key "=%d\n", v_); } while (0)
-	SAVE_INT("smooth", g_cfg.smooth, 1);
-	SAVE_INT("show_fps", g_cfg.show_fps, 0);
-	SAVE_INT("stereo", g_cfg.stereo, g_new3ds ? 1 : 0);
-	SAVE_INT("stretch", screen == 1, 0);
-	SAVE_INT("sounds", g_cfg.sounds, 1);
-	SAVE_INT("music", g_cfg.music, 1);
-	SAVE_INT("audio_stretch", g_cfg.audio_stretch, AUDIO_STRETCH_MAX);
+	SAVE_INT("smooth", g_cfg.smooth, factory("smooth"));
+	SAVE_INT("show_fps", g_cfg.show_fps, factory("show_fps"));
+	SAVE_INT("stretch", screen == 1, factory("screen") == 1);
 	SAVE_INT("touch_stick", in_game ? default_touch_stick : g_cfg.touch_stick, -1);
-	SAVE_INT("touch_click_left", g_cfg.touch_click_left, 0);
-	SAVE_INT("show_all_settings", g_cfg.show_all_settings, 0);
-	const char *ff = config_core_override("preset_fast_forward");
-	if (user_has("fast_forward") && ff) fprintf(f, "fast_forward=%s\n", ff);
+	SAVE_INT("touch_click_left", g_cfg.touch_click_left, factory("touch_click_left"));
+	SAVE_INT("controller", in_game ? default_controller : g_cfg.controller, factory("controller"));
 	for (int i = 0; i < INPUT_HOTKEY_N; i++) {
 		int v = in_game ? default_hotkeys[i] : input_hotkey_get(i);
 		if (user_has(input_hotkey_key_name(i)) || v != input_hotkey_factory(i))
@@ -252,7 +258,7 @@ void config_save(void)
 		fprintf(f, "debug=1\n");
 	for (int i = 0; i < novr; i++) {
 		char key[64]; snprintf(key, sizeof(key), "core.%s", ovr[i].key);
-		if (!user_has(key)) continue; // internal synchronization is never user intent
+		if (!user_has(key) || forced_core(ovr[i].key)) continue; // internal synchronization is never user intent
 		if (strcmp(ovr[i].key, WS_KEY) == 0)
 			fprintf(f, "core.%s=%s\n", ovr[i].key, screen == 2 ? "52429" : "0");
 		else fprintf(f, "core.%s=%s\n", ovr[i].key, ovr[i].value);
@@ -334,6 +340,8 @@ void config_sync_stereo(void)
 {
 	// Enforce the console limit for defaults, legacy files, resets and debug.
 	// video.c consumes this same field, so Old 3DS never draws a second eye.
+	// No 3D setting: the slider alone turns Real 3D on (New 3DS, defaults.ini).
+	g_cfg.stereo = factory("stereo");
 	if (!g_new3ds) g_cfg.stereo = 0;
 	config_set_core_override("pcsx_rearmed_psx3d_stereo",
 		stereo_active ? "enabled" : "disabled");
@@ -354,19 +362,21 @@ void config_set_stereo_active(bool on)
 // curated bundles replace cheats_widescreen() there). Games without a fix show
 // 4:3, and the GTE squeeze is never sent to the core (options.c).
 static bool ws_fix, ws_selected;
+static int legacy_mode = -1;   // games.ini (0.1.1) screen mode of this game
 bool config_ws_fix(void) { return ws_fix; }
 
 // After the game's cheats load and whenever its screen mode changes.
 void config_ws_sync(void)
 {
-	// The preset can rule widescreen out (2D games) or hold it back (Old speed).
-	bool override = g_cfg.show_all_settings || (in_game && gamecfg_int("preset_widescreen", 0));
-	ws_policy_override(override);
-	int policy = game_capabilities().widescreen;
-	ws_selected = policy == WS_OFFERED || policy == WS_COSTLY || (in_game && gamecfg_int("preset_widescreen", 0));
-	bool ok = in_game && ws_available() && (override || policy == WS_OFFERED || policy == WS_COSTLY);
-	// Showing a withheld choice must not activate a saved all-games preference.
-	// Only selecting Widescreen explicitly bypasses this game's preset policy.
+	// The preset rules widescreen out (hidden: 2D games) or marks its cost.
+	// "off" (WS_TOO_SLOW, a large speed cost) still offers the fix, but only
+	// an explicit per-game choice turns it on: the all-games choice does not.
+	int policy = ws_console_policy();   // the loaded bundle carries the preset's value
+	if (policy < 0) policy = game_capabilities().widescreen;
+	ws_policy_override(policy == WS_TOO_SLOW);
+	bool chosen = in_game && (gamecfg_int("screen", legacy_mode) == 2 || gamecfg_int("preset_widescreen", 0));
+	ws_selected = policy == WS_OFFERED || policy == WS_COSTLY || chosen;
+	bool ok = in_game && ws_available() && policy != WS_HIDDEN;
 	ws_fix = cheats_widescreen(ok && ws_selected && config_widescreen()) && ok;
 }
 
@@ -418,6 +428,7 @@ void config_game_begin(const char *game)
 	default_screen = config_screen_mode();
 	for (int i = 0; i < INPUT_REMAP_N; i++) default_maps[i] = input_map_raw(i);
 	default_touch_stick = g_cfg.touch_stick;
+	default_controller = g_cfg.controller;
 	for (int i = 0; i < INPUT_HOTKEY_N; i++) default_hotkeys[i] = input_hotkey_get(i);
 	for (int i = 0; i < GAME_FIELDS; i++) default_fields[i] = *game_fields[i];
 	in_game = true;
@@ -438,8 +449,9 @@ void config_game_begin(const char *game)
 	input_touch_begin();
 	int mode = gamecfg_int("screen", -1);
 	legacy_screen_override = false;
+	legacy_mode = -1;
 	if (mode < 0) {
-		mode = game_screen_get(game);   // 0.1.1 kept it in games.ini
+		mode = legacy_mode = game_screen_get(game);   // 0.1.1 kept it in games.ini
 		legacy_screen_override = mode >= 0;
 	}
 	if (mode >= 0 && mode != default_screen)
@@ -453,8 +465,7 @@ void config_game_set_screen(int mode)
 	config_set_screen_mode(mode);
 	if (in_game) {
 		gamecfg_set_int("screen", mode);
-		if (g_cfg.show_all_settings && mode == 2) gamecfg_set_int("preset_widescreen", 1);
-		else if (mode != 2) gamecfg_unset("preset_widescreen");
+		gamecfg_unset("preset_widescreen");   // written by the old Show all settings
 	}
 }
 
@@ -471,6 +482,7 @@ void config_game_end(void)
 	for (int i = 0; i < INPUT_REMAP_N; i++) input_map_set(i, default_maps[i]);
 	for (int i = 0; i < INPUT_HOTKEY_N; i++) input_hotkey_set(i, default_hotkeys[i]);
 	g_cfg.touch_stick = default_touch_stick;
+	g_cfg.controller = default_controller;
 	input_touch_reset();
 	ws_fix = false;
 	if (config_screen_mode() != default_screen)
@@ -504,7 +516,7 @@ void config_controls_defaults(void)
 		for (int i = 0; i < INPUT_REMAP_N; i++) input_map_set(i, default_maps[i]);
 		for (int i = 0; i < INPUT_HOTKEY_N; i++) input_hotkey_set(i, default_hotkeys[i]);
 		g_cfg.touch_stick = default_touch_stick;
-		g_cfg.touch_click_left = default_fields[4];
+		g_cfg.touch_click_left = default_fields[2];
 	} else {
 		for (int i = 0; i < INPUT_REMAP_N; i++) { char key[64]; snprintf(key, sizeof(key), "map_%s", input_map_key_name(i)); user_forget(key); }
 		for (int i = 0; i < INPUT_HOTKEY_N; i++) user_forget(input_hotkey_key_name(i));
@@ -545,6 +557,7 @@ bool config_game_reset(void)
 {
 	if (!in_game || !forget_legacy_screen() || !gamecfg_reset()) return false;
 	legacy_screen_override = false;
+	legacy_mode = -1;
 	config_set_screen_mode(default_screen);
 	game_fields_restore();
 	options_mark_updated();
@@ -563,8 +576,9 @@ bool config_game_clear(const char *key)
 		gamecfg_unset(key);
 		gamecfg_unset("preset_widescreen");
 		legacy_screen_override = false;
+		legacy_mode = -1;
 		config_set_screen_mode(default_screen);
-	} else if (!strcmp(key, "rewind") || !strcmp(key, "fast_forward")) {
+	} else if (!strcmp(key, "rewind") || !strcmp(key, "controller")) {
 		gamecfg_unset(key); options_mark_updated();
 	}
 	else if (!strncmp(key, "o.", 2)) {
@@ -608,4 +622,28 @@ void config_control_clear(int row)
 bool config_game_overridden(const char *key)
 {
 	return in_game && (gamecfg_get(key) || (!strcmp(key, "screen") && legacy_screen_override));
+}
+
+// Controller (technical layer): the player's per-game choice, the game's
+// tested value, the all-games choice, then defaults.ini. 1 = analog.
+int config_controller(void)
+{
+	if (in_game && gamecfg_get("controller"))
+		return gamecfg_int("controller", 0) == 1;
+	if (in_game && game_capabilities().controller >= 0)
+		return game_capabilities().controller;
+	return in_game ? default_controller : g_cfg.controller;
+}
+// Rewind (New 3DS, per game): on unless the player turned it off for this game.
+bool config_rewind_on(void)
+{
+	return g_new3ds && in_game && gamecfg_int("rewind", factory("rewind")) != 0;
+}
+// Technical overrides only: Display, Sound, Controls and Saves stay.
+void config_game_reset_advanced(const char *const *keys, int n)
+{
+	if (!in_game) return;
+	for (int i = 0; i < n; i++)
+		gamecfg_unset(keys[i]);
+	options_mark_updated();
 }

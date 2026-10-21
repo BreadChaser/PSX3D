@@ -40,7 +40,7 @@ EXTERN_SYMS := psx3d_depth_get psx3d_depth_frame psx3d_overlay_get psx3d_ov_seq 
 	psx3d_right_get psx3d_stats psx3d_set_half3d psx3d_prof_t psx3d_prof_c psx3d_prof_on new_dynarec_print_stats \
 	psx3d_irq_t psx3d_irq_c CdromId
 EXTERN_SYMS += CdromExeHash psx3d_widescreen_hook psx3d_widescreen_state_hook psx3d_patch_clear
-EXTERN_SYMS += Mcd1Data Mcd2Data psx3d_clip_prepare padAnalogMode
+EXTERN_SYMS += Mcd1Data Mcd2Data psx3d_clip_prepare padAnalogMode padToggleAnalog
 EXTERN_SYMS += SaveFuncs LoadMcd
 # core-internal calls that go to PSX3D (the core's code stays as it is)
 WRAP_SYMS := LoadMcd
@@ -58,7 +58,10 @@ core:
 	@python3 tools/pica-layout/prepare.py $(PICA_LAYOUT)
 	$(MAKE) -C core -f Makefile.libretro platform=ctr CTR_GPU=pica EXTRA_EXTERN_SYMS="$(EXTERN_SYMS)" EXTRA_WRAP_SYMS="$(WRAP_SYMS)"
 
+# Presets and defaults.ini (docs/settings.md section 6): a changed default stops
+# the build until every tested preset pins it or is retested.
 app: core
+	@python3 tools/presets/check.py
 	$(MAKE) -C psx3d
 
 # Installable CIA. Needs makerom (Project_CTR) and bannertool on PATH,
