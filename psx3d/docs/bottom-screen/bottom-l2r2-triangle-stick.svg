@@ -153,6 +153,6 @@
 <path opacity='0.701961' d='M 236 87.1281 L 236 152.872' stroke='#5a3fb8' stroke-width='1'/>
 <path opacity='0.701961' d='M 167.128 156 L 232.872 156' stroke='#5a3fb8' stroke-width='1'/>
 <circle cx='200' cy='120' r='19.75' fill='#6f86e8'/>
-<defs><linearGradient id='g14' gradientUnits='userSpaceOnUse' x1='181.75' y1='101.75' x2='181.75' y2='138.25'><stop stop-color='#283a82'/><stop offset='1' stop-color='#182254'/></linearGradient></defs>
-<ellipse cx='200' cy='120' rx='18.25' ry='18.25' fill='url(#g14)'/>
+<defs><linearGradient id='g12' gradientUnits='userSpaceOnUse' x1='181.75' y1='101.75' x2='181.75' y2='138.25'><stop stop-color='#283a82'/><stop offset='1' stop-color='#182254'/></linearGradient></defs>
+<ellipse cx='200' cy='120' rx='18.25' ry='18.25' fill='url(#g12)'/>
 </svg>

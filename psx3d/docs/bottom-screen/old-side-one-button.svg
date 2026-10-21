@@ -44,8 +44,8 @@
 <rect x='12' y='64' width='56' height='112' fill='#1f2a5a'/>
 <rect x='13' y='65' width='54' height='110' fill='#0c1230'/>
 <rect x='12' y='64' width='3' height='112' fill='#9aa5c8'/>
-<defs><linearGradient id='g24' gradientUnits='userSpaceOnUse' x1='0' y1='113.24' x2='0' y2='126.76'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 39.48 120 L 30.12 113.24 L 30.12 126.76 Z' shape-rendering='crispEdges' fill='url(#g24)'/>
-<defs><linearGradient id='g25' gradientUnits='userSpaceOnUse' x1='0' y1='113.24' x2='0' y2='126.76'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 49.88 120 L 40.52 113.24 L 40.52 126.76 Z' shape-rendering='crispEdges' fill='url(#g25)'/>
+<defs><linearGradient id='g22' gradientUnits='userSpaceOnUse' x1='0' y1='113.24' x2='0' y2='126.76'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 39.48 120 L 30.12 113.24 L 30.12 126.76 Z' shape-rendering='crispEdges' fill='url(#g22)'/>
+<defs><linearGradient id='g23' gradientUnits='userSpaceOnUse' x1='0' y1='113.24' x2='0' y2='126.76'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 49.88 120 L 40.52 113.24 L 40.52 126.76 Z' shape-rendering='crispEdges' fill='url(#g23)'/>
 </svg>

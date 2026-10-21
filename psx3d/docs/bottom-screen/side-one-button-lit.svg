@@ -18,11 +18,11 @@
 <text x='49.3787' y='214' font-family='Michroma' font-size='16' transform='translate(49.3787 0) scale(0.782664 1) translate(-49.3787 0)' fill='#2b3360' text-anchor='start'>3</text>
 <text x='61.2882' y='214' font-family='Michroma' font-size='16' transform='translate(61.2882 0) scale(0.782664 1) translate(-61.2882 0)' fill='#2b3360' text-anchor='start'>D</text>
 <rect x='12' y='64' width='56' height='112' fill='#1f2a5a'/>
-<defs><linearGradient id='g17' gradientUnits='userSpaceOnUse' x1='13' y1='65' x2='13' y2='175'><stop stop-color='#283a82'/><stop offset='1' stop-color='#182254'/></linearGradient></defs>
-<rect x='13' y='65' width='54' height='110' fill='url(#g17)'/>
+<defs><linearGradient id='g15' gradientUnits='userSpaceOnUse' x1='13' y1='65' x2='13' y2='175'><stop stop-color='#283a82'/><stop offset='1' stop-color='#182254'/></linearGradient></defs>
+<rect x='13' y='65' width='54' height='110' fill='url(#g15)'/>
 <rect x='12' y='64' width='3' height='112' fill='#bdc4db'/>
-<defs><linearGradient id='g18' gradientUnits='userSpaceOnUse' x1='0' y1='111.68' x2='0' y2='128.32'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 39.36 120 L 27.84 111.68 L 27.84 128.32 Z' shape-rendering='crispEdges' fill='url(#g18)'/>
-<defs><linearGradient id='g19' gradientUnits='userSpaceOnUse' x1='0' y1='111.68' x2='0' y2='128.32'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 52.16 120 L 40.64 111.68 L 40.64 128.32 Z' shape-rendering='crispEdges' fill='url(#g19)'/>
+<defs><linearGradient id='g16' gradientUnits='userSpaceOnUse' x1='0' y1='111.68' x2='0' y2='128.32'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 39.36 120 L 27.84 111.68 L 27.84 128.32 Z' shape-rendering='crispEdges' fill='url(#g16)'/>
+<defs><linearGradient id='g17' gradientUnits='userSpaceOnUse' x1='0' y1='111.68' x2='0' y2='128.32'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 52.16 120 L 40.64 111.68 L 40.64 128.32 Z' shape-rendering='crispEdges' fill='url(#g17)'/>
 </svg>

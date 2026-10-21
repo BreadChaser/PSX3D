@@ -7,25 +7,25 @@
 <rect x='46' y='26' width='16' height='2' fill='#1ebe78'/>
 <rect x='64' y='26' width='16' height='2' fill='#286ee6'/>
 <rect x='-2' y='134' width='324' height='28' fill='#3c5ac8'/>
-<defs><linearGradient id='g58' gradientUnits='userSpaceOnUse' x1='0' y1='136' x2='0' y2='160'><stop stop-color='#283a82'/><stop offset='1' stop-color='#283a82'/></linearGradient></defs>
-<rect x='0' y='136' width='320' height='24' fill='url(#g58)'/>
+<defs><linearGradient id='g55' gradientUnits='userSpaceOnUse' x1='0' y1='136' x2='0' y2='160'><stop stop-color='#283a82'/><stop offset='1' stop-color='#283a82'/></linearGradient></defs>
+<rect x='0' y='136' width='320' height='24' fill='url(#g55)'/>
 <rect x='0' y='136' width='3' height='24' fill='#9aa5c8'/>
 <text x='12' y='57.2473' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Touch top left</text>
 <text x='312' y='55.9973' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>L2</text>
 <text x='12' y='80.7255' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Touch top right</text>
 <text x='312' y='79.4755' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>R2</text>
 <text x='12' y='104.411' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Touch bottom left</text>
-<text x='312' y='103.161' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>L3</text>
+<text x='312' y='103.161' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Hide</text>
 <text x='12' y='128.543' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Touch bottom right</text>
-<text x='312' y='127.293' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>R3</text>
+<text x='312' y='127.293' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Hide</text>
 <text x='20' y='153.047' font-family='DejaVu Sans' font-size='15' transform='translate(20 0) scale(1 1) translate(-20 0)' fill='#ffffff' text-anchor='start'>Touch side 1</text>
-<defs><linearGradient id='g59' gradientUnits='userSpaceOnUse' x1='0' y1='144.147' x2='0' y2='151.947'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 197.167 148.047 L 191.767 144.147 L 191.767 151.947 Z' shape-rendering='crispEdges' fill='url(#g59)'/>
-<defs><linearGradient id='g60' gradientUnits='userSpaceOnUse' x1='0' y1='144.147' x2='0' y2='151.947'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 203.167 148.047 L 197.767 144.147 L 197.767 151.947 Z' shape-rendering='crispEdges' fill='url(#g60)'/>
+<defs><linearGradient id='g56' gradientUnits='userSpaceOnUse' x1='0' y1='144.147' x2='0' y2='151.947'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 197.167 148.047 L 191.767 144.147 L 191.767 151.947 Z' shape-rendering='crispEdges' fill='url(#g56)'/>
+<defs><linearGradient id='g57' gradientUnits='userSpaceOnUse' x1='0' y1='144.147' x2='0' y2='151.947'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 203.167 148.047 L 197.767 144.147 L 197.767 151.947 Z' shape-rendering='crispEdges' fill='url(#g57)'/>
 <text x='312' y='151.797' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Fast fwd (toggle)</text>
 <text x='12' y='177.482' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Touch right stick</text>
-<text x='312' y='176.232' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Right stick</text>
+<text x='312' y='176.232' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Hide</text>
 <text x='12' y='201.579' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Hotkey: fast forward</text>
 <text x='312' y='200.329' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>SELECT+R</text>
 </svg>

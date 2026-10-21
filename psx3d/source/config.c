@@ -230,7 +230,7 @@ void config_save(void)
 	SAVE_INT("stretch", screen == 1, 0);
 	SAVE_INT("sounds", g_cfg.sounds, 1);
 	SAVE_INT("music", g_cfg.music, 1);
-	SAVE_INT("audio_stretch", g_cfg.audio_stretch, 50);
+	SAVE_INT("audio_stretch", g_cfg.audio_stretch, AUDIO_STRETCH_MAX);
 	SAVE_INT("touch_stick", in_game ? default_touch_stick : g_cfg.touch_stick, -1);
 	SAVE_INT("touch_click_left", g_cfg.touch_click_left, 0);
 	SAVE_INT("show_all_settings", g_cfg.show_all_settings, 0);

@@ -623,11 +623,11 @@ static void presets_v2_checks(void)
  assert(contains(PSX3D_CONFIG,"show_fps=1\n") && contains(PSX3D_CONFIG,"smooth=1\n") &&
         contains(PSX3D_CONFIG,"core.pcsx_rearmed_dithering=enabled\n"));
  // Dense legacy migration preserves all represented choices, even default-valued ones.
- write_text(PSX3D_CONFIG,"touch_slots=1\nsmooth=1\nshow_fps=0\nmusic=1\nsounds=1\naudio_stretch=50\nmap_A=8\ncore.pcsx_rearmed_dithering=enabled\n");
+ write_text(PSX3D_CONFIG,"touch_slots=1\nsmooth=1\nshow_fps=0\nmusic=1\nsounds=1\naudio_stretch=5\nmap_A=8\ncore.pcsx_rearmed_dithering=enabled\n");
  config_load();config_save();config_load();
  assert(contains(PSX3D_CONFIG,"smooth=1\n") && contains(PSX3D_CONFIG,"show_fps=0\n") &&
         contains(PSX3D_CONFIG,"music=1\n") && contains(PSX3D_CONFIG,"sounds=1\n") &&
-        contains(PSX3D_CONFIG,"audio_stretch=50\n") && contains(PSX3D_CONFIG,"map_A=8\n"));
+        contains(PSX3D_CONFIG,"audio_stretch=5\n") && contains(PSX3D_CONFIG,"map_A=8\n"));
  config_reset_defaults();
  game_presets_init(PSX3D_TEST_PRESETS,PSX3D_DIR "/presets");
  config_set_user_core_override("pcsx_rearmed_frameskip_type","disabled");

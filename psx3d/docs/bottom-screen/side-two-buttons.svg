@@ -20,15 +20,15 @@
 <rect x='12' y='64' width='56' height='48' fill='#1f2a5a'/>
 <rect x='13' y='65' width='54' height='46' fill='#0c1230'/>
 <rect x='12' y='64' width='3' height='48' fill='#9aa5c8'/>
-<defs><linearGradient id='g20' gradientUnits='userSpaceOnUse' x1='0' y1='79.68' x2='0' y2='96.32'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 39.36 88 L 27.84 79.68 L 27.84 96.32 Z' shape-rendering='crispEdges' fill='url(#g20)'/>
-<defs><linearGradient id='g21' gradientUnits='userSpaceOnUse' x1='0' y1='79.68' x2='0' y2='96.32'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 52.16 88 L 40.64 79.68 L 40.64 96.32 Z' shape-rendering='crispEdges' fill='url(#g21)'/>
+<defs><linearGradient id='g18' gradientUnits='userSpaceOnUse' x1='0' y1='79.68' x2='0' y2='96.32'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 39.36 88 L 27.84 79.68 L 27.84 96.32 Z' shape-rendering='crispEdges' fill='url(#g18)'/>
+<defs><linearGradient id='g19' gradientUnits='userSpaceOnUse' x1='0' y1='79.68' x2='0' y2='96.32'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 52.16 88 L 40.64 79.68 L 40.64 96.32 Z' shape-rendering='crispEdges' fill='url(#g19)'/>
 <rect x='12' y='128' width='56' height='48' fill='#1f2a5a'/>
 <rect x='13' y='129' width='54' height='46' fill='#0c1230'/>
 <rect x='12' y='128' width='3' height='48' fill='#9aa5c8'/>
-<defs><linearGradient id='g22' gradientUnits='userSpaceOnUse' x1='0' y1='143.68' x2='0' y2='160.32'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 27.84 152 L 39.36 143.68 L 39.36 160.32 Z' shape-rendering='crispEdges' fill='url(#g22)'/>
-<defs><linearGradient id='g23' gradientUnits='userSpaceOnUse' x1='0' y1='143.68' x2='0' y2='160.32'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 40.64 152 L 52.16 143.68 L 52.16 160.32 Z' shape-rendering='crispEdges' fill='url(#g23)'/>
+<defs><linearGradient id='g20' gradientUnits='userSpaceOnUse' x1='0' y1='143.68' x2='0' y2='160.32'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 27.84 152 L 39.36 143.68 L 39.36 160.32 Z' shape-rendering='crispEdges' fill='url(#g20)'/>
+<defs><linearGradient id='g21' gradientUnits='userSpaceOnUse' x1='0' y1='143.68' x2='0' y2='160.32'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 40.64 152 L 52.16 143.68 L 52.16 160.32 Z' shape-rendering='crispEdges' fill='url(#g21)'/>
 </svg>

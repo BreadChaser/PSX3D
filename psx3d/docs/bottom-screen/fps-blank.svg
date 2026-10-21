@@ -7,14 +7,12 @@
 <rect x='23' y='27' width='9' height='2' fill='#e8b21c'/>
 <rect x='34' y='27' width='9' height='2' fill='#2fa36b'/>
 <rect x='45' y='27' width='9' height='2' fill='#2f6fc4'/>
-<text x='11.3694' y='204' font-family='Michroma' font-size='16' transform='translate(11.3694 0) scale(0.630615 1) translate(-11.3694 0)' fill='#2b3360' text-anchor='start'>4</text>
-<text x='21.4592' y='204' font-family='Michroma' font-size='16' transform='translate(21.4592 0) scale(0.630615 1) translate(-21.4592 0)' fill='#2b3360' text-anchor='start'>0</text>
-<text x='31.0551' y='204' font-family='Michroma' font-size='16' transform='translate(31.0551 0) scale(0.630615 1) translate(-31.0551 0)' fill='#2b3360' text-anchor='start'>.</text>
-<text x='33.2622' y='204' font-family='Michroma' font-size='16' transform='translate(33.2622 0) scale(0.630615 1) translate(-33.2622 0)' fill='#2b3360' text-anchor='start'>8</text>
-<text x='42.8581' y='204' font-family='Michroma' font-size='16' transform='translate(42.8581 0) scale(0.630615 1) translate(-42.8581 0)' fill='#2b3360' text-anchor='start'></text>
-<text x='45.7274' y='204' font-family='Michroma' font-size='16' transform='translate(45.7274 0) scale(0.630615 1) translate(-45.7274 0)' fill='#2b3360' text-anchor='start'>F</text>
-<text x='54.2407' y='204' font-family='Michroma' font-size='16' transform='translate(54.2407 0) scale(0.630615 1) translate(-54.2407 0)' fill='#2b3360' text-anchor='start'>P</text>
-<text x='64.052' y='204' font-family='Michroma' font-size='16' transform='translate(64.052 0) scale(0.630615 1) translate(-64.052 0)' fill='#2b3360' text-anchor='start'>S</text>
+<text x='10.9735' y='204' font-family='Michroma' font-size='16' transform='translate(10.9735 0) scale(0.789641 1) translate(-10.9735 0)' fill='#2b3360' text-anchor='start'>2</text>
+<text x='22.9892' y='204' font-family='Michroma' font-size='16' transform='translate(22.9892 0) scale(0.789641 1) translate(-22.9892 0)' fill='#2b3360' text-anchor='start'>0</text>
+<text x='35.0049' y='204' font-family='Michroma' font-size='16' transform='translate(35.0049 0) scale(0.789641 1) translate(-35.0049 0)' fill='#2b3360' text-anchor='start'></text>
+<text x='38.5977' y='204' font-family='Michroma' font-size='16' transform='translate(38.5977 0) scale(0.789641 1) translate(-38.5977 0)' fill='#2b3360' text-anchor='start'>F</text>
+<text x='49.2579' y='204' font-family='Michroma' font-size='16' transform='translate(49.2579 0) scale(0.789641 1) translate(-49.2579 0)' fill='#2b3360' text-anchor='start'>P</text>
+<text x='61.5434' y='204' font-family='Michroma' font-size='16' transform='translate(61.5434 0) scale(0.789641 1) translate(-61.5434 0)' fill='#2b3360' text-anchor='start'>S</text>
 <text x='11.5406' y='216' font-family='DejaVu Sans' font-size='9' transform='translate(11.5406 0) scale(1 1) translate(-11.5406 0)' fill='#2b3360' text-anchor='start'>6</text>
 <text x='16.5469' y='216' font-family='DejaVu Sans' font-size='9' transform='translate(16.5469 0) scale(1 1) translate(-16.5469 0)' fill='#2b3360' text-anchor='start'>8</text>
 <text x='21.5531' y='216' font-family='DejaVu Sans' font-size='9' transform='translate(21.5531 0) scale(1 1) translate(-21.5531 0)' fill='#2b3360' text-anchor='start'>%</text>

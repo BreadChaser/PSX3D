@@ -7,8 +7,8 @@
 <rect x='46' y='26' width='16' height='2' fill='#1ebe78'/>
 <rect x='64' y='26' width='16' height='2' fill='#286ee6'/>
 <rect x='-2' y='110' width='324' height='28' fill='#3c5ac8'/>
-<defs><linearGradient id='g38' gradientUnits='userSpaceOnUse' x1='0' y1='112' x2='0' y2='136'><stop stop-color='#283a82'/><stop offset='1' stop-color='#283a82'/></linearGradient></defs>
-<rect x='0' y='112' width='320' height='24' fill='url(#g38)'/>
+<defs><linearGradient id='g36' gradientUnits='userSpaceOnUse' x1='0' y1='112' x2='0' y2='136'><stop stop-color='#283a82'/><stop offset='1' stop-color='#283a82'/></linearGradient></defs>
+<rect x='0' y='112' width='320' height='24' fill='url(#g36)'/>
 <rect x='0' y='112' width='3' height='24' fill='#2f6fc4'/>
 <text x='12' y='57.5819' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>SELECT</text>
 <rect x='256.154' y='50.3319' width='8.64' height='4.5' fill='#9aa5c8'/>
@@ -86,10 +86,10 @@
 <circle cx='249.362' cy='142.443' r='0.545455' fill='#d77fb5'/>
 <text x='312' y='151.293' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Square</text>
 <text x='12' y='177.02' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Touch side 1</text>
-<defs><linearGradient id='g39' gradientUnits='userSpaceOnUse' x1='0' y1='168.12' x2='0' y2='175.92'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 197.167 172.02 L 191.767 168.12 L 191.767 175.92 Z' shape-rendering='crispEdges' fill='url(#g39)'/>
-<defs><linearGradient id='g40' gradientUnits='userSpaceOnUse' x1='0' y1='168.12' x2='0' y2='175.92'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 203.167 172.02 L 197.767 168.12 L 197.767 175.92 Z' shape-rendering='crispEdges' fill='url(#g40)'/>
+<defs><linearGradient id='g37' gradientUnits='userSpaceOnUse' x1='0' y1='168.12' x2='0' y2='175.92'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 197.167 172.02 L 191.767 168.12 L 191.767 175.92 Z' shape-rendering='crispEdges' fill='url(#g37)'/>
+<defs><linearGradient id='g38' gradientUnits='userSpaceOnUse' x1='0' y1='168.12' x2='0' y2='175.92'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 203.167 172.02 L 197.767 168.12 L 197.767 175.92 Z' shape-rendering='crispEdges' fill='url(#g38)'/>
 <text x='312' y='175.77' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Fast fwd (toggle)</text>
 <text x='12' y='201.482' font-family='DejaVu Sans' font-size='15' transform='translate(12 0) scale(1 1) translate(-12 0)' fill='#9696b4' text-anchor='start'>Touch right stick</text>
 <text x='312' y='200.232' font-family='DejaVu Sans' font-size='13.5' transform='translate(312 0) scale(1 1) translate(-312 0)' fill='#82a0e6' text-anchor='end'>Right stick</text>

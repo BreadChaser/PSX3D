@@ -21,20 +21,20 @@
 <rect x='93' y='13' width='103' height='103' fill='#0c1230'/>
 <rect x='92' y='12' width='105' height='3' fill='#9aa5c8'/>
 <rect x='92' y='12' width='3' height='105' fill='#9aa5c8'/>
-<defs><linearGradient id='g41' gradientUnits='userSpaceOnUse' x1='0' y1='47.6024' x2='0' y2='64.7624'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 136.182 47.6024 L 144.502 64.7624 L 127.862 64.7624 Z' shape-rendering='crispEdges' fill='url(#g41)'/>
+<defs><linearGradient id='g39' gradientUnits='userSpaceOnUse' x1='0' y1='47.6024' x2='0' y2='64.7624'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 136.182 47.6024 L 144.502 64.7624 L 127.862 64.7624 Z' shape-rendering='crispEdges' fill='url(#g39)'/>
 <rect x='203' y='12' width='105' height='105' fill='#1f2a5a'/>
 <rect x='204' y='13' width='103' height='103' fill='#0c1230'/>
 <rect x='203' y='12' width='105' height='3' fill='#9aa5c8'/>
 <rect x='305' y='12' width='3' height='105' fill='#9aa5c8'/>
-<defs><linearGradient id='g42' gradientUnits='userSpaceOnUse' x1='0' y1='47.8624' x2='0' y2='64.5024'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 272.398 56.1824 L 255.238 64.5024 L 255.238 47.8624 Z' shape-rendering='crispEdges' fill='url(#g42)'/>
+<defs><linearGradient id='g40' gradientUnits='userSpaceOnUse' x1='0' y1='47.8624' x2='0' y2='64.5024'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 272.398 56.1824 L 255.238 64.5024 L 255.238 47.8624 Z' shape-rendering='crispEdges' fill='url(#g40)'/>
 <rect x='92' y='123' width='105' height='105' fill='#1f2a5a'/>
 <rect x='93' y='124' width='103' height='103' fill='#0c1230'/>
 <rect x='92' y='225' width='105' height='3' fill='#9aa5c8'/>
 <rect x='92' y='123' width='3' height='105' fill='#9aa5c8'/>
-<defs><linearGradient id='g43' gradientUnits='userSpaceOnUse' x1='0' y1='178.098' x2='0' y2='189.538'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 128.642 178.098 L 128.642 189.538 L 143.722 183.818 Z' shape-rendering='crispEdges' fill='url(#g43)'/>
+<defs><linearGradient id='g41' gradientUnits='userSpaceOnUse' x1='0' y1='178.098' x2='0' y2='189.538'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 128.642 178.098 L 128.642 189.538 L 143.722 183.818 Z' shape-rendering='crispEdges' fill='url(#g41)'/>
 <path opacity='1' d='M 128.642 178.098 L 128.642 189.538' stroke='#9aa5c8' stroke-width='1.89091'/>
 <circle cx='128.642' cy='178.098' r='0.945455' fill='#9aa5c8'/>
 <circle cx='128.642' cy='189.538' r='0.945455' fill='#9aa5c8'/>
@@ -164,13 +164,13 @@
 <path opacity='0.701961' d='M 236 87.1281 L 236 152.872' stroke='#5a3fb8' stroke-width='1'/>
 <path opacity='0.701961' d='M 167.128 156 L 232.872 156' stroke='#5a3fb8' stroke-width='1'/>
 <circle cx='200' cy='120' r='19.75' fill='#6f86e8'/>
-<defs><linearGradient id='g44' gradientUnits='userSpaceOnUse' x1='181.75' y1='101.75' x2='181.75' y2='138.25'><stop stop-color='#283a82'/><stop offset='1' stop-color='#182254'/></linearGradient></defs>
-<ellipse cx='200' cy='120' rx='18.25' ry='18.25' fill='url(#g44)'/>
+<defs><linearGradient id='g42' gradientUnits='userSpaceOnUse' x1='181.75' y1='101.75' x2='181.75' y2='138.25'><stop stop-color='#283a82'/><stop offset='1' stop-color='#182254'/></linearGradient></defs>
+<ellipse cx='200' cy='120' rx='18.25' ry='18.25' fill='url(#g42)'/>
 <rect x='12' y='64' width='56' height='112' fill='#1f2a5a'/>
 <rect x='13' y='65' width='54' height='110' fill='#0c1230'/>
 <rect x='12' y='64' width='3' height='112' fill='#9aa5c8'/>
-<defs><linearGradient id='g45' gradientUnits='userSpaceOnUse' x1='0' y1='113.24' x2='0' y2='126.76'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 39.48 120 L 30.12 113.24 L 30.12 126.76 Z' shape-rendering='crispEdges' fill='url(#g45)'/>
-<defs><linearGradient id='g46' gradientUnits='userSpaceOnUse' x1='0' y1='113.24' x2='0' y2='126.76'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
-<path d='M 49.88 120 L 40.52 113.24 L 40.52 126.76 Z' shape-rendering='crispEdges' fill='url(#g46)'/>
+<defs><linearGradient id='g43' gradientUnits='userSpaceOnUse' x1='0' y1='113.24' x2='0' y2='126.76'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 39.48 120 L 30.12 113.24 L 30.12 126.76 Z' shape-rendering='crispEdges' fill='url(#g43)'/>
+<defs><linearGradient id='g44' gradientUnits='userSpaceOnUse' x1='0' y1='113.24' x2='0' y2='126.76'><stop stop-color='#9aa5c8'/><stop offset='1' stop-color='#9aa5c8'/></linearGradient></defs>
+<path d='M 49.88 120 L 40.52 113.24 L 40.52 126.76 Z' shape-rendering='crispEdges' fill='url(#g44)'/>
 </svg>
