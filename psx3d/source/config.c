@@ -217,7 +217,7 @@ void config_save(void)
 	if (sw_o3ds)
 		return;   // test mode: leave the real settings alone
 	// In a game these belong to the game; config.ini keeps the all-games values.
-	int game_values[GAME_FIELDS];
+	int game_values[GAME_FIELDS] = {0};
 	if (in_game) {
 		game_fields_store();
 		for (int i = 0; i < GAME_FIELDS; i++) {

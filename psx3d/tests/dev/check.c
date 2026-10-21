@@ -43,6 +43,7 @@ bool sw_nogputhread, sw_aa, sw_showright, sw_sbs, sw_gpu_async, sw_gpu_flush;
 float sw_slider;
 int sw_stereo = -1;
 void gpustereo_status(char *out, int n) { (void)n; out[0] = 0; }
+int defaults_version(void) { return 1; }
 int sw_state = -1, sw_pmu0 = -1, sw_pmu1 = -1, sw_gldbg, sw_vramdump, sw_autosave_test;
 char sw_opt[8][48], sw_cdra[8], sw_clock[8];
 static u64 mock_ms;
