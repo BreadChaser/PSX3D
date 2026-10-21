@@ -257,7 +257,12 @@ static const char *preset_key(int item)
 }
 static bool preset_row(settings_ui_t *s, int item)
 {
-	if (!s->game || !game_preset_sets(preset_key(item))) return false;
+	const char *key = preset_key(item);
+	if (!s->game || !game_preset_sets(key)) return false;
+	// Derived touch defaults follow the effective capability too. A user's
+	// capability override is not evidence that the preset supplied the binding.
+	if ((!strcmp(key, "fast_forward") && config_game_overridden("fast_forward")) ||
+	    (!strcmp(key, "rewind") && gamecfg_int("rewind", 0))) return false;
 	if (item != F_SCREEN && overridden(s, item)) return false;
 	if (item >= CONTROL_ROW && item < CHEAT_ROW) {
 		int slot = input_control_slot(item - CONTROL_ROW);

@@ -196,6 +196,9 @@ int main(void)
  change(&marked,F_FF,1);
  assert(game_capabilities().fast_forward && overridden(&marked,F_FF));
  assert(!preset_row(&marked,F_FF));
+ for(int row=0;row<input_controls_count();row++)
+  if(input_control_slot(row)==INPUT_PHYSICAL_N+4)
+   assert(!preset_row(&marked,CONTROL_ROW+row));
  assert(config_game_clear("fast_forward") && preset_row(&marked,F_FF));
  game_preset_t touch_mode_fixture;memset(&touch_mode_fixture,0xff,sizeof(touch_mode_fixture));
  for(int k=0;k<6;k++) touch_mode_fixture.old3ds.touch_bindings[k]=-2;
