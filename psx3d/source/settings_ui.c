@@ -69,7 +69,7 @@ static const char *const helps[] = {
  [F_CONTROLLER]="Digital starts the DualShock in digital mode; games that use the analog sticks switch it themselves. Analog starts it in analog mode, for games that support the sticks but don't switch. The analog mode shortcut still works.",
  [F_SIDE]="Place the touch buttons on the right or left side. The menu button and logo move to the other side.",
  [F_REWIND]="Save recent moments so you can hold the Rewind button to go back. Needs free memory.",
- [F_RECOMMENDED]="Remove this game's changes to the Advanced options, so its tested settings apply again. Display, Sound, Controls and Saves are kept.",
+ [F_RECOMMENDED]="Remove this game's changes to the Advanced options, so its tested settings apply again. Display, Controls and Saves are kept.",
  [F_RECORD]="Record 30 seconds of game audio for troubleshooting.",
  [F_TONE]="Play a steady tone to check audio output.",
 };
@@ -355,7 +355,7 @@ static const char *advanced_header(settings_ui_t *s)
 		return NULL;
 	return !s->game ? advanced_library : game_preset_tested() ? advanced_tested : advanced_untested;
 }
-static float list_top(settings_ui_t *s) { return advanced_header(s) ? 68 : 40; }
+static float list_top(settings_ui_t *s) { return advanced_header(s) ? 62 : 40; }
 static float row_height(settings_ui_t *s) { return s->page == CAT_HOME ? 20 : 23; }
 static int list_rows(settings_ui_t *s) { return s->page == CAT_HOME ? 8 : advanced_header(s) ? 5 : VISIBLE_ROWS; }
 static void draw_settings(void *ud)
@@ -367,7 +367,7 @@ static void draw_settings(void *ud)
 	ui_menu_header(categories[s->page], s->game ? ui_fit(emu_game_title(), .42f, 150) : "All games");
 	const char *header = advanced_header(s);
 	if (header)
-		ui_text_wrap(12, 34, .39f, header == advanced_tested ? C2D_Color32(250, 205, 20, 255) : muted, 296.0f, header);
+		ui_text_wrap(12, 32, .39f, header == advanced_tested ? C2D_Color32(250, 205, 20, 255) : muted, 296.0f, header);
 	int rows = list_rows(s);
 	flist_draw_sections(&s->list, s->count, sel, 0, list_top(s), 320, row_height(s), rows, row_label,
 			   s->page == CAT_BINDINGS ? input_control_value : row_value, s,
@@ -439,7 +439,7 @@ static void change(settings_ui_t *s, int item, int dir)
 	case F_RECOMMENDED:
 		if (ui_confirm_action("Reset to recommended?",
 				"Remove this game's changes to the Advanced options. Its tested settings apply again; "
-				"Display, Sound, Controls and Saves are kept.", "A  Reset to recommended", true)) {
+				"Display, Controls and Saves are kept.", "A  Reset to recommended", true)) {
 			const char *keys[ADVANCED_KEYS];
 			int n = 0;
 			for (int i = 0; i < ADVANCED_KEYS; i++)
