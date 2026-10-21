@@ -156,10 +156,9 @@ version, at most the pack version. Bump a file version when changing it and
 bump the pack whenever any file changes. The checker enforces this against
 the last release tag or `--base REF`.
 
-Copy a validated pack manually to `sdmc:/3ds/PSX3D/presets/` while PSX3D is
-not running, then start the app. **Remote `put` does not support presets or
-VERSION. There is no preset downloader or transactional remote pack installer.**
-The remote developer workflow can inspect files, but cannot install a pack.
+Players get new packs automatically (next section). A validated pack can
+also be copied by hand to `sdmc:/3ds/PSX3D/presets/` while PSX3D is not
+running. Remote `put` does not write presets or VERSION.
 
 - Missing/invalid SD VERSION, or an SD pack older than built-in: ignore SD.
 - Per serial, the higher file version wins; a tie uses built-in.
@@ -183,6 +182,92 @@ Parsing happens once at startup. Disc identification uses the serial index;
 no SD access or parsing occurs in the frame loop. The loader stays at `-Os`.
 Core-first linking protects core code addresses; frontend changes still need
 the Old A/B/A gate.
+
+## Automatic updates
+
+Presets update without an app release; the player does nothing (no setting,
+no button). Code: `psx3d/source/presetupdate.c`; test:
+`psx3d/tests/presetupdate/run.sh` (with mutations).
+
+**When.** At most once a day (time of the last finished check in
+`sdmc:/3ds/PSX3D/presets-update.txt`), only while the library is idle, on a
+cover-download worker thread with the same network lock and pauses as the box
+art. A game start, HOME, sleep or exit stops it within ~10 ms; it never runs
+while a game is loaded. Offline (no Wi-Fi, server unreachable) it looks again
+after 30 minutes of library time, without writing the stamp. Every other
+outcome, including errors, waits for the next day: no retry storm.
+
+**What.** The app fetches
+`https://github.com/BreadChaser/PSX3D/releases/download/presets/presets-d<D>-s<S>.json`,
+where D is the app's `defaults_version` (defaults.ini) and S is
+`PRESET_SCHEMA_VERSION` (`presetupdate.h`, bump it when preset_schema.def gains
+keys or values an older parser would reject). Keying the file name by both
+lets several app generations get their own packs from one release. The
+manifest is flat JSON, at most 4 KiB:
+
+```json
+{"format": 1, "pack_version": 4, "schema_min": 1, "schema_max": 1,
+ "defaults_version": 1, "file": "presets-d1-s1-v4.pack", "size": 21051, "sha256": "…"}
+```
+
+The pack is downloaded only if `pack_version` is higher than the pack in use
+(SD or built-in), the app's schema is in `schema_min..schema_max` and
+`defaults_version` equals the app's. The pack (≤ 512 KiB, written to the SD
+card, never held in RAM) must have exactly `size` bytes and the SHA256. It is
+unpacked into `presets.new/` (format in `tools/presets/pack.py`; only
+`VERSION` and lower-case `*.ini` names, not `defaults.ini`, no duplicates,
+VERSION must equal `pack_version`). The main thread then loads that folder with
+the normal parser and installs it only if every file is accepted:
+`presets/` → `presets.old/` (one generation kept), `presets.new/` →
+`presets/`. A power cut between those renames is undone at the next start
+(the previous pack comes back). The library shows **Game settings updated**
+once; values apply from the next game start, never to a running game. Any
+failure keeps the current presets and is only logged (`presets update: …`).
+The validation costs one preset parse (≈0.2 s on the Old 3DS, once per new
+pack, in the library).
+
+**Security.** Presets only choose values from the fixed whitelist in
+`preset_schema.def`, so the worst a forged pack can do is pick bad settings
+for a game. Transport is HTTPS to github.com (certificate roots in
+`romfs/certs.pem`; GitHub's download host uses ISRG Root X1), and the SHA256
+in the manifest protects the pack. No signature: whoever can publish on the
+GitHub repository could also publish a CIA. If packs ever carry code (cheats
+or widescreen patches are PS1 memory writes), add an ECDSA P-256 signature
+over the manifest (mbedTLS has it) with the public key in the app.
+
+**Developer.** Startup switch `presets_url=http://<numeric LAN IP>:<port>/`
+(also makes a check due now). Remote: `presets-update` (status),
+`presets-update now [url=http://…/]`, `presets-update reset` (idle library:
+deletes downloaded packs and the stamp, built-in presets, no further check
+this session). Status reports `settings.presets_update` and `preset_pack`.
+
+### Publishing a pack (owner)
+
+Nothing is published by the tools; the owner runs these steps.
+
+1. Change the preset files, bump each changed file's `version` and
+   `romfs/presets/VERSION` (higher than every pack already out, including the
+   one built into the current release), then `python3 tools/presets/check.py`.
+2. `python3 tools/presets/pack.py --out /tmp/presets-pack` → prints the pack
+   version, size and SHA256 and writes `presets-d1-s1.json` and
+   `presets-d1-s1-vN.pack`.
+3. First time only: create the release **without making it "latest"**, or
+   `releases/latest/download/PSX3D.cia` (README, QR code) would point at it:
+   `gh release create presets --repo BreadChaser/PSX3D --target main --latest=false --title "Game settings (automatic updates)" --notes "Data for PSX3D's automatic game-settings updates. Nothing to download by hand." /tmp/presets-pack/presets-d1-s1-vN.pack /tmp/presets-pack/presets-d1-s1.json`
+4. Later packs: upload the pack first, the manifest last (an app reading the
+   new manifest must find its pack):
+   `gh release upload presets --repo BreadChaser/PSX3D /tmp/presets-pack/presets-d1-s1-vN.pack` then
+   `gh release upload presets --repo BreadChaser/PSX3D --clobber /tmp/presets-pack/presets-d1-s1.json`
+5. Check: `curl -sL https://github.com/BreadChaser/PSX3D/releases/download/presets/presets-d1-s1.json`
+   shows the new version; `curl -sL …/presets-d1-s1-vN.pack | sha256sum`
+   matches; `gh release view --repo BreadChaser/PSX3D --json tagName` (latest)
+   still names the app release.
+6. Undo a bad pack: publish a new, higher version with the old contents
+   (consoles never go back to a lower version). Old pack assets can be deleted
+   once their manifest no longer names them.
+
+A pack whose version equals the built-in one is harmless (consoles report
+"current"); it only becomes an update once its version is higher.
 
 ## Checks and adding a game
 
