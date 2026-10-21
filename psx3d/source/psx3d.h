@@ -482,6 +482,9 @@ void music_update(void);
 void libui_init(void);
 C2D_Font libui_font(void);
 void libui_exit(void);
+// Settings > About: version and a QR code to share PSX3D (share.c)
+void share_about_run(bool game);
+bool share_about_visible(void);
 int libui_run(char *out_path, size_t len);
 void libui_select_title(const char *title);
 const game_t *libui_picked(void);
