@@ -1,7 +1,7 @@
 {
   "title": "PSX3D performance",
-  "subtitle": "GPU renderer, each game's heaviest tested scene. Game speed = how fast the game runs (100% = normal). FPS = new pictures you actually see per second.",
-  "version": "v0.4.1",
+  "subtitle": "Old 3DS, GPU renderer. Averages from each game's heaviest tested scene; other scenes can run faster or slower.\nGame speed = how fast the game runs (100% = normal). FPS = new pictures you see per second.",
+  "version": "v0.5.0",
   "games": [
     {
       "name": "Crash Bandicoot",
@@ -11,12 +11,6 @@
         "off_fps": 20.0,
         "auto_speed": 96.1,
         "auto_fps": 13.9
-      },
-      "new": {
-        "off_speed": 100.0,
-        "off_fps": 24.8,
-        "auto_speed": 100.0,
-        "auto_fps": 24.8
       }
     },
     {
@@ -27,12 +21,6 @@
         "off_fps": 21.4,
         "auto_speed": 85.9,
         "auto_fps": 15.4
-      },
-      "new": {
-        "off_speed": 100.0,
-        "off_fps": 30.2,
-        "auto_speed": 100.0,
-        "auto_fps": 30.2
       }
     },
     {
@@ -43,12 +31,6 @@
         "off_fps": 22.3,
         "auto_speed": 85.2,
         "auto_fps": 15.1
-      },
-      "new": {
-        "off_speed": 100.0,
-        "off_fps": 26.3,
-        "auto_speed": 100.0,
-        "auto_fps": 26.3
       }
     },
     {
@@ -59,12 +41,6 @@
         "off_fps": 13.4,
         "auto_speed": 50.7,
         "auto_fps": 12.2
-      },
-      "new": {
-        "off_speed": 99.9,
-        "off_fps": 24.8,
-        "auto_speed": 99.9,
-        "auto_fps": 24.8
       }
     },
     {
@@ -75,12 +51,6 @@
         "off_fps": 23.9,
         "auto_speed": 86.5,
         "auto_fps": 16.6
-      },
-      "new": {
-        "off_speed": 100.0,
-        "off_fps": 30.3,
-        "auto_speed": 100.0,
-        "auto_fps": 30.2
       }
     },
     {
@@ -91,12 +61,6 @@
         "off_fps": 11.7,
         "auto_speed": 35.5,
         "auto_fps": 11.1
-      },
-      "new": {
-        "off_speed": 99.8,
-        "off_fps": 38.4,
-        "auto_speed": 100.0,
-        "auto_fps": 38.0
       }
     },
     {
@@ -107,12 +71,6 @@
         "off_fps": 38.7,
         "auto_speed": 87.2,
         "auto_fps": 15.1
-      },
-      "new": {
-        "off_speed": 100.0,
-        "off_fps": 60.4,
-        "auto_speed": 100.0,
-        "auto_fps": 60.6
       }
     },
     {
@@ -123,12 +81,6 @@
         "off_fps": 15.2,
         "auto_speed": 100.0,
         "auto_fps": 15.2
-      },
-      "new": {
-        "off_speed": 100.0,
-        "off_fps": 15.1,
-        "auto_speed": 100.0,
-        "auto_fps": 15.1
       }
     },
     {
@@ -139,12 +91,6 @@
         "off_fps": 50.6,
         "auto_speed": 97.8,
         "auto_fps": 15.1
-      },
-      "new": {
-        "off_speed": 100.0,
-        "off_fps": 60.8,
-        "auto_speed": 100.0,
-        "auto_fps": 60.7
       }
     },
     {
@@ -155,12 +101,6 @@
         "off_fps": 20.5,
         "auto_speed": 77.8,
         "auto_fps": 15.2
-      },
-      "new": {
-        "off_speed": 100.0,
-        "off_fps": 29.7,
-        "auto_speed": 100.0,
-        "auto_fps": 29.7
       }
     },
     {
@@ -171,12 +111,6 @@
         "off_fps": 16.1,
         "auto_speed": 69.8,
         "auto_fps": 15.3
-      },
-      "new": {
-        "off_speed": 100.0,
-        "off_fps": 22.3,
-        "auto_speed": 100.0,
-        "auto_fps": 22.3
       }
     },
     {
@@ -187,13 +121,9 @@
         "off_fps": 58.3,
         "auto_speed": 100.0,
         "auto_fps": 50.1
-      },
-      "new": {
-        "off_speed": 100.0,
-        "off_fps": 60.7,
-        "auto_speed": 100.0,
-        "auto_fps": 60.8
       }
     }
-  ]
+  ],
+  "new_note": "New 3DS: every game above runs at full speed (100%), frameskip off or Auto.",
+  "placeholder": "PLACEHOLDER: v0.4.1 numbers until the v0.5.0 Old 3DS gate is measured."
 }

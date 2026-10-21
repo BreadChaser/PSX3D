@@ -2,10 +2,12 @@
 """Draw the README performance chart from docs/performance.json.
 
 Two honest numbers per run: game speed (emulation speed, 100% = normal) and FPS
-(new pictures actually shown per second). Each is shown with frameskip off and auto.
+(new pictures actually shown per second), each with frameskip off and Auto, for the
+Old 3DS. The New 3DS gets one sentence (performance.json "new_note"): it runs the
+tested scenes at full speed, so off/Auto columns would say nothing.
 
     tools/perfchart/perfchart.py                         # redraw SVGs + README table
-    tools/perfchart/perfchart.py --results <fastbench dir> --console old|new
+    tools/perfchart/perfchart.py --results <fastbench dir> --console old
     tools/perfchart/perfchart.py --set "Silent Hill" old.auto_fps=11.2
     tools/perfchart/perfchart.py --version v0.5.0
 
@@ -42,17 +44,15 @@ def svg(d, c):
     PW = 270                          # panel width
     y = 34
     t(24, y, d["title"], 20, weight="600"); y += 22
-    t(24, y, d["subtitle"], 12.5, c["ink2"]); y += 30
+    for line in d["subtitle"].split("\n"):   # one text line each
+        t(24, y, line, 12.5, c["ink2"]); y += 17
+    y += 13
     # legend
     for k, (label, col) in enumerate((("Frameskip off", c["off"]), ("Auto frameskip", c["auto"]))):
         out.append(f'<rect x="{24 + k*150}" y="{y-10}" width="12" height="12" rx="2" fill="{col}"/>')
         t(24 + k * 150 + 18, y, label, 12.5, c["ink2"])
     y += 10
-    def at_full(console):
-        return all(g[console]["off_speed"] >= 99.5 and g[console]["auto_speed"] >= 99.5 and
-                   g[console]["off_fps"] >= g["native_fps"] - 1 and g[console]["auto_fps"] >= g["native_fps"] - 1
-                   for g in games)
-    shown = [(k, n) for k, n in (("old", "Old 3DS"), ("new", "New 3DS")) if not at_full(k)]
+    shown = [("old", "Old 3DS")]
     for console, title in shown:
         y += 34
         t(24, y, title, 16, weight="600")
@@ -86,10 +86,12 @@ def svg(d, c):
             out.insert(0, f'<line x1="{x:.1f}" y1="{top-2}" x2="{x:.1f}" y2="{bottom}" stroke="{c["axis"] if v == 0 else c["grid"]}"/>')
             t(x, bottom + 15, str(v), 10.5, c["muted"], "middle")
         y = bottom + 22
-    for console, title in (("old", "Old 3DS"), ("new", "New 3DS")):
-        if at_full(console):
-            y += 30
-            t(24, y, f"{title}: every game above runs at full speed with every picture shown, frameskip off or Auto.", 13.5, weight="600")
+    if d.get("placeholder"):
+        y += 26
+        t(24, y, d["placeholder"], 13.5, c["auto"], weight="600")
+    if d.get("new_note"):
+        y += 30
+        t(24, y, d["new_note"], 13.5, weight="600")
     y += 26
     t(24, y, "Dashed line = the most pictures per second the game itself draws (most PS1 3D games draw 30).", 12, c["ink2"])
     y += 17
@@ -100,12 +102,13 @@ def svg(d, c):
     return "\n".join(head + out + ["</svg>"]) + "\n"
 
 def table(d):
-    rows = ["| Game | Console | Frameskip off: speed / FPS | Auto frameskip: speed / FPS |",
-            "|---|---|---:|---:|"]
+    rows = ["| Game (Old 3DS) | Frameskip off: speed / FPS | Auto frameskip: speed / FPS |",
+            "|---|---:|---:|"]
     for g in d["games"]:
-        for console, label in (("old", "Old 3DS"), ("new", "New 3DS")):
-            r = g[console]
-            rows.append(f'| {g["name"]} | {label} | {r["off_speed"]:.1f}% / {r["off_fps"]:.1f} | {r["auto_speed"]:.1f}% / {r["auto_fps"]:.1f} |')
+        r = g["old"]
+        rows.append(f'| {g["name"]} | {r["off_speed"]:.1f}% / {r["off_fps"]:.1f} | {r["auto_speed"]:.1f}% / {r["auto_fps"]:.1f} |')
+    if d.get("placeholder"):
+        rows.insert(0, f'**{d["placeholder"]}**\n')
     return "\n".join(rows)
 
 def from_results(d, path, console):
@@ -131,7 +134,7 @@ def from_results(d, path, console):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--results"); p.add_argument("--console", choices=("old", "new"))
+    p.add_argument("--results"); p.add_argument("--console", choices=("old",))
     p.add_argument("--set", nargs="+", metavar=("GAME", "console.key=value"))
     p.add_argument("--version")
     a = p.parse_args()
@@ -145,6 +148,7 @@ def main():
     if a.results:
         if not a.console: sys.exit("--results needs --console old|new")
         from_results(d, a.results, a.console)
+        d.pop("placeholder", None)   # measured numbers replace the placeholder
     with open(DATA, "w") as f:
         json.dump(d, f, indent=2); f.write("\n")
     for name, colors in THEMES.items():

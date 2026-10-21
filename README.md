@@ -11,12 +11,11 @@
 </p>
 
 PSX3D runs PlayStation games on Old and New 3DS with GPU rendering, a box-art
-library and per-game settings. It's built on PCSX-ReARMed and needs no
-RetroArch and no BIOS file.
+library and tested settings for each game. It's built on PCSX-ReARMed and needs
+no BIOS file.
 
-> **Work in progress.** Expect some drawing errors. New 3DS runs all the heaviest
-> tested scenes at full speed; demanding games are slower on Old 3DS. Stereoscopic 3D is
-> temporarily off while it's rebuilt for the GPU renderer.
+> **Work in progress.** Expect some drawing errors. Demanding games run slower on
+> Old 3DS; see [Performance](#performance).
 
 ## Screenshots
 
@@ -44,12 +43,29 @@ RetroArch and no BIOS file.
 ## Features
 
 - GPU rendering on Old and New 3DS, with smart frameskip
+- Tested settings for each game and each console, applied automatically
 - Real widescreen for games with a tested widescreen fix
-- Built-in game presets for each console, with per-game overrides
 - Box art, clean titles and multi-disc grouping
-- Save states with previews, memory cards, cheats and disc swapping
-- Remappable buttons and touch controls; fast-forward, and rewind on New 3DS
+- Save states with previews, memory cards with backups, cheats and disc swapping
+- "Continue where I left off": your place is saved when you quit, on sleep and every few minutes
+- Remappable buttons and touch controls, fast forward in every game
 - Built-in BIOS: no BIOS file needed
+
+### New 3DS extras
+
+- **Real 3D** (experimental): raise the 3D slider and each object gets its own
+  depth, drawn from the game's own 3D data.
+- **Rewind**: on by default; hold the rewind button to go back a few seconds.
+- **Faster PS1 processor** for games that slowed down on a real PlayStation
+  (Crash Team Racing, Gran Turismo 2, Silent Hill, Need for Speed: High Stakes),
+  so busy scenes stay smooth.
+
+### Settings
+
+The menu holds what is a matter of taste: screen shape, smoothing, the FPS
+counter, controls and saves. Technical options live under **Advanced**. Each
+tested game comes with recommended values for its console, marked **P**, and
+*Reset to recommended* brings them back. Everything else is set for you.
 
 ## Performance
 
@@ -58,41 +74,36 @@ RetroArch and no BIOS file.
 <details>
 <summary>Exact numbers</summary>
 
-Game speed: 100% = normal pace. FPS: new pictures shown per second (most 3D games
-draw 30 or fewer in busy scenes; Symphony of the Night, Tekken 3 and Klonoa draw
-60; Final Fantasy VII battles draw 15). Measured in each game's heaviest tested scene;
-see [methodology](docs/performance.md).
+Old 3DS. Averages from each game's heaviest tested scene; other scenes can run
+faster or slower. Game speed: 100% = normal pace. FPS: new pictures shown per
+second (most 3D games draw 30 or fewer in busy scenes; Symphony of the Night,
+Tekken 3 and Klonoa draw 60; Final Fantasy VII battles draw 15). See
+[methodology](docs/performance.md).
 
 <!-- perf-table -->
-| Game | Console | Frameskip off: speed / FPS | Auto frameskip: speed / FPS |
-|---|---|---:|---:|
-| Crash Bandicoot | Old 3DS | 84.9% / 20.0 | 96.1% / 13.9 |
-| Crash Bandicoot | New 3DS | 100.0% / 24.8 | 100.0% / 24.8 |
-| Crash Bandicoot 2 | Old 3DS | 70.3% / 21.4 | 85.9% / 15.4 |
-| Crash Bandicoot 2 | New 3DS | 100.0% / 30.2 | 100.0% / 30.2 |
-| Crash Team Racing | Old 3DS | 75.4% / 22.3 | 85.2% / 15.1 |
-| Crash Team Racing | New 3DS | 100.0% / 26.3 | 100.0% / 26.3 |
-| Gran Turismo 2 | Old 3DS | 50.3% / 13.4 | 50.7% / 12.2 |
-| Gran Turismo 2 | New 3DS | 99.9% / 24.8 | 99.9% / 24.8 |
-| Ridge Racer Type 4 | Old 3DS | 78.2% / 23.9 | 86.5% / 16.6 |
-| Ridge Racer Type 4 | New 3DS | 100.0% / 30.3 | 100.0% / 30.2 |
-| Need for Speed: High Stakes | Old 3DS | 35.2% / 11.7 | 35.5% / 11.1 |
-| Need for Speed: High Stakes | New 3DS | 99.8% / 38.4 | 100.0% / 38.0 |
-| Tekken 3 | Old 3DS | 63.7% / 38.7 | 87.2% / 15.1 |
-| Tekken 3 | New 3DS | 100.0% / 60.4 | 100.0% / 60.6 |
-| Final Fantasy VII | Old 3DS | 100.0% / 15.2 | 100.0% / 15.2 |
-| Final Fantasy VII | New 3DS | 100.0% / 15.1 | 100.0% / 15.1 |
-| Klonoa | Old 3DS | 83.5% / 50.6 | 97.8% / 15.1 |
-| Klonoa | New 3DS | 100.0% / 60.8 | 100.0% / 60.7 |
-| Silent Hill (alley) | Old 3DS | 67.4% / 20.5 | 77.8% / 15.2 |
-| Silent Hill (alley) | New 3DS | 100.0% / 29.7 | 100.0% / 29.7 |
-| Silent Hill (café) | Old 3DS | 68.4% / 16.1 | 69.8% / 15.3 |
-| Silent Hill (café) | New 3DS | 100.0% / 22.3 | 100.0% / 22.3 |
-| Symphony of the Night | Old 3DS | 96.3% / 58.3 | 100.0% / 50.1 |
-| Symphony of the Night | New 3DS | 100.0% / 60.7 | 100.0% / 60.8 |
+**PLACEHOLDER: v0.4.1 numbers until the v0.5.0 Old 3DS gate is measured.**
+
+| Game (Old 3DS) | Frameskip off: speed / FPS | Auto frameskip: speed / FPS |
+|---|---:|---:|
+| Crash Bandicoot | 84.9% / 20.0 | 96.1% / 13.9 |
+| Crash Bandicoot 2 | 70.3% / 21.4 | 85.9% / 15.4 |
+| Crash Team Racing | 75.4% / 22.3 | 85.2% / 15.1 |
+| Gran Turismo 2 | 50.3% / 13.4 | 50.7% / 12.2 |
+| Ridge Racer Type 4 | 78.2% / 23.9 | 86.5% / 16.6 |
+| Need for Speed: High Stakes | 35.2% / 11.7 | 35.5% / 11.1 |
+| Tekken 3 | 63.7% / 38.7 | 87.2% / 15.1 |
+| Final Fantasy VII | 100.0% / 15.2 | 100.0% / 15.2 |
+| Klonoa | 83.5% / 50.6 | 97.8% / 15.1 |
+| Silent Hill (alley) | 67.4% / 20.5 | 77.8% / 15.2 |
+| Silent Hill (café) | 68.4% / 16.1 | 69.8% / 15.3 |
+| Symphony of the Night | 96.3% / 58.3 | 100.0% / 50.1 |
 <!-- /perf-table -->
 
 </details>
+
+**New 3DS:** every game in the table runs at full speed in its heaviest tested
+scene. The one exception we know of is the opening area of Metal Gear Solid,
+which needs Auto frameskip for full speed.
 
 ## Install
 

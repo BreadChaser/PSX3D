@@ -232,7 +232,8 @@ instruction cache makes code layout significant.
 1. Run frameskip-off and auto benchmark batches with `fastbench.py`, using the
    same saved scenes and settings as the existing measurements.
 2. Import each console's results:
-   `tools/perfchart/perfchart.py --results <directory> --console old` (and `new`).
+   `tools/perfchart/perfchart.py --results <directory> --console old` (the New 3DS gets
+   the one-line `new_note` in `docs/performance.json`).
 3. Commit `docs/performance.json`, both generated SVGs and the README table.
 
 For a new release, first run `tools/perfchart/perfchart.py --version vX.Y.Z`.
