@@ -23,6 +23,7 @@ cases = {
     'empty-title': (BASE.replace('Fixture', '')+OPT, False),
     'missing-version': (BASE.replace('version = 2\n', '')+OPT, False),
     'missing-serials': (BASE.replace('serials = TEST00001\n', '')+OPT, False),
+    'control-not-whitespace': (BASE.replace('TEST00001', '\x1cTEST00001')+OPT, False),
     'bad-serial': (BASE.replace('TEST00001', '123456789')+OPT, False),
     'lowercase-serial': (BASE.replace('TEST00001', 'test00001')+OPT, False),
     'empty-serial': (BASE.replace('TEST00001', 'TEST00001,')+OPT, False),

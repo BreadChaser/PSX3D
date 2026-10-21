@@ -64,7 +64,7 @@ def parse(text):
             errors.append(f'line {number}: exceeds 255 bytes including newline')
         if '\x00' in raw or any(ord(c) > 127 for c in raw):
             errors.append(f'line {number}: only ASCII text is supported')
-        line = re.split('[;#\r\n]', raw, maxsplit=1)[0].strip()
+        line = re.split('[;#\r\n]', raw, maxsplit=1)[0].strip(' \t\r\n\v\f')
         if not line:
             continue
         if line.startswith('['):
@@ -77,7 +77,7 @@ def parse(text):
         if '=' not in line:
             errors.append(f'line {number}: expected key = value')
             continue
-        key, value = (part.strip() for part in line.split('=', 1))
+        key, value = (part.strip(' \t\r\n\v\f') for part in line.split('=', 1))
         if section is None:
             errors.append(f'line {number}: key in an unknown section')
         elif key in data[section]:
@@ -110,7 +110,7 @@ def check_file(path, text, bundles, core_clock):
     version = common.get('version', ('', 0))[0]
     if 'version' in common and not re.fullmatch(r'[1-9][0-9]{0,5}', version):
         errors.append(f'version must be a positive number, not {version!r}')
-    serials = [s.strip() for s in common.get('serials', ('', 0))[0].split(',')]
+    serials = [s.strip(' \t\r\n\v\f') for s in common.get('serials', ('', 0))[0].split(',')]
     if len(serials) > 26:
         errors.append('more than 26 serials')
     if 'serials' in common and not serials:
@@ -208,7 +208,7 @@ def main():
         if not NAME.match(path.name):
             problems.append(f'{path.name}: not a lower-case-hyphenated .ini file name')
             continue
-        texts[path.name] = path.read_bytes().decode('utf-8')
+        texts[path.name] = path.read_bytes().decode('utf-8', errors='replace')
         serials, version, errors = check_file(path, texts[path.name], bundles, core_clock)
         problems += [f'{path.name}: {e}' for e in errors]
         versions[path.name] = version
