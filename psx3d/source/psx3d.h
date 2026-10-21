@@ -404,6 +404,7 @@ bool ui_input_symbol(int id, float x, float y, float size, u32 color);
 u32 ui_input_color(int id);
 void ui_menu_header(const char *title, const char *right);
 u32 ui_header_back(u32 keys);   // header tap -> KEY_B
+void ui_text_wrap(float x, float y, float size, u32 color, float width, const char *s);
 void ui_button_text(float x, float y, float pixels, float spacing, u32 color, int id);
 
 #define FLIST_MAX 2048

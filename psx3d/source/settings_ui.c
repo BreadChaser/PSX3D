@@ -366,12 +366,8 @@ static void draw_settings(void *ud)
 	C2D_DrawRectSolid(0, 0, .1f, 320, 240, C2D_Color32(6, 9, 24, 255));
 	ui_menu_header(categories[s->page], s->game ? ui_fit(emu_game_title(), .42f, 150) : "All games");
 	const char *header = advanced_header(s);
-	if (header) {
-		C2D_Text t;
-		if (C2D_TextFontParse(&t, NULL, NULL, header))
-			C2D_DrawText(&t, C2D_WithColor | C2D_WordWrap, 12, 34, .7f, .39f, .39f,
-				header == advanced_tested ? C2D_Color32(250, 205, 20, 255) : muted, 296.0f);
-	}
+	if (header)
+		ui_text_wrap(12, 34, .39f, header == advanced_tested ? C2D_Color32(250, 205, 20, 255) : muted, 296.0f, header);
 	int rows = list_rows(s);
 	flist_draw_sections(&s->list, s->count, sel, 0, list_top(s), 320, row_height(s), rows, row_label,
 			   s->page == CAT_BINDINGS ? input_control_value : row_value, s,

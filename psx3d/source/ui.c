@@ -89,6 +89,16 @@ void ui_text_ex(C2D_Font font, float x, float y, float size, u32 color, u32 flag
 	C2D_DrawText(&text, C2D_WithColor | flags, x, y, 0.7f, size, size, color);
 }
 
+// Word-wrapped text in the system font, width in pixels.
+void ui_text_wrap(float x, float y, float size, u32 color, float width, const char *s)
+{
+	C2D_Text text;
+	if (!C2D_TextParse(&text, textbuf, s))
+		return;
+	C2D_TextOptimize(&text);
+	C2D_DrawText(&text, C2D_WithColor | C2D_WordWrap, x, y, 0.7f, size, size, color, width);
+}
+
 // A tap on the bottom screen's header (title and colour rule) means Back.
 u32 ui_header_back(u32 keys)
 {
