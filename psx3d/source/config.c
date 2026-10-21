@@ -137,15 +137,6 @@ void config_load(void)
 	f = fopen(PSX3D_CONFIG, "r");
 	if (!f)
 		return;
-	bool slot_format = false;
-	while (fgets(line, sizeof(line), f)) {
-		char *eq = strchr(line, '=');
-		if (!eq) continue;
-		*eq = 0;
-		if (!strcmp(trim(line), "touch_slots") && !strcmp(trim(eq + 1), "1"))
-			slot_format = true;
-	}
-	rewind(f);
 	while (fgets(line, sizeof(line), f)) {
 		char *l = trim(line), *eq = strchr(l, '=');
 		if (*l == '#' || *l == ';' || !eq)
@@ -159,17 +150,16 @@ void config_load(void)
 		else if (strncmp(k, "map_", 4) == 0) {
 			for (int i = 0; i < INPUT_REMAP_N; i++)
 				if (!strcmp(k + 4, input_map_key_name(i))) {
-					int binding = atoi(v);
-					if (!slot_format && i >= INPUT_PHYSICAL_N && binding == input_map_factory(i))
-						binding = INPUT_BIND_PRESET;
-					input_map_set(i, binding);
+					// Dense legacy files do not record intent. Preserve every
+					// represented binding, even an old factory-valued choice.
+					input_map_set(i, atoi(v));
 				}
 		} else if (strcmp(k, "hotkey_ff") == 0)
 			input_hotkey_load(0, v);
 		else if (strcmp(k, "hotkey_rewind") == 0)
 			input_hotkey_load(1, v);
 		else if (strcmp(k, "touch_stick") == 0)
-			g_cfg.touch_stick = !slot_format && atoi(v)==1 ? -1 : atoi(v);
+			g_cfg.touch_stick = atoi(v);
 		else if (strcmp(k, "touch_click_left") == 0)
 			g_cfg.touch_click_left = atoi(v) == 1;
 		else if (strcmp(k, "last_dir") == 0)

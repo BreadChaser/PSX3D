@@ -500,9 +500,10 @@ static void serial_config_checks(void)
  input_map_set(12,9); input_stick_set(1); config_controls_save();
  config_controls_defaults(); assert(input_map_get(12)==-1 && !touch_stick_active());
  assert(current_preset==&l2_fixture); config_game_end();
- // Legacy default-valued maps become inherited, deliberate other remaps survive.
+ // Preserve every represented legacy choice, including old factory values.
  write_text(PSX3D_CONFIG,"map_TOUCH_L2=12\nmap_TOUCH_L3=9\ntouch_stick=1\n");
- config_load(); assert(input_map_raw(10)==-2 && input_map_raw(12)==9 && g_cfg.touch_stick==-1);
+ config_load(); assert(input_map_raw(10)==12 && input_map_raw(12)==9 && g_cfg.touch_stick==1);
+ config_save();config_load();assert(input_map_raw(10)==12 && input_map_raw(12)==9 && g_cfg.touch_stick==1);
  // The format marker follows the same whitespace rules as other INI keys.
  write_text(PSX3D_CONFIG,"map_TOUCH_L2=12\ntouch_stick=1\n touch_slots = 1 \n");
  config_load(); assert(input_map_raw(10)==12 && g_cfg.touch_stick==1);

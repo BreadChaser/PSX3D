@@ -131,8 +131,9 @@ Every represented, supported legacy choice is conservatively treated as
 explicit, including values equal to factory defaults. This preserves a user's
 real choice instead of guessing and deleting it. Such a migrated file can
 remain dense until the user resets all settings (controls can be reset
-separately). Retired settings and old touch-format migrations keep their
-existing behavior. Newly saved files never introduce unrelated defaults.
+separately). This includes touch files without `touch_slots`: represented slot bindings
+and right-stick choices remain explicit. Retired settings keep their existing
+behavior. Newly saved files never introduce unrelated defaults.
 
 ## Versions and SD updates
 
