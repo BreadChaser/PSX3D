@@ -75,6 +75,7 @@ LDFLAGS += -Wl,--wrap=fread
 # save states and memory cards through PSX3D (statefile.c, emu.c)
 LDFLAGS += -Wl,--wrap=retro_serialize,--wrap=retro_unserialize,--wrap=LoadMcd
 LDFLAGS += -Wl,--wrap=C3D_UpdateUniforms,--wrap=C3Di_LoadShaderUniforms,--wrap=C3Di_DirtyUniforms
+LDFLAGS += -Wl,--wrap=C3D_DrawArrays
 
 LIBS	:= $(CORELIB) -lcitro2d -lcitro3d -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lpng16 -lz -lctru -lm
 
@@ -137,7 +138,9 @@ export T3XHFILES		:=	$(patsubst %.t3s, $(BUILD)/%.h, $(GFXFILES))
 endif
 #---------------------------------------------------------------------------------
 
-export OFILES_SOURCES 	:=	$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
+# picadirect.o links after every other frontend object, so it moves no
+# existing frontend code (docs/dev/pica-direct.md).
+export OFILES_SOURCES 	:=	$(CPPFILES:.cpp=.o) $(filter-out picadirect.o,$(CFILES:.c=.o)) $(SFILES:.s=.o) picadirect.o
 
 export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES)) \
 			$(PICAFILES:.v.pica=.shbin.o) $(SHLISTFILES:.shlist=.shbin.o) \
