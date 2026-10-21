@@ -32,6 +32,7 @@ int _rmdir_r(struct _reent *r, const char *path);
 void log_printf(const char *fmt, ...);
 void game_presets_init(const char *builtin_dir, const char *sd_dir);
 bool game_presets_validate(const char *builtin_dir, const char *dir, int version, unsigned files);
+void game_presets_moved(const char *sd_dir);
 int game_presets_pack(void);
 int defaults_version(void);
 
@@ -418,9 +419,13 @@ bool presets_update_poll(void)
 #ifdef PRESETUPDATE_TEST
 	if (!ok && pu_test_crash_after >= 0) { __atomic_store_n(&staged, 0, __ATOMIC_RELEASE); return false; }   // "power cut": nothing more runs
 #endif
-	if (exists(staging)) rmtree(staging);
-	game_presets_init(builtin_dir, live);
-	if (ok) ok = game_presets_pack() == staged_m.pack_version;
+	// Success: the parsed data is the live folder's now (one parse, about
+	// 0.2 s on the Old 3DS, once per new pack). Otherwise reload what is there.
+	if (ok) game_presets_moved(live);
+	else {
+		if (exists(staging)) rmtree(staging);
+		game_presets_init(builtin_dir, live);
+	}
 	snprintf(status, sizeof(status), ok ? "installed pack %d" : "pack %d rejected", staged_m.pack_version);
 	log_printf("presets update: %s\n", status);
 	__atomic_store_n(&staged, 0, __ATOMIC_RELEASE);

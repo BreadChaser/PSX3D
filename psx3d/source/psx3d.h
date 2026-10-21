@@ -363,6 +363,7 @@ typedef struct {
 #define GAME_PRESET_SAME(disc, ...) { .serial = disc, .old3ds = __VA_ARGS__, .new3ds = __VA_ARGS__, .curated = true }
 void game_presets_init(const char *builtin_dir, const char *sd_dir);
 bool game_presets_validate(const char *builtin_dir, const char *dir, int version, unsigned files);
+void game_presets_moved(const char *sd_dir);
 int game_presets_pack(void);
 int game_preset_version(void);
 const char *game_preset_source(void);

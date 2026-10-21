@@ -287,6 +287,8 @@ bool game_presets_validate(const char *builtin, const char *dir, int version, un
 		dir, pack[SD], version, accepted[SD], scanned[SD], files);
 	return ok;
 }
+// After the validated folder was renamed into place: same files, new path.
+void game_presets_moved(const char *sd) { preset_dirs[SD] = sd; }
 int game_presets_pack(void) { return pack[SD] > pack[BUILTIN] ? pack[SD] : pack[BUILTIN]; }
 int game_preset_version(void) { return current_file ? current_file->version : 0; }
 const char *game_preset_source(void) { return !current_file ? "none" : current_file->layer ? "sd" : "builtin"; }
