@@ -177,6 +177,8 @@ int archive_getmtime(const char *name, u64 *mtime)
 	*mtime = st.st_mtime;
 	return 0;
 }
+// put-game uploads into the configured games folder
+static struct { char games_dir[PATH_LEN]; } g_cfg;
 #include "../../source/clip.h"
 #include "../../source/devnet.c"
 int main(void)

@@ -21,7 +21,7 @@ ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-format-truncation \
   -I "$work" -I "$repo/psx3d/source" -I "$repo/core/deps/libretro-common/include" \
   "$repo/tests/renderer_config.c" "$repo/psx3d/source/config.c" \
   "$repo/psx3d/source/options.c" "$repo/psx3d/source/gamecfg.c" \
-  "$repo/psx3d/source/clip.c" "$repo/tools/input-replay/mock-core.c" -lz -o "$work/test"
+  "$repo/psx3d/source/clip.c" "$repo/psx3d/source/safefile.c" "$repo/tools/input-replay/mock-core.c" -lz -o "$work/test"
 mkdir -p "$work/sdmc:/3ds/PSX3D/games"
 cd "$work"
 ./test

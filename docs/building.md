@@ -124,6 +124,8 @@ host:
 | `input-replay` | the clip codec, input, analog and checkpoint handling |
 | `dev-server` (`psx3d/tests/dev`) | developer server lifecycle, a loopback TCP transport and the updater guards (the Python client half needs `psx3dctl.py` and `fastbench.py` from the untracked `devtools/` and is skipped without them) |
 | `covers`, `covers-worker` | the cover PNG decoder on generated images and the download worker against a loopback HTTP server |
+| `library`, `save-safety`, `save-names` | library scanner, crash-safe save/state/card files with backups, save-name ownership (`psx3d/tests/{library,save,saveid}`) |
+| `c3d-abi` | the private citro3d structure layout PSX3D relies on |
 | `video-scanout`, `video-teardown` | `vout_flip` from `core/frontend/libretro.c` and `video_game_end` from `video.c`, extracted and run with fakes |
 | `gpu-reference`, `pica-layout` | `gpu_pica.c` against the independent software rasteriser; baseline and split layouts must draw identically |
 

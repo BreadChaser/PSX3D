@@ -46,6 +46,9 @@ static void pica_exit(void) {
  alive=false;
 }
 static void music_reload(void) {}
+// real 3D (gpustereo.c): nothing to release here; targets back to the library's
+static void gpustereo_game_end(void) { assert(!gpu_frame); }
+static bool video_stereo_targets(bool native) { assert(!native && !alive); return true; }
 '''
 main=r'''
 int main(void) {
