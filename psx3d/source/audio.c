@@ -438,7 +438,15 @@ size_t audio_write(const int16_t *data, size_t frames)
 		g_cfg.audio_stretch ? AUDIO_TSM_MAX : 0,
 		frames, (float)base_rate, seconds);
 	st.rate = (float)(base_rate * step);
-	audio_tsm_speed(&tsm, (int)((1.0f - rs.slow) * 65536.0f + 0.5f));
+	if (rs.slow > 0) {
+		// While stretching, the stretch also takes the drift correction and
+		// the resampler only copies (its phase rounded once, < half a sample).
+		audio_tsm_speed(&tsm, (int)((1.0f - rs.slow) * step * 65536.0f + 0.5f));
+		rs.pos = floorf(rs.pos + 0.5f);
+		step = 1.0f;
+	} else {
+		audio_tsm_speed(&tsm, 65536);   // plays out what it holds, then idles
+	}
 
 	// The core may deliver a large batch after a worker sync; resample it in
 	// chunks. At full speed the stretch is idle and the resampled sound goes
