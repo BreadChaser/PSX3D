@@ -233,6 +233,15 @@ void cards_save_now(void);                // leaving, sleep, HOME, pause menu
 void cards_end(void);
 void emu_osd(const char *text);           // emu.c: short message in the game
 
+// saveid.c - which game a save name belongs to (saves/<name>.id)
+// Before loading path: the save name to start with. base: the library's name
+// for the game (NULL from the folder browser).
+void saveid_begin(const char *path, const char *base, char *name, size_t len);
+// After loading, before any save is read or written: the game's own save name,
+// given the serial the core read (CdromId); records it. true when it differs
+// from saveid_begin's. *created: a new name was just made for this game.
+bool saveid_confirm(const char *serial, char *name, size_t len, bool *created);
+
 // savestates.c - save state browser with screenshots
 #define STATE_AUTO -1
 safe_format_t emu_state_format(void);   // emu.c: what a good state file is

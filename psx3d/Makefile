@@ -255,6 +255,8 @@ endif
 # Kept from the presets round: the frontend's code layout (not the core's)
 # with it is the one measured on the Old 3DS (docs/dev/core-first.md).
 presets.o: CFLAGS += -Os
+# save names: runs once per game start, kept small
+saveid.o: CFLAGS += -Os
 # the core's state layout (statefile.c reads core headers)
 statefile.o: CFLAGS += -I$(COREDIR)/include
 

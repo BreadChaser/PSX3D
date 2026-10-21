@@ -1080,6 +1080,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	else
 		set_game_name(path);
 	snprintf(game_title, sizeof(game_title), "%s", title ? title : game_name);
+	saveid_begin(path, save_name, game_name, sizeof(game_name));
 	clip_close();
 	memset(&clip_status,0,sizeof(clip_status));
 	clip_game_enabled=clip_enabled;
@@ -1127,6 +1128,17 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	retro_get_system_av_info(&av);
 	fps_target = av.timing.fps;
 	has_audio = audio_init(av.timing.sample_rate);
+	{
+		// another game's saves are never read or written (saveid.c)
+		bool created;
+		if (saveid_confirm(CdromId, game_name, sizeof(game_name), &created)) {
+			config_game_end();
+			config_game_begin(game_name);
+			options_mark_updated();
+		}
+		if (created)
+			osd("Saves kept apart from another game with the same file name");
+	}
 	{
 		char srm[PATH_LEN];
 		make_path(srm, sizeof(srm), PSX3D_SAVE_DIR, ".srm");
