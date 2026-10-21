@@ -49,8 +49,9 @@ EXTERN_SYMS += psx3d_spu_worker_ticks psx3d_spu_worker_items psx3d_skip pica_dis
 # Real 3D (psx3d/source/gpustereo.c): the frontend takes over two core hooks
 # (--wrap inside the core's partial link; -u __real_ keeps the originals in place)
 # and reads the GTE depth table and gpulib's drawing registers.
-WRAP_SYMS := psx3d_depth_cmd psx3d_stereo_set
-EXTERN_SYMS += $(WRAP_SYMS) $(addprefix __real_,$(WRAP_SYMS)) psx3d_stereo_enabled psx3d_ztable psx3d_zframe gpu
+STEREO_WRAP_SYMS := psx3d_depth_cmd psx3d_stereo_set
+WRAP_SYMS += $(STEREO_WRAP_SYMS)
+EXTERN_SYMS += $(STEREO_WRAP_SYMS) $(addprefix __real_,$(STEREO_WRAP_SYMS)) psx3d_stereo_enabled psx3d_ztable psx3d_zframe gpu
 EXTERN_SYMS += pica_init pica_exit pica_game_begin pica_game_end pica_flush_vertices pica_frame_started pica_frame_ended \
 	pica_texmask pica_texmemo psx3d_skipgate pica_thread_call pica_thread_sync pica_state_lost pica_prepare_present pica_picture pica_stats pica_probe pica_debug pica_submit pica_prims pica_pmu pica_open_frame pica_async pica_double_buffer pica_wait_frame pica_frame_pending pica_dump_vram
 
