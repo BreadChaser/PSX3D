@@ -34,8 +34,9 @@ static void init(void)
     if (getenv("STEREO_DUMP")) dump = fopen(getenv("STEREO_DUMP"), "w");
     if (!on) return;
     assert(gs_core_alloc());
-    assert(C3D_TexInit(&right, 1024, 512, GPU_RGBA5551));
+    assert(C3D_TexInitVRAM(&right, 1024, 512, GPU_RGBA5551));
     right_rt = C3D_RenderTargetCreateFromTex(&right, GPU_TEXFACE_2D, 0, -1);
+    assert(right_rt);   // a render target needs a VRAM texture (as on the console)
 }
 
 void stereo_sim_depths(const void *data, unsigned bytes)
