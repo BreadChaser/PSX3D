@@ -18,7 +18,7 @@ fast_forward.source = Unassessed restriction retained pending Old hardware testi
 fast_forward.confidence = unassessed
 [new]
 l3r3 = yes
-l3r3.source = Retail manual controls section, USA edition; other editions untested
+l3r3.source = Retail manual controls section, USA edition, other editions untested
 l3r3.confidence = medium
 ```
 

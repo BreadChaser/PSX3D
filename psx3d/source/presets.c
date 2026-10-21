@@ -203,10 +203,10 @@ static void read_preset(int layer, const char *name)
 static int name_compare(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
 static void scan_pack(int layer)
 {
-	char path[PATH_LEN], line[16] = "";
+	char path[PATH_LEN], line[MAX_LINE] = "";
 	snprintf(path, sizeof(path), "%s/VERSION", preset_dirs[layer]);
 	FILE *f = fopen(path, "r");
-	bool ok = f && fgets(line, sizeof(line), f);
+	bool ok = f && preset_line(f, line) > 0;
 	if (ok) { int c = fgetc(f); ok = c == EOF && !ferror(f); }
 	if (f) fclose(f);
 	pack[layer] = ok && *preset_trim(line) != '0' ? preset_number(preset_trim(line)) : 0;

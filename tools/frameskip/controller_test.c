@@ -41,10 +41,47 @@ static void load(double floor, double extra, unsigned expected, int window)
   assert(c.level == expected);
   assert(changes == 0); // stable load must produce a stable cadence
 }
+/* Exercise the production smart controller with the frontend's N/15 credit
+ * normalization. A heavy 30-picture scene cannot fit all drawing at 100%. */
+static void smart_floors(void)
+{
+  unsigned floors[] = {10, 12, 15, 20, 24};
+  double last_pictures = 0, last_speed = 101;
+  for (unsigned f=0; f<sizeof(floors)/sizeof(floors[0]); f++) {
+    psx3d_skip_state s = {.smart=1, .max_skips=4};
+    unsigned draws=0, streak=0; double wall=0;
+    for (unsigned i=0; i<18000; i++) {
+      unsigned kind=(i&1) ? 2 : psx3d_skip_decide(&s) ? 1 : 0;
+      double costs[]={55, 13, 10};
+      double elapsed=costs[kind]>1000.0/60 ? costs[kind] : 1000.0/60;
+      psx3d_smart_observe(&s,costs[kind],1000.0/60,elapsed*floors[f]/15.0);
+      if (kind==1) { streak++; assert(streak<=4); }
+      else if (kind==0) streak=0;
+      if (i>=6000) { draws+=kind==0; wall+=elapsed; }
+    }
+    double pictures=draws*1000/wall, speed=20000000/wall;
+    printf("smart floor %u: %.2f pictures/s, %.2f%% speed\n",floors[f],pictures,speed);
+    assert(pictures>=last_pictures && speed<=last_speed);
+    if (floors[f]<=15) assert(pictures>last_pictures && speed<last_speed);
+    // A floor cannot manufacture flips: this load tops out below 15 pictures/s.
+    if (floors[f]<=12) assert(pictures>=floors[f]-.1);
+    last_pictures=pictures; last_speed=speed;
+  }
+  // Floor 15 is bit-for-bit the prior policy, including startup and stalls.
+  psx3d_skip_state old={.smart=1,.max_skips=4}, current=old;
+  for (unsigned i=0;i<3600;i++) {
+    assert(psx3d_skip_decide(&old)==psx3d_skip_decide(&current));
+    double work=i%137 ? 23 : 1000;
+    psx3d_smart_observe(&old,work,1000.0/60,work);
+    psx3d_smart_observe(&current,work,1000.0/60,work*(15.0/15));
+    assert(!memcmp(&old,&current,sizeof(old)));
+  }
+}
 int main(void)
 {
   setvbuf(stdout, NULL, _IONBF, 0);
   cadence();
+  smart_floors();
   for (int window=0; window<2; window++) {
     load(6, 5, 0, window);
     load(10, 10, 3, window);

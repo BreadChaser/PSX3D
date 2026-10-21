@@ -229,7 +229,9 @@ static const char *preset_key(int item)
 	if (item >= CORE_ROW && item < CONTROL_ROW) {
 		const char *key = options_key(item - CORE_ROW);
 		if (!strcmp(key, "pcsx_rearmed_frameskip_type")) return "frameskip";
+		#ifdef PSX3D_PS1_OVERCLOCK_PRESETS
 		if (!strcmp(key, "pcsx_rearmed_psxclock")) return "psxclock";
+#endif
 	}
 	if (item == F_SCREEN) return "widescreen";
 	if (item == F_FF) return "fast_forward";

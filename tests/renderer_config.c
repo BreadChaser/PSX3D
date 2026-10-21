@@ -16,6 +16,7 @@ int input_map_raw(int i) { return maps[i]; }
 int input_map_factory(int i) { return 0; }
 void input_map_set(int i,int v) { maps[i]=v; }
 const char *input_map_key_name(int i) { static char key[16]; snprintf(key,sizeof(key),"test%d",i); return key; }
+int input_hotkey_factory(int i) { (void)i; return 0; }
 int input_hotkey_get(int i) { return hotkeys[i]; }
 void input_hotkey_set(int i,int v) { hotkeys[i]=v; }
 void input_hotkey_load(int i,const char *v) { hotkeys[i]=atoi(v); }
@@ -24,6 +25,9 @@ const char *input_hotkey_combo_name(int i) { return "off"; }
 void input_touch_begin(void) {}
 void input_touch_reset(void) {}
 game_preset_options_t game_capabilities(void) { return (game_preset_options_t){0}; }
+void game_presets_invalidate(void) {}
+bool game_preset_sets(const char *key) { (void)key;return false; }
+void ws_policy_override(bool on) { (void)on; }
 bool ws_available(void) { return false; }
 bool cheats_widescreen(bool on) { (void)on; return false; }
 bool game_preset_curated(void) { return false; }

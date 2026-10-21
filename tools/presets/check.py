@@ -169,6 +169,13 @@ def check_file(path, text, bundles, core_clock):
     return serials, (int(version) if version.isdigit() else 0), errors
 
 
+def check_pack_version(data):
+    # Exactly one complete ASCII line, using the runtime's shared line bound.
+    if len(data) > 255 or not re.fullmatch(rb'[ \t\r\v\f]*[1-9][0-9]{0,5}[ \t\r\v\f]*(?:\n)?', data):
+        return 0
+    return int(data.strip())
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--dir', default=str(ROOT / 'psx3d/romfs/presets'))
@@ -183,10 +190,9 @@ def main():
         if re.search(r'^models=', bundle.read_text(), re.M):
             problems.append(f'{bundle.name}: models= moved to the preset files; remove it')
 
-    pack_text = (directory / 'VERSION').read_text().strip() if (directory / 'VERSION').exists() else ''
-    if not re.fullmatch(r'[1-9][0-9]{0,5}', pack_text):
+    pack = check_pack_version((directory / 'VERSION').read_bytes()) if (directory / 'VERSION').exists() else 0
+    if not pack:
         problems.append('VERSION: missing or not a positive number')
-    pack = int(pack_text) if pack_text.isdigit() else 0
     owner, versions, texts = {}, {}, {}
     if len(list(directory.glob('*.ini'))) > 256:
         problems.append('more than 256 files')

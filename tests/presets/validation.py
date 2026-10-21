@@ -48,4 +48,12 @@ with tempfile.TemporaryDirectory() as td:
         assert (not errors) == expected, (name, errors)
         subprocess.run([sys.argv[1], '--validate', str(pack), 'yes' if expected else 'no'], check=True,
                        stdout=subprocess.DEVNULL)
-print(f'PASS: {len(cases)} file validation cases agree between runtime and checker')
+    for data, expected in [(b'2\n', True), (b'2', True), (b' 2 \r\n', True),
+                           (b'02\n', False), (b'2\n\n', False), (b'2\x00hidden\n', False),
+                           (b'2'+b' '*255, False), (b'0\n', False), (b'1000000\n', False)]:
+        (pack/'VERSION').write_bytes(data)
+        (pack/'fixture.ini').write_text(BASE+OPT)
+        assert bool(checker.check_pack_version(data)) == expected
+        subprocess.run([sys.argv[1], '--validate', str(pack), 'yes' if expected else 'no'],
+                       check=True, stdout=subprocess.DEVNULL)
+print(f'PASS: {len(cases)} file and 9 pack validation cases agree between runtime and checker')
