@@ -6,6 +6,7 @@
 #include "benchstate.h"
 #include "widescreen.h"
 #include "gpustereo.h"
+#include "presetupdate.h"
 #include <ctype.h>
 #include <errno.h>
 #include <malloc.h>
@@ -172,6 +173,11 @@ static void publish_status(void)
 	p += sprintf(p, ",\"version\":\"%s\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
 	p += sprintf(p, ",\"preset\":\"%s\",\"preset_version\":%d,\"preset_pack\":%d", game_preset_source(),
 	             game_preset_version(), game_presets_pack());
+	{
+		char pu[128];
+		quote(pu, sizeof(pu), presets_update_status());
+		p += sprintf(p, ",\"presets_update\":\"%s\"", pu);
+	}
 	p += sprintf(p, ",\"pica_prims\":%u,\"idle\":%d,\"idleptr\":%d,\"idledelay\":%d", pica_prims, psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay);
 	p += sprintf(p, ",\"skipgate\":\"%s\"", psx3d_skipgate ? "new" : "old");
 	p += sprintf(p, ",\"texmask\":\"%s\",\"texmemo\":\"%s\"",
@@ -464,6 +470,21 @@ bool dev_tick(bool playing)
 				}
 				if (game >= 0 && covers_refresh(game)) dev_reply("{\"ok\":true}");
 				else error_reply("covers [refresh=title_or_index] requires idle library");
+			}
+		} else if (!strcmp(command, "presets-update")) {
+			// Test the daily preset check against a LAN server: "now [url=http://...]".
+			char *url = strstr(args, "url=");
+			bool now = !strncmp(args, "now", 3);
+			if (url) url += 4;
+			if (url && (strncmp(url, "http", 4) || strlen(url) >= 96 || strchr(url, '"')))
+				error_reply("presets-update [now] [url=http://numeric-ip:port/path/]");
+			else {
+				if (url || now) presets_update_dev(url, now);
+				char info[192], st[128];
+				quote(st, sizeof(st), presets_update_status());
+				snprintf(info, sizeof(info), "{\"ok\":true,\"status\":\"%s\",\"due\":%s,\"pack\":%d}", st,
+				         presets_update_due() ? "true" : "false", game_presets_pack());
+				dev_reply(info);
 			}
 		} else if (!strcmp(command, "load")) {
 			ui_request = DEV_UI_NONE;

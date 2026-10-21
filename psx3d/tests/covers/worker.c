@@ -39,6 +39,9 @@ typedef struct { char cover_key[256]; } game_t;
 static game_t game = { "cover" };
 static bool sw_nocovers,sw_nonet;
 bool dev_remote = true;
+// The daily preset check (presetupdate.c) has its own host test.
+bool presets_update_due(void) { return false; }
+void presets_update_work(int (*fetch)(const char *, const char *, size_t, long *), bool (*stop)(void)) { (void)fetch; (void)stop; }
 static bool blocked, g_new3ds;
 bool dev_covers_blocked(void) { return blocked; }
 static void (*video_pre_draw)(void);

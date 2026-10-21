@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "psx3d.h"
+#include "presetupdate.h"
 #include "devtools.h"
 #include "clip.h"
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
@@ -155,6 +156,7 @@ bool sw_gpu_async = true;
 bool sw_gpu_flush = true;
 bool sw_aa;              // test: Old 3DS: gameplay supersampled too
 bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
+char sw_presets_url[96];  // test: preset update server (numeric LAN HTTP), check now
 
 extern int psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay;
 
@@ -255,6 +257,7 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "aa")) sw_aa = true;
 		else if (!strcmp(a, "nolcd")) sw_nolcd = true;
 		else if (!strcmp(a, "nocovers")) sw_nocovers = true;
+		else if (!strncmp(a, "presets_url=", 12)) snprintf(sw_presets_url, sizeof(sw_presets_url), "%s", a + 12);
 		else if (!strcmp(a, "minimal"))
 			sw_nonet = sw_nosound = sw_noirrst = sw_noaa = sw_nolcd = sw_nocovers = true;
 	}
@@ -381,6 +384,8 @@ int main(int argc, char **argv)
 
 	// defaults.ini (romfs) supplies the settings' starting values: before config.
 	romfsInit();
+	presets_update_init("romfs:/presets", PSX3D_DIR);   // finishes or undoes a cut-off install
+	if (sw_presets_url[0]) presets_update_dev(sw_presets_url, true);
 	game_presets_init("romfs:/presets", PSX3D_DIR "/presets");
 	config_load();
 	if (!video_init()) {

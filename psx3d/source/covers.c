@@ -14,6 +14,7 @@
 #include "covers_png.h"
 #include "psx3d.h"
 #include "devtools.h"
+#include "presetupdate.h"
 
 #define COVER_DIR PSX3D_DIR "/covers"
 #ifndef THUMB_URL
@@ -48,7 +49,8 @@ static int last_curl;
 static long last_http;
 static unsigned stop_ms, max_stop_ms;
 static volatile bool paused; // gameplay / HOME / sleep: do not start work
-static volatile int busy;    // workers currently fetching/decoding a cover
+static volatile int busy;    // workers currently fetching/decoding a cover or presets
+static bool presets_claimed; // a worker runs the preset check (under lock)
 static aptHookCookie apt_cookie;
 void covers_stop_wait(void);
 
@@ -147,11 +149,11 @@ static u32 *decode_png(const void *data, size_t size, const char *file)
 
 // Stage the compressed file on SD rather than retaining another 0.5 MiB in
 // Old 3DS's small library heap while TLS and decoded covers are resident.
-typedef struct { FILE *file; size_t len; } cover_file_t;
+typedef struct { FILE *file; size_t len, limit; } cover_file_t;
 static size_t on_data(void *p, size_t sz, size_t n, void *ud)
 {
 	cover_file_t *m = ud;
-	if (sz && n > (4 * 1024 * 1024 - m->len) / sz) return 0;
+	if (sz && n > (m->limit - m->len) / sz) return 0;
 	size_t add = sz * n;
 	size_t wrote = fwrite(p, 1, add, m->file);
 	m->len += wrote;
@@ -175,19 +177,17 @@ static int transfer_progress(void *unused, curl_off_t total, curl_off_t now,
 	return quit || paused;
 }
 
-static u32 *download(const char *key, bool *retry)
+// One transfer into a file on the SD card, at most limit bytes (caller holds
+// net_lock). *aborted: HOME, sleep, exit or a game start stopped it.
+static CURLcode fetch_file(const char *url, const char *path, size_t limit, long *code, bool *aborted)
 {
-	char name[256], esc[768], url[1024];
-	thumb_name(key, name, sizeof(name));
-	url_escape(name, esc, sizeof(esc));
-	snprintf(url, sizeof(url), "%s%s.png", THUMB_URL, esc);
-
 	CURL *c = easy;
+	*code = 0;
+	*aborted = false;
 	if (!c || (!multi && !(multi = curl_multi_init())))
-		return NULL;
-	cover_file_t m = { .file = fopen(COVER_DIR "/download.tmp", "wb") };
-	if (!m.file) return NULL;
-	long code = 0;
+		return CURLE_FAILED_INIT;
+	cover_file_t m = { .file = fopen(path, "wb"), .limit = limit };
+	if (!m.file) return CURLE_WRITE_ERROR;
 	curl_easy_setopt(c, CURLOPT_URL, url);
 	curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, on_data);
 	curl_easy_setopt(c, CURLOPT_WRITEDATA, &m);
@@ -205,14 +205,13 @@ static u32 *download(const char *key, bool *retry)
 	curl_easy_setopt(c, CURLOPT_DNS_CACHE_TIMEOUT, -1L);   // lookups can't be aborted: do them once
 
 	CURLcode rc = CURLE_ABORTED_BY_CALLBACK;
-	bool aborted = false;
 	int running = 1;
 	curl_multi_add_handle(multi, c);
 	net_open = true;
 	__atomic_add_fetch(&attempts, 1, __ATOMIC_RELAXED);
 	for (;;) {
 		if (quit || paused) {   // HOME, sleep or exit: retried later
-			aborted = true;
+			*aborted = true;
 			break;
 		}
 		if (curl_multi_perform(multi, &running) != CURLM_OK || !running)
@@ -224,14 +223,14 @@ static u32 *download(const char *key, bool *retry)
 	}
 	CURLMsg *msg;
 	int left;
-	while (!aborted && (msg = curl_multi_info_read(multi, &left)))
+	while (!*aborted && (msg = curl_multi_info_read(multi, &left)))
 		if (msg->msg == CURLMSG_DONE)
 			rc = msg->data.result;
-	if (rc == CURLE_ABORTED_BY_CALLBACK && (quit || paused)) aborted = true;
+	if (rc == CURLE_ABORTED_BY_CALLBACK && (quit || paused)) *aborted = true;
 	curl_multi_remove_handle(multi, c);
-	if (aborted)
+	if (*aborted)
 		net_close();
-	curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &code);
+	curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, code);
 	{
 		double tc = 0, ta = 0, tt = 0, sp = 0;
 		curl_easy_getinfo(c, CURLINFO_CONNECT_TIME, &tc);
@@ -243,13 +242,31 @@ static u32 *download(const char *key, bool *retry)
 		curl_easy_getinfo(c, CURLINFO_SPEED_DOWNLOAD, &sp);
 #pragma GCC diagnostic pop
 		log_printf("covers: http %ld %uKB connect %.2fs tls %.2fs total %.2fs (%.0fKB/s)\n",
-			code, (unsigned)(m.len / 1024), tc, ta, tt, sp / 1024);
+			*code, (unsigned)(m.len / 1024), tc, ta, tt, sp / 1024);
 	}
 	if (fclose(m.file) && rc == CURLE_OK) rc = CURLE_WRITE_ERROR;
 	last_curl = rc;
-	last_http = code;
+	last_http = *code;
+	if (*aborted) __atomic_add_fetch(&aborted_count, 1, __ATOMIC_RELAXED);
+	return rc;
+}
+
+static bool network_error(CURLcode rc)
+{
+	return rc == CURLE_COULDNT_CONNECT || rc == CURLE_COULDNT_RESOLVE_HOST || rc == CURLE_OPERATION_TIMEDOUT;
+}
+
+static u32 *download(const char *key, bool *retry)
+{
+	char name[256], esc[768], url[1024];
+	thumb_name(key, name, sizeof(name));
+	url_escape(name, esc, sizeof(esc));
+	snprintf(url, sizeof(url), "%s%s.png", THUMB_URL, esc);
+
+	long code;
+	bool aborted;
+	CURLcode rc = fetch_file(url, COVER_DIR "/download.tmp", 4 * 1024 * 1024, &code, &aborted);
 	*retry = aborted || rc != CURLE_OK || code != 404;
-	if (aborted) __atomic_add_fetch(&aborted_count, 1, __ATOMIC_RELAXED);
 	u64 td = osGetTime();
 
 	u32 *px = NULL;
@@ -257,8 +274,7 @@ static u32 *download(const char *key, bool *retry)
 		px = decode_png(NULL, 0, COVER_DIR "/download.tmp");
 		log_printf("covers: decode %llums\n", osGetTime() - td);
 	}
-	else if (rc == CURLE_COULDNT_CONNECT || rc == CURLE_COULDNT_RESOLVE_HOST ||
-	         rc == CURLE_OPERATION_TIMEDOUT) {
+	else if (network_error(rc)) {
 		log_printf("covers: network error %d, retrying in 15s\n", rc);
 		net_retry_at = osGetTime() + 15000;
 	} else {
@@ -269,6 +285,20 @@ static u32 *download(const char *key, bool *retry)
 	remove(COVER_DIR "/download.tmp");
 	return px;
 }
+
+// Preset updates (presetupdate.c) use the same connection, lock and pauses.
+static int presets_fetch(const char *url, const char *path, size_t limit, long *http)
+{
+	bool aborted;
+	CURLcode rc = fetch_file(url, path, limit, http, &aborted);
+	if (aborted) return PU_FETCH_ABORT;
+	if (network_error(rc)) {
+		net_retry_at = osGetTime() + 15000;
+		return PU_FETCH_NET;
+	}
+	return rc == CURLE_OK ? PU_FETCH_OK : PU_FETCH_FAIL;
+}
+static bool presets_stop(void) { return quit || paused; }
 
 // ---------------------------------------------------------------- worker
 
@@ -346,7 +376,23 @@ static void worker_main(void *arg)
 				refresh = slots[pick].refresh;
 				slots[pick].state = 5;   // ours: the other worker skips it
 			} else pick = -1;
+			// Nothing to fetch for the library: the daily preset check.
+			bool presets = pick < 0 && !quit && !paused && !presets_claimed && !sw_nonet && presets_update_due();
+			if (presets) {
+				presets_claimed = true;
+				__atomic_add_fetch(&busy, 1, __ATOMIC_SEQ_CST);
+			}
 			LightLock_Unlock(&lock);
+			if (presets) {
+				LightLock_Lock(&net_lock);
+				if (!quit && !paused && osGetTime() >= net_retry_at)
+					presets_update_work(presets_fetch, presets_stop);
+				LightLock_Unlock(&net_lock);
+				LightLock_Lock(&lock);
+				presets_claimed = false;
+				LightLock_Unlock(&lock);
+				__atomic_sub_fetch(&busy, 1, __ATOMIC_SEQ_CST);
+			}
 			if (pick < 0)
 				break;
 			const game_t *g = library_get(game);

@@ -12,6 +12,7 @@
 enum { BUILTIN, SD };
 static const char *preset_dirs[2];
 static int pack[2];   // VERSION of each pack; 0 = not used
+static unsigned scanned[2], accepted[2];   // .ini files read / published per layer
 typedef struct file { struct file *next; game_preset_t preset; int layer, version; char *evidence[2][32]; char name[]; } file_t;
 static file_t *preset_files;
 typedef struct { char serial[10]; file_t *file[2]; } entry_t;
@@ -220,6 +221,7 @@ static void read_preset(int layer, const char *name)
 		if (!grown) { file_free(file); return; }
 		index_ = grown;
 	}
+	accepted[layer]++;
 	file->layer = layer; file->version = version; strcpy(file->name, name);
 	file->next = preset_files; preset_files = file;
 	for (unsigned i = 0; i < n; i++) index_add(ids[i], file);
@@ -248,7 +250,7 @@ static void scan_pack(int layer)
 	if (d) closedir(d);
 	if (!ok) { pack[layer] = 0; log_printf("presets: pack exceeds file/memory limit\n"); }
 	qsort(names, n, sizeof(*names), name_compare);
-	for (unsigned i = 0; i < n; i++) { if (ok) read_preset(layer, names[i]); free(names[i]); }
+	for (unsigned i = 0; i < n; i++) { if (ok) { scanned[layer]++; read_preset(layer, names[i]); } free(names[i]); }
 }
 
 // Once at startup: every file is parsed into the serial index here, so disc
@@ -263,6 +265,7 @@ void game_presets_init(const char *builtin, const char *sd)
 	free(index_);
 	index_ = NULL;
 	nindex = 0;
+	scanned[0] = scanned[1] = accepted[0] = accepted[1] = 0;
 	preset_dirs[BUILTIN] = builtin;
 	preset_dirs[SD] = sd;
 	char path[PATH_LEN];
@@ -272,6 +275,17 @@ void game_presets_init(const char *builtin, const char *sd)
 	scan_pack(SD);
 	game_presets_reset();
 	log_printf("presets: built-in pack %d, SD pack %d, %d serials\n", pack[BUILTIN], pack[SD], nindex);
+}
+// A downloaded pack (presetupdate.c): load it as the SD layer exactly as the
+// next start would and require every one of its files to be accepted. The
+// caller re-runs game_presets_init with the real SD folder afterwards.
+bool game_presets_validate(const char *builtin, const char *dir, int version, unsigned files)
+{
+	game_presets_init(builtin, dir);
+	bool ok = pack[SD] == version && scanned[SD] == files && accepted[SD] == files;
+	log_printf("presets: check %s: pack %d (want %d), %u/%u files accepted (want %u)\n",
+		dir, pack[SD], version, accepted[SD], scanned[SD], files);
+	return ok;
 }
 int game_presets_pack(void) { return pack[SD] > pack[BUILTIN] ? pack[SD] : pack[BUILTIN]; }
 int game_preset_version(void) { return current_file ? current_file->version : 0; }

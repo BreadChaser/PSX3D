@@ -5,6 +5,7 @@
 #include <string.h>
 #include "psx3d.h"
 #include "devtools.h"
+#include "presetupdate.h"
 
 #define ROWS 9
 #define ROW_H 24
@@ -27,6 +28,7 @@ static float launch_t = -1;        // >= 0 while the launch zoom plays
 static int rep_l, rep_r, rep_u, rep_d, rep_pl, rep_pr;
 static int rescan_frames;          // > 0 while "Library updated" shows
 static int launch_fail_frames;     // > 0 while the disc list error shows
+static int presets_frames;         // > 0 while "Game settings updated" shows
 
 // What the list shows: the top level (series and the games not in one), or
 // the games of one open series. Entries >= 0 are games, < 0 are series -(s+1).
@@ -436,6 +438,8 @@ static void draw_bottom(void *ud)
 	if (launch_fail_frames > 0) {
 		ui_text_ex(NULL, 8, 222, 0.4f, C2D_Color32(255, 130, 130, 255), 0,
 			"Could not write the disc list. Is the SD card full?");
+	} else if (presets_frames > 0 && rescan_frames <= 0) {
+		ui_text_ex(NULL, 8, 222, 0.4f, C2D_Color32(255, 210, 120, 255), 0, "Game settings updated");
 	} else if (rescan_frames > 0) {
 		char msg[80];
 		int omitted = library_omitted();
@@ -706,6 +710,9 @@ int libui_run(char *out_path, size_t len)
 		if (fade > 0) fade = fmaxf(0, fade - dt * 3);
 		if (rescan_frames > 0) rescan_frames--;
 		if (launch_fail_frames > 0) launch_fail_frames--;
+		if (presets_frames > 0) presets_frames--;
+		// a downloaded preset pack: checked and swapped in here, used from the next game
+		if (presets_update_poll()) presets_frames = 180;
 		// the selection first, then outward: what's on screen loads first
 		covers_focus(entry_game(sel));
 		for (int d = 0; d <= 4; d++) {

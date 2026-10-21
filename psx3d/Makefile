@@ -262,6 +262,8 @@ endif
 presets.o: CFLAGS += -Os
 # save names: runs once per game start, kept small
 saveid.o: CFLAGS += -Os
+# preset updates: once a day in the library, kept small
+presetupdate.o: CFLAGS += -Os
 # the core's state layout (statefile.c reads core headers)
 statefile.o: CFLAGS += -I$(COREDIR)/include
 
