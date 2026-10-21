@@ -137,6 +137,7 @@ static C3D_Tex disp_tex;
 static bool disp_used;
 static int disp_x, disp_y, disp_w, disp_h;
 static int stage_y;                   // stage rows used by uploads the GPU hasn't run yet
+static int stage_band_y, stage_band_h, stage_x;   // the last row band: uploads side by side
 static pvtx *vbuf, *vbuf_base;
 static int vlimit = MAX_VERTS, vbank;
 static u32 frame_seq;
@@ -989,7 +990,7 @@ static void pica_frame_started_local(void)
 		vbuf = vbuf_base + vbank * vlimit;
 	}
 	batch_semi = batch_untex = false;
-	stage_y = 0;
+	stage_y = stage_band_y = stage_band_h = stage_x = 0;
 	if (npend) {
 		prect p[16];
 		int n = npend;
@@ -3010,16 +3011,29 @@ static void PICA_COLD push_to_target(int x, int y, int w, int h)
 	// can synchronize and reset stage_y. Reserve the upload only after
 	// those barriers, so a later upload cannot overwrite its pending data.
 	flush();
-	if (vpos + 6 > vlimit || stage_y + h > STAGE_H)
-		gpu_sync(stage_y + h > STAGE_H ? SY_STAGE : SY_VERTICES);
+	// Uploads share the last row band side by side. A movie's 24x160 strip
+	// took 160 of the stage's 256 rows on its own, so every other strip
+	// waited for the GPU (RE2 movies: ~9 waits a frame on Old 3DS).
+	int sx = (stage_x + 7) & ~7;
+	bool in_band = stage_band_y + stage_band_h == stage_y && h <= stage_band_h && sx + w <= STAGE_W;
+	if (vpos + 6 > vlimit || (!in_band && stage_y + h > STAGE_H)) {
+		gpu_sync(!in_band && stage_y + h > STAGE_H ? SY_STAGE : SY_VERTICES);
+		in_band = false;   // the sync started a new frame: an empty stage
+	}
 	if (pica_async && pica_frame_pending && pica_frame_pending() && pica_wait_frame) {
 		pica_wait_frame();
 		st_prev_upload++;
 		synced_seq = frame_seq;
 	}
-	int sy = stage_y;
-	stage_y += h;
-	u16 *dst = stage_tex.data;
+	if (!in_band) {
+		sx = 0;
+		stage_band_y = stage_y;
+		stage_band_h = h;
+		stage_y += h;
+	}
+	int sy = stage_band_y;
+	stage_x = sx + w;
+	u16 *dst = (u16 *)stage_tex.data + (sx >> 3) * 64;
 	const u16 *vram = gpu.vram;
 	static const u8 xoff[8] = { 0, 1, 4, 5, 16, 17, 20, 21 };
 	for (int r = 0; r < h; r++) {
@@ -3040,7 +3054,7 @@ static void PICA_COLD push_to_target(int x, int y, int w, int h)
 	}
 	{   // the 8-row tile rows written
 		int tr0 = (STAGE_H - 1 - (sy + h - 1)) >> 3, tr1 = (STAGE_H - 1 - sy) >> 3;
-		GSPGPU_FlushDataCache(dst + tr0 * (STAGE_W / 8) * 64, (tr1 - tr0 + 1) * (STAGE_W / 8) * 64 * 2);
+		GSPGPU_FlushDataCache((u16 *)stage_tex.data + tr0 * (STAGE_W / 8) * 64, (tr1 - tr0 + 1) * (STAGE_W / 8) * 64 * 2);
 	}
 	if (base_dirty)
 		apply_base();
@@ -3059,11 +3073,11 @@ static void PICA_COLD push_to_target(int x, int y, int w, int h)
 	tex_alias[alias_i] = stage_tex;
 	C3D_TexBind(0, &tex_alias[alias_i]);
 	clear_tex_cache();
-	s16 x0 = x, y0 = y, x1 = x + w, y1 = y + h, sw = w, v0 = sy, v1 = sy + h;
+	s16 x0 = x, y0 = y, x1 = x + w, y1 = y + h, u0 = sx, u1 = sx + w, v0 = sy, v1 = sy + h;
 	// u, v in stage texels; the shader scale is switched to the stage size
 	pvtx q[6] = {
-		{ x0, y0, 0, v0, 0 }, { x1, y0, sw, v0, 0 }, { x0, y1, 0, v1, 0 },
-		{ x1, y0, sw, v0, 0 }, { x1, y1, sw, v1, 0 }, { x0, y1, 0, v1, 0 } };
+		{ x0, y0, u0, v0, 0 }, { x1, y0, u1, v0, 0 }, { x0, y1, u0, v1, 0 },
+		{ x1, y0, u1, v0, 0 }, { x1, y1, u1, v1, 0 }, { x0, y1, u0, v1, 0 } };
 	to_gpu(q, 6);
 	memcpy(vbuf + vpos, q, sizeof(q));
 	C3D_FVUnifSet(GPU_VERTEX_SHADER, u_texscale, 1.0f / STAGE_W, 1.0f / STAGE_H, 0, 0);
