@@ -78,6 +78,7 @@ typedef struct tcache {
 	u32 used_seq;      // last batch that drew with it
 	u32 lru;
 	u16 slot;          // its place in active[lg]
+	u32 palsum;        // checksum of the CLUT words its tiles were decoded with
 	struct tcache *next;   // hash chain
 } tcache;
 
@@ -1066,7 +1067,32 @@ static u32 fine_stamp(int x, int y, int w, int h)
 }
 
 
-static u32 palette_stamp(int x, int y, int w)
+static u32 palette_sum(int clut, int depth)
+{
+	const u16 *p = gpu.vram + ((clut >> 6) & 511) * VRAM_W;
+	int x = (clut & 63) * 16, n = depth ? 256 : 16;
+	u32 a = 0x811c9dc5u, b = 0;
+	for (int i = 0; i < n; i++) {
+		a = (a ^ p[(x + i) & 1023]) * 0x01000193u;
+		b += a;
+	}
+	return a ^ (b << 7) ^ (b >> 25);
+}
+// Many textures share one CLUT: sum it once until that palette row changes.
+static u32 palette_sum_memo(int clut, int depth, u32 written)
+{
+	static struct { u32 key, gen, sum; } memo[16];
+	u32 key = clut | (u32)depth << 16 | 1u << 31;
+	int i = (clut ^ (clut >> 6)) & 15;
+	if (memo[i].key != key || memo[i].gen <= written) {
+		memo[i].key = key;
+		memo[i].gen = gen_clock;
+		memo[i].sum = palette_sum(clut, depth);
+	}
+	return memo[i].sum;
+}
+
+static u32 palette_stamp(int x, int y, int w, u32 *drawn)
 {
 	u32 stamp=0, cpu_tiles=0;
 	for (int xx=x; xx<x+w; xx+=8) {
@@ -1079,6 +1105,7 @@ static u32 palette_stamp(int x, int y, int w)
 	// Taking their minimum can conservatively over-invalidate, never miss
 	// an intersecting write, without a large per-pixel generation map.
 	u32 cpu=cpu_row_gen[y]<cpu_tiles ? cpu_row_gen[y] : cpu_tiles;
+	*drawn=stamp;
 	return cpu>stamp ? cpu : stamp;
 }
 
@@ -1086,7 +1113,11 @@ static bool cache_valid_fine(tcache *c)
 {
 	if (c->checked == gen_clock) return true;
 	u64 old = c->tiles;
-	if (c->depth < 2 && palette_stamp((c->clut & 63)*16, (c->clut >> 6)&511, c->depth ? 256 : 16) > c->stamp) {
+	u32 drawn = 0;
+	// Games re-upload unchanged CLUTs every frame (Mega Man X6): a CPU
+	// write that left the palette words as they were keeps the tiles.
+	u32 written = c->depth < 2 ? palette_stamp((c->clut & 63)*16, (c->clut >> 6)&511, c->depth ? 256 : 16, &drawn) : 0;
+	if (written > c->stamp && (drawn > c->stamp || palette_sum_memo(c->clut, c->depth, written) != c->palsum)) {
 		trace_cache("palette", c, old);
 		c->tiles = 0;
 	} else {
@@ -1235,6 +1266,7 @@ static void PICA_COLD decode_rect_impl(tcache *c, u64 need, unsigned rect)
 		const u16 *crow = vram + cy * VRAM_W;
 		for (int i = 0; i < n; i++)
 			pal[i] = texel_rgba(crow[(cx + i) & 1023]);
+		if (!c->tiles) c->palsum = palette_sum(c->clut, c->depth);
 	}
 	// the atlas is 8x8 tiles of 64 texels in Z order: offsets of the 32
 	// texels of a block row from its first, and of the row within a tile
