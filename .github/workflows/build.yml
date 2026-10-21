@@ -1,0 +1,67 @@
+# Builds PSX3D.3dsx and PSX3D.cia in the devkitPro container pinned by digest
+# (tools/build/toolchain.lock) and runs every check that needs no ROM, BIOS or console.
+# No secrets are used. The same steps run locally: tools/build/container.sh bash tools/build/ci.sh all
+# What runs and what does not: docs/building.md, "Continuous integration".
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Builds tools/build/Dockerfile (FROM the pinned digest, plus the CIA tools).
+      - name: Toolchain matches toolchain.lock
+        run: tools/build/container.sh bash tools/build/ci.sh toolchain
+
+      - name: Build 3DSX and CIA
+        run: tools/build/container.sh bash tools/build/ci.sh build
+
+      - name: Core layout check
+        if: ${{ !cancelled() }}
+        run: tools/build/container.sh bash tools/build/ci.sh layout
+
+      # The image's gcc-12 AddressSanitizer crashes at random on the runner kernel's
+      # high-entropy ASLR (vm.mmap_rnd_bits=32); the container cannot turn ASLR off itself.
+      - name: Host tests (no ROMs)
+        if: ${{ !cancelled() }}
+        run: |
+          sudo sysctl -w vm.mmap_rnd_bits=28 || true
+          tools/build/container.sh bash tools/build/ci.sh host-tests
+
+      - name: Upload build
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: psx3d-${{ github.sha }}
+          path: |
+            artifacts/PSX3D.3dsx
+            artifacts/PSX3D.cia
+            artifacts/PSX3D.cxi
+            artifacts/PSX3D.elf
+            artifacts/identity.txt
+            artifacts/SHA256SUMS
+            artifacts/BUILD-INFO.txt
+          if-no-files-found: error
+
+      - name: Upload host test logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: host-test-logs-${{ github.sha }}
+          path: artifacts/host-tests/*.log
+          if-no-files-found: warn
