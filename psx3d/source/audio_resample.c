@@ -3,13 +3,13 @@
 #include <string.h>
 #include "audio_resample.h"
 
-float audio_resample_step(audio_resampler *rs, float err, int percent,
+float audio_resample_step(audio_resampler *rs, float err, float now, int percent,
 	size_t frames, float sample_rate, float seconds)
 {
 	if (err > 1.0f) err = 1.0f;
 	if (err < -1.0f) err = -1.0f;
 	if (percent < 0) percent = 0;
-	if (percent > AUDIO_STRETCH_MAX) percent = AUDIO_STRETCH_MAX;
+	if (percent > AUDIO_TSM_MAX) percent = AUDIO_TSM_MAX;
 	if (seconds < 0) seconds = 0;
 	// SPU worker callbacks can be bunched together. Measure their combined
 	// input over time, rather than mistaking each short gap for full speed.
@@ -23,23 +23,35 @@ float audio_resample_step(audio_resampler *rs, float err, int percent,
 		rs->window_seconds = 0;
 	}
 	float want = 0;
-	// Only a half-empty queue starts slowdown. Supply measurements alone
-	// should never bend pitch while the normal full-speed cushion is healthy.
-	if (percent && (err < -0.5f || rs->slow > 0) && rs->deficit > 0.02f && err < 0) {
-		want = rs->deficit;
-		if (err < -0.5f) want += 0.01f; // slowly rebuild a depleted cushion
-		float limit = percent * 0.01f;
-		if (want > limit) want = limit;
+	// Only a half-empty queue starts stretching. Supply measurements alone
+	// should never change the sound while the full-speed cushion is healthy.
+	// Once stretching, follow the measured shortfall and steer the queue back
+	// to its target (pitch no longer depends on it, so no need to hold back).
+	// The supply estimate lags by about a second, so a queue above its
+	// target right now cuts the stretch harder than one below raises it.
+	if (percent && (err < -0.5f || rs->slow > 0) && rs->deficit > 0.02f) {
+		float e = now - 1 > err ? now - 1 : err;
+		want = rs->deficit - e * (e > 0 ? 0.5f : 0.2f);
 	}
-	// Limit pitch movement to five percentage points per wall-clock second.
-	// A long I/O stall must not cause a sudden jump on the next callback.
+	// Under a third of the cushion left right now: stretch enough to rebuild
+	// it, as after a short stall or before the supply estimate has caught
+	// up, whatever the measured supply says; all the way when nearly empty.
+	if (percent && now < 1.0f / 3 && want < 0.3f)
+		want = 0.3f;
+	if (percent && now < 1.0f / 6)
+		want = 1;
+	if (want > percent * 0.01f)
+		want = percent * 0.01f;
+	// Pitch stays the same, so the stretch may grow quickly, and at once
+	// when the queue is nearly empty. While the queue is below its target it shrinks by at most 50
+	// percentage points per wall-clock second, so a long I/O stall's gap
+	// doesn't end it on the next callback.
 	if (seconds > 0.1f) seconds = 0.1f;
-	float limit = seconds * 0.05f;
 	float d = want - rs->slow;
-	if (d > limit) d = limit;
-	if (d < -limit) d = -limit;
+	if (d > seconds * 2 && now >= 1.0f / 3) d = seconds * 2;
+	if (d < -seconds * 0.5f && now < 1) d = -seconds * 0.5f;
 	rs->slow = percent ? rs->slow + d : 0;
-	return 1.0f + err * 0.005f - rs->slow;
+	return 1.0f + err * 0.005f;
 }
 
 bool sw_floataudio;
@@ -66,23 +78,7 @@ size_t audio_resample(audio_resampler *rs, const int16_t *in, size_t frames,
 	// The caller splits long batches, so no input or fractional phase is lost.
 	memcpy(src, rs->hist, sizeof(rs->hist));
 	memcpy(src + 6, in, frames * 4);
-	if (step < 0.99f) {
-		// Stretch can double the output. Linear interpolation in Q15 keeps
-		// that cheaper than the normal Hermite drift correction. The largest
-		// product is 65535*32767 + 16384, which fits a signed 32-bit int.
-		int pos = (int)(rs->pos * 32768.0f);
-		int delta = (int)(step * 32768.0f + 0.5f);
-		while ((size_t)(pos >> 15) < frames) {
-			int k = pos >> 15, t = pos & 32767;
-			for (int c = 0; c < 2; c++) {
-				int a = src[(k + 1) * 2 + c], b = src[(k + 2) * 2 + c];
-				out[n * 2 + c] = a + (((b - a) * t + 16384) >> 15);
-			}
-			n++;
-			pos += delta;
-		}
-		rs->pos = (pos - (int)(frames * 32768)) / 32768.0f;
-	} else if (sw_floataudio) {
+	if (sw_floataudio) {
 		while ((size_t)(int)rs->pos < frames) {
 			int k = (int)rs->pos;
 			float t = rs->pos - k;
@@ -130,23 +126,4 @@ size_t audio_resample(audio_resampler *rs, const int16_t *in, size_t frames,
 	}
 	memcpy(rs->hist, src + frames * 2, sizeof(rs->hist));
 	return n;
-}
-
-size_t audio_repeat_tail(int16_t *out, size_t n)
-{
-	if (n < AUDIO_REPEAT + AUDIO_FADE)
-		return n;
-	// The copy ends where the next input continues. Before it, fade the last
-	// AUDIO_FADE frames over to the frames just ahead of the copied part, so
-	// the signal arrives at the copy's start without a jump.
-	memcpy(out + n * 2, out + (n - AUDIO_REPEAT) * 2, AUDIO_REPEAT * 4);
-	int16_t *end = out + (n - AUDIO_FADE) * 2, *from = end - AUDIO_REPEAT * 2;
-	for (int i = 0; i < AUDIO_FADE; i++) {
-		int w = (i + 1) * 32768 / (AUDIO_FADE + 1);
-		for (int c = 0; c < 2; c++) {
-			int a = end[i * 2 + c], b = from[i * 2 + c];
-			end[i * 2 + c] = a + (((b - a) * w + 16384) >> 15);
-		}
-	}
-	return n + AUDIO_REPEAT;
 }

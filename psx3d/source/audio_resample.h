@@ -2,21 +2,20 @@
 #ifndef AUDIO_RESAMPLE_H
 #define AUDIO_RESAMPLE_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-// A chunk at the minimum step plus one repeat fits easily in 4096 output frames.
+// Drift correction changes the step by at most 0.5%, so a chunk's output
+// fits easily in AUDIO_OUT frames.
 #define AUDIO_CHUNK 1024
 #define AUDIO_OUT 4096
-// Audio stretch slows sound (and lowers its pitch) by at most this many
-// percent when the game runs slow: just under a semitone (5.9%), enough that
-// slow scenes don't sound frozen. Up to 50% made voices and music sound deep.
-// The rest of a shortfall is filled by audio_repeat_tail() at normal pitch.
+// Saved setting: audio_stretch is 0 (off) or this value (on); any nonzero
+// value means on. Kept at 5 so v0.4.x/v0.5.0 configuration files still match.
 #define AUDIO_STRETCH_MAX 5
-// audio_repeat_tail() plays the last AUDIO_REPEAT frames (11.6 ms) again,
-// joined by an AUDIO_FADE-frame crossfade so the seam doesn't click.
-#define AUDIO_REPEAT 512
-#define AUDIO_FADE 64
+// When the game runs slow, sound is made up to this many percent longer
+// without changing its pitch (audio_tsm.c). Slower than that it runs dry.
+#define AUDIO_TSM_MAX 60
 
 typedef struct {
 	int16_t hist[6];
@@ -28,13 +27,11 @@ typedef struct {
 } audio_resampler;
 
 // Estimate the game's production rate in quarter-second windows. Queue
-// pressure enables slowdown; a slew limit makes pitch changes gradual.
-float audio_resample_step(audio_resampler *rs, float queue_error,
+// pressure enables stretch (rs->slow, the share of output that is repeated
+// sound); the returned step is only the +-0.5% drift correction.
+// queue_now: the queue right now, as a share of its target.
+float audio_resample_step(audio_resampler *rs, float queue_error, float queue_now,
 	int stretch_percent, size_t frames, float sample_rate, float seconds);
 size_t audio_resample(audio_resampler *rs, const int16_t *in, size_t frames,
 	float step, int16_t *out);
-// Append the last AUDIO_REPEAT of n frames once more (out needs room for
-// n + AUDIO_REPEAT). Pitch stays; returns the new count, or n if too short.
-size_t audio_repeat_tail(int16_t *out, size_t n);
-
 #endif

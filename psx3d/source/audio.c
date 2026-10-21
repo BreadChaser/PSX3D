@@ -7,9 +7,9 @@
 // The PS1 runs at 59.94Hz and the 3DS screen at ~59.83Hz, so the amount of
 // queued audio slowly drifts. A fixed-point cubic resampler on the CPU speeds
 // playback up or down by at most 0.5% to keep the queue at its target. When
-// emulation falls behind, optional frontend stretching slows sound by up to 5%
-// and repeats short pieces at normal pitch beyond that; the DSP's own rate is
-// never changed, because changing it makes the DSP click.
+// emulation falls behind, optional audio stretch (audio_tsm.c) makes the sound
+// longer by repeating short matched pieces, so its pitch stays the same; the
+// DSP's own rate is never changed, because changing it makes the DSP click.
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
@@ -17,6 +17,7 @@
 #include "psx3d.h"
 #include "statsview.h"
 #include "audio_resample.h"
+#include "audio_tsm.h"
 
 #define NBUF         16
 #define BUF_FRAMES   512            // 11.6 ms each, 186 ms in total
@@ -32,6 +33,7 @@ static double avg_queue;            // smoothed queue level for rate control
 
 // resampler state: last three input frames and the fractional read position
 static audio_resampler rs;
+static audio_tsm tsm;
 static u64 stretch_tick;
 
 // debug capture: what the core produced vs what we handed to the DSP
@@ -55,7 +57,7 @@ static double tone_phase;
 
 // per-interval diagnostics, read and reset by audio_stats()
 static struct {
-	u32 calls, frames_in, dropped, underruns, min_q, max_q, repeats, nonzero, fills;
+	u32 calls, frames_in, dropped, underruns, min_q, max_q, repeats, nonzero, jumps;
 	u64 max_gap;
 	float rate;
 } st = { .min_q = ~0u };
@@ -171,6 +173,7 @@ bool audio_init(double sample_rate)
 		base_rate = sample_rate;
 		avg_queue = TARGET_QUEUE;
 		memset(&rs, 0, sizeof(rs));
+		audio_tsm_reset(&tsm);
 		stretch_tick = 0;
 		use_csnd = active = csnd_start(sample_rate);
 		return active;
@@ -202,6 +205,7 @@ bool audio_init(double sample_rate)
 	cur_fill = 0;
 	avg_queue = TARGET_QUEUE;
 	memset(&rs, 0, sizeof(rs));
+	audio_tsm_reset(&tsm);
 	stretch_tick = 0;
 	active = true;
 
@@ -235,6 +239,7 @@ void audio_pause(bool paused)
 	stretch_tick = 0; // start a fresh supply estimate after a menu/suspend
 	rs.window_frames = 0;
 	rs.window_seconds = rs.deficit = rs.slow = 0;
+	audio_tsm_reset(&tsm); // no jumps back across the pause
 	if (!active)
 		return;
 	if (use_csnd) {
@@ -361,7 +366,7 @@ static void submit(const u32 *frames, size_t n)
 size_t audio_write(const int16_t *data, size_t frames)
 {
 	static int16_t tone_buf[4096 * 2];
-	static int16_t out[AUDIO_OUT * 2];
+	static int16_t out[AUDIO_OUT * 2], stretched[AUDIO_OUT * 2];
 
 	// Hash/capture the core output before test tones or frontend resampling.
 	if (hash_left) {
@@ -429,28 +434,37 @@ size_t audio_write(const int16_t *data, size_t frames)
 	float seconds = stretch_tick ? (tick - stretch_tick) / (float)SYSCLOCK_ARM11 : 0;
 	stretch_tick = tick;
 	float err = (float)((avg_queue - TARGET_QUEUE) / TARGET_QUEUE);
-	float step = audio_resample_step(&rs, err, g_cfg.audio_stretch, frames, (float)base_rate, seconds);
+	float step = audio_resample_step(&rs, err, (float)q / TARGET_QUEUE,
+		g_cfg.audio_stretch ? AUDIO_TSM_MAX : 0,
+		frames, (float)base_rate, seconds);
 	st.rate = (float)(base_rate * step);
+	audio_tsm_speed(&tsm, (int)((1.0f - rs.slow) * 65536.0f + 0.5f));
 
-	// Stretch lowers the pitch only a little. If the queue still runs low,
-	// the game is slower than that covers: play the newest sound once more
-	// at normal pitch instead of letting the DSP run dry.
-	bool fill = g_cfg.audio_stretch && q < TARGET_QUEUE / 3;
-
-	// The core may deliver a large batch after a worker sync. Stretching a
-	// 4096-frame batch can exceed the old output buffer; consume it in chunks.
+	// The core may deliver a large batch after a worker sync; resample it in
+	// chunks. At full speed the stretch is idle and the resampled sound goes
+	// straight to the DSP; otherwise it passes through the stretch, which
+	// keeps the pitch and, once back at full speed, ends exactly on the input.
 	for (size_t at = 0; at < frames; ) {
 		size_t count = frames - at;
 		if (count > AUDIO_CHUNK) count = AUDIO_CHUNK;
 		size_t nout = audio_resample(&rs, data + at * 2, count, step, out);
-		if (fill && nout >= AUDIO_REPEAT + AUDIO_FADE) {
-			nout = audio_repeat_tail(out, nout);
-			fill = false;
-			if (statsview_collecting()) st.fills++;
+		if (!audio_tsm_busy(&tsm)) {
+			for (size_t k = 0; k < nout; k += AUDIO_CHUNK)
+				audio_tsm_pass(&tsm, out + k * 2, nout - k < AUDIO_CHUNK ? nout - k : AUDIO_CHUNK);
+			submit((const u32 *)out, nout);
+		} else {
+			for (size_t k = 0; k < nout; k += AUDIO_CHUNK) {
+				size_t m = nout - k < AUDIO_CHUNK ? nout - k : AUDIO_CHUNK;
+				audio_tsm_put(&tsm, out + k * 2, m);
+				size_t got;
+				while ((got = audio_tsm_get(&tsm, stretched, AUDIO_OUT)))
+					submit((const u32 *)stretched, got);
+			}
 		}
-		submit((const u32 *)out, nout);
 		at += count;
 	}
+	if (statsview_collecting()) st.jumps += tsm.jumps;
+	tsm.jumps = 0;
 	return frames;
 }
 
@@ -470,11 +484,11 @@ void audio_stats(char *buf, size_t len)
 		snprintf(buf, len, "audio off");
 		return;
 	}
-	snprintf(buf, len, "audio in=%lu/%lu calls queue=%lu..%lu (target %d) underruns=%lu drop=%lu rate=%.0f repeat=%.1f%% maxgap=%.1fms fill=%lu",
+	snprintf(buf, len, "audio in=%lu/%lu calls queue=%lu..%lu (target %d) underruns=%lu drop=%lu rate=%.0f repeat=%.1f%% maxgap=%.1fms stretch=%lu",
 		st.frames_in, st.calls, st.min_q == ~0u ? 0 : st.min_q, st.max_q,
 		TARGET_QUEUE, st.underruns, st.dropped, st.rate,
 		st.nonzero ? st.repeats * 100.0 / st.nonzero : 0.0,
-		st.max_gap / (double)CPU_TICKS_PER_MSEC, st.fills);
+		st.max_gap / (double)CPU_TICKS_PER_MSEC, st.jumps);
 	memset(&st, 0, sizeof(st));
 	st.min_q = ~0u;
 }
