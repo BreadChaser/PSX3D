@@ -302,7 +302,10 @@ const char *options_get(const char *key)
 	static char preset_clock[8];
 	if (!ov && config_in_game() && !strcmp(key, "pcsx_rearmed_psxclock") &&
 	    !gamecfg_get(options_game_key(key)) && game_capabilities().psxclock > 0) {
-		snprintf(preset_clock, sizeof(preset_clock), "%d", game_capabilities().psxclock);
+		if (atoi(preset_clock) != game_capabilities().psxclock) {
+			snprintf(preset_clock, sizeof(preset_clock), "%d", game_capabilities().psxclock);
+			log_printf("preset: PS1 clock %s\n", preset_clock);
+		}
 		ov = preset_clock;
 	}
 #endif
