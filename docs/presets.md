@@ -90,6 +90,8 @@ slowing emulation. Games that draw fewer pictures cannot meet the target.
 Advanced exposes the floor for experimentation, and a developer per-load
 `o:auto_floor=12` overrides it without saving. Status reports `auto_floor`.
 Measurements/proposals require the owner's choice before shipping a new value.
+See [the implementation and validation report](dev/presets-v2.md) for the
+hardware results and their configuration checks.
 
 `psxclock` applies on the New 3DS (the build defines
 `PSX3D_PS1_OVERCLOCK_PRESETS`); measurements: [PS1 overclock](dev/ps1-overclock.md).
