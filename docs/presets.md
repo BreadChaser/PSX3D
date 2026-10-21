@@ -2,9 +2,11 @@
 
 Presets are sparse data in `psx3d/romfs/presets/*.ini`, with separate Old and
 New 3DS values. An absent option retains its normal default and user choices.
-A preset only hides settings it actually sets on that console. The legacy
-`curated` field is accepted as metadata and has no effect on visibility or
-precedence. For example, Omega Boost's stick-click entry does not own frameskip.
+A preset never hides a setting: every setting stays visible and changeable
+([docs/settings.md](settings.md)), and values a preset sets are marked `P`.
+The legacy `curated` field is accepted as metadata and has no effect.
+Defaults live in `defaults.ini` in the same folder (settings.md section 6);
+it is not a preset and is never read from the SD card.
 
 ## Format and evidence
 
@@ -13,9 +15,12 @@ title = Example
 version = 2
 serials = TEST00001
 [old]
-fast_forward = no
-fast_forward.source = Unassessed restriction retained pending Old hardware testing
-fast_forward.confidence = unassessed
+nostalls = on
+nostalls.source = CTR heavy scenes, Old 3DS A/B/A, no visible change
+nostalls.confidence = medium
+tested_with = 1
+tested_with.source = Old 3DS session 2026-10-21, defaults-history/1.ini
+tested_with.confidence = medium
 [new]
 l3r3 = yes
 l3r3.source = Retail manual controls section, USA edition, other editions untested
@@ -35,35 +40,34 @@ same section. Confidence is `high`, `medium`, `low` or `unassessed`; source is
 console(s). A console override replaces both value and evidence. Describe
 which editions/scenes were checked and where regional behavior is extrapolated.
 Distinguish incompatibility from performance policy and an unassessed
-restriction. In particular, retained Old fast-forward restrictions are labeled
-**unassessed**, not verified breakage. Free-form explanatory comments remain
+restriction. Free-form explanatory comments remain
 welcome, but do not substitute for the validated evidence fields.
 
 ## Settings and Advanced
 
-Settings → Advanced → **Show all settings** is a global, saved preference,
-available from both library and in-game settings. Off is the default. On
-reveals preset-hidden settings and controls and permits ordinary user
-overrides. Revealing a setting does not itself change its preset value. In particular,
-revealing a withheld widescreen fix does not activate an existing all-games
-Widescreen preference; select Widescreen for that game to override its policy.
-Saved overrides remain effective when the toggle is switched off; the toggle
-changes visibility. Physical limits still apply (Old 3DS cannot rewind or use
-stereo 3D; widescreen needs a revision-matched bundle).
+The menu is specified in [docs/settings.md](settings.md). Presets never hide
+settings (the former **Show all settings** switch is gone). A small `P`
+identifies a value the game's preset supplies; the help panel shows its
+recorded confidence/source. `*` identifies a per-game override. X on a setting
+removes that override. Reset this game removes all of the game's overrides;
+**Reset to recommended** (Advanced, only in games tested on this console)
+removes the Advanced overrides only. Reset all settings removes global choices
+and keeps per-game overrides. Explicit button mappings retain their usual
+precedence.
 
-A small `P` identifies a preset-supplied value or screen policy; the help panel
-shows its recorded confidence/source. `*` identifies a per-game override.
-Reset this game removes its overrides and restores its preset/inherited values.
-X on a setting removes that individual override. Reset all settings removes
-global choices, including Show all settings, and keeps per-game overrides.
-The widescreen marker describes availability policy, rather than a forced
-screen size. Explicit button mappings retain their usual precedence.
+`tested_with = N` (per console, or common) says the file's values were tested
+with defaults version N (`tools/presets/defaults-history/N.ini`). Such games
+show "This game has tested settings…" on the Advanced page. When a default
+later changes, `tools/presets/check.py` (run by `make` and CI) fails until
+every tested file pins the old technical value
+(`<key>.source = pinned at defaults N`) or is retested. A changed forced value
+cannot be pinned: every tested file on that console must be retested.
 
 ## Keys
 
 | Key | Values | Old / New default | Meaning |
 |---|---|---|---|
-| `fast_forward` | `no`, `yes` | yes / yes | Fast-forward availability |
+| `fast_forward` | — | — | **Retired**: fast forward is always allowed. The checker rejects it; the runtime ignores it in older SD packs |
 | `rewind` | `no`, `yes` | no / yes | Rewind availability (Old cannot enable it) |
 | `touch_controls` | `auto`, `on`, `off` | auto / auto | Starting touch layout |
 | `l2r2` | `no`, `yes` | yes / no | L2/R2 touch need |
@@ -74,21 +78,26 @@ screen size. Explicit button mappings retain their usual precedence.
 | `auto_floor` | integer 1–60 | 15 / 15 | Auto target minimum pictures/s when the game supplies them |
 | `widescreen` | `hidden`, `on`, `warn`, `off` | on / on | Bundle availability policy |
 | `psxclock` | integer 30–100 | auto (57) / auto (57) | PS1 CPU clock percentage (New 3DS presets) |
+| `controller` | `digital`, `analog` | digital / digital | Controller the game starts with |
+| `alt_flip` | `auto`, `early`, `late` | from `defaults.ini` | Flicker fix |
+| `gpu_slow_llists` | `auto`, `off`, `on` | from `defaults.ini` | Safe drawing |
+| `cd_turbo`, `nostalls`, `nolddelay`, `gteregsunneeded`, `nogteflags`, `nosmccheck`, `icache_emulation`, `exception_emulation`, `nocompathacks` | `off`, `on` | from `defaults.ini` | Compatibility options (settings.md section 2.1) |
+| `tested_with` | integer 1–9999 | none | Defaults version these values were tested with |
 
 Touch values: `hide b y select start up down left right a x l1 r1 l2 r2 l3 r3
 ff ff_hold rewind`. Button needs supply starting bindings; explicit user
 mappings beat them. `analog` supplies a touch control only in analog mode.
 
 Widescreen `on` offers an existing bundle, `warn` offers it with a speed warning,
-`off` holds it back for speed, and `hidden` withholds it. Show all settings can
-bypass preset withholding when a valid bundle exists. The patch format remains
+`off` offers it per game only, with a note that it lowers the speed a lot (the
+all-games Widescreen choice does not switch it on), and `hidden` withholds it. The patch format remains
 [the widescreen bundle format](../tools/widescreen/README.md).
 
 `auto_floor` is sparse: no shipped entry changes the default 15. Lower values
 trade pictures for emulation speed; higher values can improve smoothness while
 slowing emulation. Games that draw fewer pictures cannot meet the target.
-Advanced exposes the floor for experimentation, and a developer per-load
-`o:auto_floor=12` overrides it without saving. Status reports `auto_floor`.
+There is no menu row; a developer per-load `o:auto_floor=12` overrides it
+without saving. Status reports `auto_floor`.
 Measurements/proposals require the owner's choice before shipping a new value.
 See [the implementation and validation report](dev/presets-v2.md) for the
 hardware results and their configuration checks.
@@ -113,18 +122,19 @@ Personal-taste settings use:
 
 | Group | Settings |
 |---|---|
-| Technical | CPU speed, frameskip, Auto picture floor, compatibility/speed hacks, fast-forward/rewind availability, widescreen availability policy, touch needs |
-| Personal taste | Screen size, dithering, smoothing, button/touch mapping, hotkeys, sound, FPS counter, 3D |
+| Technical | CPU speed, frameskip, Controller, compatibility options, rewind availability, widescreen availability policy, touch needs |
+| Personal taste | Screen size, smoothing, button/touch mapping, hotkeys, FPS counter |
 
 The current preset schema sets technical values and button starting points;
-it does not yet set screen, dithering, sound, FPS or 3D preferences. Adding a
-new taste key must implement that second order. Existing touch mappings use
-it today. All-games technical choices cannot beat an explicit preset: use a
-per-game override after revealing the option. Options the preset does not set
+it does not set screen, smoothing or FPS preferences. Adding a new taste key
+must implement that second order. Existing touch mappings use it today.
+All-games technical choices cannot beat an explicit preset: use a per-game
+override. Options the preset does not set
 continue to respect all-games and per-game values.
 
 New `config.ini` saves contain only the user's changes, plus library paths and
-format metadata (`settings_format=2`, `touch_slots=1`). Resolved defaults,
+format metadata (`settings_format=3`, `touch_slots=1`). Values of removed or
+forced settings are ignored on load and never written again. Resolved defaults,
 preset touch bindings and internal core synchronization are never copied into
 it. A deliberate choice equal to the factory default is retained. Game files
 store overrides; ordinary frontend/mapping choices equal to the inherited
