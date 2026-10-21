@@ -154,4 +154,32 @@ ARM simulator (real core under qemu, `devtools/safety/simtools`):
   The same harness with the core's own stream faults on the first cut-off
   state.
 
-Old 3DS results: see the report in `devtools/safety/REPORT.md`.
+Azahar booted the exact `safety-2` CIA: library, a game loading card 2 through
+the wrapper, and cut-off state/`.srm`/card 2 files each restored byte-exactly
+from their backups.
+
+## Old 3DS (2026-10-20)
+
+Code layout: every core function at core-first-2's address
+(`tools/layout/compare.py`; only the 4 calls that now go to wrappers differ),
+`tools/layout/check.sh` passes. The frontend grew, so its renderer hooks moved
++4,480 bytes; hence an Old A/B/A, core-first-2 → safety-2 → core-first-2, on
+the 13 heavy scenes:
+
+| | worst | mean |
+|---|---:|---:|
+| frameskip off | Crash 2 −0.87%, CTR −0.79% | −0.22% |
+| Auto | Crash 2 −0.59% | −0.16% |
+
+All 26 rows within the ±1% gate (A1↔A2 drift ≤0.5%).
+
+On the console (safety-2, spare slot 9): two saves leave the state, its backup
+and both thumbnails, no temporary files; a cut-off, a zero-filled and a
+bad-SPU-size state each load the backup and are repaired byte-exactly (the
+damaged copy kept as `.bad`); with no good copy at all the load is refused
+cleanly ("That save is damaged"). A game's `.srm` and the shared card 2 survive
+a load/quit byte-exactly, and cut-off copies of both are restored byte-exactly
+from their backups. The console was put back on release-v041-rc4.
+
+Not yet checked on a console: the lid-close (sleep) save, the New 3DS, the
+periodic auto-save pause with this build.
