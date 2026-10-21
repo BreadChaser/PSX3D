@@ -78,7 +78,7 @@ static const char *const tips[] = {
 };
 // Longer help, shown on the top screen while the row is selected.
 static const char *const helps[] = {
- [F_SCREEN]="4:3 keeps the original shape. Stretch fills the screen. Widescreen shows a wider view in games that have a widescreen fix; other games use 4:3.",
+ [F_SCREEN]="Original keeps the shape of a TV picture. Stretch fills the screen. Widescreen shows a wider view in games that have a widescreen fix; other games use Original.",
  [F_SMOOTH]="Soften enlarged pixels. Turn off for a sharper picture.",
  [F_STEREO]="Screen depth puts the whole picture behind the screen. Real 3D gives each object its own depth; the 3D slider sets how strong.",
  [F_FPS]="FPS shows new pictures per second and game speed on the bottom screen. Detailed adds more numbers. Tap the counter to switch views.",
@@ -251,7 +251,7 @@ static const char *row_value(int i, void *ud)
 		return options_value(item - CORE_ROW);
 	switch (item) {
 	case F_SCREEN:
-		return (const char *const[]){"4:3", "Stretch", "Widescreen"}[config_screen_mode()];
+		return (const char *const[]){"Original", "Stretch", "Widescreen"}[config_screen_mode()];
 	case F_SMOOTH:
 		return g_cfg.smooth ? "On" : "Off";
 	case F_STEREO:
@@ -369,7 +369,7 @@ static void change(settings_ui_t *s, int item, int dir)
 	switch (item) {
 	case F_SCREEN:
 		if (s->game) {
-			// Without a widescreen fix the choices are 4:3 and Stretch.
+			// Without a widescreen fix the choices are Original and Stretch.
 			int n = config_ws_fix() ? 3 : 2;
 			config_game_set_screen((config_screen_mode() + dir + n) % n);
 			sync_picture();
