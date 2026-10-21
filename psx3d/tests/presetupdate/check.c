@@ -377,6 +377,18 @@ static void test_flow(void)
 	publish(builtin_pack, NULL);
 	fetches = 0;
 	CHECK(!check() && fetches == 1 && file_version(live) == 1);
+
+	// developer reset: back to the built-in presets, due again
+	pu_test_now += 86400;
+	publish(builtin_pack + 1, NULL);
+	CHECK(check() && game_presets_pack() == builtin_pack + 1);
+	CHECK(presets_update_dev_reset());
+	CHECK(!exists(live) && !exists(old_dir) && !exists(stampf) && game_presets_pack() == builtin_pack && !presets_update_due());
+	// a "now" request still works after it
+	presets_update_dev(NULL, true);
+	CHECK(presets_update_due());
+	presets_update_work(fake_fetch, never);
+	CHECK(!presets_update_due());
 }
 
 int main(int argc, char **argv)

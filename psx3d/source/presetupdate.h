@@ -44,6 +44,7 @@ bool pu_sha256_file(const char *path, long size, char hex[65], bool (*stop)(void
 void presets_update_init(const char *builtin, const char *base);
 // Developer override (numeric LAN HTTP test server); also makes a check due now.
 void presets_update_dev(const char *url, bool now);
+bool presets_update_dev_reset(void);   // main thread, library, covers stopped
 // Worker thread, with the network lock held. Cheap when nothing is due.
 bool presets_update_due(void);
 void presets_update_work(pu_fetch_fn fetch, bool (*stop)(void));

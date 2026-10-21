@@ -56,7 +56,7 @@ static char builtin_dir[128], live[160], staging[160], previous[160], stamp[160]
 static char url_base[128] = PRESETS_URL;
 static long long last_check;      // time() of the last completed check (SD stamp)
 static long long retry_at_ms;     // offline: not before this session time
-static bool force;                // developer: due now, ignoring the day
+static int force, force_seen;     // developer "now" requests; the one a check started with
 static int staged;                // 1: presets.new is ready for the main thread (atomic)
 static pu_manifest_t staged_m;
 static int staged_files;
@@ -284,7 +284,7 @@ void presets_update_init(const char *builtin, const char *base)
 	snprintf(stamp, sizeof(stamp), "%s/presets-update.txt", base);
 	snprintf(tmp, sizeof(tmp), "%s/presets-update.tmp", base);
 	last_check = retry_at_ms = 0;
-	force = false;
+	force = force_seen = 0;
 	__atomic_store_n(&staged, 0, __ATOMIC_RELEASE);
 	snprintf(status, sizeof(status), "idle");
 	// An install cut off between its two renames left no live folder: put the
@@ -304,7 +304,7 @@ void presets_update_init(const char *builtin, const char *base)
 void presets_update_dev(const char *url, bool now)
 {
 	if (url && *url) snprintf(url_base, sizeof(url_base), "%s%s", url, url[strlen(url) - 1] == '/' ? "" : "/");
-	if (now) { force = true; retry_at_ms = 0; }
+	if (now) { force++; retry_at_ms = 0; }
 }
 
 bool presets_update_due(void)
@@ -312,20 +312,23 @@ bool presets_update_due(void)
 	if (!live[0] || __atomic_load_n(&staged, __ATOMIC_ACQUIRE) || now_ms() < retry_at_ms) return false;
 	long long t = now_s();
 	// A clock set back (last check in the future) counts as due.
-	return force || t - last_check >= DAY || t < last_check;
+	return force != force_seen || t - last_check >= DAY || t < last_check;
 }
 
+static int check_request;   // the "now" request the running check answers
 static void finish(const char *what, bool done_for_today)
 {
+	if (done_for_today) force_seen = check_request;
 	snprintf(status, sizeof(status), "%s", what);
 	log_printf("presets update: %s\n", what);
-	if (done_for_today) { force = false; write_stamp(); }
+	if (done_for_today) write_stamp();
 	remove(tmp);
 }
 
 void presets_update_work(pu_fetch_fn fetch, bool (*stop)(void))
 {
 	if (!presets_update_due()) return;
+	check_request = force;
 	char url[256], what[96];
 	long http = 0;
 	pu_manifest_t m;
@@ -429,6 +432,22 @@ bool presets_update_poll(void)
 	snprintf(status, sizeof(status), ok ? "installed pack %d" : "pack %d rejected", staged_m.pack_version);
 	log_printf("presets update: %s\n", status);
 	__atomic_store_n(&staged, 0, __ATOMIC_RELEASE);
+	return ok;
+}
+
+// Developer: remove every downloaded pack and the stamp (test consoles go back
+// to the built-in presets). Main thread, library, with the cover workers stopped.
+bool presets_update_dev_reset(void)
+{
+	bool ok = !__atomic_load_n(&staged, __ATOMIC_ACQUIRE) && rmtree(staging) && rmtree(previous) && rmtree(live);
+	remove(stamp);
+	remove(tmp);
+	// Nothing more this session (no stamp file: the next start checks again).
+	last_check = now_s();
+	retry_at_ms = 0;
+	force_seen = force;
+	game_presets_init(builtin_dir, live);
+	snprintf(status, sizeof(status), ok ? "reset" : "reset failed");
 	return ok;
 }
 

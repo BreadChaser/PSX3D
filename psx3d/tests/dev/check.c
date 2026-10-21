@@ -28,6 +28,7 @@ int game_presets_pack(void) { return 1; }
 void presets_update_dev(const char *url, bool now) { (void)url; (void)now; }
 bool presets_update_due(void) { return false; }
 const char *presets_update_status(void) { return "idle"; }
+bool presets_update_dev_reset(void) { return true; }
 int game_preset_version(void) { return 0; }
 const char *game_preset_source(void) { return "none"; }
 static bool ui_active;

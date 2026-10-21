@@ -472,13 +472,23 @@ bool dev_tick(bool playing)
 				else error_reply("covers [refresh=title_or_index] requires idle library");
 			}
 		} else if (!strcmp(command, "presets-update")) {
-			// Test the daily preset check against a LAN server: "now [url=http://...]".
+			// Test the daily preset check against a LAN server: "now [url=http://...]";
+			// "reset" deletes downloaded packs and the stamp (library only).
 			char *url = strstr(args, "url=");
+			bool reset = !strcmp(args, "reset");
 			bool now = !strncmp(args, "now", 3);
 			if (url) url += 4;
 			if (url && (strncmp(url, "http", 4) || strlen(url) >= 96 || strchr(url, '"')))
-				error_reply("presets-update [now] [url=http://numeric-ip:port/path/]");
+				error_reply("presets-update [now] [url=http://numeric-ip:port/path/] | reset");
+			else if (reset && (playing || batch_active || load_pending))
+				error_reply("presets-update reset requires the idle library");
 			else {
+				if (reset) {
+					covers_stop_wait();
+					bool done = presets_update_dev_reset();
+					covers_resume();
+					if (!done) { error_reply("presets-update reset: could not remove a folder"); goto presets_done; }
+				}
 				if (url || now) presets_update_dev(url, now);
 				char info[192], st[128];
 				quote(st, sizeof(st), presets_update_status());
@@ -486,6 +496,7 @@ bool dev_tick(bool playing)
 				         presets_update_due() ? "true" : "false", game_presets_pack());
 				dev_reply(info);
 			}
+			presets_done:;
 		} else if (!strcmp(command, "load")) {
 			ui_request = DEV_UI_NONE;
 			if (batch_active)
