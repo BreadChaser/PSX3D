@@ -121,7 +121,7 @@ static void precedence_checks(const char *tmp)
 	put(AT(b, "c.ini"), "title = C\nversion = 1\nserials = TEST00003\n[old]\nfast_forward = no\nbogus = 1\nrewind = maybe\n");
 	quiet = true;
 
-	// No SD pack: built-in data; a bad built-in line is ignored, the rest applies.
+	// No SD pack: built-in data; a malformed built-in file is rejected whole.
 	game_presets_init(b, s);
 	assert(fast_forward_of("TEST00001") == 0 && game_preset_version() == 2 && !strcmp(game_preset_source(), "builtin"));
 	assert(fast_forward_of("TEST00003") == 1 && !game_preset_curated());
@@ -191,6 +191,36 @@ static void precedence_checks(const char *tmp)
 	puts("PASS: version precedence (SD newer, SD older, older SD pack, malformed SD, SD-only, bad built-in key)");
 }
 
+static void index_limit_checks(const char *tmp)
+{
+	char b[512], s[512], path[600];
+	snprintf(b,sizeof(b),"%s/full-builtin",tmp);mkdir(b,0700);
+	snprintf(s,sizeof(s),"%s/full-sd",tmp);mkdir(s,0700);
+	snprintf(path,sizeof(path),"%s/VERSION",b);put(path,"2\n");
+	snprintf(path,sizeof(path),"%s/VERSION",s);put(path,"3\n");
+	for(unsigned file=0;file<128;file++) {
+		snprintf(path,sizeof(path),"%s/game-%03u.ini",b,file);
+		FILE *f=fopen(path,"w");assert(f);
+		fputs("title = Full index\nversion = 2\nserials = ",f);
+		for(unsigned j=0;j<16;j++) fprintf(f,"%sTEST%05u",j?", ":"",file*16+j+1);
+		fputs("\n[old]\nfast_forward = no\nfast_forward.source = host boundary fixture\nfast_forward.confidence = unassessed\n",f);
+		assert(!fclose(f));
+	}
+	quiet=true;
+	snprintf(path,sizeof(path),"%s/update.ini",s);
+	put(path,"title = SD replacement\nversion = 3\nserials = TEST00001\n");
+	game_presets_init(b,s);identify("TEST00001");
+	assert(game_preset_version()==3 && !strcmp(game_preset_source(),"sd"));
+	identify("TEST02048");assert(game_preset_version()==2);
+	// Adding one ID past the shared cap rejects the entire SD file, including
+	// its valid replacement of TEST00001. No partial publication is permitted.
+	put(path,"title = SD overflow\nversion = 3\nserials = TEST00001, TEST99999\n");
+	game_presets_init(b,s);identify("TEST00001");assert(game_preset_version()==2);
+	identify("TEST99999");assert(!strcmp(game_preset_source(),"none"));
+	quiet=false;
+	puts("PASS: full 2048-ID index accepts SD replacements, rejects overflow whole");
+}
+
 int main(int argc, char **argv)
 {
 	if (argc == 4 && !strcmp(argv[1], "--validate")) {
@@ -253,5 +283,6 @@ int main(int argc, char **argv)
 	quiet = false;
 	printf("PASS: %d New 3DS psxclock entries parsed (applied only with PSX3D_PS1_OVERCLOCK_PRESETS)\n", clocks);
 	precedence_checks(argv[4]);
+	index_limit_checks(argv[4]);
 	return 0;
 }

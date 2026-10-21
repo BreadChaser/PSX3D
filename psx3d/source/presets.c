@@ -185,17 +185,27 @@ static void read_preset(int layer, const char *name)
 		s = comma + 1;
 	}
 	// A cross-file duplicate rejects the entire later file, including its other IDs.
-	for (unsigned j = 0; ok && j < n; j++)
-		for (int i = 0; i < nindex; i++)
-			if (!strcmp(ids[j], index_[i].serial) && index_[i].file[layer]) ok = false;
-	if (!ok || nindex + n > MAX_SERIALS) {
+	// Count only new serials: replacing a built-in entry consumes no index slot.
+	unsigned additional = 0;
+	for (unsigned j = 0; ok && j < n; j++) {
+		bool existing = false;
+		for (int i = 0; i < nindex; i++) if (!strcmp(ids[j], index_[i].serial)) {
+			existing = true;
+			if (index_[i].file[layer]) ok = false;
+			break;
+		}
+		additional += !existing;
+	}
+	if (!ok || nindex + additional > MAX_SERIALS) {
 		log_printf("presets: rejected %s (invalid metadata, option, evidence, serial or bounds)\n", path);
 		free(file); return;
 	}
-	// Reserve every possible new index slot before publishing this file.
-	entry_t *grown = realloc(index_, (nindex+n) * sizeof(*index_));
-	if (!grown) { free(file); return; }
-	index_ = grown;
+	// Reserve all new index slots before publishing any serial from this file.
+	if (additional) {
+		entry_t *grown = realloc(index_, (nindex+additional) * sizeof(*index_));
+		if (!grown) { free(file); return; }
+		index_ = grown;
+	}
 	file->layer = layer; file->version = version; strcpy(file->name, name);
 	file->next = preset_files; preset_files = file;
 	for (unsigned i = 0; i < n; i++) index_add(ids[i], file);
