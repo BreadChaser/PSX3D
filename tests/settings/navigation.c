@@ -23,7 +23,8 @@ bool cheats_forced(int i)
 	(void)i;
 	return false;
 }
-bool cheats_widescreen(bool on) { return on; }
+static bool test_ws_enabled;
+bool cheats_widescreen(bool on) { test_ws_enabled = on; return ws_available(); }
 void cheats_toggle(int i) { (void)i; }
 const char *cheats_add_dialog(void) { return NULL; }
 void music_play(bool on) { (void)on; }
@@ -191,6 +192,18 @@ int main(void)
  settings_ui_t marked={.game=true};
  input_touch_disc_log("CD-ROM ID: SLUS00707\n");
  assert(preset_row(&marked,F_SCREEN)); // policy marker, not a screen-size value
+ test_ws_policy=WS_TOO_SLOW;g_cfg.show_all_settings=0;
+ config_set_screen_mode(2);config_ws_sync();
+ assert(config_screen_mode()==0 && !test_ws_enabled && !config_ws_fix());
+ change(&marked,F_ALL,1); // Reveal the withheld choice without applying it.
+ assert(config_ws_fix() && config_screen_mode()==0 && !test_ws_enabled);
+ config_game_set_screen(2);config_ws_sync();
+ assert(config_screen_mode()==2 && test_ws_enabled);
+ change(&marked,F_ALL,1);
+ assert(config_screen_mode()==2 && test_ws_enabled); // Explicit override survives hiding.
+ assert(config_game_clear("screen"));config_ws_sync();
+ assert(config_screen_mode()==0 && !test_ws_enabled);
+ test_ws_policy=-1;g_cfg.show_all_settings=1;
  input_touch_disc_log("CD-ROM ID: SCUS94449\n");
  assert(preset_row(&marked,F_FF) && !game_capabilities().fast_forward);
  change(&marked,F_FF,1);

@@ -44,7 +44,9 @@ welcome, but do not substitute for the validated evidence fields.
 Settings → Advanced → **Show all settings** is a global, saved preference,
 available from both library and in-game settings. Off is the default. On
 reveals preset-hidden settings and controls and permits ordinary user
-overrides. Revealing a setting does not itself change its preset value.
+overrides. Revealing a setting does not itself change its preset value. In particular,
+revealing a withheld widescreen fix does not activate an existing all-games
+Widescreen preference; select Widescreen for that game to override its policy.
 Saved overrides remain effective when the toggle is switched off; the toggle
 changes visibility. Physical limits still apply (Old 3DS cannot rewind or use
 stereo 3D; widescreen needs a revision-matched bundle).

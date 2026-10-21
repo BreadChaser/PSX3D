@@ -353,7 +353,7 @@ void config_set_stereo_active(bool on)
 // widescreen fix: config_ws_fix() is the one test (today its cheat code; the
 // curated bundles replace cheats_widescreen() there). Games without a fix show
 // 4:3, and the GTE squeeze is never sent to the core (options.c).
-static bool ws_fix;
+static bool ws_fix, ws_selected;
 bool config_ws_fix(void) { return ws_fix; }
 
 // After the game's cheats load and whenever its screen mode changes.
@@ -363,14 +363,17 @@ void config_ws_sync(void)
 	bool override = g_cfg.show_all_settings || (in_game && gamecfg_int("preset_widescreen", 0));
 	ws_policy_override(override);
 	int policy = game_capabilities().widescreen;
+	ws_selected = policy == WS_OFFERED || policy == WS_COSTLY || (in_game && gamecfg_int("preset_widescreen", 0));
 	bool ok = in_game && ws_available() && (override || policy == WS_OFFERED || policy == WS_COSTLY);
-	ws_fix = cheats_widescreen(ok && config_widescreen()) && ok;
+	// Showing a withheld choice must not activate a saved all-games preference.
+	// Only selecting Widescreen explicitly bypasses this game's preset policy.
+	ws_fix = cheats_widescreen(ok && ws_selected && config_widescreen()) && ok;
 }
 
 int config_screen_mode(void)
 {
 	int mode = config_widescreen() ? 2 : (g_cfg.stretch ? 1 : 0);
-	return mode == 2 && in_game && !ws_fix ? 0 : mode;
+	return mode == 2 && in_game && (!ws_fix || !ws_selected) ? 0 : mode;
 }
 
 void config_set_screen_mode(int mode)

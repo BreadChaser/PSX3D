@@ -12,8 +12,9 @@
 void cheats_disc_changed(void) {}
 int padAnalogMode(unsigned int index) { (void)index; return 1; } // touch L3/R3 follow analog mode
 int test_ws_policy = -1;   // bundle models= value for this console, -1 = none
-bool ws_available(void) { return test_ws_policy == 1 || test_ws_policy == 2; }
-void ws_policy_override(bool on) { (void)on; }
+static bool test_ws_override;
+bool ws_available(void) { return test_ws_policy == 1 || test_ws_policy == 2 || (test_ws_policy >= 0 && test_ws_override); }
+void ws_policy_override(bool on) { test_ws_override = on; }
 int ws_console_policy(void) { return test_ws_policy; }
 #ifndef SETTINGS_NAV_TEST
 bool cheats_widescreen(bool on) { (void)on; return false; }
