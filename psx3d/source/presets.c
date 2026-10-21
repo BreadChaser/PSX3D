@@ -12,7 +12,7 @@
 enum { BUILTIN, SD };
 static const char *preset_dirs[2];
 static int pack[2];   // VERSION of each pack; 0 = not used
-typedef struct file { struct file *next; game_preset_t preset; int layer, version; char name[]; } file_t;
+typedef struct file { struct file *next; game_preset_t preset; int layer, version; char evidence[2][16][160]; char name[]; } file_t;
 static file_t *preset_files;
 typedef struct { char serial[10]; file_t *file[2]; } entry_t;
 static entry_t *index_;
@@ -29,16 +29,14 @@ static bool core_clock; // the core set this game's clock itself
 
 // Named keys in game_preset_options_t field order. Value words count from 0
 // (touch slots from -1 = hide); psxclock takes a number.
-#define BINDS "hide|b|y|select|start|up|down|left|right|a|x|l1|r1|l2|r2|l3|r3|ff|ff_hold|rewind"
-static const char *const preset_keys[][2] = {
-	{ "fast_forward", "no|yes" }, { "rewind", "no|yes" }, { "touch_controls", "auto|on|off" },
-	{ "l2r2", "no|yes" }, { "l3r3", "no|yes|analog" }, { "stick", "no|yes|analog" },
-	{ "touch_l2", BINDS }, { "touch_r2", BINDS }, { "touch_l3", BINDS },
-	{ "touch_r3", BINDS }, { "touch_x1", BINDS }, { "touch_x2", BINDS },
-	{ "frameskip", "off|auto" }, { "widescreen", "hidden|on|warn|off" }, { "psxclock", NULL },
+#define PRESET_KEY(key, words, lo, hi) { #key, words, lo, hi },
+static const struct { const char *name, *words; int lo, hi; } preset_keys[] = {
+#include "preset_schema.def"
 };
+#undef PRESET_KEY
 #define NKEYS (sizeof(preset_keys) / sizeof(preset_keys[0]))
 _Static_assert(NKEYS * sizeof(int) == sizeof(game_preset_options_t), "keys follow the struct");
+enum { MAX_FILES = 256, MAX_SERIALS = 2048, MAX_LINE = 256, MAX_LINES = 512 };
 
 static int preset_word(const char *list, const char *v)
 {
@@ -72,14 +70,11 @@ static void index_add(const char *serial, file_t *file)
 		if (!strcmp(index_[i].serial, serial))
 			e = &index_[i];
 	if (e && e->file[file->layer]) {
-		log_printf("presets: %s listed twice, kept %s\n", serial, e->file[file->layer]->name);
+		// scan_pack sorts filenames: lexical first wins, independently of readdir.
+		log_printf("presets: conflict %s: kept %s, ignored %s\n", serial, e->file[file->layer]->name, file->name);
 		return;
 	}
 	if (!e) {
-		entry_t *grown = realloc(index_, (nindex + 1) * sizeof(*index_));
-		if (!grown)
-			return;
-		index_ = grown;
 		e = &index_[nindex++];
 		memset(e, 0, sizeof(*e));
 		strcpy(e->serial, serial);
@@ -87,108 +82,149 @@ static void index_add(const char *serial, file_t *file)
 	e->file[file->layer] = file;
 }
 
-// Parses one file into the index. A bad built-in line is logged and ignored;
-// any bad line rejects an SD file, so the game's built-in file is used instead.
+// Validate a complete bounded file before adding any serial to the index.
+static bool valid_serial(const char *s)
+{
+	if (strlen(s) != 9) return false;
+	for (int i = 0; i < 9; i++)
+		if (i < 4 ? s[i] < 'A' || s[i] > 'Z' : s[i] < '0' || s[i] > '9') return false;
+	return true;
+}
+// Return one complete ASCII line, including newline in the 255-byte bound.
+static int preset_line(FILE *f, char line[MAX_LINE])
+{
+	unsigned n = 0; int c;
+	while ((c = fgetc(f)) != EOF) {
+		if (!c || c > 127 || n == MAX_LINE-1) return -1;
+		line[n++] = c;
+		if (c == '\n') break;
+	}
+	line[n] = 0;
+	return ferror(f) ? -1 : n ? 1 : 0;
+}
 static void read_preset(int layer, const char *name)
 {
-	char path[PATH_LEN], line[256], serials[256] = "";
+	char path[PATH_LEN], line[MAX_LINE], serials[MAX_LINE] = "";
 	snprintf(path, sizeof(path), "%s/%s", preset_dirs[layer], name);
 	FILE *f = fopen(path, "r");
 	file_t *file = f ? calloc(1, sizeof(*file) + strlen(name) + 1) : NULL;
-	if (!file) {
-		if (f)
-			fclose(f);
-		return;
-	}
-	game_preset_t *p = &file->preset;
-	int *opt[2] = { (int *)&p->old3ds, (int *)&p->new3ds };
-	for (unsigned k = 0; k < NKEYS; k++)
-		opt[0][k] = opt[1][k] = k >= 6 && k < 12 ? INPUT_BIND_PRESET : -1;
-	int section = 0, version = 0; // section 0 common, 1 [old], 2 [new]
-	while (fgets(line, sizeof(line), f)) {
+	if (!file) { if (f) fclose(f); return; }
+	int *opt[2] = { (int *)&file->preset.old3ds, (int *)&file->preset.new3ds };
+	for (unsigned k = 0; k < NKEYS; k++) opt[0][k] = opt[1][k] = k >= 6 && k < 12 ? -2 : -1;
+	unsigned seen[3][NKEYS] = {{0}}, meta = 0, lines = 0;
+	char sources[3][NKEYS][128] = {{{0}}}, confidence[3][NKEYS][16] = {{{0}}};
+	int section = 0, version = 0, read;
+	int values[3][NKEYS] = {{0}};
+	bool ok = true;
+	while (ok && (read = preset_line(f, line)) != 0) {
+		if (read < 0 || ++lines > MAX_LINES) { ok = false; break; }
 		line[strcspn(line, ";#\r\n")] = 0;
-		char *s = preset_trim(line), *v = strchr(s, '=');
-		int value = -1;
-		unsigned k = NKEYS;
-		if (!*s)
-			continue;
-		if (*s == '[')
-			value = section = preset_word("[common]|[old]|[new]", s);
-		else if (v) {
-			*v = 0;
-			s = preset_trim(s);
-			v = preset_trim(v + 1);
-			for (k = 0; k < NKEYS && strcmp(s, preset_keys[k][0]); k++)
-				;
-			if (k < NKEYS)
-				value = preset_keys[k][1] ? preset_word(preset_keys[k][1], v) - (k >= 6 && k < 12) : preset_number(v);
-			else if (section)
-				;
-			else if (!strcmp(s, "title"))
-				value = 0;
-			else if (!strcmp(s, "version"))
-				value = version = preset_number(v);
-			else if (!strcmp(s, "serials"))
-				value = snprintf(serials, sizeof(serials), "%s", v) < (int)sizeof(serials) ? 0 : -1;
-			else if (!strcmp(s, "curated"))
-				p->curated = (value = preset_word("no|yes", v)) == 1;
-		}
-		if (k == 14 && (value < 30 || value > 100))
-			value = -1;
-		if (value < (k >= 6 && k < 12 ? -1 : 0) || section < 0) {
-			log_printf("presets: %s: bad line '%s'\n", path, s);
-			if (layer == SD)
-				break;
+		char *key = preset_trim(line), *v = strchr(key, '=');
+		if (!*key) continue;
+		if (*key == '[') {
+			section = preset_word("[common]|[old]|[new]", key);
+			if (section < 0) ok = false;
 			continue;
 		}
-		for (int c = 0; k < NKEYS && c < 2; c++)
-			if (section != 2 - c)
-				opt[c][k] = value;
+		if (!v) { ok = false; break; }
+		*v = 0; key = preset_trim(key); v = preset_trim(v + 1);
+		char *suffix = strchr(key, '.');
+		if (suffix) *suffix++ = 0;
+		unsigned k;
+		for (k = 0; k < NKEYS && strcmp(key, preset_keys[k].name); k++);
+		if (k < NKEYS) {
+			unsigned bit = !suffix ? 1 : !strcmp(suffix, "source") ? 2 : !strcmp(suffix, "confidence") ? 4 : 0;
+			if (!bit || (seen[section][k] & bit) || !*v) { ok = false; break; }
+			seen[section][k] |= bit;
+			if (bit == 2) {
+				if (strlen(v) >= sizeof(sources[0][0])) { ok = false; break; }
+				strcpy(sources[section][k], v);
+			} else if (bit == 4) {
+				if (preset_word("high|medium|low|unassessed", v) < 0) { ok = false; break; }
+				strcpy(confidence[section][k], v);
+			} else {
+				int value = *preset_keys[k].words ? preset_word(preset_keys[k].words, v) - (k >= 6 && k < 12) : preset_number(v);
+				if (value < preset_keys[k].lo || value > preset_keys[k].hi) { ok = false; break; }
+				if (k == 1 && value == 1 && section != 2) { ok = false; break; }
+				values[section][k] = value;
+			}
+		} else {
+			int m = preset_word("title|version|serials|curated", key);
+			if (suffix || section || m < 0 || (meta & (1u << m)) || !*v) { ok = false; break; }
+			meta |= 1u << m;
+			if (m == 1) version = *v == '0' ? -1 : preset_number(v);
+			if (m == 2) strcpy(serials, v);
+			if (m == 3) {
+				int value = preset_word("no|yes", v);
+				if (value < 0) { ok = false; break; }
+				file->preset.curated = value;
+			}
+		}
 	}
-	bool ok = !ferror(f) && (layer == BUILTIN || feof(f)) && version > 0 && version <= pack[layer] && serials[0];
+	ok = ok && !ferror(f) && (meta & 7) == 7 && version > 0 && version <= pack[layer];
 	fclose(f);
-	if (!ok) {
-		log_printf("presets: %s unusable\n", path);
-		free(file);
-		return;
+	for (unsigned k = 0; ok && k < NKEYS; k++) {
+		for (int sec = 0; sec < 3; sec++)
+			if (seen[sec][k] && seen[sec][k] != 7) ok = false;
+		for (int c = 0; c < 2; c++) {
+			int sec = seen[c+1][k] ? c+1 : 0;
+			if (seen[sec][k]) opt[c][k] = values[sec][k];
+			if (seen[sec][k]) snprintf(file->evidence[c][k], sizeof(file->evidence[c][k]),
+				"%s: %s", confidence[sec][k], sources[sec][k]);
+		}
 	}
-	file->layer = layer;
-	file->version = version;
-	strcpy(file->name, name);
-	file->next = preset_files;
-	preset_files = file;
-	for (char *ctx, *s = strtok_r(serials, ",", &ctx); s; s = strtok_r(NULL, ",", &ctx))
-		if (strlen(s = preset_trim(s)) == 9)
-			index_add(s, file);
-		else
-			log_printf("presets: %s: bad serial '%s'\n", path, s);
+	char ids[26][10]; unsigned n = 0;
+	char *s = serials;
+	while (ok) {
+		char *comma = strchr(s, ','); if (comma) *comma = 0;
+		s = preset_trim(s);
+		if (n == 26 || !valid_serial(s)) { ok = false; break; }
+		for (unsigned i = 0; i < n; i++) if (!strcmp(ids[i], s)) ok = false;
+		strcpy(ids[n++], s);
+		if (!comma) break;
+		s = comma + 1;
+	}
+	// A cross-file duplicate rejects the entire later file, including its other IDs.
+	for (unsigned j = 0; ok && j < n; j++)
+		for (int i = 0; i < nindex; i++)
+			if (!strcmp(ids[j], index_[i].serial) && index_[i].file[layer]) ok = false;
+	if (!ok || nindex + n > MAX_SERIALS) {
+		log_printf("presets: rejected %s (invalid metadata, option, evidence, serial or bounds)\n", path);
+		free(file); return;
+	}
+	// Reserve every possible new index slot before publishing this file.
+	entry_t *grown = realloc(index_, (nindex+n) * sizeof(*index_));
+	if (!grown) { free(file); return; }
+	index_ = grown;
+	file->layer = layer; file->version = version; strcpy(file->name, name);
+	file->next = preset_files; preset_files = file;
+	for (unsigned i = 0; i < n; i++) index_add(ids[i], file);
 }
-
+static int name_compare(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
 static void scan_pack(int layer)
 {
 	char path[PATH_LEN], line[16] = "";
 	snprintf(path, sizeof(path), "%s/VERSION", preset_dirs[layer]);
 	FILE *f = fopen(path, "r");
-	if (f) {
-		if (!fgets(line, sizeof(line), f))
-			line[0] = 0;
-		fclose(f);
-	}
-	pack[layer] = preset_number(preset_trim(line));
-	// An SD pack older than the built-in one predates this app: ignore it all.
-	if (pack[layer] <= 0 || (layer == SD && pack[SD] < pack[BUILTIN])) {
-		pack[layer] = 0;
-		return;
-	}
-	DIR *d = opendir(preset_dirs[layer]);
-	struct dirent *de;
+	bool ok = f && fgets(line, sizeof(line), f);
+	if (ok) { int c = fgetc(f); ok = c == EOF && !ferror(f); }
+	if (f) fclose(f);
+	pack[layer] = ok && *preset_trim(line) != '0' ? preset_number(preset_trim(line)) : 0;
+	if (pack[layer] <= 0 || (layer == SD && pack[SD] < pack[BUILTIN])) { pack[layer] = 0; return; }
+	char *names[MAX_FILES]; unsigned n = 0;
+	DIR *d = opendir(preset_dirs[layer]); struct dirent *de;
 	while (d && (de = readdir(d))) {
-		size_t n = strlen(de->d_name);
-		if (n > 4 && !strcmp(de->d_name + n - 4, ".ini"))
-			read_preset(layer, de->d_name);
+		size_t len = strlen(de->d_name);
+		if (len <= 4 || strcmp(de->d_name + len - 4, ".ini")) continue;
+		if (n == MAX_FILES) { ok = false; break; }
+		names[n] = strdup(de->d_name);
+		if (!names[n]) { ok = false; break; }
+		n++;
 	}
-	if (d)
-		closedir(d);
+	if (d) closedir(d);
+	if (!ok) { pack[layer] = 0; log_printf("presets: pack exceeds file/memory limit\n"); }
+	qsort(names, n, sizeof(*names), name_compare);
+	for (unsigned i = 0; i < n; i++) { if (ok) read_preset(layer, names[i]); free(names[i]); }
 }
 
 // Once at startup: every file is parsed into the serial index here, so disc
@@ -214,7 +250,36 @@ int game_presets_pack(void) { return pack[SD] > pack[BUILTIN] ? pack[SD] : pack[
 int game_preset_version(void) { return current_file ? current_file->version : 0; }
 const char *game_preset_source(void) { return !current_file ? "none" : current_file->layer ? "sd" : "builtin"; }
 
+static int key_index(const char *key)
+{
+	for (unsigned k = 0; k < NKEYS; k++) if (!strcmp(key, preset_keys[k].name)) return k;
+	return -1;
+}
+bool game_preset_sets(const char *key)
+{
+	int k = key_index(key);
+	if (!current_preset || k < 0) return false;
+	const int *p = (const int *)(g_new3ds ? &current_preset->new3ds : &current_preset->old3ds);
+	return p[k] >= (k >= 6 && k < 12 ? -1 : 0);
+}
+const char *game_preset_evidence(const char *key)
+{
+	int k = key_index(key);
+	return current_file && k >= 0 ? current_file->evidence[g_new3ds][k] : "";
+}
+int game_auto_floor(void)
+{
+	for (int i = 0; i < 8 && sw_opt[i][0]; i++)
+		if (!strncmp(sw_opt[i], "auto_floor=", 11)) {
+			int n = preset_number(sw_opt[i]+11); if (n >= 1 && n <= 60) return n;
+		}
+	const char *v = config_in_game() ? gamecfg_get("o.auto_floor") : NULL;
+	if (!v && !game_preset_sets("auto_floor")) v = config_core_override("psx3d_auto_floor");
+	int n = v ? preset_number(v) : game_capabilities().auto_floor;
+	return n >= 1 && n <= 60 ? n : 15;
+}
 bool game_preset_curated(void) { return current_preset && current_preset->curated; }
+void game_presets_invalidate(void) { cached_model = -1; }
 void game_presets_reset(void)
 {
 	current_preset = NULL;
@@ -232,6 +297,7 @@ game_preset_options_t game_capabilities(void)
 	// touch stick appear when the game switches the pad to analog.
 	game_preset_options_t result = {
 		.frameskip = 1,
+		.auto_floor = 15,
 		.fast_forward = 1,
 		.rewind = g_new3ds,
 		.touch_controls = TOUCH_CONTROLS_AUTO,
@@ -256,6 +322,10 @@ game_preset_options_t game_capabilities(void)
 	if (core_clock)
 		result.psxclock = 0;
 #endif
+	const char *v = config_in_game() ? gamecfg_get("fast_forward") : NULL;
+	if (!v && !game_preset_sets("fast_forward")) v = config_core_override("preset_fast_forward");
+	if (v) result.fast_forward = atoi(v) != 0;
+	if (g_new3ds && config_in_game() && gamecfg_int("rewind", 0)) result.rewind = 1;
 	cached = result;
 	cached_preset = current_preset;
 	cached_model = g_new3ds;

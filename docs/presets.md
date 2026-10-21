@@ -1,181 +1,189 @@
 # Game presets
 
-PSX3D is curated: a game's preset decides which features it gets on each
-console and how its technical settings start out. A game without a preset
-shows every option, like a normal emulator; only console limits hide things
-there (for example, rewind needs a New 3DS).
+Presets are sparse data in `psx3d/romfs/presets/*.ini`, with separate Old and
+New 3DS values. An absent option retains its normal default and user choices.
+A preset only hides settings it actually sets on that console. The legacy
+`curated` field is accepted as metadata and has no effect on visibility or
+precedence. For example, Omega Boost's stick-click entry does not own frameskip.
 
-Presets are data, one readable file per game, in `psx3d/romfs/presets/`. No
-C code changes to add or change a game.
-
-## A preset file
+## Format and evidence
 
 ```ini
-title = Gran Turismo 2
-version = 1
-serials = SCUS94455, SCUS94488
-; Arcade (SCUS94455) and Simulation (SCUS94488) discs.
+title = Example
+version = 2
+serials = TEST00001
 [old]
-; Widescreen costs Old 3DS speed: offered with a warning.
-widescreen = warn
+fast_forward = no
+fast_forward.source = Unassessed restriction retained pending Old hardware testing
+fast_forward.confidence = unassessed
 [new]
-psxclock = 80
+l3r3 = yes
+l3r3.source = Retail manual controls section, USA edition; other editions untested
+l3r3.confidence = medium
 ```
 
-- **One file per game**, named after the title in lower case with hyphens
-  (`gran-turismo-2.ini`). It covers both consoles and every regional release
-  and disc of that game: `serials` lists them all. Split a region into its own
-  file only when it genuinely needs different values, and say why in a comment.
-- **Required keys** at the top: `title`, `version`, `serials`.
-- **Sections**: keys at the top apply to both consoles; `[old]` and `[new]`
-  hold console-specific differences. `[common]` returns to the top section.
-- **Sparse**: list only keys that differ from the console default. An absent
-  key is the console default. `tools/presets/check.py` rejects a key whose value
-  equals the default for its section (top = both consoles, or a console
-  section), or a console section that repeats the top value.
-- **Comments** start with `;` or `#`, also after a value. Put the source and
-  confidence of every decision in a comment next to it.
-- Serials are the disc ID without punctuation: four capital letters, five
-  digits (`SLUS00067`). A serial may appear in only one file.
+Each file requires nonempty `title`, positive `version` and `serials` at the
+top (or in `[common]`). Serials are four uppercase ASCII letters followed by
+five digits, without punctuation. A serial must appear in only one file in
+a pack. `[old]` and `[new]` override common values independently of section
+order. Sections may be revisited, but a key may occur only once per section.
+Comments begin with `;` or `#`, including after values. Files use ASCII.
+
+Every set option requires `<option>.source` and `<option>.confidence` in the
+same section. Confidence is `high`, `medium`, `low` or `unassessed`; source is
+1–127 bytes. These apply to the file's listed serials and that section's
+console(s). A console override replaces both value and evidence. Describe
+which editions/scenes were checked and where regional behavior is extrapolated.
+Distinguish incompatibility from performance policy and an unassessed
+restriction. In particular, retained Old fast-forward restrictions are labeled
+**unassessed**, not verified breakage. Free-form explanatory comments remain
+welcome, but do not substitute for the validated evidence fields.
+
+## Settings and Advanced
+
+Settings → Advanced → **Show all settings** is a global, saved preference,
+available from both library and in-game settings. Off is the default. On
+reveals preset-hidden settings and controls and permits ordinary user
+overrides. Revealing a setting does not itself change its preset value.
+Saved overrides remain effective when the toggle is switched off; the toggle
+changes visibility. Physical limits still apply (Old 3DS cannot rewind or use
+stereo 3D; widescreen needs a revision-matched bundle).
+
+A small `P` identifies a preset-supplied value or screen policy; the help panel
+shows its recorded confidence/source. `*` identifies a per-game override.
+Reset this game removes its overrides and restores its preset/inherited values.
+X on a setting removes that individual override. Reset all settings removes
+global choices, including Show all settings, and keeps per-game overrides.
+The widescreen marker describes availability policy, rather than a forced
+screen size. Explicit button mappings retain their usual precedence.
 
 ## Keys
 
-| Key | Values | Old default | New default | Meaning |
-|---|---|---|---|---|
-| `title` | text | | | Readable title (top only) |
-| `version` | 1, 2, … | | | File version (top only), see [Versions](#versions) |
-| `serials` | list | | | Every disc serial of the game (top only) |
-| `curated` | `yes` | no | no | The preset owns the game's option list: "Skip frames when slow" is hidden and set by `frameskip` (top only) |
-| `fast_forward` | `no` `yes` | yes | yes | Fast forward available |
-| `rewind` | `no` `yes` | no | yes | Rewind available (Old 3DS can never rewind) |
-| `touch_controls` | `auto` `on` `off` | auto | auto | Touch buttons: by need, the full console layout, or none |
-| `l2r2` | `no` `yes` | yes | no | Game needs L2/R2 touch buttons (New has ZL/ZR) |
-| `l3r3` | `no` `yes` `analog` | analog | analog | Game needs L3/R3; `analog` = only while the game uses analog mode |
-| `stick` | `no` `yes` `analog` | analog | no | Old 3DS touch right stick |
-| `touch_l2` `touch_r2` `touch_l3` `touch_r3` `touch_x1` `touch_x2` | `hide` `b` `y` `select` `start` `up` `down` `left` `right` `a` `x` `l1` `r1` `l2` `r2` `l3` `r3` `ff` `ff_hold` `rewind` | from the needs | from the needs | Starting binding of a touch slot |
-| `frameskip` | `off` `auto` | auto | auto | Frameskip of a curated game (needs `curated = yes`) |
-| `widescreen` | `hidden` `on` `warn` `off` | on | on | `on`: offered when the game has a widescreen bundle; `warn`: offered with "Widescreen can lower the speed"; `off`: held back, Settings says "Widescreen is off on Old 3DS to keep the speed up"; `hidden`: never offered ("This game has no widescreen fix"). `warn`/`off` need a bundle |
-| `psxclock` | 30–100 | auto | auto | PS1 CPU clock in % (57 = auto). See [PS1 clock](#ps1-clock) |
+| Key | Values | Old / New default | Meaning |
+|---|---|---|---|
+| `fast_forward` | `no`, `yes` | yes / yes | Fast-forward availability |
+| `rewind` | `no`, `yes` | no / yes | Rewind availability (Old cannot enable it) |
+| `touch_controls` | `auto`, `on`, `off` | auto / auto | Starting touch layout |
+| `l2r2` | `no`, `yes` | yes / no | L2/R2 touch need |
+| `l3r3` | `no`, `yes`, `analog` | analog / analog | Stick-click touch need |
+| `stick` | `no`, `yes`, `analog` | analog / no | Old touch right-stick need |
+| `touch_l2`, `touch_r2`, `touch_l3`, `touch_r3`, `touch_x1`, `touch_x2` | see below | inherited needs | Starting binding per slot |
+| `frameskip` | `off`, `auto` | auto / auto | Skip drawing when slow |
+| `auto_floor` | integer 1–60 | 15 / 15 | Auto target minimum pictures/s when the game supplies them |
+| `widescreen` | `hidden`, `on`, `warn`, `off` | on / on | Bundle availability policy |
+| `psxclock` | integer 30–100 | auto (57) / auto (57) | PS1 CPU clock percentage (New 3DS presets) |
 
-The widescreen codes stay in `psx3d/romfs/widescreen/<SERIAL>-<exe hash>.ws`
-([format](../tools/widescreen/README.md)); the preset only decides whether
-they are offered. A game with a bundle and no preset gets `on`.
+Touch values: `hide b y select start up down left right a x l1 r1 l2 r2 l3 r3
+ff ff_hold rewind`. Button needs supply starting bindings; explicit user
+mappings beat them. `analog` supplies a touch control only in analog mode.
 
-## PS1 clock
+Widescreen `on` offers an existing bundle, `warn` offers it with a speed warning,
+`off` holds it back for speed, and `hidden` withholds it. Show all settings can
+bypass preset withholding when a valid bundle exists. The patch format remains
+[the widescreen bundle format](../tools/widescreen/README.md).
 
-`psxclock` entries apply on the New 3DS (the build defines
-`PSX3D_PS1_OVERCLOCK_PRESETS`). The player's own per-game Game CPU speed beats
-the preset. A clock entry does not make a game curated. When two discs of one
-game need different values, they get separate files (Gran Turismo 2: Arcade
-has a measured clock, Simulation has none yet). Measurements: [PS1 overclock](dev/ps1-overclock.md).
+`auto_floor` is sparse: no shipped entry changes the default 15. Lower values
+trade pictures for emulation speed; higher values can improve smoothness while
+slowing emulation. Games that draw fewer pictures cannot meet the target.
+Advanced exposes the floor for experimentation, and a developer per-load
+`o:auto_floor=12` overrides it without saving. Status reports `auto_floor`.
+Measurements/proposals require the owner's choice before shipping a new value.
 
-The core sets the clock of some games itself (`cycle_multiplier_overrides` in
-`core/libpcsxcore/database.c`: Brave Fencer Musashi, Digimon World, Legend of
-Legaia and others). An explicit clock would replace that fix, so a preset never
-sets `psxclock` for those serials: `check.py` rejects it, and the app drops a
-preset clock when the core reports its own override for the disc.
+`psxclock` applies on the New 3DS (the build defines
+`PSX3D_PS1_OVERCLOCK_PRESETS`); measurements: [PS1 overclock](dev/ps1-overclock.md).
+When two discs of one game need different values they get separate files
+(Gran Turismo 2: Arcade has a measured clock, Simulation has none). It cannot
+replace a clock fix in the core database. The checker rejects those serials,
+and the runtime suppresses the preset if the core reports its own override.
+See [the overclock research](dev/ps1-overclock.md).
 
-## Which value wins
+## Layer order and persistence
 
-Settings come in two groups. Each setting has one fixed group.
+Technical settings use:
 
-**Technical** settings decide whether a game runs right and fast:
-console default < your all-games setting < game preset < your setting for this game.
+`defaults < user all-games < preset < user per-game`
 
-**Personal taste** settings are how you like to play: the preset only changes
-the starting point, and your all-games choice beats it:
-console default < game preset < your all-games setting < your setting for this game.
+Personal-taste settings use:
 
-A preset can also **hide** or **hold back** an option in either group (a
-capability): then it is not offered at all and nothing overrides it.
+`defaults < preset < user all-games < user per-game`
 
 | Group | Settings |
 |---|---|
-| Technical | Game CPU speed (`psxclock`), Skip frames when slow (`frameskip`), speed hacks and compatibility options (Simpler CPU timing, Simplify CPU loads, Skip code safety checks, Faster 3D calculations, Simpler 3D clipping, Flicker fix, Safe drawing, Accurate CPU cache/errors, Faster disc loading, Read disc ahead) |
-| Technical, capability | Fast forward and rewind available, Widescreen offered / warned / held back, touch control needs (`touch_controls`, `l2r2`, `l3r3`, `stick`), curated option list |
-| Personal taste | Screen (4:3 / Stretch / Widescreen choice), Smooth picture, PS1 colour shading (dithering), button and touch mapping (`touch_*` slots, touch stick, click side), hotkeys, sounds, music, audio stretch, Sound echo, disc music/voices, FPS counter, 3D mode |
+| Technical | CPU speed, frameskip, Auto picture floor, compatibility/speed hacks, fast-forward/rewind availability, widescreen availability policy, touch needs |
+| Personal taste | Screen size, dithering, smoothing, button/touch mapping, hotkeys, sound, FPS counter, 3D |
 
-Notes:
+The current preset schema sets technical values and button starting points;
+it does not yet set screen, dithering, sound, FPS or 3D preferences. Adding a
+new taste key must implement that second order. Existing touch mappings use
+it today. All-games technical choices cannot beat an explicit preset: use a
+per-game override after revealing the option. Options the preset does not set
+continue to respect all-games and per-game values.
 
-- The touch-control needs pick the **starting** binding of each touch slot.
-  The slot binding itself is button mapping (taste): a slot you mapped, for
-  all games or this game, beats the preset. This is how v0.4.1 already worked.
-- For a curated game, "Skip frames when slow" is hidden (capability) and the
-  preset value applies; your saved frameskip choices are ignored for that game,
-  as in v0.4.1.
-- Today's presets set only technical keys and touch-slot starting points. If a
-  preset ever sets a taste value such as the screen mode, note that
-  `config.ini` currently writes every frontend value (smooth, show_fps, stereo,
-  stretch, sounds, music, audio_stretch, maps) on save, so it cannot tell "you
-  chose this" from "default". Make those entries sparse before shipping a taste
-  preset, so an untouched setting does not hide the preset's value.
+New `config.ini` saves contain only the user's changes, plus library paths and
+format metadata (`settings_format=2`, `touch_slots=1`). Resolved defaults,
+preset touch bindings and internal core synchronization are never copied into
+it. A deliberate choice equal to the factory default is retained. Game files
+store overrides; ordinary frontend/mapping choices equal to the inherited
+all-games value are removed, while explicit technical option choices persist.
 
-Your settings files only ever store your own changes: the per-game file
-(`sdmc:/3ds/PSX3D/games/<game>.ini`) stores a value only when it differs from
-your all-games value, and nothing copies a preset value into either file. A
-new preset version therefore takes effect for everything you did not change.
+**Migration:** old versions wrote a dense global file with no intent metadata.
+Every represented, supported legacy choice is conservatively treated as
+explicit, including values equal to factory defaults. This preserves a user's
+real choice instead of guessing and deleting it. Such a migrated file can
+remain dense until the user resets all settings (controls can be reset
+separately). Retired settings and old touch-format migrations keep their
+existing behavior. Newly saved files never introduce unrelated defaults.
 
-## Versions
+## Versions and SD updates
 
-- `romfs/presets/VERSION` holds the pack version, one number. Bump it whenever
-  any preset changes.
-- Each file has its own `version`. Bump it whenever that game's entry changes.
-- `check.py` compares with the last release tag (or `--base REF`): a file that
-  changed needs a higher `version` than it had there, any change needs a higher
-  pack `VERSION`, and the pack `VERSION` must be at least every file version.
+`romfs/presets/VERSION` is a positive pack version. Each file has its own
+version, at most the pack version. Bump a file version when changing it and
+bump the pack whenever any file changes. The checker enforces this against
+the last release tag or `--base REF`.
 
-## Updates without a new app (SD layer)
+Copy a validated pack manually to `sdmc:/3ds/PSX3D/presets/` while PSX3D is
+not running, then start the app. **Remote `put` does not support presets or
+VERSION. There is no preset downloader or transactional remote pack installer.**
+The remote developer workflow can inspect files, but cannot install a pack.
 
-PSX3D also reads `sdmc:/3ds/PSX3D/presets/`, same format with its own
-`VERSION`. There is no download code yet; a later updater, the user or the
-remote `put` command can drop files there.
+- Missing/invalid SD VERSION, or an SD pack older than built-in: ignore SD.
+- Per serial, the higher file version wins; a tie uses built-in.
+- Validate each complete file before publishing any of its serials. Any
+  invalid line, metadata, serial, duplicate key/serial, evidence or out-of-pack
+  version rejects the entire file, on both layers. Built-in fallback remains.
+- Filenames are processed in ascending byte order. A same-layer cross-file
+  serial conflict rejects the entire later file. The checker rejects such a
+  pack for distribution. File-level fallback is deterministic, but activation
+  is **not** transactional across the pack.
+- Bounds shared with the checker: 256 `.ini` files per pack (overflow disables
+  that layer); 2048 indexed serials across both layers; 26 serials per file;
+  512 complete lines per file; 255 bytes per line including newline. A final
+  line without newline is accepted within that bound. Numeric versions are
+  1–999999. Read/allocation failure never publishes a partially parsed file.
+- The rejection log identifies the file. The chosen game log includes its
+  source path and version. Developer status reports `preset`,
+  `preset_version`, `preset_pack`. The browser shows the pack version.
 
-- An SD pack whose `VERSION` is missing or lower than the built-in pack is
-  ignored entirely, so an app update is never overridden by stale SD files.
-- For each serial the file with the higher `version` wins; on a tie the
-  built-in file is used. SD files can also add games that have no built-in
-  file.
-- An SD file with any bad line (unknown key or value, bad section), or whose
-  `version` is above its pack `VERSION`, is rejected whole; the game's
-  built-in file is used. A bad line in a built-in file is logged and only that
-  line is ignored.
-- The log says which file was used for each game:
-  `preset: SLUS00067 romfs:/presets/castlevania-symphony-of-the-night.ini version 1`.
+Parsing happens once at startup. Disc identification uses the serial index;
+no SD access or parsing occurs in the frame loop. The loader stays at `-Os`.
+Core-first linking protects core code addresses; frontend changes still need
+the Old A/B/A gate.
 
-## Where it shows
-
-- The folder browser shows the pack version next to the app version
-  ("Version 0.4.1 (game presets 1)").
-- The developer `status` JSON has `preset` (`builtin`, `sd` or `none`),
-  `preset_version` (the game's file version) and `preset_pack`.
-
-## How it runs
-
-At startup `game_presets_init()` reads both `VERSION` files and parses every
-preset file once into a serial index. When the core identifies the disc
-(the `CD-ROM ID:` log line, also after a disc swap) the serial is looked up;
-nothing is read or parsed in the frame loop. The loader is compiled with `-Os`
-(it runs once). The frontend links after the core (`psx3d/core-first.ld`), so
-the loader's size cannot move the core.
-
-## Checks
+## Checks and adding a game
 
 ```bash
-python3 tools/presets/check.py     # every file: keys, values, sparse, serials, versions, bundles
-bash tests/presets/run.sh          # check.py, then the host tests below
+python3 tools/presets/check.py
+bash tests/presets/run.sh
 ```
 
-`tests/presets/identical.c` compares every serial of the v0.4.1 table and
-every widescreen bundle, on both consoles, against a frozen copy of the
-v0.4.1 code (`tests/presets/legacy_v041.h`, `v041-ws-models.txt`): fast
-forward, rewind, touch needs and slots, frameskip, curated, whether Widescreen
-is offered and which note Settings shows. It also tests the SD rules (SD newer,
-SD older, older SD pack, malformed SD file, SD-only game, bad built-in line,
-serial listed twice).
+The runtime and checker share key vocabulary/bounds through
+`psx3d/source/preset_schema.def`; a shared malformed-file corpus executes both.
+Tests preserve the 200 v0.4.1 capability views for set values and exercise
+version fallback, deterministic conflicts, sparse saves/migration, per-option
+visibility, Advanced overrides, layer order and resets.
 
-## Adding a game
-
-1. Copy a similar file, set `title`, `version = 1` and all its `serials`.
-2. Add only what differs from the console defaults, with a comment giving the
-   source and confidence.
-3. Bump `VERSION`, run `bash tests/presets/run.sh`.
+To add a game, create a lower-case hyphenated `.ini` file with title, version
+and serials. Add only differing values with scoped evidence for each option;
+checker authoring rules reject redundant defaults/common repeats. Explicit
+runtime values are accepted even when equal to a default, so an update can
+pin a policy deliberately. Bump VERSION and run the checks.

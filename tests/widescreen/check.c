@@ -36,6 +36,8 @@ int main(int argc, char **argv) {
  // The per-console policy comes from the game's preset; bundles carry codes only.
  file(HEAD "80000020 00000099\n");
  assert(ws_load("ws","SLUS12345",0x01020304,WS_HIDDEN));assert(!ws_available());assert(!ws_enable(1));ws_frame();assert(ram[32]==0x66);
+ ws_policy_override(true);assert(ws_available());assert(ws_enable(true));ws_frame();assert(ram[32]==0x99);
+ ws_policy_override(false);assert(!ws_available());ws_enable(false);assert(ram[32]==0x66);
  assert(ws_load("ws","SLUS12345",0x01020304,WS_OFFERED));assert(ws_available());assert(ws_enable(1));ws_frame();assert(ram[32]==0x99);ws_unload();assert(ram[32]==0x66);
  // Costly: offered with a warning. Too slow: held back and explained. Unknown values reject.
  assert(ws_load("ws","SLUS12345",0x01020304,WS_COSTLY));assert(ws_available());assert(ws_console_policy()==WS_COSTLY);

@@ -12,6 +12,8 @@ static code_t codes[MAX_CODES];
 static unsigned count;
 static bool enabled, allowed = true;
 static int policy = -1;
+static bool policy_override;
+void ws_policy_override(bool on) { policy_override = on; }
 static unsigned aspect_n = 5, aspect_d = 3;
 static char identity[48];
 
@@ -131,12 +133,12 @@ bool ws_load(const char *directory, const char *serial, uint32_t fingerprint, in
 }
 bool ws_enable(bool on)
 {
-	on = on && count && allowed;
+	on = on && count && (allowed || policy_override);
 	if (enabled && !on) restore();
 	enabled = on;
-	return count && allowed;
+	return count && (allowed || policy_override);
 }
-bool ws_available(void) { return allowed; }
+bool ws_available(void) { return allowed || (count && policy_override); }
 int ws_console_policy(void) { return count ? policy : -1; }
 const char *ws_identity(void) { return identity[0] ? identity : "gte"; }
 float ws_aspect(void) { return enabled ? (float)aspect_n / aspect_d : 5.0f / 3.0f; }

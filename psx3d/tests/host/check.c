@@ -13,6 +13,7 @@ void cheats_disc_changed(void) {}
 int padAnalogMode(unsigned int index) { (void)index; return 1; } // touch L3/R3 follow analog mode
 int test_ws_policy = -1;   // bundle models= value for this console, -1 = none
 bool ws_available(void) { return test_ws_policy == 1 || test_ws_policy == 2; }
+void ws_policy_override(bool on) { (void)on; }
 int ws_console_policy(void) { return test_ws_policy; }
 #ifndef SETTINGS_NAV_TEST
 bool cheats_widescreen(bool on) { (void)on; return false; }
@@ -468,7 +469,7 @@ static void serial_config_checks(void)
 {
  clean_input(false); config_reset_defaults(); config_load();
  assert(input_map_raw(10)==-2 && g_cfg.touch_stick==-1);
- assert(contains(PSX3D_CONFIG,"touch_slots=1\n") && contains(PSX3D_CONFIG,"map_TOUCH_L2=-2\n"));
+ assert(contains(PSX3D_CONFIG,"touch_slots=1\n") && !contains(PSX3D_CONFIG,"map_TOUCH_L2="));
  // Every serial of the shipped data files resolves through the startup index.
  game_presets_init(PSX3D_TEST_PRESETS, PSX3D_DIR "/presets"); assert(nindex > 40 && game_presets_pack() > 0);
  for(int i=0;i<nindex;i++) {
@@ -592,13 +593,61 @@ static void frameskip_checks(void)
   }
   config_set_core_override("pcsx_rearmed_frameskip_type","disabled");
   config_game_begin("Frameskip fixture");current_preset=&fs_fixture;
-  assert(game_preset_curated() && !options_count());
+  assert(game_preset_curated() && options_count()==(model?0:1));
   assert(game_capabilities().frameskip==(model?0:1));
-  assert(!strcmp(options_get("pcsx_rearmed_frameskip_type"),model?"disabled":"auto"));
+  assert(!strcmp(options_get("pcsx_rearmed_frameskip_type"),"disabled"));
+  g_cfg.show_all_settings=1; assert(options_count()==1);
+  assert(!strcmp(options_cycle(0,1),"auto"));
+  assert(!strcmp(options_get("pcsx_rearmed_frameskip_type"),"auto"));
+  g_cfg.show_all_settings=0; assert(options_count()==(model?0:1));
+  gamecfg_unset("o.frameskip_type");
   config_game_end(); assert(options_count()==1);
   assert(!strcmp(options_get("pcsx_rearmed_frameskip_type"),"disabled"));
  }
- puts("PASS: Off/Auto cycle, retired-config migration, per-console preset inheritance and curated hiding");
+ puts("PASS: Off/Auto cycle, retired-config migration, per-option preset presence, Advanced override and technical layer order");
+}
+static void presets_v2_checks(void)
+{
+ config_game_end(); g_new3ds=false; config_reset_defaults();
+ // Untouched files contain paths/schema only, never resolved defaults or preset maps.
+ assert(!contains(PSX3D_CONFIG,"smooth=") && !contains(PSX3D_CONFIG,"show_fps=") &&
+        !contains(PSX3D_CONFIG,"stereo=") && !contains(PSX3D_CONFIG,"music=") &&
+        !contains(PSX3D_CONFIG,"map_") && !contains(PSX3D_CONFIG,"hotkey_") &&
+        !contains(PSX3D_CONFIG,"core."));
+ g_cfg.show_fps=1; config_user_changed("show_fps");
+ g_cfg.smooth=1; config_user_changed("smooth"); // deliberate factory value is still intent
+ config_set_user_core_override("pcsx_rearmed_dithering","enabled");
+ config_save();config_load();config_save();
+ assert(contains(PSX3D_CONFIG,"show_fps=1\n") && contains(PSX3D_CONFIG,"smooth=1\n") &&
+        contains(PSX3D_CONFIG,"core.pcsx_rearmed_dithering=enabled\n"));
+ // Dense legacy migration preserves all represented choices, even default-valued ones.
+ write_text(PSX3D_CONFIG,"touch_slots=1\nsmooth=1\nshow_fps=0\nmusic=1\nsounds=1\naudio_stretch=50\nmap_A=8\ncore.pcsx_rearmed_dithering=enabled\n");
+ config_load();config_save();config_load();
+ assert(contains(PSX3D_CONFIG,"smooth=1\n") && contains(PSX3D_CONFIG,"show_fps=0\n") &&
+        contains(PSX3D_CONFIG,"music=1\n") && contains(PSX3D_CONFIG,"sounds=1\n") &&
+        contains(PSX3D_CONFIG,"audio_stretch=50\n") && contains(PSX3D_CONFIG,"map_A=8\n"));
+ config_reset_defaults();
+ game_presets_init(PSX3D_TEST_PRESETS,PSX3D_DIR "/presets");
+ config_set_user_core_override("pcsx_rearmed_frameskip_type","disabled");
+ config_game_begin("Omega v2");input_touch_disc_log("CD-ROM ID: SCUS94449\n");
+ assert(game_preset_curated() && !game_preset_sets("frameskip"));
+ assert(!strcmp(options_get("pcsx_rearmed_frameskip_type"),"disabled"));
+ assert(!game_capabilities().fast_forward);
+ g_cfg.show_all_settings=1; config_user_changed("show_all_settings");
+ assert(!game_capabilities().fast_forward); // revealing never changes a preset value
+ gamecfg_set_int("fast_forward",1);options_mark_updated();
+ assert(game_capabilities().fast_forward);
+ assert(game_auto_floor()==15);
+ gamecfg_set_int("o.auto_floor",12);assert(game_auto_floor()==12);
+ config_game_clear("o.auto_floor");assert(game_auto_floor()==15);
+ config_save();assert(!contains(PSX3D_CONFIG,"fast_forward=") && !contains(PSX3D_CONFIG,"map_TOUCH"));
+ config_game_end();config_load();assert(g_cfg.show_all_settings);
+ config_game_begin("Omega v2");input_touch_disc_log("CD-ROM ID: SCUS94449\n");
+ assert(game_capabilities().fast_forward);
+ assert(config_game_reset());input_touch_disc_log("CD-ROM ID: SCUS94449\n");
+ assert(!game_capabilities().fast_forward);
+ config_game_end();config_reset_defaults();
+ puts("PASS: sparse global config, conservative dense migration, Omega presence/override/reset and auto_floor inheritance");
 }
 int main(void)
 {
@@ -613,7 +662,7 @@ int main(void)
  g_new3ds=true;
  assert(!strcmp(options_get("pcsx_rearmed_spu_interpolation"),"gaussian"));
  config_load(); layout_checks(); curved_fill_checks(); side_and_new_checks(); action_checks(); serial_config_checks(); symbol_checks(); stats_input_checks();
- frameskip_checks();
+ frameskip_checks(); presets_v2_checks();
  fps_mockups();
  confirm_accept=false; confirm_step=0; assert(!ui_confirm("RESET?","Cancel test",false));
  confirm_accept=true; confirm_step=0; assert(ui_confirm("RESET?","Accept test",false));

@@ -32,6 +32,7 @@ static bool core_initialized;
 static bool has_audio;
 static retro_audio_buffer_status_callback_t abuf_status_cb;
 static bool core_auto_frameskip;
+static double auto_floor_scale = 1;
 static struct retro_disk_control_callback disk;   // multi-disc games (via .m3u)
 static bool have_disk;
 static bool clip_game_enabled;
@@ -185,8 +186,13 @@ static bool environment(unsigned cmd, void *data)
 	case RETRO_ENVIRONMENT_GET_VARIABLE: {
 		struct retro_variable *v = data;
 		v->value = options_get(v->key);
-		if (!strcmp(v->key, "pcsx_rearmed_frameskip_type"))
+		if (!strcmp(v->key, "pcsx_rearmed_frameskip_type")) {
+			// Normalize credit to the core's fixed 15-picture unit. Scaling
+			// wall time by N/15 gives exactly the N-picture threshold/cap,
+			// without changing core text, state layout, debt or skip decisions.
+			auto_floor_scale = game_auto_floor() / 15.0;
 			core_auto_frameskip = v->value && !strcmp(v->value, "auto");
+		}
 		if (sw_prof) {
 			// each option once, so a hardware run can be replayed in the simulator
 			static char seen[2048];
@@ -1596,7 +1602,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			u64 end = svcGetSystemTick(), wall = end - smart_clock;
 			smart_clock = end;
 			psx3d_smart_observe(&psx3d_skip, (wall - frame_pace) / (double)CPU_TICKS_PER_MSEC,
-				1000.0 / fps_target, wall / (double)CPU_TICKS_PER_MSEC);
+				1000.0 / fps_target, wall / (double)CPU_TICKS_PER_MSEC * auto_floor_scale);
 		}
 		else if (psx3d_skip.enabled && sw_rtfsdense)
 			psx3d_skip_observe_dense(&skip_control, (svcGetSystemTick() - t0) / (double)CPU_TICKS_PER_MSEC,

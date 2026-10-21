@@ -8,6 +8,7 @@ bool ws_load(const char *directory, const char *serial, uint32_t fingerprint, in
 void ws_unload(void);
 bool ws_enable(bool enabled);
 bool ws_available(void);
+void ws_policy_override(bool on);
 // The preset's widescreen value for this console. Speed decisions stay
 // visible to the user: a costly bundle is offered with a warning, and one
 // held back for speed is explained instead of called missing.

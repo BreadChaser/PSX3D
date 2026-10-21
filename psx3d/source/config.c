@@ -17,6 +17,33 @@ psx3d_config g_cfg;
 static struct { char *key, *value; } ovr[MAX_OVERRIDES];
 static int novr;
 
+// Presence is intent. Legacy dense files cannot distinguish a deliberate default
+// from an automatic write: preserve every loaded key, including default values.
+// New files record only settings changed by the player (or changed from factory).
+static char user_keys[256][64];
+static int nuser;
+static bool user_has(const char *key)
+{
+	for (int i = 0; i < nuser; i++) if (!strcmp(user_keys[i], key)) return true;
+	return false;
+}
+void config_user_changed(const char *key)
+{
+	if (key && !user_has(key) && nuser < 256) snprintf(user_keys[nuser++], 64, "%s", key);
+}
+static void user_forget(const char *key)
+{
+	for (int i = 0; i < nuser; i++) if (!strcmp(user_keys[i], key)) {
+		memmove(user_keys[i], user_keys[i+1], (--nuser-i) * sizeof(user_keys[0])); return;
+	}
+}
+void config_set_user_core_override(const char *key, const char *value)
+{
+	char name[64]; snprintf(name, sizeof(name), "core.%s", key);
+	config_user_changed(name);
+	config_set_core_override(key, value);
+}
+
 // While a game runs its own screen mode is in effect; config.ini keeps the
 // default for games that don't have one (see config_game_begin).
 static bool in_game;
@@ -104,6 +131,7 @@ void config_load(void)
 	FILE *f;
 
 	clear_overrides();
+	nuser = 0;
 	set_defaults();
 	safe_recover(PSX3D_CONFIG);
 	f = fopen(PSX3D_CONFIG, "r");
@@ -124,6 +152,7 @@ void config_load(void)
 			continue;
 		*eq = 0;
 		char *k = trim(l), *v = trim(eq + 1);
+		if (strcmp(k, "touch_slots") && strcmp(k, "settings_format")) config_user_changed(k);
 
 		if (strncmp(k, "core.", 5) == 0)
 			config_set_core_override(k + 5, v);
@@ -161,6 +190,10 @@ void config_load(void)
 			int n = atoi(v);
 			g_cfg.audio_stretch = n < 0 ? 0 : n > AUDIO_STRETCH_MAX ? AUDIO_STRETCH_MAX : n;
 		}
+		else if (strcmp(k, "show_all_settings") == 0)
+			g_cfg.show_all_settings = atoi(v) != 0;
+		else if (strcmp(k, "fast_forward") == 0)
+			config_set_core_override("preset_fast_forward", atoi(v) ? "1" : "0");
 		else if (strcmp(k, "debug") == 0)
 			g_cfg.debug = atoi(v) != 0;
 		else if (strcmp(k, "smooth") == 0)
@@ -193,39 +226,46 @@ void config_save(void)
 	FILE *f = safe_begin(PSX3D_CONFIG);
 	if (!f)
 		goto done;
-	fprintf(f, "# PSX3D settings\ntouch_slots=1\n");
+	fprintf(f, "# PSX3D settings\nsettings_format=2\ntouch_slots=1\n");
 	fprintf(f, "last_dir=%s\n", g_cfg.last_dir);
 	if (g_cfg.games_dir[0])
 		fprintf(f, "games_dir=%s\n", g_cfg.games_dir);
 	if (g_cfg.last_title[0])
 		fprintf(f, "last_title=%s\n", g_cfg.last_title);
-	fprintf(f, "smooth=%d\n", g_cfg.smooth);
-	fprintf(f, "show_fps=%d\n", g_cfg.show_fps);
-	fprintf(f, "stereo=%d\n", g_cfg.stereo);
 	int screen = in_game ? default_screen : config_screen_mode();
-	fprintf(f, "stretch=%d\n", screen == 1);
-	fprintf(f, "sounds=%d\nmusic=%d\nbottom_off=%d\n", g_cfg.sounds, g_cfg.music, g_cfg.bottom_off);
-	fprintf(f, "audio_stretch=%d\n", g_cfg.audio_stretch);
-	fprintf(f, "touch_stick=%d\n", in_game ? default_touch_stick : g_cfg.touch_stick);
-	fprintf(f, "touch_click_left=%d\n", g_cfg.touch_click_left);
-	for (int i = 0; i < INPUT_HOTKEY_N; i++)
-		fprintf(f, "%s=%s\n", input_hotkey_key_name(i),
-			input_hotkey_combo_name(in_game ? default_hotkeys[i] : input_hotkey_get(i)));
-	for (int i = 0; i < INPUT_REMAP_N; i++)
-		fprintf(f, "map_%s=%d\n", input_map_key_name(i), in_game ? default_maps[i] : input_map_raw(i));
+#define SAVE_INT(key, value, factory) do { int v_ = (value); if (user_has(key) || v_ != (factory)) fprintf(f, key "=%d\n", v_); } while (0)
+	SAVE_INT("smooth", g_cfg.smooth, 1);
+	SAVE_INT("show_fps", g_cfg.show_fps, 0);
+	SAVE_INT("stereo", g_cfg.stereo, g_new3ds ? 1 : 0);
+	SAVE_INT("stretch", screen == 1, 0);
+	SAVE_INT("sounds", g_cfg.sounds, 1);
+	SAVE_INT("music", g_cfg.music, 1);
+	SAVE_INT("audio_stretch", g_cfg.audio_stretch, 50);
+	SAVE_INT("touch_stick", in_game ? default_touch_stick : g_cfg.touch_stick, -1);
+	SAVE_INT("touch_click_left", g_cfg.touch_click_left, 0);
+	SAVE_INT("show_all_settings", g_cfg.show_all_settings, 0);
+	const char *ff = config_core_override("preset_fast_forward");
+	if (user_has("fast_forward") && ff) fprintf(f, "fast_forward=%s\n", ff);
+	for (int i = 0; i < INPUT_HOTKEY_N; i++) {
+		int v = in_game ? default_hotkeys[i] : input_hotkey_get(i);
+		if (user_has(input_hotkey_key_name(i)) || v != input_hotkey_factory(i))
+			fprintf(f, "%s=%s\n", input_hotkey_key_name(i), input_hotkey_combo_name(v));
+	}
+	for (int i = 0; i < INPUT_REMAP_N; i++) {
+		char key[64]; snprintf(key, sizeof(key), "map_%s", input_map_key_name(i));
+		int v = in_game ? default_maps[i] : input_map_raw(i);
+		int factory = i >= INPUT_PHYSICAL_N ? INPUT_BIND_PRESET : input_map_factory(i);
+		if (user_has(key) || v != factory) fprintf(f, "%s=%d\n", key, v);
+	}
+#undef SAVE_INT
 	if (g_cfg.debug)
 		fprintf(f, "debug=1\n");
 	for (int i = 0; i < novr; i++) {
-		// built-in defaults aren't saved, so improving them reaches old installs
-		bool is_default = false;
-		for (size_t j = 0; j < sizeof(tuned_defaults) / sizeof(tuned_defaults[0]); j++)
-			if (tuned_defaults[j][0] && strcmp(ovr[i].key, tuned_defaults[j][0]) == 0 &&
-			    strcmp(ovr[i].value, tuned_defaults[j][1]) == 0)
-				is_default = true;
+		char key[64]; snprintf(key, sizeof(key), "core.%s", ovr[i].key);
+		if (!user_has(key)) continue; // internal synchronization is never user intent
 		if (strcmp(ovr[i].key, WS_KEY) == 0)
-			fprintf(f, "core.%s=%s\n", ovr[i].key, screen == 2 ? ovr[i].value[0] != '0' ? ovr[i].value : "52429" : "0");
-		else if (!is_default)
-			fprintf(f, "core.%s=%s\n", ovr[i].key, ovr[i].value);
+			fprintf(f, "core.%s=%s\n", ovr[i].key, screen == 2 ? "52429" : "0");
+		else fprintf(f, "core.%s=%s\n", ovr[i].key, ovr[i].value);
 	}
 	safe_finish(f, PSX3D_CONFIG, true);
 done:
@@ -269,6 +309,7 @@ void config_reset_defaults(void)
 	if (in_game) return; // global reset is offered in the library
 	psx3d_config old = g_cfg;
 	clear_overrides();
+	nuser = 0;
 	set_defaults();
 	strcpy(g_cfg.last_dir, old.last_dir);
 	strcpy(g_cfg.games_dir, old.games_dir);
@@ -329,8 +370,10 @@ bool config_ws_fix(void) { return ws_fix; }
 void config_ws_sync(void)
 {
 	// The preset can rule widescreen out (2D games) or hold it back (Old speed).
+	bool override = g_cfg.show_all_settings || (in_game && gamecfg_int("preset_widescreen", 0));
+	ws_policy_override(override);
 	int policy = game_capabilities().widescreen;
-	bool ok = in_game && ws_available() && (policy == WS_OFFERED || policy == WS_COSTLY);
+	bool ok = in_game && ws_available() && (override || policy == WS_OFFERED || policy == WS_COSTLY);
 	ws_fix = cheats_widescreen(ok && config_widescreen()) && ok;
 }
 
@@ -415,8 +458,11 @@ void config_game_begin(const char *game)
 void config_game_set_screen(int mode)
 {
 	config_set_screen_mode(mode);
-	if (in_game)
+	if (in_game) {
 		gamecfg_set_int("screen", mode);
+		if (g_cfg.show_all_settings && mode == 2) gamecfg_set_int("preset_widescreen", 1);
+		else if (mode != 2) gamecfg_unset("preset_widescreen");
+	}
 }
 
 // back to the library: the default screen mode again
@@ -467,6 +513,9 @@ void config_controls_defaults(void)
 		g_cfg.touch_stick = default_touch_stick;
 		g_cfg.touch_click_left = default_fields[4];
 	} else {
+		for (int i = 0; i < INPUT_REMAP_N; i++) { char key[64]; snprintf(key, sizeof(key), "map_%s", input_map_key_name(i)); user_forget(key); }
+		for (int i = 0; i < INPUT_HOTKEY_N; i++) user_forget(input_hotkey_key_name(i));
+		user_forget("touch_stick"); user_forget("touch_click_left");
 		input_map_reset();
 		g_cfg.touch_stick = -1;
 		g_cfg.touch_click_left = 0;
@@ -519,10 +568,12 @@ bool config_game_clear(const char *key)
 		if (!forget_legacy_screen())
 			return false;
 		gamecfg_unset(key);
+		gamecfg_unset("preset_widescreen");
 		legacy_screen_override = false;
 		config_set_screen_mode(default_screen);
-	} else if (!strcmp(key, "rewind"))
-		gamecfg_unset(key);
+	} else if (!strcmp(key, "rewind") || !strcmp(key, "fast_forward")) {
+		gamecfg_unset(key); options_mark_updated();
+	}
 	else if (!strncmp(key, "o.", 2)) {
 		gamecfg_unset(key);
 		options_mark_updated();

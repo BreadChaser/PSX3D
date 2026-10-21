@@ -10,3 +10,5 @@ cc -std=gnu11 -Wall -Wextra -Werror -fsanitize=address,undefined -g -include std
  -I "$repo/core/deps/libretro-common/include" \
  "$repo/tests/presets/identical.c" "$repo/psx3d/source/presets.c" "$repo/psx3d/source/widescreen.c" -o "$work/identical"
 "$work/identical" "$repo/psx3d/romfs/presets" "$repo/psx3d/romfs/widescreen" "$repo/tests/presets/v041-ws-models.txt" "$work"
+
+python3 "$repo/tests/presets/validation.py" "$work/identical"

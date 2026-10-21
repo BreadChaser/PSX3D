@@ -43,10 +43,14 @@ typedef struct {
 	int  bottom_off;   // backlight off on the bottom screen while playing
 	int  audio_stretch; // maximum slowdown in percent, 0 disables (0..50)
 	int  touch_stick;  // Old 3DS virtual right stick
+	int  show_all_settings; // global Advanced preference
 	int  touch_click_left; // global New 3DS bottom-screen layout: 0 right, 1 left
 } psx3d_config;
 
 extern psx3d_config g_cfg;
+void config_user_changed(const char *key);
+void config_set_user_core_override(const char *key, const char *value);
+int input_hotkey_factory(int slot);
 void config_load(void);
 void config_save(void);
 void config_reset_defaults(void);
@@ -339,6 +343,7 @@ typedef struct {
 	// PS1 CPU clock in % (pcsx_rearmed_psxclock), 0 inherits. Applied only with
 	// PSX3D_PS1_OVERCLOCK_PRESETS; never over a core database override.
 	int psxclock;
+	int auto_floor; // pictures/s; absent = 15
 } game_preset_options_t;
 typedef struct {
 	const char *serial;
@@ -352,8 +357,12 @@ int game_presets_pack(void);
 int game_preset_version(void);
 const char *game_preset_source(void);
 game_preset_options_t game_capabilities(void);
-bool game_preset_curated(void);
+bool game_preset_curated(void); // legacy metadata only; never gates options
+bool game_preset_sets(const char *key);
+const char *game_preset_evidence(const char *key);
+int game_auto_floor(void);
 void game_presets_reset(void);
+void game_presets_invalidate(void);
 void game_presets_disc_log(const char *message);
 #ifdef PSX3D_PS1_OVERCLOCK_PRESETS
 void game_presets_core_log(const char *message);

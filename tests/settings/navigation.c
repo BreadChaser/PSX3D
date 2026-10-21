@@ -196,7 +196,7 @@ int main(void)
   settings_ui_t curated={.game=true};open_page(&curated,CAT_PERFORMANCE);
   int unlisted_count=curated.count;
   input_touch_disc_log("CD-ROM ID: SLUS00067\n");open_page(&curated,CAT_PERFORMANCE);
-  assert(curated.count==unlisted_count-1);
+  assert(curated.count==unlisted_count); // SotN sets no frameskip: preserve its ordinary option.
   shot(model?"new-curated-Performance":"old-curated-Performance");
   flist_snap(&curated.list,0,curated.count,VISIBLE_ROWS);draw_settings(&curated);shot_end();
   config_game_end();

@@ -23,6 +23,7 @@ bool sw_wsbundle = true;
 int sw_wsscreen = -1;
 int config_screen_mode(void) { return sw_wsscreen < 0 ? 0 : sw_wsscreen; }
 const char *ws_identity(void) { return "gte"; }
+int game_auto_floor(void) { return 15; }
 int game_presets_pack(void) { return 1; }
 int game_preset_version(void) { return 0; }
 const char *game_preset_source(void) { return "none"; }

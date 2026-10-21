@@ -118,8 +118,12 @@ static bool is_hidden(const char *key)
 	    !strcmp(key, "pcsx_rearmed_psx3d_widescreen")) return true;
 	if (!strncmp(key, "pcsx_rearmed_screen_centering", sizeof("pcsx_rearmed_screen_centering") - 1)) return true;
 	if (!strcmp(key, "pcsx_rearmed_display_info") && !g_cfg.debug && !settings_ui_debug_capture()) return true;
-	if (!strcmp(key, "pcsx_rearmed_frameskip_type") &&
-	    config_in_game() && game_preset_curated()) return true;
+	if (config_in_game() && !g_cfg.show_all_settings &&
+	    ((!strcmp(key, "pcsx_rearmed_frameskip_type") && game_preset_sets("frameskip"))
+#ifdef PSX3D_PS1_OVERCLOCK_PRESETS
+	     || (!strcmp(key, "pcsx_rearmed_psxclock") && game_preset_sets("psxclock"))
+#endif
+	    )) return true;
 	if ((!strcmp(key, "pcsx_rearmed_screen_centering_x") ||
 	     !strcmp(key, "pcsx_rearmed_screen_centering_y") ||
 	     !strcmp(key, "pcsx_rearmed_screen_centering_h_adj")) &&
@@ -287,10 +291,11 @@ const char *options_get(const char *key)
 		return "3";
 
 	if (!strcmp(key, "pcsx_rearmed_frameskip_type")) {
-		// Curated profiles inherit the console default, independently of globals.
-		if (config_in_game() && game_preset_curated())
+		const char *per_game = config_in_game() ? gamecfg_get(options_game_key(key)) : NULL;
+		if (per_game) return !strcmp(per_game, "disabled") ? "disabled" : "auto";
+		if (config_in_game() && game_preset_sets("frameskip"))
 			return game_capabilities().frameskip ? "auto" : "disabled";
-		const char *saved = saved_value(key);
+		const char *saved = config_core_override(key);
 		return saved && !strcmp(saved, "disabled") ? "disabled" : "auto";
 	}
 	// Core-only legacy/fast-forward policy knobs; never read saved values.
@@ -344,7 +349,7 @@ bool options_take_updated(void)
 	return r;
 }
 
-void options_mark_updated(void) { updated = true; }
+void options_mark_updated(void) { updated = true; game_presets_invalidate(); }
 // the menu only sees the visible options
 int options_count(void)
 {
@@ -422,7 +427,7 @@ const char *options_cycle(int i, int dir)
 	if (config_in_game())
 		gamecfg_set(options_game_key(o->key), o->values[idx]);
 	else
-		config_set_core_override(o->key, o->values[idx]);
+		config_set_user_core_override(o->key, o->values[idx]);
 	updated = true;
 	return o->values[idx];
 }
@@ -437,7 +442,7 @@ static const char *const notes[][3] = {
 	{ "pcsx_rearmed_memcard1", "Reopen the game to apply", "Game save uses PSX3D's usual per-game save file. Per disc keeps a separate card for each disc; Shared uses one card across games. Off removes this card." },
 	{ "pcsx_rearmed_memcard2", "Reopen the game to apply", "Choose a separate card per disc, a card shared across games, or Off for an empty second memory-card slot." },
 	{ "pcsx_rearmed_psxclock", "Lower may slow the game itself", "How fast the game's PS1 CPU runs. Lower values may raise the frame count while slowing the game itself or causing glitches. Usually leave Auto." },
-	{ "pcsx_rearmed_frameskip_type", "Auto balances speed and smooth pictures", "Auto skips drawing to help game speed, while keeping at least 15 pictures a second when possible. Off draws every picture and can slow busy scenes. Curated games choose this automatically." },
+	{ "pcsx_rearmed_frameskip_type", "Auto balances speed and smooth pictures", "Auto skips drawing to help game speed, while keeping at least 15 pictures a second when possible. Off draws every picture and can slow busy scenes. Some games supply a preset; Advanced can reveal its setting." },
 	{ "pcsx_rearmed_dithering", "Smoother colour gradients", "Adds the PS1's fine colour pattern to shaded polygons. On follows the game; Always also enables it when the game turns it off." },
 	{ "pcsx_rearmed_alt_flip", "Usually leave Auto", "Changes when the game's picture is taken for the screen. Try Early or Late only if a game flickers or shows half-drawn pictures." },
 	{ "pcsx_rearmed_gpu_slow_llists", "May be slower", "Draws every part of the picture strictly in the game's order. Turn on only if parts of a game are missing or drawn wrongly." },

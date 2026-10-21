@@ -195,6 +195,7 @@ static const u32 hotkey_combos[] = {
 };
 #define HOTKEY_COMBOS (int)(sizeof(hotkey_combos)/sizeof(hotkey_combos[0]))
 static int hotkeys[INPUT_HOTKEY_N] = { 39, 35 }; // SELECT+R / SELECT+L
+int input_hotkey_factory(int i) { return i ? 35 : 39; }
 bool input_hotkey_is_default(int i) { return i >= 0 && i < INPUT_HOTKEY_N && hotkeys[i] == (i ? 35 : 39); }
 static bool gameplay, ff_on, ff_hold, rw_hold;
 static u32 action_blocked, previous_toggles, consumed_keys;
@@ -716,15 +717,15 @@ static int control_item(int row)
 			if (g_new3ds)
 				visible = t >= 2;
 			if (t == 4)
-				visible = game_capabilities().fast_forward;
+				visible = game_capabilities().fast_forward || g_cfg.show_all_settings;
 			else if (t == 5)
-				visible = game_capabilities().rewind;
+				visible = g_new3ds && (game_capabilities().rewind || g_cfg.show_all_settings);
 		} else if (i == INPUT_REMAP_N)
 			visible = !g_new3ds;
 		else if (i == INPUT_REMAP_N + 1)
-			visible = game_capabilities().fast_forward;
+			visible = game_capabilities().fast_forward || g_cfg.show_all_settings;
 		else if (i == INPUT_REMAP_N + 2)
-			visible = game_capabilities().rewind;
+			visible = g_new3ds && (game_capabilities().rewind || g_cfg.show_all_settings);
 		if (visible && n++ == row)
 			return i;
 	}

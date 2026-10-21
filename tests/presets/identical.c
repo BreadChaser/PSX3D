@@ -11,6 +11,12 @@
 #include "legacy_v041.h"
 
 bool g_new3ds;
+psx3d_config g_cfg;
+char sw_opt[8][48];
+bool config_in_game(void) { return false; }
+const char *gamecfg_get(const char *k) { (void)k; return NULL; }
+int gamecfg_int(const char *k, int d) { (void)k; return d; }
+const char *config_core_override(const char *k) { (void)k; return NULL; }
 static unsigned char ram[0x200000];
 void *ws_memory(void) { return ram; }
 void ws_invalidate(uint32_t a, unsigned n) { (void)a; (void)n; }
@@ -84,7 +90,15 @@ static void put(const char *path, const char *text)
 {
 	FILE *f = fopen(path, "w");
 	assert(f);
-	fputs(text, f);
+	// Give valid option assignments explicit test evidence in the same section.
+	char *copy = strdup(text), *ctx;
+	for (char *line = strtok_r(copy, "\n", &ctx); line; line = strtok_r(NULL, "\n", &ctx)) {
+		fprintf(f, "%s\n", line);
+		char key[32];
+		if (sscanf(line, "%31s =", key) == 1 && (!strcmp(key, "fast_forward") || !strcmp(key, "rewind")))
+			fprintf(f, "%s.source = host fixture\n%s.confidence = unassessed\n", key, key);
+	}
+	free(copy);
 	fclose(f);
 }
 static int fast_forward_of(const char *serial)
@@ -110,7 +124,7 @@ static void precedence_checks(const char *tmp)
 	// No SD pack: built-in data; a bad built-in line is ignored, the rest applies.
 	game_presets_init(b, s);
 	assert(fast_forward_of("TEST00001") == 0 && game_preset_version() == 2 && !strcmp(game_preset_source(), "builtin"));
-	assert(fast_forward_of("TEST00003") == 0 && !game_preset_curated());
+	assert(fast_forward_of("TEST00003") == 1 && !game_preset_curated());
 	assert(fast_forward_of("TEST00009") == 1 && !strcmp(game_preset_source(), "none"));
 	assert(game_presets_pack() == 2);
 
@@ -158,12 +172,20 @@ static void precedence_checks(const char *tmp)
 	remove(AT(s, "a.ini"));
 	put(AT(s, "VERSION"), "4\n");
 	put(AT(s, "x.ini"), "title = X\nversion = 3\nserials = TEST00001\n[new]\nrewind = no\n");
-	put(AT(s, "y.ini"), "title = Y\nversion = 3\nserials = TEST00001\n[new]\nrewind = no\n");
+	put(AT(s, "y.ini"), "title = Y\nversion = 3\nserials = TEST00001, TEST00005\n[new]\nrewind = no\n");
 	game_presets_init(b, s);
 	assert(game_presets_pack() == 4);
 	g_new3ds = true;
 	identify("TEST00001");
 	assert(!game_capabilities().rewind && game_preset_version() == 3);
+	assert(strstr(game_preset_evidence("rewind"), "host fixture"));
+	identify("TEST00005"); assert(!strcmp(game_preset_source(), "none"));
+	// Recreate x after y: lexical precedence must not depend on directory order.
+	remove(AT(s, "x.ini"));
+	put(AT(s, "x.ini"), "title = X\nversion = 3\nserials = TEST00001\n[new]\nrewind = no\n");
+	game_presets_init(b, s); g_new3ds = true; identify("TEST00001");
+	assert(!game_capabilities().rewind && game_preset_version() == 3);
+	identify("TEST00005"); assert(!strcmp(game_preset_source(), "none"));
 	quiet = false;
 #undef AT
 	puts("PASS: version precedence (SD newer, SD older, older SD pack, malformed SD, SD-only, bad built-in key)");
@@ -171,6 +193,12 @@ static void precedence_checks(const char *tmp)
 
 int main(int argc, char **argv)
 {
+	if (argc == 4 && !strcmp(argv[1], "--validate")) {
+		quiet = true; g_new3ds = false;
+		game_presets_init(argv[2], "/nonexistent"); identify("TEST00001");
+		assert((game_preset_version() == 2) == !strcmp(argv[3], "yes"));
+		return 0;
+	}
 	if (argc != 5) {
 		fprintf(stderr, "usage: identical <presets dir> <widescreen dir> <v041-ws-models.txt> <tmp>\n");
 		return 2;

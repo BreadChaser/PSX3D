@@ -52,18 +52,18 @@ static const char *const categories[] = {"Settings",
 										 "Speed hacks",
 										 "Button mappings"};
 enum { F_SCREEN, F_SMOOTH, F_STEREO, F_FPS, F_SIDE, F_AUDIO, F_SOUNDS,
-       F_MUSIC, F_REWIND, F_RECORD, F_TONE, F_COUNT };
+       F_MUSIC, F_REWIND, F_RECORD, F_TONE, F_ALL, F_FF, F_FLOOR, F_COUNT };
 static const char *const labels[] = {
  [F_SCREEN]="Screen mode", [F_SMOOTH]="Smoothing", [F_STEREO]="3D",
  [F_FPS]="Show FPS", [F_SIDE]="Bottom-screen buttons", [F_AUDIO]="Smooth audio when slow",
  [F_SOUNDS]="Menu sounds", [F_MUSIC]="Library music",
- [F_REWIND]="Rewind", [F_RECORD]="Record audio", [F_TONE]="Test tone"
+ [F_REWIND]="Rewind", [F_RECORD]="Record audio", [F_TONE]="Test tone", [F_ALL]="Show all settings", [F_FF]="Fast forward", [F_FLOOR]="Auto picture floor"
 };
 static const int groups[] = {
  [F_SCREEN]=CAT_DISPLAY, [F_SMOOTH]=CAT_DISPLAY, [F_STEREO]=CAT_DISPLAY,
  [F_FPS]=CAT_DISPLAY, [F_SIDE]=CAT_CONTROLS, [F_AUDIO]=CAT_SOUND, [F_SOUNDS]=CAT_SOUND,
  [F_MUSIC]=CAT_SOUND, [F_REWIND]=CAT_SAVES,
- [F_RECORD]=CAT_DEBUG, [F_TONE]=CAT_DEBUG
+ [F_RECORD]=CAT_DEBUG, [F_TONE]=CAT_DEBUG, [F_ALL]=CAT_ADVANCED, [F_FF]=CAT_PERFORMANCE, [F_FLOOR]=CAT_PERFORMANCE
 };
 static const char *const tips[] = {
  [F_SCREEN]="Widescreen only in games with a widescreen fix.",
@@ -74,7 +74,10 @@ static const char *const tips[] = {
  [F_AUDIO]="Keep sound smooth when the game runs slowly.",
  [F_SOUNDS]="Play sounds while navigating menus.", [F_MUSIC]="Play music in the game library.",
  [F_REWIND]="Hold the rewind shortcut to go back.",
- [F_RECORD]="Capture 30 seconds for troubleshooting.", [F_TONE]="Play a tone to check audio output."
+ [F_RECORD]="Capture 30 seconds for troubleshooting.", [F_TONE]="Play a tone to check audio output.",
+ [F_ALL]="Global: reveal settings managed by game presets.",
+ [F_FF]="Allow the fast-forward buttons and hotkey.",
+ [F_FLOOR]="Pictures per second; higher can reduce game speed."
 };
 // Longer help, shown on the top screen while the row is selected.
 static const char *const helps[] = {
@@ -88,7 +91,10 @@ static const char *const helps[] = {
  [F_MUSIC]="Play background music while browsing your games.",
  [F_REWIND]="Save recent moments so you can hold the Rewind button to go back. Needs free memory.",
  [F_RECORD]="Record 30 seconds of game audio for troubleshooting.",
- [F_TONE]="Play a steady tone to check audio output."
+ [F_TONE]="Play a steady tone to check audio output.",
+ [F_ALL]="Show options hidden by game presets and allow overrides. Preset values stay in effect until you change them. P marks a preset. Changes may reduce speed or compatibility. This switch applies to all games.",
+ [F_FF]="Allow fast-forward buttons and hotkeys. A game's preset may disable this until it has been tested.",
+ [F_FLOOR]="Auto tries to draw at least this many pictures per second when the game supplies them. A lower floor can improve game speed but looks choppier. Default: 15."
 };
 static const char *const category_tips[] = {
  [CAT_DISPLAY]="Picture shape, smoothing, 3D and the FPS counter.",
@@ -153,7 +159,8 @@ static bool frontend_visible(settings_ui_t *s, int i)
 	if (i == F_SIDE &&
 		(!g_new3ds || (s->game && (g_cfg.show_fps == 2 || (!touch_buttons_active() && !g_cfg.show_fps)))))
 		return false;
-	if (i == F_REWIND && (!s->game || !game_capabilities().rewind))
+	if ((i == F_FF || i == F_FLOOR) && !g_cfg.show_all_settings) return false;
+	if (i == F_REWIND && (!s->game || !g_new3ds || (!game_capabilities().rewind && !g_cfg.show_all_settings)))
 		return false;
 	if ((i == F_RECORD || i == F_TONE) && (!s->game || !(g_cfg.debug || capture_debug)))
 		return false;
@@ -173,6 +180,7 @@ static void rebuild(settings_ui_t *s)
 			if (i != CAT_CHEATS)
 				add(s, CATEGORY_ROW + i);
 	} else if (s->page == CAT_ADVANCED) {
+		add(s, F_ALL);
 		add(s, CATEGORY_ROW + CAT_CPU);
 		add(s, CATEGORY_ROW + CAT_HACKS);
 		add(s, CATEGORY_ROW + CAT_PICTURE);
@@ -204,7 +212,7 @@ static const char *override_key(int item)
 {
 	static const char *const keys[] = {
 	 [F_SCREEN]="screen", [F_SMOOTH]="smooth", [F_STEREO]="stereo", [F_FPS]="show_fps",
-	 [F_SIDE]="touch_click_left", [F_AUDIO]="audio_stretch", [F_REWIND]="rewind"};
+	 [F_SIDE]="touch_click_left", [F_AUDIO]="audio_stretch", [F_REWIND]="rewind", [F_FF]="fast_forward", [F_FLOOR]="o.auto_floor"};
 	if (item >= CORE_ROW && item < CONTROL_ROW)
 		return options_game_key(options_key(item - CORE_ROW));
 	return item >= 0 && item < F_COUNT && item < (int)(sizeof(keys) / sizeof(keys[0])) ? keys[item] : NULL;
@@ -215,6 +223,40 @@ static bool overridden(settings_ui_t *s, int item)
 		return false;
 	const char *key = override_key(item);
 	return key && config_game_overridden(key);
+}
+static const char *preset_key(int item)
+{
+	if (item >= CORE_ROW && item < CONTROL_ROW) {
+		const char *key = options_key(item - CORE_ROW);
+		if (!strcmp(key, "pcsx_rearmed_frameskip_type")) return "frameskip";
+		if (!strcmp(key, "pcsx_rearmed_psxclock")) return "psxclock";
+	}
+	if (item == F_SCREEN) return "widescreen";
+	if (item == F_FF) return "fast_forward";
+	if (item == F_REWIND) return "rewind";
+	if (item == F_FLOOR) return "auto_floor";
+	if (item >= CONTROL_ROW && item < CHEAT_ROW) {
+		const char *key = input_control_key(item - CONTROL_ROW);
+		if (key && !strcmp(key, "touch_stick")) return "stick";
+		int slot = input_control_slot(item - CONTROL_ROW) - INPUT_PHYSICAL_N;
+		static const char *const keys[] = {"touch_l2", "touch_r2", "touch_l3", "touch_r3", "touch_x1", "touch_x2"};
+		if (slot >= 0 && slot < 6) {
+			if (game_preset_sets(keys[slot])) return keys[slot];
+			return slot < 2 ? "l2r2" : slot < 4 ? "l3r3" : slot == 4 ? "fast_forward" : "rewind";
+		}
+	}
+	return "";
+}
+static bool preset_row(settings_ui_t *s, int item)
+{
+	if (!s->game || !game_preset_sets(preset_key(item))) return false;
+	if (item >= CONTROL_ROW && item < CHEAT_ROW) {
+		int slot = input_control_slot(item - CONTROL_ROW);
+		if (slot >= 0 && input_map_raw(slot) != INPUT_BIND_PRESET) return false;
+		const char *key = input_control_key(item - CONTROL_ROW);
+		if (key && !strcmp(key, "touch_stick") && g_cfg.touch_stick >= 0) return false;
+	}
+	return true;
 }
 static const char *row_label(int i, void *ud)
 {
@@ -229,12 +271,12 @@ static const char *row_label(int i, void *ud)
 		static char control[80];
 		int row = item - CONTROL_ROW;
 		snprintf(control, sizeof(control), "%s%s", input_control_label(row, NULL),
-				 config_control_overridden(row) ? " *" : "");
+				 config_control_overridden(row) ? " *" : preset_row(s, item) ? " P" : "");
 		return control;
 	}
 	static char text[80];
 	snprintf(text, sizeof(text), "%s%s", item >= CORE_ROW ? options_desc(item - CORE_ROW) : labels[item],
-			 overridden(s, item) ? " *" : "");
+			 overridden(s, item) ? " *" : preset_row(s, item) ? " P" : "");
 	return text;
 }
 static const char *row_value(int i, void *ud)
@@ -250,6 +292,9 @@ static const char *row_value(int i, void *ud)
 	if (item >= CORE_ROW)
 		return options_value(item - CORE_ROW);
 	switch (item) {
+	case F_ALL: return g_cfg.show_all_settings ? "On" : "Off";
+	case F_FF: return game_capabilities().fast_forward ? "On" : "Off";
+	case F_FLOOR: { static char value[12]; snprintf(value, sizeof(value), "%d /s", game_auto_floor()); return value; }
 	case F_SCREEN:
 		return (const char *const[]){"Original", "Stretch", "Widescreen"}[config_screen_mode()];
 	case F_SMOOTH:
@@ -339,7 +384,7 @@ static void draw_settings(void *ud)
 	// In a game every value belongs to that game; unchanged ones follow all games.
 	if (s->game && item >= 0 && item < CONTROL_ROW && item != F_REWIND && (item >= CORE_ROW || override_key(item)))
 		ui_text_ex(NULL, 12, 199, .4f, white, 0,
-				   overridden(s, item) ? "* Changed for this game    X use all-games value" : "Same as all games");
+				   overridden(s, item) ? "* Changed for this game    X inherit" : preset_row(s, item) ? item == F_SCREEN ? "P Preset screen policy" : "P Game preset    X inherit" : "Same as all games");
 	// Category rows open with A; Left/Right only changes values.
 	ui_text_ex(NULL, 160, 222, .39f, muted, C2D_AlignCenter,
 			   s->page == CAT_HOME ? "A open    B back"
@@ -358,6 +403,7 @@ static void change(settings_ui_t *s, int item, int dir)
 		return;
 	}
 	if (item >= CONTROL_ROW) {
+		if (!s->game) config_user_changed(input_control_key(item - CONTROL_ROW));
 		input_control_cycle(item - CONTROL_ROW, dir);
 		config_controls_save();
 		return;
@@ -366,15 +412,41 @@ static void change(settings_ui_t *s, int item, int dir)
 		options_cycle(item - CORE_ROW, dir);
 		return;
 	}
+	if (!s->game && override_key(item)) config_user_changed(override_key(item));
+	if (item == F_SOUNDS) config_user_changed("sounds");
+	if (item == F_MUSIC) config_user_changed("music");
 	switch (item) {
+	case F_ALL:
+		g_cfg.show_all_settings ^= 1;
+		config_user_changed("show_all_settings");
+		input_touch_reset(); sync_picture();
+		break;
+	case F_FF: {
+		int value = !game_capabilities().fast_forward;
+		if (s->game) gamecfg_set_int("fast_forward", value);
+		else { config_user_changed("fast_forward"); config_set_core_override("preset_fast_forward", value ? "1" : "0"); }
+		options_mark_updated(); input_touch_reset(); break;
+	}
+	case F_FLOOR: {
+		int value = game_auto_floor() + dir;
+		if (value < 1) value = 60;
+		if (value > 60) value = 1;
+		if (s->game) gamecfg_set_int("o.auto_floor", value);
+		else { char v[8]; snprintf(v, sizeof(v), "%d", value); config_set_user_core_override("psx3d_auto_floor", v); }
+		options_mark_updated();
+		break;
+	}
 	case F_SCREEN:
 		if (s->game) {
 			// Without a widescreen fix the choices are Original and Stretch.
 			int n = config_ws_fix() ? 3 : 2;
 			config_game_set_screen((config_screen_mode() + dir + n) % n);
 			sync_picture();
-		} else
+		} else {
+			config_user_changed("stretch");
+			config_user_changed("core.pcsx_rearmed_psx3d_widescreen");
 			config_set_screen_mode((config_screen_mode() + dir + 3) % 3);
+		}
 		break;
 	case F_SMOOTH:
 		g_cfg.smooth ^= 1;
@@ -411,6 +483,7 @@ static void change(settings_ui_t *s, int item, int dir)
 		break;
 	case F_REWIND:
 		gamecfg_set_int("rewind", !gamecfg_int("rewind", 0));
+		options_mark_updated();
 		if (gamecfg_int("rewind", 0))
 			rewind_start();
 		else
@@ -436,13 +509,21 @@ static void draw_help(void *ud)
 	int item = s->count ? s->items[s->selected[s->page]] : -1;
 	if (item >= CATEGORY_ROW || item < 0 || item >= CHEAT_ROW)
 		return;
-	if (item >= CONTROL_ROW)
-		ui_help_panel(150, input_control_label(item - CONTROL_ROW, NULL), NULL, input_controls_help());
-	else if (item >= CORE_ROW)
-		ui_help_panel(150, options_desc(item - CORE_ROW), options_impact(item - CORE_ROW),
-					  options_info(item - CORE_ROW));
-	else
-		ui_help_panel(150, labels[item], item == F_SCREEN && s->game ? screen_note() : NULL, helps[item]);
+	bool preset = preset_row(s, item);
+	const char *title = item >= CONTROL_ROW ? input_control_label(item - CONTROL_ROW, NULL)
+		: item >= CORE_ROW ? options_desc(item - CORE_ROW) : labels[item];
+	const char *impact = item >= CORE_ROW && item < CONTROL_ROW ? options_impact(item - CORE_ROW)
+		: item == F_SCREEN && s->game ? screen_note() : NULL;
+	const char *help = item >= CONTROL_ROW ? input_controls_help()
+		: item >= CORE_ROW ? options_info(item - CORE_ROW) : helps[item];
+	char evidence_help[768];
+	if (preset) {
+		snprintf(evidence_help, sizeof(evidence_help), "Preset evidence: %s. %s",
+			game_preset_evidence(preset_key(item)), help ? help : "");
+		help = evidence_help;
+		impact = item == F_SCREEN ? "P Game preset availability policy" : "P Game preset; you can override it";
+	}
+	ui_help_panel(preset ? 100 : 150, title, impact, help);
 }
 static bool run_settings(bool game, int page, void (*draw_top)(void *))
 {

@@ -32,9 +32,17 @@ OPTIONS = {
     'frameskip': (['off', 'auto'], 'auto', 'auto'),
     'widescreen': (['hidden', 'on', 'warn', 'off'], 'on', 'on'),
     'psxclock': (None, '57', '57'),
+    'auto_floor': (None, '15', '15'),
 }
 for slot in ('l2', 'r2', 'l3', 'r3', 'x1', 'x2'):
     OPTIONS['touch_' + slot] = (BINDS, None, None)
+# Vocabulary and numeric bounds are shared with the C runtime, not duplicated.
+SCHEMA = {}
+for name, words, lo, hi in re.findall(r'PRESET_KEY\((\w+), "([^"\n]*)", (-?\d+), (\d+)\)',
+        (ROOT / 'psx3d/source/preset_schema.def').read_text()):
+    SCHEMA[name] = (words.split('|') if words else None, int(lo), int(hi))
+    old, new = OPTIONS[name][1:]
+    OPTIONS[name] = (SCHEMA[name][0], old, new)
 COMMON_ONLY = {'title', 'version', 'serials', 'curated'}
 
 
@@ -43,7 +51,13 @@ def parse(text):
     data = {'common': {}, 'old': {}, 'new': {}}
     errors = []
     section = 'common'
-    for number, raw in enumerate(text.splitlines(), 1):
+    if len(text.splitlines()) > 512:
+        errors.append('more than 512 lines')
+    for number, raw in enumerate(text.splitlines(keepends=True), 1):
+        if len(raw.encode('utf-8')) > 255:
+            errors.append(f'line {number}: exceeds 255 bytes including newline')
+        if '\x00' in raw or any(ord(c) > 127 for c in raw):
+            errors.append(f'line {number}: only ASCII text is supported')
         line = re.split('[;#]', raw, maxsplit=1)[0].strip()
         if not line:
             continue
@@ -85,10 +99,14 @@ def check_file(path, text, bundles, core_clock):
     for key in ('title', 'version', 'serials'):
         if key not in common:
             errors.append(f'missing {key}')
+    if not common.get('title', ('',))[0]:
+        errors.append('title is empty')
     version = common.get('version', ('', 0))[0]
     if 'version' in common and not re.fullmatch(r'[1-9][0-9]{0,5}', version):
         errors.append(f'version must be a positive number, not {version!r}')
-    serials = [s.strip() for s in common.get('serials', ('', 0))[0].split(',') if s.strip()]
+    serials = [s.strip() for s in common.get('serials', ('', 0))[0].split(',')]
+    if len(serials) > 26:
+        errors.append('more than 26 serials')
     if 'serials' in common and not serials:
         errors.append('serials is empty')
     for serial in serials:
@@ -105,6 +123,17 @@ def check_file(path, text, bundles, core_clock):
     for section, keys in data.items():
         for key, (value, line) in keys.items():
             where = f'line {line}: {key}'
+            if '.' in key:
+                base, suffix = key.split('.', 1)
+                if base not in OPTIONS or suffix not in ('source', 'confidence'):
+                    errors.append(f'{where}: unknown evidence key')
+                elif not value or (suffix == 'source' and len(value.encode()) > 127):
+                    errors.append(f'{where}: source must be 1-127 bytes')
+                elif suffix == 'confidence' and value not in ('high', 'medium', 'low', 'unassessed'):
+                    errors.append(f'{where}: invalid confidence')
+                if base not in keys:
+                    errors.append(f'{where}: evidence without an option in the same section')
+                continue
             if key in COMMON_ONLY:
                 if section != 'common':
                     errors.append(f'{where} belongs at the top, not in [{section}]')
@@ -112,10 +141,13 @@ def check_file(path, text, bundles, core_clock):
             if key not in OPTIONS:
                 errors.append(f'{where}: unknown key')
                 continue
+            for suffix in ('source', 'confidence'):
+                if key + '.' + suffix not in keys:
+                    errors.append(f'{where}: missing {suffix}')
             values, old_default, new_default = OPTIONS[key]
             if values is None:
-                if not re.fullmatch(r'[0-9]+', value) or not 30 <= int(value) <= 100:
-                    errors.append(f'{where}: must be a number 30-100')
+                if not re.fullmatch(r'[0-9]+', value) or not SCHEMA[key][1] <= int(value) <= SCHEMA[key][2]:
+                    errors.append(f'{where}: must be a number {SCHEMA[key][1]}-{SCHEMA[key][2]}')
                     continue
             elif value not in values:
                 errors.append(f'{where}: {value!r} is not one of {", ".join(values)}')
@@ -128,8 +160,6 @@ def check_file(path, text, bundles, core_clock):
                 errors.append(f'{where} repeats the common value')
             if key == 'rewind' and value == 'yes' and section in ('common', 'old'):
                 errors.append(f'{where}: Old 3DS cannot rewind; set it in [new]')
-            if key == 'frameskip' and curated != 'yes':
-                errors.append(f'{where}: frameskip applies only with curated = yes')
             if key == 'widescreen' and value in ('warn', 'off') and not any(s in bundles for s in serials):
                 errors.append(f'{where} = {value} needs a widescreen bundle in romfs/widescreen')
             if key == 'psxclock':
@@ -154,10 +184,12 @@ def main():
             problems.append(f'{bundle.name}: models= moved to the preset files; remove it')
 
     pack_text = (directory / 'VERSION').read_text().strip() if (directory / 'VERSION').exists() else ''
-    if not re.fullmatch(r'[1-9][0-9]*', pack_text):
+    if not re.fullmatch(r'[1-9][0-9]{0,5}', pack_text):
         problems.append('VERSION: missing or not a positive number')
     pack = int(pack_text) if pack_text.isdigit() else 0
     owner, versions, texts = {}, {}, {}
+    if len(list(directory.glob('*.ini'))) > 256:
+        problems.append('more than 256 files')
     for path in sorted(directory.iterdir()):
         if path.name == 'VERSION':
             continue
@@ -174,6 +206,9 @@ def main():
             if serial in owner:
                 problems.append(f'{serial} is in both {owner[serial]} and {path.name}')
             owner.setdefault(serial, path.name)
+
+    if len(owner) > 2048:
+        problems.append('more than 2048 serials')
 
     # Versions against a release: a changed file and the pack must both move up.
     base = args.base or git('describe', '--tags', '--abbrev=0').stdout.strip()
