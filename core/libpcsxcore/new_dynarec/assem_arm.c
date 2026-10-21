@@ -2000,6 +2000,66 @@ static void c2op_call_rgb_func(void *func,int lm,int need_ir,int need_flags)
 #include "../gte_neon.h"
 #include "../gte_arm.h"
 
+#ifdef HAVE_ARMV6
+/* Flagless sf=1 NCCT. The generic C path calls the full flag-producing
+ * matrix helper three times even though those flags are dead. Signed 44-bit
+ * wraps in that helper disappear modulo 2^32 after the 12-bit shift, so a
+ * full 64-bit sum has exactly the same MAC word. Keep all clamps and writes. */
+static int c2op_color_ir(int v, int lm)
+{
+  return v > 32767 ? 32767 : v < (lm ? 0 : -32768) ? (lm ? 0 : -32768) : v;
+}
+
+static void c2op_ncct_nf(psxCP2Regs *cp2, u32 opcode)
+{
+  const s16 *light = (const s16 *)&cp2->CP2C.r[8];
+  const s16 *color = (const s16 *)&cp2->CP2C.r[16];
+  int lm = (opcode >> 10) & 1, v, row;
+  u_int rgb = cp2->CP2D.r[6];
+  for (v = 0; v < 3; v++) {
+    const s16 *vec = (const s16 *)&cp2->CP2D.r[v*2];
+    s32 ir[3], mac[3];
+    u_int packed = rgb & 0xff000000;
+    for (row = 0; row < 3; row++) {
+      const s16 *m = light + row*3;
+      s32 a = ((s64)(m[0]*vec[0]) + m[1]*vec[1] + m[2]*vec[2]) >> 12;
+      ir[row] = c2op_color_ir(a, lm);
+    }
+    for (row = 0; row < 3; row++) {
+      const s16 *m = color + row*3;
+      s64 sum = (s64)(s32)cp2->CP2C.r[13+row] * 4096;
+      s32 a;
+      int b;
+      sum += m[0]*ir[0]; sum += m[1]*ir[1]; sum += m[2]*ir[2];
+      a = (s32)(sum >> 12);
+      a = c2op_color_ir(a, lm);
+      mac[row] = ((s32)((rgb >> (row*8)) & 255) * a * 16) >> 12;
+      b = mac[row] >> 4;
+      b = b < 0 ? 0 : b > 255 ? 255 : b;
+      packed |= (u_int)b << (row*8);
+    }
+    cp2->CP2D.r[20+v] = packed;
+    if (v == 2) {
+      for (row = 0; row < 3; row++) {
+        cp2->CP2D.r[25+row] = mac[row];
+        /* C GTE handlers update only the IR low halfword. */
+        cp2->CP2D.p[9+row].sw.l = c2op_color_ir(mac[row], lm);
+      }
+    }
+  }
+  cp2->CP2C.r[31] = 0;
+}
+
+/* Keep the compiler's opcode switch and jump table at their original size. */
+static __attribute__((__noinline__)) gte_handler *c2op_get_handler_nf(u32 source)
+{
+  if ((source & 0x3f) == GTEOP_NCCT && (source & (1u << 19)))
+    return c2op_ncct_nf;
+  return gteGetHandler_nf(source);
+}
+
+#endif
+
 static void c2op_assemble(struct compile_state *st, int i, const struct regstat *i_regs)
 {
   u_int c2op = st->source[i] & 0x3f;
@@ -2013,7 +2073,11 @@ static void c2op_assemble(struct compile_state *st, int i, const struct regstat 
 #ifdef DRC_DBG
   need_flags = 1;
 #endif
+#ifdef HAVE_ARMV6
+  handler = need_flags ? gteGetHandler(st->source[i]) : c2op_get_handler_nf(st->source[i]);
+#else
   handler = need_flags ? gteGetHandler(st->source[i]) : gteGetHandler_nf(st->source[i]);
+#endif
   if (handler) {
     int need_ir = (gte_unneeded[i+1] & 0xe00) != 0xe00;
     assem_debug("gte op %08x, unneeded %016llx, need_flags %d, need_ir %d\n",

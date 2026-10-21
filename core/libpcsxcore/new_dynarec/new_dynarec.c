@@ -381,7 +381,7 @@ struct compile_state
 // Treated like a guest register with its own home in dynarec_local
 // (LO_ldtmp, the otherwise unused zeromem_ptr word).
 #define LDTMP 34
-#define NDRC_LAYOUT_PAD "2460" // see new_dynarec_init()
+#define NDRC_LAYOUT_PAD "1908" // see new_dynarec_init()
 //#define CSREG 35 // Coprocessor status
 #define CCREG 36 // Cycle count
 #define INVCP 37 // Pointer to invalid_code
