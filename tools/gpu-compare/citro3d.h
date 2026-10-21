@@ -1,6 +1,6 @@
 #pragma once
 #include "3ds.h"
-typedef struct { void *data; u16 width, height; int format; } C3D_Tex;
+typedef struct { void *data; u16 width, height; int format; bool in_vram; } C3D_Tex;
 typedef struct { int dummy; } C3D_AttrInfo, DVLB_s_inner;
 typedef struct { C3D_Tex *tex; } C3D_RenderTarget;
 typedef struct { const void *data; int stride; } C3D_BufInfo;
@@ -16,9 +16,10 @@ typedef enum { GPU_ZERO, GPU_ONE, GPU_SRC_COLOR, GPU_ONE_MINUS_SRC_COLOR, GPU_DS
 	GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA, GPU_DST_ALPHA, GPU_ONE_MINUS_DST_ALPHA, GPU_SRC_ALPHA_SATURATE } GPU_BLENDFACTOR;
 typedef enum { GPU_NEVER, GPU_ALWAYS, GPU_EQUAL, GPU_NOTEQUAL, GPU_LESS, GPU_LEQUAL, GPU_GREATER, GPU_GEQUAL } GPU_TESTFUNC;
 extern unsigned sim_c3d_draws, sim_dither_setups;
-static inline bool C3D_TexInit(C3D_Tex *t, int w, int h, int f) { (void)f; t->data = calloc(w * h, 4); t->format = f; t->width = w; t->height = h; return t->data != NULL; }
-static inline bool C3D_TexInitVRAM(C3D_Tex *t, int w, int h, int f) { return C3D_TexInit(t, w, h, f); }
-static inline void C3D_TexDelete(C3D_Tex *t) { free(t->data); t->data = NULL; }
+static inline bool C3D_TexInit(C3D_Tex *t, int w, int h, int f) { (void)f; t->in_vram = false; t->data = calloc(w * h, 4); t->format = f; t->width = w; t->height = h; return t->data != NULL; }
+static inline bool C3D_TexInitVRAM(C3D_Tex *t, int w, int h, int f) { if (f == GPU_RGBA8 && getenv("SIM_RTT_MAX_BYTES") && w*h*4 > atoi(getenv("SIM_RTT_MAX_BYTES"))) return false; bool ok = C3D_TexInit(t, w, h, f); t->in_vram = ok; return ok; }
+// citro3d releases storage but leaves the non-cube texture descriptor intact.
+static inline void C3D_TexDelete(C3D_Tex *t) { free(t->data); }
 static inline void C3D_TexSetFilter(C3D_Tex *t, int a, int b) { (void)t; (void)a; (void)b; }
 static inline void C3D_TexSetWrap(C3D_Tex *t, int a, int b) { (void)t; (void)a; (void)b; }
 void C3D_TexBind(int u, C3D_Tex *t);

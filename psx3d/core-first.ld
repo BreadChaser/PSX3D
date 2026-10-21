@@ -82,6 +82,9 @@ SECTIONS
 		*(.stub)
 		*(.gnu.warning)
 		*(.gnu.linkonce.t*)
+		/* Optional renderer feedback path: its growth must not move the
+		   existing core or library code. This is live code, not padding. */
+		*(.pica_rtt.text)
 		. = ALIGN(4);
 		__psx3d_frontend_text_end = .;
 
@@ -264,6 +267,9 @@ SECTIONS
         . += SIZEOF(.tbss);
 		__tls_end = .;
 	} : data
+	/* RTT descriptors are deliberately outside the established core BSS.
+	   Keep them in startup's zero range without turning .bss into PROGBITS. */
+	.pica_rtt_bss (NOLOAD) : { *(.pica_rtt.bss) } : data
 	__bss_end__ = .;
 
 	__end__ = ABSOLUTE(.) ;

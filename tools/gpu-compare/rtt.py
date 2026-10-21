@@ -43,6 +43,29 @@ def copy(path):
     t.finish()
 
 
+def strips(path):
+    """Fused native sampling: every RGB5/STP value, tint and band alignment."""
+    vram = [0] * (1024 * 512)
+    for y in range(256):
+        for x in range(256):
+            vram[(256+y)*1024+x] = y*256+x
+    t = Trace(path)
+    t.init(vram)
+    t.commands([0xe4000000 | 1023 | (511 << 10), 0xe1000110,
+                0xe6000001, 0x65808080, xy(640,0), uv(0,0), xy(256,256),
+                0xe100010a])
+    for y in range(256):
+        t.commands([0x64805252, xy(320,y), uv(0,y), xy(256,1)])
+    for y in range(16):
+        # Cross native 8-row bands and use unaligned source columns.
+        t.commands([0x65808080, xy(320,256+y*4), uv(3,y), xy(160,4)])
+    # A clipped sprite and a windowed sprite must retain the atlas fallback.
+    t.commands([0xe4000000 | 479 | (511 << 10),
+                0x64805252, xy(400,400), uv(0,0), xy(160,2),
+                0xe2000001, 0x64805252, xy(320,404), uv(0,0), xy(160,2)])
+    t.finish()
+
+
 def palette(path):
     vram=[0]*(1024*512)
     for y in range(32):
@@ -111,18 +134,22 @@ def main():
     p.add_argument('--output', type=Path, required=True)
     a = p.parse_args()
     a.output.mkdir(parents=True, exist_ok=True)
-    for name, generate in [('direct', direct), ('copy', copy), ('stage', stage), ('palette', palette), ('regions', regions)]:
+    for name, generate in [('direct', direct), ('strips', strips), ('copy', copy), ('stage', stage), ('palette', palette), ('regions', regions)]:
         trace = a.output / (name+'.gputrace')
         generate(trace)
         hashes = []
-        for label, debug in [('old', '262144'), ('cache-off', '524288'), ('forced-new', '1048576'), ('new', '0')]:
+        for label, debug in [('old', '262144'), ('cache-off', '524288'), ('forced-new', '1048576'), ('new', '0'), ('small-vram', '0'), ('no-target', '0')]:
             dest = a.output/name/label
             dest.mkdir(parents=True, exist_ok=True)
             result = subprocess.run([a.replay,trace,dest], check=True, capture_output=True, text=True,
-                env=dict(os.environ,PICA_DEBUG=debug,GPU_HASH_VRAM='1',PICA_STATS='1',SIM_CHECK_STAGE_LIFETIME='1',SIM_CHECK_ATLAS_LIFETIME='1'))
+                env=dict(os.environ, **({'SIM_NO_RTT_TARGET':'1'} if label=='no-target' else {'SIM_RTT_MAX_BYTES':'32768'} if label=='small-vram' else {}), PICA_DEBUG=debug,GPU_HASH_VRAM='1',PICA_STATS='1',SIM_CHECK_STAGE_LIFETIME='1',SIM_CHECK_ATLAS_LIFETIME='1'))
             (dest/'replay.log').write_text(result.stderr)
             hashes.append(re.findall(r'VRAM hash (\w+)',result.stderr))
-        assert hashes[0] and hashes[0] == hashes[1] == hashes[2] == hashes[3], (name, hashes)
+            if name=='direct' and label in ('new', 'small-vram'):
+                assert any(int(n)>0 for n in re.findall(r'gpu tiles (\d+)', result.stderr)), 'GPU decoder never ran'
+            if label=='no-target':
+                assert not any(int(n)>0 for n in re.findall(r'gpu tiles (\d+)', result.stderr))
+        assert hashes[0] and all(h==hashes[0] for h in hashes), (name, hashes)
         for picture in (a.output/name/'old').glob('*.ppm'):
             assert picture.read_bytes() == (a.output/name/'new'/picture.name).read_bytes()
             assert picture.read_bytes() == (a.output/name/'cache-off'/picture.name).read_bytes()

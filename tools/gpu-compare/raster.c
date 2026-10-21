@@ -49,6 +49,35 @@ static void check_atlas_pending(void)
         assert(pixels[i]==atlas_expected[i]);
     }
 }
+// GX copies are GPU writes ordered after pending draws, just as draws to
+// a texture target are. Check for CPU stomps before the copy, then retire
+// the older sampled values that the GPU is permitted to replace.
+int GX_TextureCopy(u32 *src, u32 sd, u32 *dst, u32 dd, u32 n, u32 flags)
+{
+    (void)flags;
+    check_stage_pending();
+    check_atlas_pending();
+    unsigned width=(sd&65535)*16, outwidth=(dd&65535)*16;
+    if (!width || !outwidth) memcpy(dst,src,n);
+    else {
+        assert(width==outwidth);
+        while (n) {
+            unsigned bytes=n<width?n:width;
+            memcpy(dst,src,bytes); n-=bytes;
+            src=(u32*)((u8*)src+bytes+(sd>>16)*16);
+            dst=(u32*)((u8*)dst+bytes+(dd>>16)*16);
+        }
+    }
+    if (check_atlas && pending_atlas.data) {
+        const u32 *pixels=pending_atlas.data;
+        for (unsigned j=0;j<atlas_count;j++) {
+            unsigned i=atlas_indices[j];
+            atlas_expected[i]=pixels[i];
+        }
+    }
+    return 0;
+}
+
 void C3D_FrameEnd(u8 flags)
 {
     (void)flags;
@@ -69,7 +98,7 @@ unsigned sim_tiled(int x, int y, int w)
 
 void C3D_TexBind(int u, C3D_Tex *t) { assert(u < 2); if(t) textures[u] = *t; else memset(&textures[u],0,sizeof(textures[u])); }
 C3D_RenderTarget *C3D_RenderTargetCreateFromTex(C3D_Tex *t, int f, int l, int d)
-{ (void)f; (void)l; (void)d; assert(ntargets<8); C3D_RenderTarget *p=&targets[ntargets++]; p->tex=t; return p; }
+{ (void)f; (void)l; (void)d; if (!t->in_vram || (t->format==GPU_RGBA8 && getenv("SIM_NO_RTT_TARGET"))) return NULL; assert(ntargets<8); C3D_RenderTarget *p=&targets[ntargets++]; p->tex=t; return p; }
 bool C3D_FrameDrawOn(C3D_RenderTarget *t) { rt = *t; return true; }
 // stereo-sim.c: the current target and vertex buffer
 C3D_Tex *sim_rt_tex(void) { return rt.tex; }

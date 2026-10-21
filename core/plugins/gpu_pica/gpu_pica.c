@@ -8,14 +8,15 @@
  * 1024x512 RGBA5551 render target (the PS1's own 15-bit + mask format), so
  * the displayed picture is a rectangle of it and needs no CPU work.
  *
- * Textures: a texture page (4/8-bit with a CLUT, or 15-bit) is decoded once
- * into a 256x256 RGBA8 texture and reused until that part of VRAM changes.
+ * Textures: bounded page regions are decoded into a shared RGBA8 atlas
+ * and reused until their source cells change. GPU-written direct-colour
+ * regions decode through VRAM scratch; short sprites can sample a native copy.
  * Texel alpha keeps the PS1's per-texel rules: 0 = transparent (colour 0),
  * 128 = semi-transparent bit set, 255 = opaque. That lets the common
  * blending modes (B/2+F/2 and B+F) draw in a single pass.
  *
- * Software VRAM (gpu.vram) stays the source for texture decoding and the
- * CPU's uploads; uploads are also copied into the render target.
+ * Software VRAM (gpu.vram) supplies CPU decoding and uploads. GPU source
+ * snapshots stay ordered on the GPU; actual CPU reads retain readback debt.
  */
 #include <3ds.h>
 #include <citro3d.h>
@@ -128,6 +129,13 @@ static shaderProgram_s prog;
 static int u_proj, u_texscale;
 static C3D_Tex vram_tex;              // the PS1 VRAM render target
 static C3D_RenderTarget *target, *atlas_target;
+// PICA render targets must be in VRAM. The 4 MiB atlas is in linear RAM;
+// decode one cell row here, then copy missing cells into the atlas.
+#define DECODE_W 256
+#define DECODE_H 32
+// Keep optional RTT resources out of the established renderer data layout.
+static C3D_Tex decode_tex __attribute__((section(".pica_rtt.bss")));
+static C3D_Tex native_tex __attribute__((section(".pica_rtt.bss")));
 static C3D_Tex dither_tex;            // repeated PS1 4x4 signed offsets (8x8 hardware minimum)
 static int applied_dither = -1;     // independent of stage 0 / STP mask pass
 static unsigned dither_config = 1;   // 0 off, 1 E1-controlled, 2 force
@@ -784,7 +792,7 @@ static void trace_rtt(const tcache *c, const char *kind, int x, int y, int w, in
 	for (int yy = y & ~15; yy < y + h; yy += 16)
 		for (int xx = x & ~63; xx < x + w; xx += 64)
 			blocks += !!(drawn[(yy >> 4) & 31] & (1u << ((xx >> 6) & 15)));
-	fprintf(log, "%s %u %u %u %u %d %d %d %d %u %u %d %d %d %d\n",
+	fprintf(log, "%s %u %u %u %u %d %d %d %d %u %u %d %d %d %d %s\n",
 		kind, c->depth, c->page, c->clut, c->win, x, y, w, h,
 		blocks, gen_clock, gpu.screen.src_x, gpu.screen.src_y, gpu.screen.w, gpu.screen.h, rtt_old() ? "old" : "new");
 }
@@ -2269,7 +2277,7 @@ static bool decode_gpu(tcache *c, u64 need)
 	// page origin and each tile are 64/32 aligned).
 	for (u64 bits=need; bits; bits &= bits-1) {
 		int tile = __builtin_ctzll(bits), lu=(tile&7)*32, lv=(tile>>3)*32;
-		int x=c->ax+lu, y=c->ay+lv;
+		int x=lu, y=0;
 		int u=(px+c->rx+lu)&1023, t=VRAM_H-(py+c->ry+lv);
 		pvtx q[6] = {
 			{ x*4,y*4,u,t,~0u }, { (x+32)*4,y*4,u+32,t,~0u }, { x*4,(y+32)*4,u,t-32,~0u },
@@ -2293,46 +2301,69 @@ static bool decode_gpu(tcache *c, u64 need)
 	C3D_FrameSplit(0);
 	st_splits++;
 	C3D_FrameDrawOn(atlas_target);
-	C3D_SetViewport(0,0,1024,1024);
-	C3D_SetScissor(GPU_SCISSOR_DISABLE,0,0,1024,1024);
-	C3D_FVUnifSet(GPU_VERTEX_SHADER,u_proj+0,0.5f/1024,0,0,-1);
-	C3D_FVUnifSet(GPU_VERTEX_SHADER,u_proj+1,0,0.5f/1024,0,-1);
+	C3D_SetViewport(0,0,DECODE_W,DECODE_H);
+	C3D_SetScissor(GPU_SCISSOR_DISABLE,0,0,DECODE_W,DECODE_H);
+	C3D_FVUnifSet(GPU_VERTEX_SHADER,u_proj+0,0.5f/DECODE_W,0,0,-1);
+	C3D_FVUnifSet(GPU_VERTEX_SHADER,u_proj+1,0,0.5f/DECODE_H,0,-1);
 	C3D_FVUnifSet(GPU_VERTEX_SHADER,u_texscale,1.f/VRAM_W,1.f/VRAM_H,0,0);
 	C3D_TexBind(0,&vram_tex);
 	clear_tex_cache();
-	for (int i=0; i<6; i++) C3D_TexEnvInit(C3D_GetTexEnv(i));
-	C3D_TexEnv *e=C3D_GetTexEnv(0);
-	C3D_TexEnvSrc(e,C3D_RGB,GPU_TEXTURE0,GPU_CONSTANT,0);
-	C3D_TexEnvFunc(e,C3D_RGB,GPU_MODULATE);
-	C3D_TexEnvColor(e,0x001f1f1f);
-	C3D_TexEnvSrc(e,C3D_Alpha,GPU_TEXTURE0,GPU_TEXTURE0,0);
-	C3D_TexEnvOpAlpha(e,GPU_TEVOP_A_SRC_R,GPU_TEVOP_A_SRC_G,0);
-	C3D_TexEnvFunc(e,C3D_Alpha,GPU_ADD);
-	C3D_TexEnvScale(e,C3D_Alpha,GPU_TEVSCALE_4);
-	e=C3D_GetTexEnv(1);
-	C3D_TexEnvScale(e,C3D_RGB,GPU_TEVSCALE_4);
-	C3D_TexEnvSrc(e,C3D_Alpha,GPU_PREVIOUS,GPU_TEXTURE0,0);
-	C3D_TexEnvOpAlpha(e,GPU_TEVOP_A_SRC_ALPHA,GPU_TEVOP_A_SRC_B,0);
-	C3D_TexEnvFunc(e,C3D_Alpha,GPU_ADD);
-	C3D_TexEnvScale(e,C3D_Alpha,GPU_TEVSCALE_4);
-	e=C3D_GetTexEnv(2);
-	C3D_TexEnvScale(e,C3D_RGB,GPU_TEVSCALE_2);
-	C3D_TexEnvScale(e,C3D_Alpha,GPU_TEVSCALE_4);
-	e=C3D_GetTexEnv(3);
-	C3D_TexEnvScale(e,C3D_Alpha,GPU_TEVSCALE_4);
-	C3D_AlphaTest(false,GPU_ALWAYS,0);
-	C3D_AlphaBlend(GPU_BLEND_ADD,GPU_BLEND_ADD,GPU_ONE,GPU_ZERO,GPU_ONE,GPU_ZERO);
-	C3D_DrawArrays(GPU_TRIANGLES,first,n);
-	// The second pass writes only STP texels' alpha (128), including
-	// black+STP. Zero without STP remains transparent from the first pass.
-	for (int i=0; i<4; i++) C3D_TexEnvInit(C3D_GetTexEnv(i));
-	e=C3D_GetTexEnv(0);
-	C3D_TexEnvSrc(e,C3D_Both,GPU_TEXTURE0,GPU_CONSTANT,0);
-	C3D_TexEnvFunc(e,C3D_Alpha,GPU_MODULATE);
-	C3D_TexEnvColor(e,0x80000000);
-	C3D_AlphaTest(true,GPU_GREATER,0);
-	C3D_AlphaBlend(GPU_BLEND_ADD,GPU_BLEND_ADD,GPU_ZERO,GPU_ONE,GPU_ONE,GPU_ZERO);
-	C3D_DrawArrays(GPU_TRIANGLES,first,n);
+	// Reuse one 32-pixel row: the supersampled screen targets fragment
+	// VRAM, so a 256x256 scratch texture does not fit on either console.
+	for (int row=0; row<8; row++) {
+		int row_n=__builtin_popcount((need>>(row*8))&255)*6;
+		if (!row_n) continue;
+		for (int i=0; i<6; i++) C3D_TexEnvInit(C3D_GetTexEnv(i));
+		C3D_TexEnv *e=C3D_GetTexEnv(0);
+		C3D_TexEnvSrc(e,C3D_RGB,GPU_TEXTURE0,GPU_CONSTANT,0);
+		C3D_TexEnvFunc(e,C3D_RGB,GPU_MODULATE);
+		C3D_TexEnvColor(e,0x001f1f1f);
+		C3D_TexEnvSrc(e,C3D_Alpha,GPU_TEXTURE0,GPU_TEXTURE0,0);
+		C3D_TexEnvOpAlpha(e,GPU_TEVOP_A_SRC_R,GPU_TEVOP_A_SRC_G,0);
+		C3D_TexEnvFunc(e,C3D_Alpha,GPU_ADD);
+		C3D_TexEnvScale(e,C3D_Alpha,GPU_TEVSCALE_4);
+		e=C3D_GetTexEnv(1);
+		C3D_TexEnvScale(e,C3D_RGB,GPU_TEVSCALE_4);
+		C3D_TexEnvSrc(e,C3D_Alpha,GPU_PREVIOUS,GPU_TEXTURE0,0);
+		C3D_TexEnvOpAlpha(e,GPU_TEVOP_A_SRC_ALPHA,GPU_TEVOP_A_SRC_B,0);
+		C3D_TexEnvFunc(e,C3D_Alpha,GPU_ADD);
+		C3D_TexEnvScale(e,C3D_Alpha,GPU_TEVSCALE_4);
+		e=C3D_GetTexEnv(2);
+		C3D_TexEnvScale(e,C3D_RGB,GPU_TEVSCALE_2);
+		C3D_TexEnvScale(e,C3D_Alpha,GPU_TEVSCALE_4);
+		e=C3D_GetTexEnv(3);
+		C3D_TexEnvScale(e,C3D_Alpha,GPU_TEVSCALE_4);
+		C3D_AlphaTest(false,GPU_ALWAYS,0);
+		C3D_AlphaBlend(GPU_BLEND_ADD,GPU_BLEND_ADD,GPU_ONE,GPU_ZERO,GPU_ONE,GPU_ZERO);
+		C3D_DrawArrays(GPU_TRIANGLES,first,row_n);
+		// The second pass writes only STP texels' alpha (128), including
+		// black+STP. Zero without STP remains transparent from the first pass.
+		for (int i=0; i<4; i++) C3D_TexEnvInit(C3D_GetTexEnv(i));
+		e=C3D_GetTexEnv(0);
+		C3D_TexEnvSrc(e,C3D_Both,GPU_TEXTURE0,GPU_CONSTANT,0);
+		C3D_TexEnvFunc(e,C3D_Alpha,GPU_MODULATE);
+		C3D_TexEnvColor(e,0x80000000);
+		C3D_AlphaTest(true,GPU_GREATER,0);
+		C3D_AlphaBlend(GPU_BLEND_ADD,GPU_BLEND_ADD,GPU_ZERO,GPU_ONE,GPU_ONE,GPU_ZERO);
+		C3D_DrawArrays(GPU_TRIANGLES,first,row_n);
+		// Order target rendering, atlas copies and the next scratch reuse.
+		// Split before every copy so the frontend's GX-queue guard runs.
+		u32 bits=(need>>(row*8))&255;
+		while (bits) {
+			int first=__builtin_ctz(bits), end=first+1;
+			while (end<8 && (bits&(1u<<end))) end++;
+			bits &= ~(((1u<<end)-1)^((1u<<first)-1));
+			int x=first*32, y=row*32, w=(end-first)*32;
+			C3D_FrameSplit(0);
+			st_splits++;
+			GX_TextureCopy((u32*)((u32*)decode_tex.data+tiled(x,0,DECODE_W)),
+				GX_BUFFER_DIM(w*2,(DECODE_W-w)*2),
+				(u32*)((u32*)atlas[0].tex.data+tiled(c->ax+x,atlas[0].h-c->ay-y-32,atlas[0].w)),
+				GX_BUFFER_DIM(w*2,(atlas[0].w-w)*2),w*32*4,8);
+		}
+		first+=row_n;
+	}
+	trace_cache("gpu", c, need);
 	vstart=vpos; seq++;
 	st_gpu_tiles += n/6;
 	c->tiles |= need; c->gpu_tiles=true;
@@ -2736,6 +2767,81 @@ static void draw_poly_slow(pvtx *v, int n, bool quad, bool textured, u32 page, u
 	emit_tris(tri, ntri, blend_of(cmd), texmode, tex, true, polygon_dither(cmd));
 }
 
+// Wide, short, opaque framebuffer sprites can sample a native snapshot.
+// Quantize RGB5 and apply modulation in the consuming draw, avoiding a
+// separate RGBA8 decode draw for every strip. Mask-set makes every visible
+// texel opaque; colour zero without STP must still remain transparent.
+static bool PICA_COLD __attribute__((section(".pica_rtt.text")))
+native_sprite(int x, int y, int w, int h, int u, int v, u32 col, u32 cmd)
+{
+	if (rtt_old() || (pica_debug & (1024 | 131072)) || !native_tex.data || !frame_open ||
+		w < 128 || w > 256 || h > 4 ||
+		(cmd & 2) || (ps.mask & 3) != 1 || ((ps.texpage >> 7) & 3) != 2 ||
+		(ps.texpage & 0x3000) || (ps.texwin & 0x3ff) ||
+		x < ps.dx1 || y < ps.dy1 || x+w > ps.dx2 || y+h > ps.dy2) return false;
+	int sx=(ps.texpage&15)*64+u, sy=((ps.texpage>>4)&1)*256+v;
+	int bx=sx&~7, by=sy&~7, cw=((sx+w+7)&~7)-bx, ch=((sy+h+7)&~7)-by;
+	if (cw>256 || ch>16 || bx+cw>VRAM_W || by+ch>VRAM_H) return false;
+	flush();
+	pvtx *out=alloc_verts(6);
+	if (!out) return false;
+	// The render target has top-down native tile rows; texture sampling
+	// flips V. Copy the band verbatim and reverse the consuming UVs.
+	int first=(int)(out-vbuf), tu=sx-bx, tv=ch-(sy-by);
+	if (cmd&1) col=0xff808080;
+	pvtx q[6]={
+		{ x,y,tu,tv,col }, { x+w,y,tu+w,tv,col }, { x,y+h,tu,tv-h,col },
+		{ x+w,y,tu+w,tv,col }, { x+w,y+h,tu+w,tv-h,col }, { x,y+h,tu,tv-h,col } };
+	to_gpu(q,6);
+	memcpy(out,q,sizeof(q));
+	C3D_FrameSplit(0); st_splits++;
+	GX_TextureCopy((u32*)((u16*)vram_tex.data+tiled(bx,by,VRAM_W)),
+		GX_BUFFER_DIM(cw,VRAM_W-cw),
+		(u32*)((u16*)native_tex.data+tiled(0,16-ch,256)),
+		GX_BUFFER_DIM(cw,256-cw),cw*ch*2,8);
+	if (base_dirty) apply_base();
+	C3D_SetScissor(GPU_SCISSOR_NORMAL,ps.dx1,0,ps.dx2,VRAM_H);
+	C3D_FVUnifSet(GPU_VERTEX_SHADER,u_texscale,1.f/256,1.f/16,0,0);
+	C3D_TexBind(0,&native_tex); clear_tex_cache();
+	for (int i=0;i<6;i++) C3D_TexEnvInit(C3D_GetTexEnv(i));
+	C3D_TexEnv *e=C3D_GetTexEnv(0);
+	C3D_TexEnvSrc(e,C3D_RGB,GPU_TEXTURE0,GPU_CONSTANT,0);
+	C3D_TexEnvFunc(e,C3D_RGB,GPU_MODULATE); C3D_TexEnvColor(e,0x001f1f1f);
+	C3D_TexEnvSrc(e,C3D_Alpha,GPU_TEXTURE0,GPU_TEXTURE0,0);
+	C3D_TexEnvOpAlpha(e,GPU_TEVOP_A_SRC_R,GPU_TEVOP_A_SRC_G,0);
+	C3D_TexEnvFunc(e,C3D_Alpha,GPU_ADD); C3D_TexEnvScale(e,C3D_Alpha,GPU_TEVSCALE_4);
+	e=C3D_GetTexEnv(1); C3D_TexEnvScale(e,C3D_RGB,GPU_TEVSCALE_4);
+	C3D_TexEnvSrc(e,C3D_Alpha,GPU_PREVIOUS,GPU_TEXTURE0,0);
+	C3D_TexEnvOpAlpha(e,GPU_TEVOP_A_SRC_ALPHA,GPU_TEVOP_A_SRC_B,0);
+	C3D_TexEnvFunc(e,C3D_Alpha,GPU_ADD); C3D_TexEnvScale(e,C3D_Alpha,GPU_TEVSCALE_4);
+	e=C3D_GetTexEnv(2); C3D_TexEnvScale(e,C3D_RGB,GPU_TEVSCALE_2);
+	C3D_TexEnvScale(e,C3D_Alpha,GPU_TEVSCALE_4);
+	e=C3D_GetTexEnv(3);
+	// Sprites have one colour. Keep the tint independent of vertex
+	// interpolation by supplying it directly as a TEV constant.
+	C3D_TexEnvSrc(e,C3D_RGB,GPU_PREVIOUS,GPU_CONSTANT,0);
+	C3D_TexEnvColor(e,col);
+	C3D_TexEnvFunc(e,C3D_RGB,GPU_MODULATE); C3D_TexEnvScale(e,C3D_RGB,GPU_TEVSCALE_2);
+	C3D_TexEnvSrc(e,C3D_Alpha,GPU_PREVIOUS,GPU_TEXTURE0,0);
+	C3D_TexEnvFunc(e,C3D_Alpha,GPU_ADD); C3D_TexEnvScale(e,C3D_Alpha,GPU_TEVSCALE_4);
+	C3D_AlphaTest(true,GPU_GREATER,0);
+	C3D_AlphaBlend(GPU_BLEND_ADD,GPU_BLEND_ADD,GPU_ONE,GPU_ZERO,GPU_ONE,GPU_ZERO);
+	C3D_DrawArrays(GPU_TRIANGLES,first,6);
+#ifdef PICA_SIM_HASH
+	// This path has no atlas entry. Include its ordered snapshot and draw
+	// explicitly, rather than silently omitting it from cold-boot hashes.
+	u32 record[] = { 0x4e415456, (u32)sx, (u32)sy, (u32)x, (u32)y,
+		(u32)w, (u32)h, col, ps.texpage, ps.mask };
+	sim_hash(record, sizeof(record));
+#endif
+	vstart=vpos; seq++; st_batches++; st_prims++; st_gpu_copies++;
+	psx3d_skip.render_prims++;
+	known_fx0=1; known_fx1=0; alt_fx0=1; alt_fx1=0;
+	mark_drawn(x,y,x+w-1,y+h-1);
+	base_dirty=state_dirty=true; sent_valid=false;
+	return true;
+}
+
 // one sprite (or a part of one) at x, y with page texels from u, v
 static void sprite(int x, int y, int sw, int sh, int u, int v, u32 col, u32 cmd, u32 clut)
 {
@@ -2764,6 +2870,9 @@ static void sprite(int x, int y, int sw, int sh, int u, int v, u32 col, u32 cmd,
 		if (fy) { v0 = v0 + 1; v1 = v0 - sh; }   // y flip
 		int ua = u0 < u1 ? u0 : u1, ub = u0 < u1 ? u1 : u0;
 		int va = v0 < v1 ? v0 : v1, vb = v0 < v1 ? v1 : v0;
+		// Most sprites are small assets. Do not fetch the RTT-only code or
+		// resource descriptors for them on the Old's small caches.
+		if (sw >= 128 && sh <= 4 && native_sprite(x,y,sw,sh,u,v,col,cmd)) return;
 		tex = texture_for(ps.texpage, clut, ua, ub - 1, va, vb - 1);
 		u0 += tex->ax - tex->rx; u1 += tex->ax - tex->rx;
 		v0 += tex->ay - tex->ry; v1 += tex->ay - tex->ry;
@@ -3402,6 +3511,22 @@ fail:
 	return false;
 }
 
+static void __attribute__((__noinline__, section(".pica_rtt.text"))) init_rtt_buffers(void)
+{
+	if (C3D_TexInit(&native_tex,256,16,GPU_RGBA5551)) {
+		C3D_TexSetFilter(&native_tex,GPU_NEAREST,GPU_NEAREST);
+		C3D_TexSetWrap(&native_tex,GPU_CLAMP_TO_EDGE,GPU_CLAMP_TO_EDGE);
+	}
+	// Optional: a constrained VRAM heap keeps the precise CPU fallback.
+	if (C3D_TexInitVRAM(&decode_tex, DECODE_W, DECODE_H, GPU_RGBA8)) {
+		atlas_target = C3D_RenderTargetCreateFromTex(&decode_tex, GPU_TEXFACE_2D, 0, -1);
+		if (!atlas_target) {
+			C3D_TexDelete(&decode_tex);
+			memset(&decode_tex, 0, sizeof(decode_tex));
+		}
+	}
+}
+
 static void free_game_buffers(void)
 {
 	disp_used = false;
@@ -3424,13 +3549,22 @@ static void free_game_buffers(void)
 	vbuf = vbuf_base = NULL;
 }
 
+static void __attribute__((__noinline__, section(".pica_rtt.text"))) reset_game_buffers(void)
+{
+	free_game_buffers();
+	if (decode_tex.data) C3D_TexDelete(&decode_tex);
+	memset(&decode_tex, 0, sizeof(decode_tex));
+	if (native_tex.data) C3D_TexDelete(&native_tex);
+	memset(&native_tex, 0, sizeof(native_tex));
+}
+
 // the big buffers only exist while a game runs (the library needs the memory)
 bool pica_game_begin(bool small)
 {
 	texmemo_epoch++;
 	if (!dvlb)
 		return false;
-	free_game_buffers();
+	reset_game_buffers();
 	ready = false;
 	(void)small;
 	if (!C3D_TexInit(&stage_tex, STAGE_W, STAGE_H, GPU_RGBA5551))
@@ -3450,8 +3584,7 @@ bool pica_game_begin(bool small)
 	atlas[0].h = 1024;
 	if (!C3D_TexInit(&atlas[0].tex, atlas[0].w, atlas[0].h, GPU_RGBA8))
 		goto fail;
-	atlas_target = C3D_RenderTargetCreateFromTex(&atlas[0].tex, GPU_TEXFACE_2D, 0, -1);
-	// Allocation failure retains the precise CPU fallback.
+	init_rtt_buffers();
 	C3D_TexSetFilter(&atlas[0].tex, GPU_NEAREST, GPU_NEAREST);
 	C3D_TexSetWrap(&atlas[0].tex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
 	if (!C3D_TexInit(&dither_tex, 8, 8, GPU_RGBA8))
@@ -3502,7 +3635,7 @@ bool pica_game_begin(bool small)
 	ready = true;
 	return true;
 fail:
-	free_game_buffers();
+	reset_game_buffers();
 	return false;
 }
 
@@ -3512,7 +3645,7 @@ void pica_game_end(void)
 	have_last = false;
 	frame_open = false;
 	pica_drop_fills_local();
-	free_game_buffers();
+	reset_game_buffers();
 }
 
 void pica_exit(void)

@@ -174,8 +174,22 @@ void C3Di_RenderQueueInit(void)
 	commandBase = ctx->cmdBuf;
 	commandWords = ctx->cmdBufSize;
 	buildQueue = &ctx->gxQueue;
+	// Framebuffer textures interleave PICA draws with ordered GX copies.
+	// A 32-entry queue forces a submit/wait every few strips even when
+	// command-buffer space remains. These CPU-only queues need 16 KiB.
+	gxCmdEntry_s *entries = malloc(256 * sizeof(gxCmdEntry_s));
+	gxCmdEntry_s *extra = malloc(256 * sizeof(gxCmdEntry_s));
+	if (entries && extra) {
+		free(ctx->gxQueue.entries);
+		ctx->gxQueue.entries = entries;
+		ctx->gxQueue.maxEntries = 256;
+		extraQueue.entries = extra;
+	} else {
+		free(entries);
+		free(extra);
+		extraQueue.entries = malloc(ctx->gxQueue.maxEntries * sizeof(gxCmdEntry_s));
+	}
 	extraQueue.maxEntries = ctx->gxQueue.maxEntries;
-	extraQueue.entries = malloc(extraQueue.maxEntries * sizeof(gxCmdEntry_s));
 	LightEvent_Init(&queueDone, RESET_STICKY);
 	gxCmdQueueSetCallback(&ctx->gxQueue, onQueueFinish, NULL);
 	gxCmdQueueSetCallback(&extraQueue, onQueueFinish, NULL);
