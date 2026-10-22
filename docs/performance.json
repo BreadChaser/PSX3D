@@ -1,6 +1,6 @@
 {
   "title": "PSX3D performance",
-  "subtitle": "Old 3DS, GPU renderer. Averages from each game's heaviest tested scene; other scenes can run faster or slower.\nGame speed = how fast the game runs (100% = normal). FPS = new pictures you see per second.",
+  "subtitle": "Old 3DS, heaviest tested scene of each game. Speed: 100% = full speed.",
   "version": "v0.5.0",
   "games": [
     {

@@ -56,8 +56,8 @@ def svg(d, c):
     for console, title in shown:
         y += 34
         t(24, y, title, 16, weight="600")
-        t(P1, y, "Game speed", 13, c["ink2"], weight="600")
-        t(P2, y, "FPS you see", 13, c["ink2"], weight="600")
+        t(P1, y, "Speed", 13, c["ink2"], weight="600")
+        t(P2, y, "FPS", 13, c["ink2"], weight="600")
         top = y + 14
         rh, bh = 34, 11
         for i, g in enumerate(games):
@@ -93,9 +93,9 @@ def svg(d, c):
         y += 30
         t(24, y, d["new_note"], 13.5, weight="600")
     y += 26
-    t(24, y, "Dashed line = the most pictures per second the game itself draws (most PS1 3D games draw 30).", 12, c["ink2"])
+    t(24, y, "Dashed line = the game's own maximum FPS (30 for most PS1 3D games).", 12, c["ink2"])
     y += 17
-    t(24, y, "Auto frameskip trades pictures for game speed: it skips drawing some pictures to help the game run faster.", 12, c["ink2"])
+    t(24, y, "Auto frameskip skips some frames to keep the game closer to full speed.", 12, c["ink2"])
     H = y + 18
     head = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" font-family="{FONT}" role="img" aria-label="{escape(d["title"], quote=True)}">',
             f'<title>{escape(d["title"])}</title>']

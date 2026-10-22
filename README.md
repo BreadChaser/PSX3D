@@ -74,11 +74,9 @@ tested game comes with recommended values for its console, marked **P**, and
 <details>
 <summary>Exact numbers</summary>
 
-Old 3DS. Averages from each game's heaviest tested scene; other scenes can run
-faster or slower. Game speed: 100% = normal pace. FPS: new pictures shown per
-second (most 3D games draw 30 or fewer in busy scenes; Symphony of the Night,
-Tekken 3 and Klonoa draw 60; Final Fantasy VII battles draw 15). See
-[methodology](docs/performance.md).
+Old 3DS, heaviest tested scene of each game. Speed: 100% = full speed. Most PS1
+3D games run at 30 FPS at most; Symphony of the Night, Tekken 3 and Klonoa at 60.
+See [methodology](docs/performance.md).
 
 <!-- perf-table -->
 | Game (Old 3DS) | Frameskip off: speed / FPS | Auto frameskip: speed / FPS |
