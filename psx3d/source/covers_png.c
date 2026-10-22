@@ -1,6 +1,7 @@
 // Decode one scanline at a time: a typical 512x512 cover previously needed a
 // contiguous 1 MiB RGBA buffer, in addition to curl/TLS and existing covers.
 #include "covers_png.h"
+#include "covers_pack.h"
 #include <png.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,9 +25,38 @@ static void read_memory(png_structp png, png_bytep out, png_size_t n)
 	d->pos += n;
 }
 
+// Add one source row, 8 bit RGBA, to the sums of the ow output columns it
+// feeds (linear light, 12 bit).
+static void accumulate(unsigned (*sums)[3], const unsigned char *row, unsigned w, int ow)
+{
+	for (int x = 0; x < ow; x++) {
+		unsigned x0 = (unsigned)x * w / ow, x1 = (unsigned)(x + 1) * w / ow;
+		if (x1 <= x0) x1 = x0 + 1;
+		for (unsigned xx = x0; xx < x1; xx++) {
+			const unsigned char *p = row + xx * 4;
+			unsigned r = p[0], g = p[1], b = p[2], a = p[3];
+			if (a != 255) {
+				r = (r * a + COVER_BG_R * (255 - a) + 127) / 255;
+				g = (g * a + COVER_BG_G * (255 - a) + 127) / 255;
+				b = (b * a + COVER_BG_B * (255 - a) + 127) / 255;
+			}
+			sums[x][0] += covers_lin[r];
+			sums[x][1] += covers_lin[g];
+			sums[x][2] += covers_lin[b];
+		}
+	}
+}
+
+static uint32_t average(const unsigned *sum, unsigned n)
+{
+	unsigned r = (sum[0] + n / 2) / n, g = (sum[1] + n / 2) / n, b = (sum[2] + n / 2) / n;
+	return (uint32_t)covers_srgb[r > 4095 ? 4095 : r] << 24 | (uint32_t)covers_srgb[g > 4095 ? 4095 : g] << 16 |
+	       (uint32_t)covers_srgb[b > 4095 ? 4095 : b] << 8 | 0xff;
+}
+
 // Preserve libpng's simplified color conversion for 16-bit and Adam7 user
 // PNGs. Database covers use the 8-bit noninterlaced streaming path.
-static uint32_t *full_image(const void *data, size_t len, const char *file, int size)
+static uint32_t *full_image(const void *data, size_t len, const char *file, int ow, int oh)
 {
 	png_image img = { .version = PNG_IMAGE_VERSION };
 	if (!(file ? png_image_begin_read_from_file(&img, file) :
@@ -35,18 +65,18 @@ static uint32_t *full_image(const void *data, size_t len, const char *file, int 
 	unsigned char *rgba = malloc(PNG_IMAGE_SIZE(img));
 	uint32_t *out = NULL;
 	if (rgba && png_image_finish_read(&img, NULL, rgba, 0, NULL)) {
-		out = malloc(size * size * sizeof(*out));
-		if (out) for (int y = 0; y < size; y++) for (int x = 0; x < size; x++) {
-			unsigned x0 = x * img.width / size, x1 = (x + 1) * img.width / size;
-			unsigned y0 = y * img.height / size, y1 = (y + 1) * img.height / size;
-			if (x1 <= x0) x1 = x0 + 1;
+		out = malloc(ow * oh * sizeof(*out));
+		if (out) for (int y = 0; y < oh; y++) {
+			unsigned sums[512][3] = {{0}};
+			unsigned y0 = (unsigned)y * img.height / oh, y1 = (unsigned)(y + 1) * img.height / oh;
 			if (y1 <= y0) y1 = y0 + 1;
-			unsigned r=0, g=0, b=0, a=0, n=0;
-			for (unsigned yy=y0; yy<y1; yy++) for (unsigned xx=x0; xx<x1; xx++) {
-				const unsigned char *p=rgba+(yy*img.width+xx)*4;
-				r+=p[0]; g+=p[1]; b+=p[2]; a+=p[3]; n++;
+			for (unsigned yy = y0; yy < y1; yy++)
+				accumulate(sums, rgba + (size_t)yy * img.width * 4, img.width, ow);
+			for (int x = 0; x < ow; x++) {
+				unsigned x0 = (unsigned)x * img.width / ow, x1 = (unsigned)(x + 1) * img.width / ow;
+				if (x1 <= x0) x1 = x0 + 1;
+				out[y * ow + x] = average(sums[x], (x1 - x0) * (y1 - y0));
 			}
-			out[y*size+x]=((r/n)<<24)|((g/n)<<16)|((b/n)<<8)|(a/n);
 		}
 	}
 	free(rgba);
@@ -54,8 +84,9 @@ static uint32_t *full_image(const void *data, size_t len, const char *file, int 
 	return out;
 }
 
-uint32_t *covers_png_decode(const void *data, size_t len, const char *file, int size)
+uint32_t *covers_png_decode(const void *data, size_t len, const char *file, int max, int *ow_out, int *oh_out)
 {
+	covers_gamma_init();
 	decode_t *d = calloc(1, sizeof(*d));
 	if (!d) return NULL;
 	d->data = data; d->len = len;
@@ -70,10 +101,14 @@ uint32_t *covers_png_decode(const void *data, size_t len, const char *file, int 
 	else png_set_read_fn(d->png, d, read_memory);
 	png_read_info(d->png, d->info);
 	unsigned w = png_get_image_width(d->png, d->info), h = png_get_image_height(d->png, d->info);
-	if (!w || !h || size <= 0 || size > 512) goto done;
+	if (!w || !h || max <= 0 || max > 512) goto done;
+	int ow, oh;
+	covers_fit(w, h, max, &ow, &oh);
+	*ow_out = ow;
+	*oh_out = oh;
 	if (png_get_interlace_type(d->png, d->info) != PNG_INTERLACE_NONE ||
 	    png_get_bit_depth(d->png, d->info) == 16) {
-		d->out = full_image(data, len, file, size);
+		d->out = full_image(data, len, file, ow, oh);
 		goto done;
 	}
 	png_set_alpha_mode(d->png, PNG_ALPHA_PNG, PNG_DEFAULT_sRGB);
@@ -86,27 +121,21 @@ uint32_t *covers_png_decode(const void *data, size_t len, const char *file, int 
 	if (!(color & PNG_COLOR_MASK_ALPHA) && !transparency) png_set_add_alpha(d->png, 255, PNG_FILLER_AFTER);
 	png_read_update_info(d->png, d->info);
 	d->row = malloc(png_get_rowbytes(d->png, d->info));
-	d->out = malloc(size * size * sizeof(*d->out));
+	d->out = malloc(ow * oh * sizeof(*d->out));
 	if (!d->row || !d->out) { free(d->out); d->out = NULL; goto done; }
 	int row = -1;
-	for (int y = 0; y < size; y++) {
-		unsigned sums[512][4] = {{0}};
-		unsigned y0 = y * h / size, y1 = (y + 1) * h / size;
+	for (int y = 0; y < oh; y++) {
+		unsigned sums[512][3] = {{0}};
+		unsigned y0 = (unsigned)y * h / oh, y1 = (unsigned)(y + 1) * h / oh;
 		if (y1 <= y0) y1 = y0 + 1;
 		for (unsigned yy = y0; yy < y1; yy++) {
 			while (row < (int)yy) { png_read_row(d->png, d->row, NULL); row++; }
-			for (int x = 0; x < size; x++) {
-				unsigned x0 = x * w / size, x1 = (x + 1) * w / size;
-				if (x1 <= x0) x1 = x0 + 1;
-				for (unsigned xx = x0; xx < x1; xx++) for (int c = 0; c < 4; c++)
-					sums[x][c] += d->row[xx * 4 + c];
-			}
+			accumulate(sums, d->row, w, ow);
 		}
-		for (int x = 0; x < size; x++) {
-			unsigned x0 = x * w / size, x1 = (x + 1) * w / size;
+		for (int x = 0; x < ow; x++) {
+			unsigned x0 = (unsigned)x * w / ow, x1 = (unsigned)(x + 1) * w / ow;
 			if (x1 <= x0) x1 = x0 + 1;
-			unsigned n = (x1 - x0) * (y1 - y0);
-			d->out[y * size + x] = ((sums[x][0]/n)<<24)|((sums[x][1]/n)<<16)|((sums[x][2]/n)<<8)|(sums[x][3]/n);
+			d->out[y * ow + x] = average(sums[x], (x1 - x0) * (y1 - y0));
 		}
 	}
 	png_read_end(d->png, NULL);

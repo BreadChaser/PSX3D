@@ -31,5 +31,9 @@ for color,nc in [(0,1),(2,3),(4,2),(6,4)]:
 
 PY
 cc -std=gnu11 -Wall -Wextra -Werror -g -fsanitize=address,undefined \
-  "$ROOT/psx3d/tests/covers/png.c" "$ROOT/psx3d/source/covers_png.c" $(pkg-config --cflags --libs libpng) -Wl,--wrap=malloc -o "$TMP/check"
+  "$ROOT/psx3d/tests/covers/png.c" "$ROOT/psx3d/source/covers_png.c" "$ROOT/psx3d/source/covers_pack.c" $(pkg-config --cflags --libs libpng) -lm -Wl,--wrap=malloc -o "$TMP/check"
 "$TMP/check" "$TMP/"*.png "$@"
+cc -std=gnu11 -Wall -Wextra -Werror -g -fsanitize=address,undefined \
+  "$ROOT/psx3d/tests/covers/pack.c" "$ROOT/psx3d/source/covers_pack.c" "$ROOT/psx3d/source/covers_png.c" \
+  $(pkg-config --cflags --libs libpng) -lm -o "$TMP/pack"
+"$TMP/pack" ""
