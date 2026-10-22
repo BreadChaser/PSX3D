@@ -2059,51 +2059,37 @@ static inline bool polygon_dither(u32 cmd)
 		((cmd & 4) ? !(cmd & 1) : (cmd & 0x10));
 }
 
-#ifdef PICA_LAYOUT_SPLIT
-static PICA_COLD void use_state_changed(int at, int blend, int texmode, int pass, bool dither, u8 mask)
+// The four adjacent mode bytes travel together through the hot state check.
+// All drawing uses atlas zero; unpack the mode only when a batch changes.
+#define DRAW_MODE(blend, texmode, pass, dither) \
+	((u32)(blend) | ((u32)(texmode) << 8) | ((u32)(pass) << 16) | ((u32)(dither) << 24))
+
+static PICA_COLD void use_state_changed(u32 want, u8 mask)
 {
-	st_why[at != cur.atlas ? 0 : (blend != cur.blend || texmode != cur.texmode || pass != cur.pass) ? 1 :
+	u32 mode;
+	memcpy(&mode, &cur.blend, sizeof(mode));
+	st_why[cur.atlas != 0 ? 0 : (mode & 0xffffff) != (want & 0xffffff) ? 1 :
 		ps.area_gen != cur_area_gen ? 2 : 3]++;
 	flush();
-	cur.atlas = at;
-	cur.blend = blend;
-	cur.texmode = texmode;
-	cur.pass = pass;
+	cur.atlas = 0;
+	memcpy(&cur.blend, &want, sizeof(want));
 	cur.mask = mask;
-	cur.dither = dither;
 	cur.sc[0] = ps.dx1; cur.sc[1] = ps.dy1; cur.sc[2] = ps.dx2; cur.sc[3] = ps.dy2;
 	cur_area_gen = ps.area_gen;
 	state_dirty = true;
 }
-#endif
 
-static PICA_INLINE_HOT(use_state) void use_state(int at, int blend, int texmode, int pass, bool dither)
+static PICA_INLINE_HOT(use_state) void use_state(u32 want)
 {
 	u8 mask = ps.mask & 3;
 	// Mask-check primitives must observe the preceding STP write.
 	if ((mask & 2) && vpos != vstart)
 		flush();
-	// The four adjacent mode bytes include dither; mask is separate.
-	u32 mode, want = blend | (texmode << 8) | (pass << 16) | ((u32)dither << 24);
+	u32 mode;
 	memcpy(&mode, &cur.blend, sizeof(mode));
-	if (at == cur.atlas && mode == want && mask == cur.mask && ps.area_gen == cur_area_gen && !atlas[at].rebind)
+	if (cur.atlas == 0 && mode == want && mask == cur.mask && ps.area_gen == cur_area_gen && !atlas[0].rebind)
 		return;
-#ifdef PICA_LAYOUT_SPLIT
- use_state_changed(at, blend, texmode, pass, dither, mask);
-#else
-	st_why[at != cur.atlas ? 0 : (blend != cur.blend || texmode != cur.texmode || pass != cur.pass) ? 1 :
-		ps.area_gen != cur_area_gen ? 2 : 3]++;
-	flush();
-	cur.atlas = at;
-	cur.blend = blend;
-	cur.texmode = texmode;
-	cur.pass = pass;
-	cur.mask = mask;
-	cur.dither = dither;
-	cur.sc[0] = ps.dx1; cur.sc[1] = ps.dy1; cur.sc[2] = ps.dx2; cur.sc[3] = ps.dy2;
-	cur_area_gen = ps.area_gen;
-	state_dirty = true;
-#endif
+	use_state_changed(want, mask);
 }
 
 static unsigned st_splits;
@@ -2245,7 +2231,7 @@ static noinline pvtx *effect_verts(int blend, tcache *tex, int nv,
 		return defer_verts(BL_ADD, 0, dither, tex, nv, bx0, by0, bx1, by1);
 	if (addq.n && ((ps.mask & 2) || ps.area_gen != addq.area_gen || add_overlap(bx0, by0, bx1, by1)))
 		flush();
-	use_state(0, blend == BL_ADD ? BL_ADD : BL_HALF, TX_MOD, 0, dither);
+	use_state(DRAW_MODE(blend == BL_ADD ? BL_ADD : BL_HALF, TX_MOD, 0, dither));
 	pvtx *o = alloc_verts(nv);
 	if (o) {
 		batch_semi |= blend != BL_OPAQUE;
@@ -2601,7 +2587,7 @@ static void noinline PICA_HOT(emit_tris) emit_tris(const pvtx *v, int ntri, int 
 		if ((blend == BL_ADD || p == 1) && defer_allowed() && !batch_is(blend, p, dither))
 			o = defer_verts(blend, p, dither, tex, nv, qx0, qy0, qx1, qy1);
 		else {
-			use_state(0, blend, texmode, p, dither);
+			use_state(DRAW_MODE(blend, texmode, p, dither));
 			o = alloc_verts(nv);
 		}
 		if (!o)
@@ -2675,7 +2661,7 @@ static void PICA_HOT(draw_poly_impl) draw_poly_impl(const u32 *w, u32 cmd)
 	if (blend == BL_ADD || addq.n)
 		o = effect_verts(blend, tex, quad ? 6 : 3, bx0, by0, bx1, by1, polygon_dither(cmd));
 	else {
-		use_state(0, BL_HALF, TX_MOD, 0, polygon_dither(cmd));
+		use_state(DRAW_MODE(BL_HALF, TX_MOD, 0, polygon_dither(cmd)));
 		o = alloc_verts(quad ? 6 : 3);
 		if (o) batch_semi |= blend != BL_OPAQUE;
 	}
