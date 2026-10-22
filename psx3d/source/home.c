@@ -91,9 +91,9 @@ static void cont_probe(void)
 		return;
 	char prefix[PATH_LEN];
 	snprintf(prefix, sizeof(prefix), "%s/%.*s", PSX3D_STATE_DIR, 400, g_cfg.last_game_state);
-	struct stat st;
+	char missing[PATH_LEN];
 	snprintf(cont_path, sizeof(cont_path), "%s", g_cfg.last_game_path);
-	if (stat(cont_path, &st)) {
+	if (library_missing_file(cont_path, missing, sizeof(missing))) {   // gone, or a disc/track of it
 		cont_path[0] = 0;
 		for (int i = 0; i < library_count() && !cont_path[0]; i++) {
 			const game_t *g = library_get(i);
@@ -101,8 +101,11 @@ static void cont_probe(void)
 			    !library_launch_path(g, cont_path, sizeof(cont_path)))
 				cont_path[0] = 0;
 		}
-		if (!cont_path[0])
+		// not in the library either, or its files are gone too: no tile (the auto-save stays)
+		if (!cont_path[0] || library_missing_file(cont_path, missing, sizeof(missing))) {
+			cont_path[0] = 0;
 			return;
+		}
 	}
 	cont_ok = states_auto_peek(prefix, &cont_saved, &cont_tex, &cont_tex_ok);
 }
