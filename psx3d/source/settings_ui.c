@@ -484,7 +484,6 @@ static void change(settings_ui_t *s, int item, int dir)
 		break;
 	case F_THEME:
 		// the menus redraw in the new colours at once
-		config_user_changed("theme");
 		g_cfg.theme = (g_cfg.theme + dir + theme_count()) % theme_count();
 		break;
 	case F_SIDE:

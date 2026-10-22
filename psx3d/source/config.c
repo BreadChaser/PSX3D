@@ -246,7 +246,7 @@ void config_save(void)
 #define SAVE_INT(key, value, factory) do { int v_ = (value); if (user_has(key) || v_ != (factory)) fprintf(f, key "=%d\n", v_); } while (0)
 	SAVE_INT("smooth", g_cfg.smooth, factory("smooth"));
 	SAVE_INT("show_fps", g_cfg.show_fps, factory("show_fps"));
-	if (user_has("theme") || g_cfg.theme != factory("theme"))
+	if (g_cfg.theme != factory("theme"))   // a look, not an intent: the default is never written
 		fprintf(f, "theme=%s\n", theme_get(g_cfg.theme)->id);
 	SAVE_INT("stretch", screen == 1, factory("screen") == 1);
 	SAVE_INT("touch_stick", in_game ? default_touch_stick : g_cfg.touch_stick, -1);
