@@ -3873,6 +3873,13 @@ static void PICA_COLD pica_probe_local(char *buf, int n)
 	memset(st_pic, 0, sizeof(st_pic));
 }
 
+// ------------------------------------------------------------------ PSX3D upload check
+// Read-only names for what the GPU drew that software VRAM hasn't seen yet
+// (psx3d/source/uploadskip.c). Aliases: no code or storage of their own.
+extern const u16 pica_drawn_blocks[32] __attribute__((alias("drawn")));
+extern const u32 pica_drawn_tiles[64][4] __attribute__((alias("fine_drawn")));
+extern const bool pica_rtt_detected __attribute__((alias("rtt_detected")));
+
 // ------------------------------------------------------------------ PSX3D stereo hooks
 // Reserved entry points for GPU stereo integration. Mode 2 currently uses screen depth.
 uint16_t *psx3d_vram2;

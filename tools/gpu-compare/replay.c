@@ -11,6 +11,7 @@
 #include "citro3d.h"
 #include "plugins/gpu_pica/gpu_pica.h"
 #include "plugins/gpulib/psx3d_frameskip.h"
+void pica_settle_rect(int x, int y, int w, int h);
 psx3d_skip_state psx3d_skip;
 extern int pica_debug;
 #endif
@@ -113,6 +114,10 @@ int main(int argc,char **argv)
 #endif
             int x=rect[0],y=rect[1],w=rect[2],h=rect[3];
             assert(bytes==(unsigned)(w*h*2));
+#ifdef PICA
+            // gpulib settles pending fills before a transfer writes VRAM
+            if(!rect[4]) pica_settle_rect(x,y,w,h);
+#endif
             for(int r=0;r<h;r++)for(int c=0;c<w;c++)
                 gpu.vram[((y+r)&511)*1024+((x+c)&1023)]=((uint16_t*)data)[r*w+c];
             renderer_update_caches(x,y,w,h,rect[4]); break;
@@ -194,6 +199,9 @@ int main(int argc,char **argv)
     fclose(f);
 #ifdef PICA
     C3D_FrameEnd(0); pica_frame_ended(); pica_exit();
+    // linked with psx3d/source/uploadskip.c (devtools/upload-skip)
+    { extern unsigned psx3d_uploads_kept __attribute__((weak));
+      if(&psx3d_uploads_kept) fprintf(stderr,"uploads kept %u\n",psx3d_uploads_kept); }
 #endif
     #ifdef PICA_SIM_HASH
     extern unsigned long long pica_sim_hash;

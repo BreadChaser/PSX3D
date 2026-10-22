@@ -39,6 +39,10 @@ EXTERN_SYMS += psx3d_spu_worker_ticks psx3d_spu_worker_items psx3d_skip pica_dis
 STEREO_WRAP_SYMS := psx3d_depth_cmd psx3d_stereo_set
 WRAP_SYMS += $(STEREO_WRAP_SYMS)
 EXTERN_SYMS += $(STEREO_WRAP_SYMS) $(addprefix __real_,$(STEREO_WRAP_SYMS)) psx3d_stereo_enabled psx3d_ztable psx3d_zframe gpu
+# Uploads that change nothing stop at software VRAM (psx3d/source/uploadskip.c)
+UPLOAD_WRAP_SYMS := pica_settle_rect renderer_update_caches
+WRAP_SYMS += $(UPLOAD_WRAP_SYMS)
+EXTERN_SYMS += $(UPLOAD_WRAP_SYMS) pica_drawn_blocks pica_drawn_tiles pica_rtt_detected
 EXTERN_SYMS += pica_init pica_exit pica_game_begin pica_game_end pica_flush_vertices pica_frame_started pica_frame_ended \
 	pica_texmask pica_texmemo psx3d_skipgate pica_thread_call pica_thread_sync pica_state_lost pica_prepare_present pica_picture pica_stats pica_probe pica_debug pica_vertices pica_submit pica_prims pica_pmu pica_open_frame pica_async pica_double_buffer pica_wait_frame pica_frame_pending pica_dump_vram
 
