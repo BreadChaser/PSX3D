@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "psx3d.h"
+#include "statefile.h"
 typedef int s32;
 typedef void *Thread;
 typedef int LightEvent;
@@ -19,6 +20,7 @@ game_preset_options_t game_capabilities(void)
 size_t retro_serialize_size(void) { serialized++; return 64; }
 bool retro_serialize(void *p,size_t n) { (void)p; (void)n; serialized++; return true; }
 bool retro_unserialize(const void *p,size_t n) { (void)p; (void)n; return true; }
+state_result_t state_last_result;
 void log_printf(const char *fmt,...) { (void)fmt; }
 static void LightEvent_WaitTimeout(LightEvent *e,long long ns) { (void)e; (void)ns; }
 static void LightEvent_Init(LightEvent *e,int mode) { (void)e; (void)mode; }
