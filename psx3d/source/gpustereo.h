@@ -38,6 +38,11 @@ float gs_focus(void);          // depth on the screen plane, 0 until known
 // 0..1: how much of the 3D effect is the whole picture behind the screen
 // (frames without polygon depth) instead of real 3D; follows gs_core_frame
 float gs_flat(void);
+// GPU thread: the frontend showed this VRAM rectangle (draw-order layers)
+void gs_core_shown(int x, int y, int w, int h);
+float gs_layer_blend(void);    // 0: draw-order layers .. 1: Real 3D
+void gs_layer_status(char *out, int n);
+bool gs_picture_flat(void);    // the picture shown has no layers (a still, an FMV): screen depth
 // diagnostics, reset by each call: corners looked up, found; vertices
 // shifted; corners rejected (another object's depth)
 void gs_core_counts(unsigned *lookups, unsigned *found, unsigned *shifted, unsigned *rejected);

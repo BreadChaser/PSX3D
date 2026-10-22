@@ -23,6 +23,7 @@ static uint16_t *zs;
 static unsigned zn, zpos;
 static unsigned long long draws, mirrored, moved_draws;
 static FILE *dump;      // STEREO_DUMP: frame, triangle vertices before/after the shift
+static FILE *tris;      // STEREO_TRIS: every triangle drawn into PS1 VRAM (draw order)
 static int dump_frame;
 
 static void init(void)
@@ -32,6 +33,7 @@ static void init(void)
     if (getenv("STEREO_AGE")) max_age = atoi(getenv("STEREO_AGE"));
     on = strength > 0;
     if (getenv("STEREO_DUMP")) dump = fopen(getenv("STEREO_DUMP"), "w");
+    if (getenv("STEREO_TRIS")) tris = fopen(getenv("STEREO_TRIS"), "w");
     if (!on) return;
     assert(gs_core_alloc());
     assert(C3D_TexInitVRAM(&right, 1024, 512, GPU_RGBA5551));
@@ -99,6 +101,15 @@ void stereo_sim_draw(int primitive, int first, int n)
     if (!seeded) { memcpy(right.data, canon->data, 1024 * 512 * 2); seeded = 1; }
     C3D_DrawArrays(primitive, first, n);
     const void *data = sim_buf_data();
+    if (tris) {
+        const gs_vtx *src = (const gs_vtx *)data + first;
+        for (int i = 0; i + 3 <= n; i += 3) {
+            fprintf(tris, "T %d %llu", dump_frame, draws);
+            for (int k = 0; k < 3; k++)
+                fprintf(tris, " %d %d %d %d %08x", src[i + k].x, src[i + k].y, src[i + k].u, src[i + k].v, src[i + k].rgba);
+            fputc('\n', tris);
+        }
+    }
     gs_vtx *shifted = malloc(n * sizeof(gs_vtx)); assert(shifted);
     int moved = gs_shift((const gs_vtx *)data + first, shifted, n);
     C3D_RenderTarget back = { canon };
@@ -160,11 +171,21 @@ void stereo_sim_frame(const char *dir, const int *info)
     int frame = info[0], x = info[2], y = info[3], w = info[4], h = info[5];
     dump_frame = frame + 1;
     if (dump) fprintf(dump, "F %d %d %d %d %d\n", frame, x, y, w, h);
+    if (tris) fprintf(tris, "F %d %d %d %d %d %d\n", frame, x, y, w, h, info[1]);
     gs_core_frame(strength, w > 0 ? w : 320);
+    if (!(info[1] & (1 << 21)))
+        gs_core_shown(x, y, w, h);
+    if (getenv("STEREO_LAYDBG")) {
+        char st[1024]; gs_layer_status(st, sizeof(st));
+        extern unsigned long long lay_cells, lay_prims, lay_tris;
+        fprintf(stderr, "layers %d shown %d,%d flat %d work tris %llu prims %llu cells %llu %s\n", frame, x, y, gs_picture_flat(),
+            lay_tris, lay_prims, lay_cells, st);
+        lay_cells = lay_prims = lay_tris = 0;
+    }
     unsigned lookups, found, shifted, rejected;
     gs_core_counts(&lookups, &found, &shifted, &rejected);
-    fprintf(stderr, "stereo %d focus %.1f corners %u found %u shifted %u rejected %u draws %llu mirrored %llu moved %llu\n",
-        frame, gs_focus(), lookups, found, shifted, rejected, draws, mirrored, moved_draws);
+    fprintf(stderr, "stereo %d blend %.2f focus %.1f corners %u found %u shifted %u rejected %u draws %llu mirrored %llu moved %llu\n",
+        frame, gs_layer_blend(), gs_focus(), lookups, found, shifted, rejected, draws, mirrored, moved_draws);
     draws = mirrored = moved_draws = 0;
     if (getenv("GPU_HASH_VRAM")) {
         unsigned long long hash = 1469598103934665603ull;

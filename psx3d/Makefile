@@ -74,6 +74,9 @@ LDFLAGS += -Wl,--wrap=fread
 LDFLAGS += -Wl,--wrap=retro_serialize,--wrap=retro_unserialize,--wrap=LoadMcd
 LDFLAGS += -Wl,--wrap=C3D_UpdateUniforms,--wrap=C3Di_LoadShaderUniforms,--wrap=C3Di_DirtyUniforms
 LDFLAGS += -Wl,--wrap=C3D_DrawArrays,--wrap=GX_TextureCopy
+# Real 3D draw-order layers (gpustereo_layers.c) hook into the existing code
+LDFLAGS += -Wl,--wrap=gs_shift,--wrap=gs_core_frame,--wrap=gs_core_alloc,--wrap=gs_core_clear,--wrap=gs_core_free
+LDFLAGS += -Wl,--wrap=gpustereo_status,--wrap=pica_picture
 
 LIBS	:= $(CORELIB) -lcitro2d -lcitro3d -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lpng16 -lz -lctru -lm
 
@@ -141,8 +144,9 @@ endif
 # (docs/dev/pica-direct.md); presetupdate.o and boxart.o run only in the idle
 # library, display.o once per picture. Share PSX3D (qrcode.o, share.o, mp_ui.o)
 # and playlog.o (library play history and favourites) follow; the save code
-# links last. cmdroom.o's code is PSX3D_COLD (after everything).
-LATE_OFILES := picadirect.o presetupdate.o placeholder.o uploadskip.o display.o boxart.o qrcode.o share.o mp_ui.o playlog.o history.o safefile.o saveid.o savestates.o statefile.o cmdroom.o
+# links last. cmdroom.o's code is PSX3D_COLD (after everything);
+# gpustereo_layers.o (New 3DS 3D) comes last.
+LATE_OFILES := picadirect.o presetupdate.o placeholder.o uploadskip.o display.o boxart.o qrcode.o share.o mp_ui.o playlog.o history.o safefile.o saveid.o savestates.o statefile.o cmdroom.o gpustereo_layers.o
 export OFILES_SOURCES 	:=	$(CPPFILES:.cpp=.o) $(filter-out $(LATE_OFILES),$(CFILES:.c=.o)) $(SFILES:.s=.o) $(LATE_OFILES)
 
 export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES)) \
