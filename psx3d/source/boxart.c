@@ -19,13 +19,17 @@ static bool serial_at(const char *s, bool strict, char out[10])
 {
 	int nl = 0, nd = 0;
 	char l[5], d[6];
+	int skip;
 	while (is_alpha(s[nl]) && nl < 5)
 		nl++;
+	skip = nl;
+	if (nl == 5 && (s[4] == 'P' || s[4] == 'p'))   // boot file "SLUSP012.06" is serial SLUS-01206 (Dragon Warrior VII)
+		nl = 4;
 	if (nl < (strict ? 4 : 2) || nl > 4)
 		return false;
 	for (int i = 0; i < nl; i++)
 		l[i] = toupper((unsigned char)s[i]);
-	s += nl;
+	s += skip;
 	if (*s == '-' || *s == '_' || *s == ' ')
 		s++;
 	while (nd < 5 && (is_digit(*s) || (*s == '.' && nd == 3 && is_digit(s[1])))) {

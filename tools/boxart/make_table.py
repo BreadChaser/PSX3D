@@ -94,9 +94,11 @@ def main():
     direct = sibling = missing = 0
     for name, _region, serial in games:
         for s in re.split(r',\s*', serial):
-            s = re.sub(r'[^A-Z0-9]', '', s.upper())
-            if not s or len(s) > 9:
+            # redump adds suffixes to some serials ("SLUS-00923D", "SLUS-01206-0"); the disc says SLUS_009.23
+            m = re.match(r'([A-Z]{2,4})[-_ ]?(\d{3,5})', s.upper())
+            if not m:
                 continue
+            s = m.group(1) + m.group(2)
             pic = SANITIZE.sub('_', name)
             if pic in have:
                 direct += 1

@@ -59,6 +59,8 @@ static void test_serials(void)
 	CHECK(boxart_serial_norm("slus-00694", s)); STR(s, "SLUS00694");
 	CHECK(boxart_serial_norm("SCES-00311", s)); STR(s, "SCES00311");
 	CHECK(boxart_serial_norm("SLPS 01204", s)); STR(s, "SLPS01204");
+	CHECK(boxart_serial_norm("SLUSP012.06;1", s)); STR(s, "SLUS01206");   // Dragon Warrior VII's odd boot file name
+	CHECK(!boxart_serial_norm("SLUSQ012.06", s));
 	CHECK(!boxart_serial_norm("Crash", s));
 	CHECK(!boxart_serial_norm("", s));
 	CHECK(boxart_serial_norm("DTLS2170", s)); STR(s, "DTLS2170");   // demo discs have 4 digits
