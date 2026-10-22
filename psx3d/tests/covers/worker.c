@@ -64,9 +64,8 @@ static const game_t *library_get(int i) {assert(i==0);return &game;}
 static int library_count(void) {return 1;}
 static void log_printf(const char *fmt,...) {(void)fmt;}
 static void C3D_TexDelete(C3D_Tex *t) {free(t->data);}
-static bool C3D_TexInitMipmap(C3D_Tex *t,int w,int h,int fmt) {(void)fmt;t->data=malloc(w*h*2*4/3+16);return !!t->data;}
+static bool C3D_TexInit(C3D_Tex *t,int w,int h,int fmt) {(void)fmt;t->data=malloc(w*h*2);return !!t->data;}
 static void C3D_TexSetFilter(C3D_Tex *t,int a,int b) {(void)t;(void)a;(void)b;}
-static void C3D_TexSetFilterMipmap(C3D_Tex *t,int a) {(void)t;(void)a;}
 static void C3D_TexSetWrap(C3D_Tex *t,int a,int b) {(void)t;(void)a;(void)b;}
 static unsigned long long svcGetSystemTick(void) {return 0;}
 static void GSPGPU_FlushDataCache(void *p,int n) {(void)p;(void)n;}

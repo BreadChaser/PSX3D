@@ -1,5 +1,5 @@
 // covers_pack: the packed texture must unpack (with an independent reader of
-// the PICA200 layout) to the picture, its mip levels and the repeated edge.
+// the PICA200 layout) to the picture and the repeated edge.
 // With a directory argument it also writes the levels as PNGs to look at.
 #include <assert.h>
 #include <math.h>
@@ -23,7 +23,7 @@ static void unpack(const uint8_t *pack, int lv, int x, int y, int rgb[3])
 	for (int b = 0; b < 3; b++) {
 		z |= ((x >> b & 1) << (2 * b)) | ((mr >> b & 1) << (2 * b + 1));
 	}
-	const uint16_t *p = (const uint16_t *)(pack + covers_level_offset(lv));
+	const uint16_t *p = (const uint16_t *)pack;
 	uint16_t v = p[tile * 64 + z];
 	int r = v >> 11, g = v >> 5 & 63, b = v & 31;
 	rgb[0] = (r * 255 + 15) / 31;
@@ -37,8 +37,8 @@ static int srgb(double l) { double v = l <= 0.0031308 ? l * 12.92 : 1.055 * pow(
 static void check(const uint32_t *src, int w, int h, const char *dump, const char *name)
 {
 	uint8_t *pack = malloc(COVER_PACK_BYTES);
-	assert(pack && covers_pack(src, w, h, pack));
-	assert(covers_level_offset(COVER_LEVELS) == COVER_PACK_BYTES);
+	assert(pack);
+	covers_pack(src, w, h, pack);
 	for (int lv = 0; lv < COVER_LEVELS; lv++) {
 		int size = COVER_TEX >> lv, span = 1 << lv;
 		int worst = 0;

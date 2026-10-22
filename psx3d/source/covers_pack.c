@@ -1,10 +1,7 @@
-// Box art -> GPU texture: RGB565 with a mip chain, in the PICA200's tiled
-// order. Done on a worker thread when a cover is first fetched; the cache on
+// Box art -> GPU texture: RGB565 in the PICA200's tiled order. Done on a worker thread when a cover is first fetched; the cache on
 // the SD card holds the result, so showing a cover costs the UI only copies.
 #include "covers_pack.h"
 #include <math.h>
-#include <stdlib.h>
-#include <string.h>
 
 uint16_t covers_lin[256];
 uint8_t covers_srgb[4096];
@@ -52,23 +49,6 @@ static inline uint32_t texel(const img_t *m, int x, int y)
 	return m->p[y * m->w + x];
 }
 
-// 2x2 average in linear light
-static void halve(const img_t *src, uint32_t *dst, int size)
-{
-	for (int y = 0; y < size; y++)
-		for (int x = 0; x < size; x++) {
-			uint32_t a = texel(src, 2 * x, 2 * y), b = texel(src, 2 * x + 1, 2 * y);
-			uint32_t c = texel(src, 2 * x, 2 * y + 1), d = texel(src, 2 * x + 1, 2 * y + 1);
-			uint32_t out = 0xff;
-			for (int s = 24; s >= 8; s -= 8) {
-				unsigned sum = covers_lin[a >> s & 255] + covers_lin[b >> s & 255] +
-				               covers_lin[c >> s & 255] + covers_lin[d >> s & 255];
-				out |= (uint32_t)covers_srgb[(sum + 2) >> 2] << s;
-			}
-			dst[y * size + x] = out;
-		}
-}
-
 // 4x4 ordered dither thresholds, 0..15
 static const uint8_t bayer[4][4] = {
 	{ 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 },
@@ -81,7 +61,7 @@ static inline unsigned quant(unsigned v, unsigned top, unsigned dither)
 	return q > top ? top : q;
 }
 
-// one mip level into the tiled layout: memory row 0 is the picture's first
+// the picture into the tiled layout: memory row 0 is the picture's first
 // row (texture coordinate v = 1, as citro2d's subtextures expect; checked in
 // Azahar, a flipped layout shows the covers upside down)
 static void emit(const img_t *m, int size, uint8_t *out)
@@ -101,28 +81,9 @@ static void emit(const img_t *m, int size, uint8_t *out)
 	}
 }
 
-bool covers_pack(const uint32_t *rgba, int w, int h, uint8_t *out)
+void covers_pack(const uint32_t *rgba, int w, int h, uint8_t *out)
 {
 	covers_gamma_init();
-	img_t level = { rgba, w, h };
-	uint32_t *buf[2] = { NULL, NULL };   // the two newest levels we made
-	bool ok = true;
-	int size = COVER_TEX;
-	for (int l = 0; l < COVER_LEVELS; l++, size >>= 1) {
-		emit(&level, size, out + covers_level_offset(l));
-		if (l == COVER_LEVELS - 1) break;
-		uint32_t *next = malloc((size / 2) * (size / 2) * 4);
-		if (!next) {
-			ok = false;
-			break;
-		}
-		halve(&level, next, size / 2);
-		free(buf[0]);
-		buf[0] = buf[1];
-		buf[1] = next;
-		level = (img_t){ next, size / 2, size / 2 };
-	}
-	free(buf[0]);
-	free(buf[1]);
-	return ok;
+	img_t pic = { rgba, w, h };
+	emit(&pic, COVER_TEX, out);
 }

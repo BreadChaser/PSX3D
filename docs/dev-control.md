@@ -111,7 +111,7 @@ The token-gated `covers` command reports worker, transfer, retry and cache count
 last curl/HTTP result, last/maximum stop latency in milliseconds, and the main
 thread's texture-copy time (`uploads`, `upload_avg_us`, `upload_max_us`). Cache
 counts inspect only expected cover files, without arbitrary SD access: `.cv2`
-(finished 256x256 textures, valid files are exactly 174,736 bytes) count as
+(finished 256x256 textures, valid files are exactly 131,088 bytes) count as
 `cached`; covers still only in the old 128x128 `.bin` format (exactly 65,536
 bytes) count as `legacy` and are upgraded in the background (`upgraded`). `covers refresh=<exact_title_or_library_index>`
 queues a fresh HTTPS fetch in the idle library, bypassing its cached image for

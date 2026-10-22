@@ -1,7 +1,7 @@
 // Box art. A low-priority worker thread fetches covers from the free
 // libretro-thumbnails database (by No-Intro name), decodes them, shrinks them
 // to fit 256x256 (keeping their aspect) and caches that on the SD card as a
-// finished GPU texture (RGB565, tiled, with mip levels; see covers_pack.c),
+// finished GPU texture (RGB565, tiled; see covers_pack.c),
 // so each cover is downloaded and decoded once and the UI only copies it.
 // A user's own PNG in covers/ wins. Covers cached by older versions (128x128
 // RGBA8 .bin) show at once and are replaced by a full size download in the
@@ -169,15 +169,13 @@ static u32 *decode_png(const void *data, size_t size, const char *file, int *w, 
 static bool pack_cover(const u32 *px, int w, int h, cover_t *c)
 {
 	c->data = malloc(COVER_PACK_BYTES);
-	if (c->data && covers_pack(px, w, h, c->data)) {
-		c->w = w;
-		c->h = h;
-		c->lowres = false;
-		return true;
-	}
-	free(c->data);
-	c->data = NULL;
-	return false;
+	if (!c->data)
+		return false;
+	covers_pack(px, w, h, c->data);
+	c->w = w;
+	c->h = h;
+	c->lowres = false;
+	return true;
 }
 
 static bool read_cv2(const char *path, cover_t *c)
@@ -734,10 +732,9 @@ static void covers_pump_in_frame(void)
 		if (s->state != 2)
 			continue;
 		if (!s->tex_ok) {
-			s->tex_ok = C3D_TexInitMipmap(&s->tex, COVER_TEX, COVER_TEX, GPU_RGB565);
+			s->tex_ok = C3D_TexInit(&s->tex, COVER_TEX, COVER_TEX, GPU_RGB565);
 			if (s->tex_ok) {
 				C3D_TexSetFilter(&s->tex, GPU_LINEAR, GPU_LINEAR);
-				C3D_TexSetFilterMipmap(&s->tex, GPU_LINEAR);
 				C3D_TexSetWrap(&s->tex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
 			}
 		}
