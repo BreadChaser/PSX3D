@@ -36,6 +36,7 @@
 #define VRAM_W 1024
 #define VRAM_H 512
 #define MAX_VERTS (16 * 1024)   // ~2000 primitives; when full the GPU catches up
+#define VERTS_RESERVE (3 << 20)   // linear memory left for 3D and pause snapshots
 #define SEND_VERTS 1536   // ~500 triangles: then the GPU gets them
 #define STAGE_W 512
 #define STAGE_H 256
@@ -150,6 +151,9 @@ static int stage_y;                   // stage rows used by uploads the GPU hasn
 static int stage_band_y, stage_band_h, stage_x;   // the last row band: uploads side by side
 static pvtx *vbuf, *vbuf_base;
 static int vlimit = MAX_VERTS, vbank;
+// vertices in the buffer: twice MAX_VERTS when linear memory allows, so busy
+// frames (Crash 2, GT2) fill a frame's half and wait for the GPU less often
+int pica_vertices = MAX_VERTS;
 static u32 frame_seq;
 static int vpos, vstart, vclean;
 static int sent_vpos;   // vertex buffer position at the last hand-off to the GPU
@@ -995,7 +999,7 @@ static void pica_frame_started_local(void)
 	lru_frame = lru_clock;
 	if (!pica_async || !pica_frame_pending || !pica_frame_pending()) synced_seq = seq;
 	if (vbuf_base) {
-		vlimit = pica_double_buffer ? MAX_VERTS / 2 : MAX_VERTS;
+		vlimit = pica_double_buffer ? pica_vertices / 2 : pica_vertices;
 		vbank = pica_async ? (vbank ^ 1) : 0;
 		vbuf = vbuf_base + vbank * vlimit;
 	}
@@ -3577,9 +3581,6 @@ bool pica_game_begin(bool small)
 	C3D_TexSetFilter(&disp_tex, GPU_NEAREST, GPU_NEAREST);
 	disp_used = false;
 	C3D_TexSetFilter(&stage_tex, GPU_NEAREST, GPU_NEAREST);
-	vbuf = vbuf_base = linearAlloc(MAX_VERTS * sizeof(pvtx));
-	if (!vbuf)
-		goto fail;
 	// the atlas, and each entry's fixed place in it
 	atlas[0].w = 1024;
 	atlas[0].h = 1024;
@@ -3592,6 +3593,11 @@ bool pica_game_begin(bool small)
 		goto fail;
 	C3D_TexSetFilter(&dither_tex, GPU_NEAREST, GPU_NEAREST);
 	C3D_TexSetWrap(&dither_tex, GPU_REPEAT, GPU_REPEAT);
+	// the vertex buffer last: the larger one only if memory stays for the rest
+	pica_vertices = linearSpaceFree() >= 2 * MAX_VERTS * sizeof(pvtx) + VERTS_RESERVE ? 2 * MAX_VERTS : MAX_VERTS;
+	while (!(vbuf = vbuf_base = linearAlloc(pica_vertices * sizeof(pvtx))))
+		if ((pica_vertices /= 2) < MAX_VERTS)
+			goto fail;
 	{
 		// ADD_SIGNED subtracts 128 from the sum. Coordinates are generated
 		// from absolute VRAM position by the vertex shader, with no extra

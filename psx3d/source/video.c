@@ -219,7 +219,9 @@ bool video_game_begin(void)
 	pica_frame_pending = video_gpu_has_previous;
 	pica_open_frame = video_gpu_frame_begin;
 	hardware_active = true;
-	log_printf("gpu_pica: game buffers ready, %uK GPU memory left\n", (unsigned)(linearSpaceFree() / 1024));
+	extern int pica_vertices;
+	log_printf("gpu_pica: game buffers ready, %uK GPU memory left, %d vertices\n",
+		(unsigned)(linearSpaceFree() / 1024), pica_vertices);
 	return true;
 }
 
