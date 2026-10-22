@@ -2412,7 +2412,8 @@ static noinline int clip_round(float f)
 // reach far outside its viewport (PS1 skies are huge polygons).
 static int clip_area(const pvtx *t, int x0, int y0, int x1, int y1, unsigned planes, pvtx *out)
 {
-	pvtx a[9], b[9];
+	pvtx storage[2][9];
+	pvtx *a = storage[0], *b = storage[1];
 	int n = 3, m;
 	memcpy(a, t, 3 * sizeof(pvtx));
 	for (int side = 0; side < 4; side++) {
@@ -2421,7 +2422,7 @@ static int clip_area(const pvtx *t, int x0, int y0, int x1, int y1, unsigned pla
 		if (!(planes & (1u << side))) continue;
 		m = 0;
 		for (int i = 0; i < n; i++) {
-			const pvtx *p = &a[i], *q = &a[(i + 1) % n];
+			const pvtx *p = &a[i], *q = i + 1 < n ? p + 1 : a;
 			int pc = side == 0 ? p->x - x0 : side == 1 ? x1 - p->x : side == 2 ? p->y - y0 : y1 - p->y;
 			int qc = side == 0 ? q->x - x0 : side == 1 ? x1 - q->x : side == 2 ? q->y - y0 : y1 - q->y;
 			if (pc >= 0)
@@ -2429,12 +2430,15 @@ static int clip_area(const pvtx *t, int x0, int y0, int x1, int y1, unsigned pla
 			if ((pc >= 0) != (qc >= 0)) {   // the edge crosses this side
 				float f = (float)pc / (pc - qc);
 				pvtx *o = &b[m++];
-				o->x = p->x + clip_round((q->x - p->x) * f);
-				o->y = p->y + clip_round((q->y - p->y) * f);
+				for (int k = 0; k < 4; k++) {
+					s16 cp, cq, co;
+					memcpy(&cp, (const char *)p + 2 * k, sizeof(cp));
+					memcpy(&cq, (const char *)q + 2 * k, sizeof(cq));
+					co = cp + clip_round((cq - cp) * f);
+					memcpy((char *)o + 2 * k, &co, sizeof(co));
+				}
 				if (side < 2) o->x = side == 0 ? x0 : x1;
 				else o->y = side == 2 ? y0 : y1;
-				o->u = p->u + clip_round((q->u - p->u) * f);
-				o->v = p->v + clip_round((q->v - p->v) * f);
 				u32 c = 0;
 				for (int k = 0; k < 32; k += 8) {
 					int cp = (p->rgba >> k) & 0xff, cq = (q->rgba >> k) & 0xff;
@@ -2445,7 +2449,7 @@ static int clip_area(const pvtx *t, int x0, int y0, int x1, int y1, unsigned pla
 		}
 		if (m < 3)
 			return 0;
-		memcpy(a, b, m * sizeof(pvtx));
+		pvtx *swap = a; a = b; b = swap;
 		n = m;
 	}
 	for (int i = 1; i + 1 < n; i++) {
