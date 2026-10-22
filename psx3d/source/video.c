@@ -5,7 +5,9 @@
 #include "psx3d.h"
 #include "widescreen.h"
 #include "gpustereo.h"
+#include "display.h"
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
+#include "../../core/plugins/gpulib/gpu.h"
 #include "pica_shbin.h"
 #include "../../core/libpcsxcore/psx3d_depth.h"
 
@@ -31,11 +33,11 @@ bool ui_wants_3d;
 // 3D slider fully up pushes the game picture this many pixels behind the screen
 #define MAX_DEPTH_PX 8.0f
 static C3D_Tex tex;
-static Tex3DS_SubTexture subtex;
 static u16 *fbs[2];          // linear memory, TEX_W pixels per row
 static int fb_cur;           // buffer the core renders into next
 static u16 *pending;         // finished frame waiting to be copied to the texture
 static unsigned frame_w = 320, frame_h = 240;
+static int frame_pic_y, frame_pic_h;   // the picture's rows in that 24-bit frame
 static bool have_frame;
 static bool gpu_frame;
 static u64 wait_ticks, xfer_ticks;
@@ -316,6 +318,13 @@ void video_frame(const void *data, unsigned width, unsigned height, size_t pitch
 
 	frame_w = width;
 	frame_h = height;
+	// vout_flip put the picture at gpulib's screen.y (cropped above the
+	// field), every second line of a 480i picture into a halved frame
+	int y = gpu.screen.y, h = gpu.screen.h;
+	if (y < 0) { h += y; y = 0; }
+	if (h >= (int)height * 3 / 2) h /= 2;
+	frame_pic_y = y;
+	frame_pic_h = h;
 	have_frame = true;
 
 	u64 t0 = svcGetSystemTick();
@@ -439,31 +448,42 @@ u64 video_take_xfer_ticks(void)
 }
 
 
+// The screen mode's box: 4:3 like a TV, full-screen Stretch/GTE fallback, or
+// the native bundle aspect fitted into the 400x240 display.
+static void screen_box(float *w, float *h)
+{
+	*w = config_screen_mode() == 2 ? fminf(400, 240 * ws_aspect()) : config_screen_mode() ? 400 : 320;
+	*h = config_screen_mode() == 2 ? *w / ws_aspect() : 240;
+}
+
+// Draw a picture whose top left is texel (px, py) of t, placed and cropped by d.
+static void draw_picture(C3D_Tex *t, float px, float py, const display_rect *d, float eye_dx)
+{
+	// Without Smooth, sample a little past the texel centre: a 2:1 picture
+	// (480i, 640 wide) samples exactly between two texels, where rounding
+	// would pick either one from pixel to pixel. This keeps one field.
+	float bias = g_cfg.smooth ? 0.0f : 0.125f;
+	float x0 = px + d->sx + bias, y0 = py + d->sy + bias;
+	Tex3DS_SubTexture st = { (u16)d->sw, (u16)d->sh,
+		x0 / t->width, 1.0f - y0 / t->height,
+		(x0 + d->sw) / t->width, 1.0f - (y0 + d->sh) / t->height };
+	C2D_Image img = { t, &st };
+	C3D_TexSetFilter(t, g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST, g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST);
+	C2D_DrawImageAt(img, d->dx + eye_dx, d->dy, 0.5f, NULL, d->dw / d->sw, d->dh / d->sh);
+}
+
 static void draw_game_tex(C3D_Tex *t, float eye_dx)
 {
-	float dw, dh, x, y;
-	C2D_Image img = { t, &subtex };
-
 	if (!have_frame)
 		return;
-
-	subtex.width = frame_w;
-	subtex.height = frame_h;
-	subtex.left = 0.0f;
-	subtex.right = (float)frame_w / TEX_W;
-	subtex.top = 1.0f;
-	subtex.bottom = 1.0f - (float)frame_h / TEX_H;
-
-	// 4:3 like a TV, full-screen Stretch/GTE fallback, or the native
-	// bundle aspect fitted into the 400x240 display.
-	dw = config_screen_mode() == 2 ? fminf(400, 240 * ws_aspect()) : config_screen_mode() ? 400 : 320;
-	dh = config_screen_mode() == 2 ? dw / ws_aspect() : 240;
-	x = (400 - dw) / 2 + eye_dx;
-	y = (240 - dh) / 2;
-
-	C3D_TexSetFilter(t, g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST,
-		g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST);
-	C2D_DrawImageAt(img, x, y, 0.5f, NULL, dw / frame_w, dh / frame_h);
+	// The core's frame is the whole field with the picture already placed
+	// in it horizontally; place its picture rows like the GPU path does.
+	display_geom g = { frame_w, frame_h, 0, frame_pic_y, frame_w, frame_pic_h };
+	display_rect d;
+	float bw, bh;
+	screen_box(&bw, &bh);
+	if (display_fit(&g, bw, bh, &d))
+		draw_picture(t, 0, 0, &d, eye_dx);
 }
 
 static void draw_game(float eye_dx, bool right)
@@ -481,11 +501,15 @@ static void draw_game(float eye_dx, bool right)
 		if (eye)
 			t = eye;
 	}
-	Tex3DS_SubTexture st = { (u16)w, (u16)h, l, tp, r, b };
-	C2D_Image img = { t, &st };
-	float dw = config_screen_mode() == 2 ? fminf(400, 240 * ws_aspect()) : config_screen_mode() ? 400 : 320;
-	float dh = config_screen_mode() == 2 ? dw / ws_aspect() : 240;
-	C3D_TexSetFilter(t, g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST, g_cfg.smooth ? GPU_LINEAR : GPU_NEAREST);
+	extern int pica_debug;
+	display_geom g = { gpu.screen.hres, gpu.screen.vres, gpu.screen.x, gpu.screen.y, (int)w, (int)h };
+	if (pica_debug & 32)   // debug: all of VRAM
+		g = (display_geom){ (int)w, (int)h, 0, 0, (int)w, (int)h };
+	display_rect d;
+	float bw, bh;
+	screen_box(&bw, &bh);
+	if (!display_fit(&g, bw, bh, &d))
+		return;
 	// the picture's alpha is the PS1 mask bit (0 for most pixels): copy it
 	// unblended and untested. The renderer leaves its own blending and alpha
 	// test behind, which blacked the picture out whenever the game's last
@@ -493,7 +517,7 @@ static void draw_game(float eye_dx, bool right)
 	C2D_Flush();
 	C3D_AlphaTest(false, GPU_ALWAYS, 0);
 	C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
-	C2D_DrawImageAt(img, (400 - dw) / 2 + eye_dx, (240 - dh) / 2, 0.5f, NULL, dw / w, dh / h);
+	draw_picture(t, l * t->width, (1.0f - tp) * t->height, &d, eye_dx);
 	C2D_Flush();
 	C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
 		GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA);   // citro2d's own, for the overlays

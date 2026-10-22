@@ -208,7 +208,7 @@ Fates:
 | scale_hires | — | no | enabled | enabled | **Force** | 240-line screen | no |
 | gpu_slow_llists | Safe drawing | yes (Picture accuracy) | auto | auto | **Setting** (Compatibility) | Per-game fix | no |
 | show_overscan | — | no (hidden by `show_` prefix, by accident) | disabled | disabled | **Force** disabled | Overscan would not fit the 400-px screen with Original framing. Recorded here so it is a decision, not an accident. | no |
-| screen_centering, _x, _y, _h_adj | — | no (removed) | auto | auto | **Force** auto | Removed earlier; GPU renderer centres. | no |
+| screen_centering, _x, _y, _h_adj | — | no (removed) | auto | auto | **Force** auto | The game's own display position (gpulib "auto": pictures within 8 px of the middle are centred). `psx3d/source/display.c` shows the field like a TV: short pictures get black borders, 480i is two lines per row, PAL shows a 240-line window. Same in every screen mode. | no |
 | neon_*, gpu_peops_*, gpu_unai_* | — | no | — | — | **Remove** (not built) | No such renderers on 3DS (`hidden_prefix`); the unai prefix is a leftover from the Software renderer removal. | no |
 | show_gpu_peops_settings, show_input_settings | — | no | disabled | disabled | **Force** | RetroArch menu folding | no |
 | spu_reverb | Sound echo | Old only (Sound) | disabled | forced enabled | **Force** On, both | User decision (Q1): the PS1 has it. Old cost measured on heavy scenes: see `devtools/settings-impl/REPORT.md`. | no |

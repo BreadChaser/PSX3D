@@ -78,6 +78,7 @@ run core-microtests bash tests/core/run.sh
 run title-version   python3 tests/title_version/check.py
 # Core/renderer/video code extracted from the sources and run on the host.
 run video-scanout    python3 psx3d/tests/vout/check.py
+run display-fit      bash psx3d/tests/display/run.sh
 run video-teardown   python3 tools/frontend-overhead/library_check.py
 run gpu-reference    env BUILD_DIR="$out/gpu" bash tools/gpu-compare/regress.sh
 run pica-layout      env PICA_LAYOUT_CHECK_OUT="$out/pica-layout" bash tools/pica-layout/check.sh
