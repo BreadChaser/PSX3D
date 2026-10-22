@@ -63,12 +63,13 @@ every locked package.
 
 Outputs are `psx3d/PSX3D.3dsx`, `psx3d/PSX3D.cia`, `psx3d/PSX3D.cxi` (with `make cxi`)
 and `psx3d/PSX3D.elf`. Use `make clean` before changing toolchain or compiler flags. The
-default GPU layout is `split`; alternative layouts are development comparisons, not user
-settings.
+production GPU layout is fixed to `split`; standalone host tools can compare
+alternative layouts.
 
 `PSX3D_VERSION` in `psx3d/source/psx3d.h` controls the release version. The root
-Makefile derives the CIA title counter; v0.4.0 uses **4099**. Do not lower that
-counter when installing test builds over the release. The remote build identity is reported by `psx3d/source/devcontrol.c`.
+Makefile derives and validates the CIA title counter; v0.5.0 uses **5123**. Do not lower
+the installed counter when packaging test builds. The remote build identity defaults
+to the version string; private tests may override `PSX3D_BUILD` (see the switch audit).
 
 ### The private citro3d ABI
 
@@ -127,6 +128,7 @@ host:
 | `library`, `save-safety`, `save-names` | library scanner, crash-safe save/state/card files with backups, save-name ownership (`psx3d/tests/{library,save,saveid}`) |
 | `core-microtests` | real ARMv6 dynarec vs interpreter, load-delay/memory/SMC/GTE programs and HLE determinism; qemu-arm, no ROM/BIOS (`tests/core/README.md`) |
 | `c3d-abi` | the private citro3d structure layout PSX3D relies on |
+| `title-version` | semantic-field boundaries, unique version mappings and signed-TMD offsets |
 | `video-scanout`, `video-teardown` | `vout_flip` from `core/frontend/libretro.c` and `video_game_end` from `video.c`, extracted and run with fakes |
 | `gpu-reference`, `pica-layout` | `gpu_pica.c` against the independent software rasteriser; baseline and split layouts must draw identically |
 

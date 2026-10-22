@@ -1,24 +1,14 @@
 --- makerom/src/user_settings.c
 +++ makerom/src/user_settings.c
-@@ -933,7 +933,7 @@
- 
- void DisplayBanner(void)
- {
+@@ -936 +936 @@
 -	printf("%s v%d.%d.%d (C) %s\n", APP_NAME, VER_MAJOR, VER_MINOR, VER_PATCH, AUTHORS);
 +	printf("%s v%d.%d.%d (C) %s\n", APP_NAME, MAKEROM_VER_MAJOR, MAKEROM_VER_MINOR, MAKEROM_VER_PATCH, AUTHORS);
- 	printf("Built: %s %s\n\n", __TIME__, __DATE__);
- }
- 
 --- makerom/src/version.h
 +++ makerom/src/version.h
-@@ -1,7 +1,7 @@
- #pragma once
- #define APP_NAME	"CTR MAKEROM"
- #define BIN_NAME	"makerom"
+@@ -4,3 +4,3 @@
 -#define VER_MAJOR	0
 -#define VER_MINOR	19
 -#define VER_PATCH	0
 +#define MAKEROM_VER_MAJOR	0
 +#define MAKEROM_VER_MINOR	19
 +#define MAKEROM_VER_PATCH	0
- #define AUTHORS		"3DSGuy"
