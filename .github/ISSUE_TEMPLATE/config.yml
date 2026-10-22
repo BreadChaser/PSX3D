@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Compatibility list
+    url: https://github.com/BreadChaser/PSX3D/blob/main/docs/compatibility.md
+    about: What has been tested, on which console.

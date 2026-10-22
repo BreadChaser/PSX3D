@@ -2,7 +2,7 @@
 
 <picture><source media="(prefers-color-scheme: light)" srcset="performance-light.svg"><img src="performance-dark.svg" alt="PSX3D speed on Old 3DS and New 3DS" width="880"></picture>
 
-The v0.4.1 release candidate was measured on 2026-10-20 in each game's
+The v0.5.0 release candidate (Old 3DS) was measured on 2026-10-21 in each game's
 heaviest tested scene: save slot 5 (the heaviest scene per game), Silent Hill's
 alley (slot 6) and café (slot 7). Racing games use their attract-mode races,
 Symphony of the Night the prologue Dracula fight. Each run used a 3-second

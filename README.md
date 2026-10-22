@@ -120,6 +120,9 @@ press **Y** in the library to pick a folder. Box art downloads automatically, ev
 files with other names; your own picture goes in `sdmc:/3ds/PSX3D/covers/`
 ([how](docs/box-art.md)).
 
+Got a real BIOS? Copy it to `sdmc:/3ds/PSX3D/bios/` and PSX3D uses it by itself
+(`scph5500`, `scph5501`, `scph5502`, `psxonpsp660`, `scph101`, `scph7001` or `scph1001`, all `.bin`).
+
 ## Controls
 
 | Where | Input | Action |
@@ -129,9 +132,25 @@ files with other names; your own picture goes in `sdmc:/3ds/PSX3D/covers/`
 | In game | L / R / ZL / ZR | L1 / R1 / L2 / R2 |
 | In game | Circle Pad / C-Stick | D-pad or left stick / right stick |
 | In game | Touch MENU | Pause menu |
+| In game | SELECT + R | Fast forward on/off |
+| In game | Hold SELECT + L | Rewind (New 3DS) |
 
 Everything can be remapped. Old 3DS gets extra buttons and a right stick on the
 touch screen.
+
+## Saves and logs
+
+Everything lives in `sdmc:/3ds/PSX3D/`: `saves/` (memory cards), `states/` (save states and Continue), `config.ini` and `games/` (settings).
+
+If something breaks, `log.txt` there says what happened (older sessions are `log.1.txt` to `log.4.txt`). Attach it to your issue.
+
+## Known issues
+
+- Some games show drawing glitches, flicker or thin cracks at polygon edges.
+- Interlaced video and display centering aren't implemented yet.
+- Games with LibCrypt protection (some PAL discs) need a `.sbi` file next to the disc image.
+- `.ccd` images show up in the library but can't be played; use `.cue/.bin` or `.chd`.
+- Gran Turismo 1 hangs and Mega Man Legends 2 goes black after the intro with the built-in BIOS; a real BIOS fixes the first one.
 
 ## Building
 

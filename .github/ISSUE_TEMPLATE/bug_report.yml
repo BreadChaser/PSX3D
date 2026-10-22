@@ -1,0 +1,61 @@
+name: Bug report
+description: A game doesn't start, draws wrong, runs slow, or PSX3D crashes
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks. Please check the [known issues](https://github.com/BreadChaser/PSX3D#known-issues) and the [compatibility list](https://github.com/BreadChaser/PSX3D/blob/main/docs/compatibility.md) first.
+        Don't attach game images, BIOS files or anything you don't own.
+  - type: dropdown
+    id: console
+    attributes:
+      label: Console model
+      options:
+        - Old 3DS
+        - Old 3DS XL
+        - Old 2DS
+        - New 3DS
+        - New 3DS XL
+        - New 2DS XL
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: PSX3D version
+      description: Shown in the top corner of the library (for example v0.5.0).
+    validations:
+      required: true
+  - type: input
+    id: luma
+    attributes:
+      label: Luma3DS version
+      description: Optional. Leave blank if you don't know.
+  - type: input
+    id: game
+    attributes:
+      label: Game and region
+      description: For example "Resident Evil 2, Spain (PAL)". Add the serial (like SCUS-94900) if you know it.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repeat
+    attributes:
+      label: How to make it happen again
+      description: Where in the game, and which settings you changed (frameskip, widescreen, 3D, game CPU speed).
+  - type: textarea
+    id: log
+    attributes:
+      label: log.txt
+      description: |
+        Drag `sdmc:/3ds/PSX3D/log.txt` into this box, or paste it. It holds the last session; older ones are `log.1.txt` to `log.4.txt`.
+        Copy it before you start PSX3D again. For drawing problems, add a photo or screenshot.
+    validations:
+      required: true
