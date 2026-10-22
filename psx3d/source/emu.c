@@ -973,8 +973,8 @@ bool emu_debug_state(int slot, bool save)
 	if (!core_initialized || slot < 0 || slot > 9)
 		return false;
 	bool ok = save ? state_save_to(slot) : state_load_from(slot);
-	if (ok)
-		sw_state = state_slot = slot;
+	if (ok)   // the slot in use now; the next game still starts as asked (not from this slot)
+		state_slot = slot;
 	return ok;
 }
 
