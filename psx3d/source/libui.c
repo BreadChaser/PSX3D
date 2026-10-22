@@ -460,28 +460,29 @@ static char letter_of(int e)
 // L/R letter jump: a big letter over the cover and the alphabet along the bottom
 static void draw_jump(int a)
 {
+	// panels at 0.66, under ui_text_ex's 0.7 and over the covers (0.5)
 	const theme_t *th = theme();
 	char cur[2] = { letter_of(sel), 0 };
 	float cx = 200 + ui_depth(-1.2f);
-	C2D_DrawRectSolid(cx - 56, 40, 0.8f, 112, 112, theme_alpha(th->menu_bg, a * 215 / 255));
+	C2D_DrawRectSolid(cx - 56, 40, 0.66f, 112, 112, theme_alpha(th->menu_bg, a * 215 / 255));
 	for (int i = 0; i < 4; i++)
-		C2D_DrawRectSolid(cx - 56 + i * 28, 150, 0.81f, 26, 2, theme_alpha(th->accent[i], a));
-	text(title_font, cx, 52, 2.2f, theme_alpha(th->game_title, a), C2D_AlignCenter, cur);
+		C2D_DrawRectSolid(cx - 56 + i * 28, 150, 0.67f, 26, 2, theme_alpha(th->accent[i], a));
+	ui_text_ex(title_font, cx, 52, 2.2f, theme_alpha(th->game_title, a), C2D_AlignCenter, cur);
 	// which letters have games
 	bool has[27] = { false };
 	for (int e = az_start < 0 ? 0 : az_start; e < nview; e++) {
 		char c = letter_of(e);
 		has[c == '#' ? 0 : c - 'A' + 1] = true;
 	}
-	C2D_DrawRectSolid(0, 204, 0.8f, 400, 20, theme_alpha(th->menu_bg, a * 200 / 255));
+	C2D_DrawRectSolid(0, 204, 0.66f, 400, 20, theme_alpha(th->menu_bg, a * 200 / 255));
 	for (int i = 0; i < 27; i++) {
 		char l[2] = { i ? (char)('A' + i - 1) : '#', 0 };
 		float x = 14 + i * 13.9f;
 		bool here = l[0] == cur[0];
 		u32 c = here ? th->game_title : has[i] ? th->game_sub : theme_alpha(th->game_sub, 70);
-		text(NULL, x, 206, 0.4f, theme_alpha(c, here ? a : a * 200 / 255), C2D_AlignCenter, l);
+		ui_text_ex(NULL, x, 206, 0.4f, theme_alpha(c, here ? a : a * 200 / 255), C2D_AlignCenter, l);
 		if (here)
-			C2D_DrawRectSolid(x - 4, 221, 0.81f, 8, 1, theme_alpha(th->game_title, a));
+			C2D_DrawRectSolid(x - 4, 221, 0.71f, 8, 1, theme_alpha(th->game_title, a));
 	}
 }
 

@@ -777,7 +777,8 @@ void ui_notice(const char *s, int frames)
 		return;
 	int a = frames > 20 ? 255 : frames * 255 / 20;
 	float w = text_width(0.48f, s) + 28, x = 200 - w / 2;
-	C2D_DrawRectSolid(x, 104, 0.88f, w, 30, theme_alpha(ui_bar_color(UI_COL_NOTICE), a * 225 / 255));
-	C2D_DrawRectSolid(x, 104, 0.885f, 3, 30, theme_alpha(theme()->accent[3], a));
+	// under the text (ui_text_ex draws at 0.7), over covers and titles
+	C2D_DrawRectSolid(x, 104, 0.66f, w, 30, theme_alpha(ui_bar_color(UI_COL_NOTICE), a * 225 / 255));
+	C2D_DrawRectSolid(x, 104, 0.665f, 3, 30, theme_alpha(theme()->accent[3], a));
 	ui_text_ex(NULL, 200, 111, 0.48f, theme_alpha(theme()->header_title, a), C2D_AlignCenter, s);
 }
