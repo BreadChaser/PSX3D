@@ -4,7 +4,8 @@
   check-mock.py [path/to/ui-mock/js/theme.js]
 
 Builds a host program that dumps every theme of theme.c, evaluates the mock's THEMES with node,
-and compares names and every token the console uses. Exit status 1 on any difference."""
+and compares names and every token the console uses. The console's palettes must be the mock's
+first ones, in order; palettes the mock lists after them are proposals and not checked. Exit status 1 on any difference."""
 import json, os, pathlib, re, subprocess, sys, tempfile
 root = pathlib.Path(__file__).resolve().parents[2]
 mock = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else '/home/tony/Development/PS1_3ds/devtools/ui-mock/js/theme.js')
@@ -36,7 +37,8 @@ subprocess.run(['cc', '-std=gnu11', '-w', *inc, '-o', str(work / 'dump'), str(wo
 raw = subprocess.run([str(work / 'dump')], capture_output=True, text=True, check=True).stdout.replace(',}', '}')
 console = json.loads(raw)
 problems = []
-if [t['name'] for t in console] != list(mock_themes):
+# the mock may list more palettes (proposals) after the ones the console ships
+if [t['name'] for t in console] != list(mock_themes)[:len(console)]:
     problems.append(f'names/order: console {[t["name"] for t in console]} != mock {list(mock_themes)}')
 for t in console:
     m = mock_themes.get(t['name'])
