@@ -15,7 +15,7 @@ Speed figures are for specific saved scenes; see [Performance](README.md#perform
 - New: clear messages when a game can't start (missing file, wrong disc, not enough memory).
 - New: European and Japanese discs of the tested games get their settings too.
 - New: Real 3D falls back to screen depth for menus, movies and 2D scenes.
-- Faster: Old 3DS: OLD_GATE_SUMMARY.
+- Faster: Old 3DS faster in busy scenes, about 4% on average: Crash Bandicoot 2 76% to 85% game speed, Silent Hill 77% to 87% (café, Auto), Gran Turismo 2 54% to 58%.
 - Fixed: the picture sits where a TV shows it, including borders, 480i and PAL movies.
 - Fixed: a possible New 3DS crash with Real 3D in busy game start-ups (Crash Bandicoot, Harvest Moon).
 - Fixed: memory cards are checked before a backup is replaced; damaged cards ask what to do.
