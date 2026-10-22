@@ -4,6 +4,12 @@ The target is 25% less renderer CPU time on the Old 3DS, with identical VRAM
 and pictures. No change is accepted from simulator speed alone. This round
 starts at `0e1ca70d` (v0.5.0 rc4), branch `t3/renderer-icache`.
 
+Compact clipping is the first accepted step: Old A/B/A gains GT2+1.18% off /
++1.12% Auto, SH café+1.60% /+1.36%, Klonoa+1.68% off. Every heavy scene stays
+within the ~1% no-regression gate. All 13 hardware full-VRAM dumps are exact.
+This is well below the 25% renderer target, which remains open. Final handoff
+is exact shipped rc4 at title 5139, library idle, config unchanged.
+
 The first measurement is a per-primitive instruction-line map, rather than
 another specialized polygon implementation. Earlier specialized/leaner draw
 code and hot-function ordering lost on hardware. The existing common inside-area
@@ -41,7 +47,7 @@ costs the simulator map omits.
 
 ## Experiments prepared offline
 
-These are candidates, not accepted speed improvements. Each production build and
+Compact clipping is accepted below; the other experiments remain offline. Each production build and
 source snapshot is retained in the ignored evidence directory.
 
 | Experiment | ARM production size | Measured instruction footprint |
@@ -52,7 +58,7 @@ source snapshot is retained in the ignored evidence directory.
 | Load CLUT/page outside the vertex loop, with strides/in-place packing | polygon size in artifacts-packet | instructions fall ~2–3%; Tekken fetched lines grow 0.6%, set aside |
 | Compact clipping, independently of the above | clip_tris 1,416 → 1,208 B | table below |
 
-The current candidate is compact clipping only. Alternate two scratch buffers
+The accepted source change is compact clipping only. Alternate two scratch buffers
 between clipping planes instead of copying every output polygon back; wrap the
 last edge with a conditional instead of integer modulo; share the four signed
 16-bit coordinate interpolation operations in one loop. Fixed-size memcpy reads
@@ -139,3 +145,59 @@ bitwise XOR/OR also fails the footprint screen: GT2 112.88 →112.50 lines,
 but Tekken104.36 →105.40, R4 121.33 →122.21 and CTR108.81 →109.07. Klonoa
 improves158.35 →155.97; instructions barely change. That mixed result does not
 justify a separate hardware install (`gpu-memokey.c`, `map-memokey/`).
+
+## Accepted hardware step (2026-10-22)
+
+One compact-clipping source change, always on; no specialized decoder or
+hot-function ordering. Old-only A/B/A: rc4 title 5134 → candidate 5135 → rc4 title 5139.
+All 102 speed/PMU runs are ok with zero black samples. Full-VRAM dumps at
+frame 60 match all 1024×512 pixels including mask bits in all 13 heavy scenes.
+No code is accepted from simulator timings.
+
+| Heavy scene | game speed Δ off | game speed Δ Auto |
+|---|---:|---:|
+| Crash 1 (5) | +0.51% | -0.26% |
+| CTR (5) | +0.04% | -0.10% |
+| R4 (5) | +0.41% | +0.02% |
+| SotN (5) | +0.59% | -0.01% |
+| SH garage (5) | +0.19% | +0.11% |
+| SH alley (6) | +0.48% | +0.77% |
+| SH café (7) | +1.60% | +1.36% |
+| GT2 (5) | +1.18% | +1.12% |
+| Tekken 3 (5) | +0.54% | +0.52% |
+| FFVII (5) | -0.29% | -0.03% |
+| Klonoa (5) | +1.68% | -0.00% |
+| Crash 2 (5) | +0.69% | -0.11% |
+| NFS HS (5) | +0.15% | -0.11% |
+
+Renderer cost per primitive, candidate versus mean rc4 A1/A2 (pmu=0,8,
+pmurender=on, prof; PMU samples 1/16 command lists):
+
+| Scene | cycles Δ | I-cache misses Δ | instructions Δ |
+|---|---:|---:|---:|
+| SH alley (6) | -2.47% | -8.00% | -1.78% |
+| GT2 (5) | -3.49% | -11.81% | -1.88% |
+| Tekken 3 (5) | -1.17% | -2.86% | -1.66% |
+| Klonoa (5) | -5.40% | -10.49% | -4.08% |
+
+The report devtools/renderer-icache/REPORT.md includes all A1/B/A2 game-speed,
+renderer per-frame, I-starved and instruction measurements, package hashes and
+rejections. Raw evidence is hw/cliploop-1/. PICA wall timers include waits and
+preemption; fixed wall-time windows can change primitive mix. Off baseline
+spread is ≤0.28% except capped FFVII 0.70% and NFS's loading window 1.02%; Auto
+maximum 0.73%. The simulator map omits caller dispatch/frontend and real citro3d;
+further structural measurement there remains useful. New hardware checks are
+pending before release; this session intentionally contacted only the Old.
+
+Restore 5136 was refused in AM's read/write loop; the healthy candidate kept
+running. The SD log contains no AM result; the host client discarded that JSON
+field, so the specific cause is unknown. A fresh 5138 recovery initially picked
+up the shared checkout's old RomFS because makerom's RSF RootPath is relative
+to cwd. Status defaults 0/pack 0 and fallback-defaults logs exposed the mistake;
+its invalid A2 was excluded. Coordinator authorized 5139 from the release
+worktree: its entire NCCH payload is byte-identical to shipped rc4, and all 2044
+RomFS file hashes match candidate 5135/original 5136. Correct defaults 1/pack 3 and
+stable fresh A2 confirm recovery. Always verify assets as well as the exact ELF
+and ticket/TMD title versions when repacking. No unavailable marker was written.
+
+Accepted source commit: `f61f49e2` (compact clipping only).
