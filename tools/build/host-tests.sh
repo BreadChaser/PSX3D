@@ -63,6 +63,7 @@ run widescreen       bash tests/widescreen/run.sh
 run presets          bash tests/presets/run.sh
 run presets-update   bash psx3d/tests/presetupdate/run.sh
 run statsview        bash -c 'cc -std=c99 -Wall -Wno-unused-parameter -Wno-unused-function -fsanitize=address,undefined -g tests/statsview/check.c -o "$0/statsview" && "$0/statsview" > /dev/null' "$out"
+run stereo-flat     bash -c 'cc -std=gnu11 -Wall -Wextra -fsanitize=address,undefined -g tests/stereo/flat.c psx3d/source/gpustereo_core.c -lm -o "$0/stereo-flat" && "$0/stereo-flat"' "$out"
 run audio-resampler  bash -c 'cc -std=gnu11 -Wall -Wextra -fsanitize=address,undefined -g tests/audio_resample_test.c psx3d/source/audio_resample.c psx3d/source/audio_tsm.c -lm -o "$0/audio-resampler" && "$0/audio-resampler"' "$out"
 run input-replay     env BUILD_DIR="$out/clips" bash tools/input-replay/check.sh
 run frameskip        bash tools/frameskip/check.sh

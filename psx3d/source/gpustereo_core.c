@@ -48,6 +48,21 @@ static unsigned nseq, bd_count, bd_bin, bd_hold, bd_found;
 // the eyes couldn't fuse such a step anyway.
 #define MAX_GRADIENT 0.3f
 #define SLACK 1.0f
+// Screen depth fallback: a frame whose polygons carry next to no depth
+// (logos, movies, menus, 2D games, pre-rendered backgrounds) has nothing to
+// give real 3D, so after FLAT_AFTER such shown frames in a row the whole
+// picture moves behind the screen instead (as before v0.5.0); real 3D
+// returns as soon as depth does. Either way the change fades over FADE
+// frames. Games drawing at 30, 20 or 15 fps leave frames without new
+// polygons in between: too few in a row to count as flat, and up to
+// FADE_ON of them still fade real 3D in; a longer gap holds the fade, so a
+// stray depth frame in a 2D scene doesn't dip it.
+#define MIN_SAMPLES 48
+#define FLAT_AFTER 12
+#define FADE_ON 4
+#define FADE 24
+static unsigned flat_run = FLAT_AFTER, flat_step = FADE;   // flat_step: 0 = real 3D, FADE = flat
+static float flat = 1;                                       // eased flat_step / FADE
 
 // log2, within 0.005
 static inline float fast_log2(float z)
@@ -99,6 +114,9 @@ GS_COLD void gs_core_clear(void)
 	near_z = far_z = aim_n = aim_f = 0;
 	memset(hist, 0, sizeof(hist));
 	samples = nseq = bd_count = bd_hold = 0;
+	flat_run = FLAT_AFTER;
+	flat_step = FADE;
+	flat = 1;
 }
 
 // A vertex on the drawing area's left edge doesn't move right in the right
@@ -342,6 +360,13 @@ GS_COLD static void find_backdrop(void)
 GS_COLD void gs_core_frame(float s, int hres)
 {
 	find_backdrop();
+	flat_run = samples >= MIN_SAMPLES ? 0 : flat_run < FLAT_AFTER ? flat_run + 1 : FLAT_AFTER;
+	if (flat_run == FLAT_AFTER && flat_step < FADE)
+		flat_step++;
+	else if (flat_run < FADE_ON && flat_step > 0)
+		flat_step--;
+	float f = (float)flat_step / FADE;
+	flat = f * f * (3 - 2 * f);
 	if (samples >= 6) {
 		follow(&near_z, &aim_n, percentile(5));
 		follow(&far_z, &aim_f, percentile(95));
@@ -353,11 +378,13 @@ GS_COLD void gs_core_frame(float s, int hres)
 	samples = 0;
 	// a wider picture has narrower pixels on the screen
 	scale = MAX_BEHIND * (hres > 0 ? hres : 320) / 320.0f;
-	strength = s;
+	// the right eye's real disparity fades out as the flat picture's comes in
+	strength = s * (1 - flat);
 	gen++;
 }
 
 float gs_focus(void) { return near_z; }
+float gs_flat(void) { return flat; }
 
 GS_COLD void gs_core_counts(unsigned *lookups, unsigned *found, unsigned *shifted, unsigned *rejected)
 {

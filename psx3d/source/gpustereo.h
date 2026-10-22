@@ -35,6 +35,9 @@ void gs_core_frame(float strength, int hres);
 // with a known depth shifted by their disparity. Returns how many moved.
 int gs_shift(const gs_vtx *src, gs_vtx *dst, int n);
 float gs_focus(void);          // depth on the screen plane, 0 until known
+// 0..1: how much of the 3D effect is the whole picture behind the screen
+// (frames without polygon depth) instead of real 3D; follows gs_core_frame
+float gs_flat(void);
 // diagnostics, reset by each call: corners looked up, found; vertices
 // shifted; corners rejected (another object's depth)
 void gs_core_counts(unsigned *lookups, unsigned *found, unsigned *shifted, unsigned *rejected);
@@ -50,4 +53,5 @@ void *gpustereo_right_for(void *picture_tex);
 void gpustereo_frame_end(void);       // before a command list is submitted
 extern volatile bool gpustereo_copy_bypass;   // thumbnails: plain copies out of VRAM
 int gpustereo_mode(void);             // 0 off, 1 screen depth, 2 real 3D (0 on Old 3DS)
+float gpustereo_flat(void);           // real 3D: share of screen depth (1 until the right eye is ready)
 void gpustereo_status(char *out, int n);

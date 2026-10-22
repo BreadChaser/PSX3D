@@ -301,6 +301,7 @@ void gpustereo_frame_end(void)
 }
 
 bool gpustereo_ready(void) { return mirror && seeded; }
+float gpustereo_flat(void) { return mirror && seeded ? gs_flat() : 1; }
 
 // the right eye's version of what pica_picture returned
 void *gpustereo_right_for(void *picture)
@@ -321,9 +322,9 @@ void gpustereo_status(char *out, int n)
 	gs_core_counts(&lookups, &found, &shifted, &rejected);
 	snprintf(out, n, ",\"stereo_mode\":%d,\"stereo\":{\"want\":%.3f,\"tracking\":%s,\"mirror\":%s,"
 		"\"seeded\":%s,\"hold\":%s,\"failed\":%s,\"focus\":%.1f,\"lookups\":%u,\"found\":%u,\"shifted\":%u,\"rejected\":%u,"
-		"\"display3d\":%s,\"top_aa\":%s,\"free_vram\":%u}",
+		"\"flat\":%.2f,\"display3d\":%s,\"top_aa\":%s,\"free_vram\":%u}",
 		gpustereo_mode(), want, tracking ? "true" : "false", mirror ? "true" : "false",
 		seeded ? "true" : "false", hold_valid ? "true" : "false", failed ? "true" : "false",
-		gs_focus(), lookups, found, shifted, rejected, video_stereo_on() ? "true" : "false",
+		gs_focus(), lookups, found, shifted, rejected, gpustereo_flat(), video_stereo_on() ? "true" : "false",
 		video_top_aa() ? "true" : "false", (unsigned)vramSpaceFree());
 }

@@ -619,12 +619,11 @@ void video_present_screens(bool show_game, bool repaint_top, void (*draw_top)(vo
 			stereo_on = stereo;
 		}
 		float depth = stereo ? slider * MAX_DEPTH_PX : 0.0f;
-		// Real 3D: the eyes differ by themselves; screen depth until the
-		// right eye is ready (and for movies, which have no right eye).
-		// No flat-picture depth for games: until the right eye is ready (and
-		// for movies, which have none) both eyes see the same flat picture.
+		// Real 3D: the eyes differ by themselves. Frames without polygon
+		// depth (logos, movies, 2D games) and the time until the right eye
+		// is ready get screen depth instead, faded in and out.
 		if (show_game && gpustereo_mode() == 2)
-			depth = 0.0f;
+			depth *= gpustereo_flat();
 		// gameplay at 1x on Old 3DS, menus supersampled
 		bool plain = renderer_is_gpu() && plain_ok && show_game && !in_menu_call;
 		if (plain != plain_now) {
