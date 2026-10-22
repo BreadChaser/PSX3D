@@ -80,7 +80,9 @@ draw/guest timelines and serialized states; Crash 2 fails identically on both
 with the known simulator assertion. Both renderer sanitizer suites and the
 frontend-growth/new-library layout proof pass. Full 19-trace VRAM/draw hashes
 and all 68 HLE cold boots (all currently available directories) have identical
-timelines and serialized states. Full VRAM replay remains in progress. The
+timelines and serialized states. Full VRAM and final draw hashes match rc4 on all 19 native traces × 600
+frames (11,400 full-VRAM comparisons). Azahar boots the library and loads
+Crash slot 0 through the shared silent headless wrapper. The
 rc4-to-candidate layout comparison records 414 C symbols shifted by up to
 208 bytes after clip_tris; assembly, library code, constants, tables, strings,
 data and bss retain their addresses. This expected core-code movement is a
@@ -93,3 +95,20 @@ Do not start until `psx3d-oldqueue-20261022` finishes. Always hold
 rc4 idle in the library. Every test/restore needs a title version higher than
 the installed one. Finish on the exact `artifacts-rc4` ELF, library idle, with
 the final title version recorded in the report. Do not contact the New 3DS.
+
+## Other offline candidates
+
+Moving texture memo miss/update work to a cold helper reduces the fetched-line
+footprint by only 0.4–1.6%, without reducing instructions (Klonoa adds 0.6%).
+It is saved under `map-memosplit/`; no correctness or hardware result is claimed.
+
+The known coarse rectangle shortcut already exists behind gldbg bit 33554432.
+Enabling it unconditionally avoids the slow tracker call for fully valid bounds
+that are already covered. The fine tracker is unchanged. Compared with rc4,
+weighted fetched lines are GT2 112.88 → 111.89, Tekken 104.36 → 101.37,
+SH alley 117.43 → 117.80, CTR 108.81 → 107.72, R4 121.33 → 120.91,
+Klonoa 158.35 → 154.15. Instruction counts barely change: the gain sought is
+fewer function lines/calls, not less bookkeeping. The production core C symbols
+move by at most 16 bytes; other regions keep their addresses. Guest-state gates
+match (same baseline Crash 2 failure); full VRAM, boots and sanitizers are still
+in progress. This candidate is independent of compact clipping.
