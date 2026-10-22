@@ -112,6 +112,7 @@ void covers_stats_reset(void) {}
 void covers_debug(char *out, size_t len) { snprintf(out, len, "{\"ok\":true}"); }
 void covers_test_start(int kind, int steps, int period) { (void)kind; (void)steps; (void)period; }
 bool covers_slow;
+unsigned covers_sd_ms;
 void libui_select_title(const char *title) { (void)title; }
 #include "../../source/clip.h"
 bool emu_record_start(void) { return false; }

@@ -533,6 +533,7 @@ void covers_pump(void);
 void covers_stats_reset(void);   // developer diagnostics
 int covers_test_tick(void);
 extern bool covers_slow;
+extern unsigned covers_sd_ms;
 void covers_note_select(void);
 void covers_note_draw(bool selected, bool near);
 bool covers_busy(void);

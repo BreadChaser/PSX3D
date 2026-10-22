@@ -128,6 +128,14 @@ static u64 frame_total_us;
 // how fast covers appear while scrolling (developer diagnostics, "covers scroll=")
 static int test_kind, test_steps, test_period, test_count;   // 1 hold, 2 letter jump; dir in sign
 bool covers_slow;                  // "covers fast=off": as before small covers (an A/B in one build)
+unsigned covers_sd_ms;             // "covers sdms=N": cache reads take N ms per 128 KB longer
+                                   // (the console's SD card, in an emulator)
+
+static void sd_model(size_t bytes)
+{
+	if (covers_sd_ms)
+		svcSleepThread((long long)covers_sd_ms * 1000000LL * bytes / COVER_PACK_BYTES);
+}
 static int last_tier;              // what the latest covers_get returned: 0 none, 1 small, 2 full
 static u64 sel_tick;               // when the selection last changed
 static bool sel_any, sel_full;     // it showed a picture / its full size picture since
@@ -395,6 +403,7 @@ static bool thumbs_load(void)
 		LightLock_Unlock(&lock);
 	}
 	if (f) fclose(f);
+	sd_model((size_t)nthumbs * sizeof(thumb_t));
 	LightLock_Lock(&lock);
 	thumbs_loaded = true;
 	thumbs_dirty = nthumbs != count;   // damaged or missing: write it again
@@ -470,6 +479,7 @@ static bool read_cv2(const char *path, cover_t *c)
 	c->data = ok ? malloc(COVER_PACK_BYTES) : NULL;
 	ok = c->data && fread(c->data, 1, COVER_PACK_BYTES, f) == COVER_PACK_BYTES;
 	fclose(f);
+	sd_model(COVER_PACK_BYTES);
 	if (!ok) {
 		free(c->data);
 		c->data = NULL;

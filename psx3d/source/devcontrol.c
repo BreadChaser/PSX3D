@@ -460,6 +460,9 @@ bool dev_tick(bool playing)
 			} else if (!strcmp(args, "stats-reset")) {
 				covers_stats_reset();
 				dev_reply("{\"ok\":true}");
+			} else if (!strncmp(args, "sdms=", 5)) {
+				covers_sd_ms = strtoul(args + 5, NULL, 10);   // emulator: model the SD card
+				dev_reply("{\"ok\":true}");
 			} else if (!strcmp(args, "fast=off") || !strcmp(args, "fast=on")) {
 				covers_slow = args[6] == 'f';   // A/B: small covers, scroll order, PNG listing
 				dev_reply("{\"ok\":true}");
