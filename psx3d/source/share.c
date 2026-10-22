@@ -50,9 +50,6 @@ static bool find_cia(void)
 	snprintf(cia_note, sizeof(cia_note), "No PSX3D.cia on the SD card to share");
 	if (R_FAILED(amInit()))
 		return false;
-	AM_TitleEntry self = {0};
-	u64 tid = SELF_TITLE;
-	bool have_self = R_SUCCEEDED(AM_GetTitleInfo(MEDIATYPE_SD, 1, &tid, &self));
 	for (unsigned i = 0; i < sizeof(cia_paths) / sizeof(cia_paths[0]) && !cia_path[0]; i++) {
 		Handle h;
 		if (R_FAILED(FSUSER_OpenFileDirectly(&h, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, ""),
@@ -65,7 +62,7 @@ static bool find_cia(void)
 			snprintf(cia_path, sizeof(cia_path), "%s", cia_paths[i]);
 			cia_size = bytes;
 			snprintf(cia_note, sizeof(cia_note), "PSX3D %s%s", version_text(info.version),
-			         have_self && info.version != self.version ? " (not the version installed here)" : "");
+			         strcmp(version_text(info.version), PSX3D_VERSION) ? " (not the version running here)" : "");
 		}
 		FSFILE_Close(h);
 	}
@@ -204,8 +201,8 @@ static bool share_start(void)
 		return false;
 	}
 	listen_fd = s;
-	struct in_addr in = {ip};
-	snprintf(url, sizeof(url), "http://%s:%d/PSX3D.cia", inet_ntoa(in), SHARE_PORT);
+	const u8 *b = (const u8 *)&ip;   // network order: the address's bytes in order
+	snprintf(url, sizeof(url), "http://%u.%u.%u.%u:%d/PSX3D.cia", b[0], b[1], b[2], b[3], SHARE_PORT);
 	server_stop = false;
 	s32 prio = 0x30;
 	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
