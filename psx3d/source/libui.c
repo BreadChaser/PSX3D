@@ -1206,10 +1206,17 @@ int libui_run(char *out_path, size_t len)
 		// more that way), then behind it: what comes on screen loads first
 		covers_focus(entry_game(sel));
 		int ahead = anim_v < -0.5f ? -1 : 1;
-		for (int d = 0; d <= 6; d++)
-			if (sel + ahead * d >= 0 && sel + ahead * d < n) covers_get(entry_game(sel + ahead * d), NULL);
-		for (int d = 1; d <= 3; d++)
-			if (sel - ahead * d >= 0 && sel - ahead * d < n) covers_get(entry_game(sel - ahead * d), NULL);
+		if (covers_slow)   // developer A/B: the order before
+			for (int d = 0; d <= 4; d++) {
+				if (sel + d < n) covers_get(entry_game(sel + d), NULL);
+				if (d && sel - d >= 0) covers_get(entry_game(sel - d), NULL);
+			}
+		else {
+			for (int d = 0; d <= 6; d++)
+				if (sel + ahead * d >= 0 && sel + ahead * d < n) covers_get(entry_game(sel + ahead * d), NULL);
+			for (int d = 1; d <= 3; d++)
+				if (sel - ahead * d >= 0 && sel - ahead * d < n) covers_get(entry_game(sel - ahead * d), NULL);
+		}
 
 		covers_pump();
 		C2D_TextBufClear(tbuf);

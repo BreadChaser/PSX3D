@@ -105,7 +105,7 @@ static int thumb_uploads_left;    // this frame's budget
 static unsigned thumb_made, thumb_filled, thumb_load_ms, thumb_save_ms;
 static disc_head_t disc_head;
 static u8 *disc_pixels;            // worker -> frame start (then on the GPU)
-static volatile int disc_state;    // 0 not looked at, 1 pixels ready, 2 on the GPU, 3 none for now
+static volatile int disc_state;    // 0 not looked at, 1 pixels ready, 2 on the GPU, 3 none for now, 4 a worker is on it
 static C3D_Tex disc_tex;
 static bool disc_tex_ok;
 #define WORKERS 2
@@ -127,6 +127,7 @@ static unsigned frames, frames_over_25ms, frames_over_40ms, frame_max_us;
 static u64 frame_total_us;
 // how fast covers appear while scrolling (developer diagnostics, "covers scroll=")
 static int test_kind, test_steps, test_period, test_count;   // 1 hold, 2 letter jump; dir in sign
+bool covers_slow;                  // "covers fast=off": as before small covers (an A/B in one build)
 static int last_tier;              // what the latest covers_get returned: 0 none, 1 small, 2 full
 static u64 sel_tick;               // when the selection last changed
 static bool sel_any, sel_full;     // it showed a picture / its full size picture since
@@ -362,7 +363,7 @@ static bool own_png_maybe(const char *key)
 	thumb_name(key, name, sizeof(name));
 	u64 h = name_hash(name);
 	LightLock_Lock(&lock);
-	bool maybe = !own_pngs_ok || (own_pngs && bsearch(&h, own_pngs, nown_pngs, sizeof(*own_pngs), cmp_u64));
+	bool maybe = !own_pngs_ok || covers_slow || (own_pngs && bsearch(&h, own_pngs, nown_pngs, sizeof(*own_pngs), cmp_u64));
 	LightLock_Unlock(&lock);
 	return maybe;
 }
@@ -846,8 +847,10 @@ static bool disc_work(void)
 		return false;
 	LightLock_Lock(&lock);
 	bool go = !paused && !disc_state;
-	if (go)
+	if (go) {
+		disc_state = 4;   // ours: the other worker leaves it
 		__atomic_add_fetch(&busy, 1, __ATOMIC_SEQ_CST);
+	}
 	LightLock_Unlock(&lock);
 	if (!go)
 		return false;
@@ -903,6 +906,8 @@ static bool disc_work(void)
 		disc_state = 1;
 	} else if (none || missed || sw_nonet || !px)
 		disc_state = 3;   // the drawn disc until the next rescan
+	else
+		disc_state = 0;   // interrupted or no network yet: again later
 	LightLock_Unlock(&lock);
 	free(px);
 	__atomic_sub_fetch(&busy, 1, __ATOMIC_SEQ_CST);
@@ -1209,7 +1214,7 @@ void covers_exit(void)
 // GPU finished the previous ones, see video_present_screens).
 static C3D_Tex *thumb_get(int game, Tex3DS_SubTexture *sub)
 {
-	if (!thumbs_loaded || !nthumbs)
+	if (!thumbs_loaded || !nthumbs || covers_slow)
 		return NULL;
 	tslot_t *t = NULL, *lru = NULL;
 	for (int i = 0; i < TSLOTS; i++) {
@@ -1671,7 +1676,7 @@ void covers_debug(char *out, size_t len)
 	         "\"frames\":%u,\"frame_avg_us\":%u,\"frame_max_us\":%u,\"frames_over_25ms\":%u,\"frames_over_40ms\":%u,"
 	         "\"test_active\":%s,\"sel_changes\":%u,\"sel_any\":%u,\"sel_any_avg_ms\":%u,\"sel_any_max_ms\":%u,"
 	         "\"sel_full\":%u,\"sel_full_avg_ms\":%u,\"sel_full_max_ms\":%u,\"near_draws\":%u,\"near_blank\":%u,\"near_small\":%u,"
-	         "\"thumbs\":%d,\"thumbs_loaded\":%s,\"thumb_made\":%u,\"thumb_filled\":%u,\"thumb_load_ms\":%u,\"thumb_save_ms\":%u,\"own_pngs\":%d,\"disc\":%d}",
+	         "\"thumbs\":%d,\"thumbs_loaded\":%s,\"thumb_made\":%u,\"thumb_filled\":%u,\"thumb_load_ms\":%u,\"thumb_save_ms\":%u,\"own_pngs\":%d,\"disc\":%d,\"fast\":%s}",
 	         paused ? "true" : "false", busy, net_open ? "true" : "false", attempts,
 	         downloaded, cache_hits, aborted_count, failures, last_curl, last_http,
 	         stop_ms, max_stop_ms, ready, wanted, cached, missing, invalid,
@@ -1680,5 +1685,5 @@ void covers_debug(char *out, size_t len)
 	         test_kind ? "true" : "false", sel_changes, sel_any_n, sel_any_n ? (unsigned)(sel_any_total_ms / sel_any_n) : 0,
 	         sel_any_max_ms, sel_full_n, sel_full_n ? (unsigned)(sel_full_total_ms / sel_full_n) : 0, sel_full_max_ms,
 	         near_draws, near_blank, near_small, nthumbs, thumbs_loaded ? "true" : "false", thumb_made, thumb_filled,
-	         thumb_load_ms, thumb_save_ms, nown_pngs, disc_state);
+	         thumb_load_ms, thumb_save_ms, nown_pngs, disc_state, covers_slow ? "false" : "true");
 }
