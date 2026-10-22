@@ -50,6 +50,7 @@ no BIOS file.
 - "Continue where I left off": your place is saved when you quit, on sleep and every few minutes
 - Remappable buttons and touch controls, fast forward in every game
 - Built-in BIOS: no BIOS file needed
+- European discs with LibCrypt protection (some PAL releases) need a matching `.sbi` file next to the disc image, see [docs/presets.md](docs/presets.md#regions)
 
 ### New 3DS extras
 

@@ -110,6 +110,30 @@ replace a clock fix in the core database. The checker rejects those serials,
 and the runtime suppresses the preset if the core reports its own override.
 See [the overclock research](dev/ps1-overclock.md).
 
+## Regions
+
+A preset file lists the USA serial and the PAL (`SLES`/`SCES`) and Japanese
+(`SLPS`/`SCPS`/`SLPM`) serials of the same game, taken from redump data
+(libretro-database) and DuckStation's game list. Rules:
+
+- Region-independent values (controller type, touch needs, the 2D Screen policy)
+  are shared by every serial of a file.
+- Speed values (`psxclock`, hold-backs) and widescreen bundles belong to one
+  executable (bundles match the serial and the executable hash), and PAL runs at
+  50 Hz. A game that has such values keeps them in its USA file; its other
+  regions get a separate `<game>-other-regions.ini` with `widescreen = hidden`
+  and no `tested_with`, so their speed settings count as untested.
+- A serial that has no listed counterpart is simply absent: nothing is guessed
+  from the title.
+
+**LibCrypt (PAL).** Some European discs (for example Ape Escape and CTR:
+Crash Team Racing, `SCES`/`SLES` serials) carry the LibCrypt copy protection.
+Without the disc's `.sbi` file the game can stop or misbehave, and PSX3D shows
+"LibCrypt protected game with missing SBI detected". Put `<disc image name>.sbi`
+(same name as the `.cue`, for example `Game.cue` and `Game.sbi`) in the same
+folder. In a multi-disc set the core looks for `<disc image name>_1.sbi`,
+`_2.sbi` and so on. A subchannel dump (`.sub`) works as well.
+
 ## Layer order and persistence
 
 Technical settings use:
