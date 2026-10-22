@@ -182,8 +182,10 @@ bool library_guess_dir(void)
 	static const char *const guesses[] = {
 		"sdmc:/roms/psx", "sdmc:/roms/ps1", "sdmc:/roms/playstation", "sdmc:/psx", "sdmc:/ps1",
 	};
-	static char found[24][PATH_LEN];
+	char (*found)[PATH_LEN] = malloc(24 * PATH_LEN);   // once, at first start
 	int n = 0;
+	if (!found)
+		return false;
 	for (size_t i = 0; i < sizeof(guesses) / sizeof(guesses[0]); i++)
 		if (dir_exists(guesses[i]))
 			snprintf(found[n++], PATH_LEN, "%s", guesses[i]);
@@ -211,8 +213,10 @@ bool library_guess_dir(void)
 			log_printf("library: first run, PS1 games found in %s\n", found[i]);
 			snprintf(g_cfg.games_dir, sizeof(g_cfg.games_dir), "%.*s", (int)sizeof(g_cfg.games_dir) - 1, found[i]);
 			config_save();
+			free(found);
 			return true;
 		}
+	free(found);
 	log_printf("library: first run, no PS1 games found (%d folders tried)\n", n);
 	library_load(NULL, false);   // nothing listed
 	return false;

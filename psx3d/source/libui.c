@@ -62,7 +62,7 @@ static bool favourite(int game)
 	return game >= 0 && playlog_favourite(save_key(game));
 }
 
-static u32 sort_key[2048];         // per game, while sorting
+static u32 *sort_key;              // per game, while sorting (heap: no bss in games)
 static int by_key(const void *a, const void *b)
 {
 	u32 ka = sort_key[*(const int *)a], kb = sort_key[*(const int *)b];
@@ -111,7 +111,16 @@ static void build_view(void)
 		return;
 	}
 	// played games, newest (or longest) first
-	static int played[2048];
+	static int *played;
+	if (!sort_key)
+		sort_key = malloc(2048 * sizeof(*sort_key));
+	if (!played)
+		played = malloc(2048 * sizeof(*played));
+	if (!sort_key || !played) {   // no memory: plain A-Z
+		az_start = 0;
+		add_az();
+		return;
+	}
 	int np = 0;
 	for (int i = 0; i < n; i++) {
 		const char *k = save_key(i);

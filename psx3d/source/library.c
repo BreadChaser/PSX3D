@@ -1036,16 +1036,15 @@ bool library_missing_file(const char *path, char *out, size_t len)
 	bool cue = !strcasecmp(e, ".cue");
 	if (!cue && strcasecmp(e, ".m3u"))
 		return false;
-	static char buf[REF_BYTES + 1];
-	FILE *f = fopen(path, "rb");
-	if (!f)
+	char *copy = malloc(REF_BYTES + 1);   // only after a failed load: no static buffer
+	FILE *f = copy ? fopen(path, "rb") : NULL;
+	if (!f) {
+		free(copy);
 		return false;
-	size_t n = fread(buf, 1, REF_BYTES, f);
+	}
+	size_t n = fread(copy, 1, REF_BYTES, f);
 	fclose(f);
-	buf[n] = 0;
-	char *copy = strdup(buf);
-	if (!copy)
-		return false;
+	copy[n] = 0;
 	char dir[PATH_LEN];
 	snprintf(dir, sizeof(dir), "%s", path);
 	char *slash = strrchr(dir, '/');
