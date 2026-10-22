@@ -1655,6 +1655,13 @@ void covers_reset(void)
 // subsystem's cache files and bounded slot/counter snapshots.
 void covers_debug(char *out, size_t len)
 {
+	unsigned heap_used = 0, heap_arena = 0, linear_free = 0;
+#ifdef __3DS__
+	struct mallinfo mi = mallinfo();
+	heap_used = mi.uordblks;
+	heap_arena = mi.arena;
+	linear_free = linearSpaceFree();
+#endif
 	int ready = 0, wanted = 0, missing = 0, cached = 0, invalid = 0, legacy = 0;
 	for (int i = 0; i < library_count(); i++) {
 		char path[PATH_LEN];
@@ -1686,7 +1693,8 @@ void covers_debug(char *out, size_t len)
 	         "\"frames\":%u,\"frame_avg_us\":%u,\"frame_max_us\":%u,\"frames_over_25ms\":%u,\"frames_over_40ms\":%u,"
 	         "\"test_active\":%s,\"sel_changes\":%u,\"sel_any\":%u,\"sel_any_avg_ms\":%u,\"sel_any_max_ms\":%u,"
 	         "\"sel_full\":%u,\"sel_full_avg_ms\":%u,\"sel_full_max_ms\":%u,\"near_draws\":%u,\"near_blank\":%u,\"near_small\":%u,"
-	         "\"thumbs\":%d,\"thumbs_loaded\":%s,\"thumb_made\":%u,\"thumb_filled\":%u,\"thumb_load_ms\":%u,\"thumb_save_ms\":%u,\"own_pngs\":%d,\"disc\":%d,\"fast\":%s}",
+	         "\"thumbs\":%d,\"thumbs_loaded\":%s,\"thumb_made\":%u,\"thumb_filled\":%u,\"thumb_load_ms\":%u,\"thumb_save_ms\":%u,\"own_pngs\":%d,\"disc\":%d,\"fast\":%s,"
+	         "\"heap_used\":%u,\"heap_arena\":%u,\"linear_free\":%u}",
 	         paused ? "true" : "false", busy, net_open ? "true" : "false", attempts,
 	         downloaded, cache_hits, aborted_count, failures, last_curl, last_http,
 	         stop_ms, max_stop_ms, ready, wanted, cached, missing, invalid,
@@ -1695,5 +1703,6 @@ void covers_debug(char *out, size_t len)
 	         test_kind ? "true" : "false", sel_changes, sel_any_n, sel_any_n ? (unsigned)(sel_any_total_ms / sel_any_n) : 0,
 	         sel_any_max_ms, sel_full_n, sel_full_n ? (unsigned)(sel_full_total_ms / sel_full_n) : 0, sel_full_max_ms,
 	         near_draws, near_blank, near_small, nthumbs, thumbs_loaded ? "true" : "false", thumb_made, thumb_filled,
-	         thumb_load_ms, thumb_save_ms, nown_pngs, disc_state, covers_slow ? "false" : "true");
+	         thumb_load_ms, thumb_save_ms, nown_pngs, disc_state, covers_slow ? "false" : "true",
+	         heap_used, heap_arena, linear_free);
 }
