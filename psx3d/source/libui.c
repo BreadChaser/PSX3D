@@ -395,6 +395,9 @@ static void draw_top(void *ud)
 		ui_text_ex(NULL, 8, 16, 0.4f, C2D_Color32(255, 170, 120, 255), 0, ui_fit(l2, 0.4f, 384));
 	}
 
+	// which build this is, small in the corner
+	text(NULL, 396, 226, 0.35f, C2D_Color32(150, 160, 200, 160), C2D_AlignRight, "v" PSX3D_VERSION);
+
 	// fade from/to black (open, launch)
 	float f = fade;
 	if (launch_t >= 0)
