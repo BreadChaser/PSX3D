@@ -1197,7 +1197,6 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	if (dev_batch_active()) input_fast_forward_off();
 	u64 t_run = 0, t_present = 0, t_run_max = 0;
 	int acap_frames = 0;
-	psx3d_skip_controller skip_control = {0};
 	psx3d_skip_state skip_previous = psx3d_skip;
 	u64 pace_ticks = 0, misc_ticks = 0;
 	unsigned held = 0, presented = 0, emulated = 0, top_paints = 0, bottom_paints = 0;
@@ -1229,7 +1228,6 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		u64 frame_ticks = (u64)(SYSCLOCK_ARM11 / fps_target);
 		u64 now_t = svcGetSystemTick();
 		if (!game_frames) { // resume/suspend/menu: start a fresh timing estimate
-			memset(&skip_control, 0, sizeof(skip_control));
 			psx3d_skip.budget_debt = psx3d_skip.frame_budget = psx3d_skip.picture_credit = 0;
 			picture_last = picture_intervals = 0; picture_sum = picture_square = 0;
 			psx3d_skip.phase = psx3d_skip.streak = 0;
@@ -1240,7 +1238,6 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		late_frames += late;
 		if (previous_special != ((sw_ff || (!dev_batch_active() && input_fast_forward())) || input_rewind())) {
 			next_deadline = now_t;
-			memset(&skip_control, 0, sizeof(skip_control));
 			psx3d_skip.budget_debt = psx3d_skip.frame_budget = psx3d_skip.picture_credit = 0;
 			picture_last = picture_intervals = 0; picture_sum = picture_square = 0;
 			psx3d_skip.phase = psx3d_skip.streak = 0;
@@ -1262,17 +1259,10 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		// The core queries this option on load and after options_mark_updated().
 		// Reuse its resolved value instead of walking option/config tables on
 		// every vblank (including Off) and evicting Old 3DS's hot core code.
-		psx3d_skip.enabled = (sw_rtfs || sw_fsmart) && !previous_special && core_auto_frameskip;
-		skip_control.max_level = sw_rtfscap == 5 ? 7 : 6;
-		psx3d_skip.max_skips = sw_rtfscap == 5 ? 5 : 4;
-		psx3d_skip.level = sw_rtfslevel >= 0 ? sw_rtfslevel : skip_control.level;
-		psx3d_skip.numerator = sw_rtfsdense ? (skip_control.dense_numerator ? skip_control.dense_numerator : 60) : 0;
-		psx3d_skip.denominator = sw_rtfsdense ? 60 : 0;
-		if (psx3d_skip.enabled && sw_fsmart && !sw_rtfs) {
-			psx3d_skip.max_skips = 4; // internal fairness bound, never a user setting
-			psx3d_skip.numerator = psx3d_skip.denominator = 0;
-		}
-		psx3d_skip.smart = psx3d_skip.enabled && sw_fsmart && !sw_rtfs;
+		psx3d_skip.enabled = !previous_special && core_auto_frameskip;
+		psx3d_skip.max_skips = 4; // internal fairness bound
+		psx3d_skip.level = psx3d_skip.numerator = psx3d_skip.denominator = 0;
+		psx3d_skip.smart = psx3d_skip.enabled;
 		if (!psx3d_skip.enabled) psx3d_skip.phase = psx3d_skip.streak = 0;
 		if (abuf_status_cb) {
 			unsigned occ = has_audio ? audio_occupancy() : 50;
@@ -1281,7 +1271,6 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			abuf_status_cb(true, occ, occ < 20 || late);
 		}
 		u64 t0 = svcGetSystemTick();
-		unsigned prims_before = psx3d_skip.render_prims, skipped_before = psx3d_skip.words_skipped;
 		static bool rewind_hint;
 		bool rewinding = !dev_batch_active() && input_rewind();
 		bool ff = sw_ff || (!dev_batch_active() && input_fast_forward());
@@ -1360,7 +1349,6 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			next_deadline = svcGetSystemTick();
 			smart_clock = next_deadline;
 			stats_deadline = next_deadline + SYSCLOCK_ARM11;
-			memset(&skip_control, 0, sizeof(skip_control));
 			psx3d_skip.budget_debt = psx3d_skip.frame_budget = psx3d_skip.picture_credit = 0;
 			picture_last = picture_intervals = 0; picture_sum = picture_square = 0;
 			psx3d_skip.phase = psx3d_skip.streak = 0;
@@ -1373,7 +1361,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 
 		// Query once after worker sync. A held picture needs no top target,
 		// transfer or C2D pass; a bottom-only change leaves top scanout alone.
-		bool changed = video_display_changed() || !sw_frontend;
+		bool changed = video_display_changed();
 		static float last_slider;
 		float slider = slider_get();
 		bool repaint_top = changed || game_frames < 2 || speed_icon ||
@@ -1389,7 +1377,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			touch_changed = input_touch_changed();
 		was_touching = touching;
 		bool stats_changed = statsview_redraw(osd_frames);
-		bool repaint = !sw_frontend || game_frames < 2 || stats_changed || touch_changed || osd_dirty;
+		bool repaint = game_frames < 2 || stats_changed || touch_changed || osd_dirty;
 		osd_dirty = false;
 		if (repaint_top || repaint) ui_begin();
 		t1 = svcGetSystemTick();
@@ -1482,7 +1470,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 						psx3d_skip.flips_drawn - skip_previous.flips_drawn,
 						psx3d_skip.flips_skipped - skip_previous.flips_skipped,
 						(psx3d_skip.pictures - skip_previous.pictures) * 1000.0 / (now - fps_t0),
-						presented, held, skip_control.level, skip_control.average,
+						presented, held, 0u, 0.0,
 						t_run * frame_ms, t_present * frame_ms,
 						pace_ticks * frame_ms, audio_ticks * frame_ms,
 						(unsigned)(psx3d_skip.spu_main_ticks - skip_previous.spu_main_ticks) * frame_ms,
@@ -1549,7 +1537,6 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 						catch_up = 8;
 					log_printf("pacer: %.1f%% speed with %.1fms/frame idle, %u stalls dropped %.0fms; fresh timing (%.3f fps, catch-up %u frames)\n",
 						speed, idle_ms, stalls, stall_ticks / (double)CPU_TICKS_PER_MSEC, fps_target, catch_up);
-					memset(&skip_control, 0, sizeof(skip_control));
 					psx3d_skip.budget_debt = psx3d_skip.frame_budget = psx3d_skip.picture_credit = 0;
 					psx3d_skip.phase = psx3d_skip.streak = 0;
 					next_deadline = svcGetSystemTick();
@@ -1599,23 +1586,12 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			log_hold(false);
 		}
 		if (psx3d_skip.timing) misc_ticks += svcGetSystemTick() - report_start;
-		if (psx3d_skip.enabled && sw_fsmart && !sw_rtfs) {
+		if (psx3d_skip.enabled) {
 			u64 end = svcGetSystemTick(), wall = end - smart_clock;
 			smart_clock = end;
 			psx3d_smart_observe(&psx3d_skip, (wall - frame_pace) / (double)CPU_TICKS_PER_MSEC,
 				1000.0 / fps_target, wall / (double)CPU_TICKS_PER_MSEC * auto_floor_scale);
 		}
-		else if (psx3d_skip.enabled && sw_rtfsdense)
-			psx3d_skip_observe_dense(&skip_control, (svcGetSystemTick() - t0) / (double)CPU_TICKS_PER_MSEC,
-				1000.0 / fps_target, psx3d_skip.render_prims != prims_before ? 0 :
-				psx3d_skip.words_skipped != skipped_before ? 1 : 2);
-		else if (psx3d_skip.enabled && sw_rtfsmodel)
-			psx3d_skip_observe_model(&skip_control, (svcGetSystemTick() - t0) / (double)CPU_TICKS_PER_MSEC,
-				1000.0 / fps_target, psx3d_skip.render_prims != prims_before ? 0 :
-				psx3d_skip.words_skipped != skipped_before ? 1 : 2);
-		else if (psx3d_skip.enabled)
-			(sw_rtfswindow ? psx3d_skip_observe_window : psx3d_skip_observe)(&skip_control, (svcGetSystemTick() - t0) / (double)CPU_TICKS_PER_MSEC,
-				1000.0 / fps_target);
 		if (clip_replay_session && clip_status.done) break;
 	}
 

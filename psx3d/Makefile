@@ -55,8 +55,7 @@ CFLAGS	:=	-g -Wall -O2 -mword-relocations -fomit-frame-pointer -mfpu=vfp \
 			-ffunction-sections \
 			$(ARCH)
 
-PICA_LAYOUT ?= split
-CFLAGS += -DPICA_LAYOUT_NAME=\"$(PICA_LAYOUT)\"
+CFLAGS += -DPICA_LAYOUT_NAME=\"split\"
 
 CFLAGS	+=	$(INCLUDE) -D__3DS__ $(EXTRA_DEFS) -I$(COREDIR)/deps/libretro-common/include
 # New 3DS per-game PS1 clock presets (docs/presets.md, docs/dev/ps1-overclock.md)
@@ -68,9 +67,6 @@ ASFLAGS	:=	-g $(ARCH)
 # Core first, then libraries, then the frontend (core-first.ld): frontend
 # changes never move the core. Check: tools/layout/check.sh.
 PICA_SPECS := $(TOPDIR)/core-first.specs
-ifeq ($(PICA_LAYOUT),section)
-PICA_SPECS := $(TOPDIR)/build/pica-hot.specs
-endif
 LDFLAGS	=	-specs=$(PICA_SPECS) -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 LDFLAGS += -Wl,--wrap=GSPGPU_FlushDataCache,--wrap=C3D_DrawElements,--wrap=C3D_GetCmdBufUsage,-z,noexecstack
 LDFLAGS += -Wl,--wrap=fread
@@ -188,12 +184,6 @@ endif
 .PHONY: all clean
 
 #---------------------------------------------------------------------------------
-ifeq ($(PICA_LAYOUT),section)
-.PHONY: pica-hot-script
-pica-hot-script: $(BUILD)
-	@python3 $(TOPDIR)/../tools/pica-layout/link-script.py $(DEVKITARM) $(TOPDIR)
-all: pica-hot-script
-endif
 
 all: $(BUILD) $(GFXBUILD) $(DEPSDIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
@@ -233,9 +223,6 @@ $(OUTPUT).3dsx	:	$(OUTPUT).elf $(_3DSXDEPS)
 $(OFILES_SOURCES) : $(HFILES)
 
 $(OUTPUT).elf	:	$(OFILES) $(CORELIB) $(TOPDIR)/core-first.ld $(TOPDIR)/core-first.specs
-ifeq ($(PICA_LAYOUT),section)
-$(OUTPUT).elf: $(TOPDIR)/build/pica-hot-3dsx.ld
-endif
 
 #---------------------------------------------------------------------------------
 # you need a rule like this for each extension you use as binary data

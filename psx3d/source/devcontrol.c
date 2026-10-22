@@ -3,6 +3,7 @@
 #endif
 #include "devnet.h"
 #include "clip.h"
+#include "../../core/plugins/gpu_pica/gpu_pica_debug.h"
 #include "benchstate.h"
 #include "widescreen.h"
 #include "gpustereo.h"
@@ -165,12 +166,12 @@ static void publish_status(void)
 	        running && !strcmp(opt("pcsx_rearmed_gpu_thread_rendering"), "enabled") ? "true" : "false",
 	        sw_nosputhread ? "true" : "false");
 	p += strlen(p);
-	p += sprintf(p, ",\"build\":\"release-v050-rc4\",\"rtfs\":%s,\"ff\":%s,\"frontend\":%s,\"floataudio\":%s", sw_rtfs ? "true" : "false", sw_ff ? "true" : "false", sw_frontend ? "true" : "false", sw_floataudio ? "true" : "false");
+	p += sprintf(p, ",\"build\":\"%s\",\"rtfs\":false,\"ff\":%s,\"frontend\":true,\"floataudio\":false", PSX3D_BUILD, sw_ff ? "true" : "false");
 	p += sprintf(p, ",\"auto_floor\":%d,\"defaults\":%d", game_auto_floor(), defaults_version());
-	p += sprintf(p, ",\"fsmart\":\"%s\"", sw_fsmart ? "new" : "old");
+	p += sprintf(p, ",\"fsmart\":\"new\"");
 	p += sprintf(p, ",\"remote_game\":%s", remote_game ? "true" : "false");
 	p += sprintf(p, ",\"wsbundle\":\"%s\",\"wsscreen\":%d,\"ws_identity\":\"%s\"", sw_wsbundle ? "on" : "off", running ? config_screen_mode() : sw_wsscreen, ws_identity());
-	p += sprintf(p, ",\"version\":\"%s\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & 524288 ? "old" : "new");
+	p += sprintf(p, ",\"version\":\"%s\",\"rttcache\":\"%s\"", PSX3D_VERSION, sw_gldbg & PICA_DEBUG_NO_REGION_CACHE ? "old" : "new");
 	p += sprintf(p, ",\"preset\":\"%s\",\"preset_version\":%d,\"preset_pack\":%d", game_preset_source(),
 	             game_preset_version(), game_presets_pack());
 	{
@@ -185,7 +186,7 @@ static void publish_status(void)
 	clip_status_json(p, sizeof(settings)-(size_t)(p-settings)); p+=strlen(p);
 	gpustereo_status(p, sizeof(settings)-(size_t)(p-settings)); p+=strlen(p);
 	sprintf(p, ",\"rtt\":\"%s\",\"free_heap\":%u,\"free_linear\":%u",
-	        sw_gldbg & 262144 ? "old" : sw_gldbg & 1048576 ? "new" : "auto", heap_free(), linear_free());
+	        sw_gldbg & PICA_DEBUG_RTT_OLD ? "old" : sw_gldbg & PICA_DEBUG_RTT_NEW ? "new" : "auto", heap_free(), linear_free());
 	snprintf(json, sizeof(json),
 	         "{\"ok\":true,\"session\":\"%s\",\"console\":\"%s\",\"uptime_s\":%.1f,\"mode\":\"%s\","
 	         "\"game\":\"%s\",\"state\":%d,\"renderer\":\"%s\",\"settings\":{%s},\"error\":\"%s\","
@@ -799,7 +800,7 @@ void dev_sample(const statsview_sample *s, const char *probe, int top_lum, doubl
 	    front->top, front->bottom, front->held, sw_ff, front->spu_ms, front->spu_wait_ms,
 	    front->skip_level, front->drawn, front->skipped, -1, -1, -1, front->pica_ms};
 	memcpy(m.v, values, sizeof(values));
- for (int k=0; k<8; k++) m.v[45+k] = (sw_gldbg & 8388608) ? front->phase_ms[k] : -1;
+ for (int k=0; k<8; k++) m.v[45+k] = (sw_gldbg & PICA_DEBUG_PHASE_TIMING) ? front->phase_ms[k] : -1;
  double category_cycles[3]; unsigned category_count[3];
  pmu_categories(category_cycles, category_count);
  pmu_renderer(&m.v[59]);

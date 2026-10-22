@@ -17,24 +17,11 @@ endif
 host-tests:
 	bash tools/build/host-tests.sh
 
-# GPU-only frontend.
-# Renderer-only compile/link experiments; prepare.py invalidates changed objects.
-PICA_LAYOUT ?= split
-ifeq ($(filter $(PICA_LAYOUT),baseline split section os),)
-$(error PICA_LAYOUT must be baseline, split, section, or os)
+# The hardware-validated renderer layout. Other layouts belong in host research tools.
+ifneq ($(filter-out split,$(PICA_LAYOUT)),)
+$(error Only the validated split renderer layout is supported)
 endif
-PICA_LAYOUT_CFLAGS :=
-PICA_OPT :=
-ifneq ($(filter $(PICA_LAYOUT),split section),)
-PICA_LAYOUT_CFLAGS += -DPICA_LAYOUT_SPLIT
-endif
-ifeq ($(PICA_LAYOUT),section)
-PICA_LAYOUT_CFLAGS += -DPICA_LAYOUT_SECTION
-endif
-ifeq ($(PICA_LAYOUT),os)
-PICA_OPT := -Os
-endif
-export PICA_LAYOUT PICA_LAYOUT_CFLAGS PICA_OPT
+export PICA_LAYOUT_CFLAGS := -DPICA_LAYOUT_SPLIT
 
 EXTERN_SYMS := psx3d_depth_get psx3d_depth_frame psx3d_overlay_get psx3d_ov_seq psx3d_set_strength \
 	psx3d_right_get psx3d_stats psx3d_set_half3d psx3d_prof_t psx3d_prof_c psx3d_prof_on new_dynarec_print_stats \
@@ -56,7 +43,6 @@ EXTERN_SYMS += pica_init pica_exit pica_game_begin pica_game_end pica_flush_vert
 	pica_texmask pica_texmemo psx3d_skipgate pica_thread_call pica_thread_sync pica_state_lost pica_prepare_present pica_picture pica_stats pica_probe pica_debug pica_submit pica_prims pica_pmu pica_open_frame pica_async pica_double_buffer pica_wait_frame pica_frame_pending pica_dump_vram
 
 core:
-	@python3 tools/pica-layout/prepare.py $(PICA_LAYOUT)
 	$(MAKE) -C core -f Makefile.libretro platform=ctr CTR_GPU=pica EXTRA_EXTERN_SYMS="$(EXTERN_SYMS)" EXTRA_WRAP_SYMS="$(WRAP_SYMS)"
 
 # Presets and defaults.ini (docs/settings.md section 6): a changed default stops

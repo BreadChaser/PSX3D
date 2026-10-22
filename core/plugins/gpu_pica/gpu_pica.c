@@ -29,6 +29,7 @@
 #include "../gpulib/gpu_timing.h"
 #include "../gpulib/gpu_async.h"
 #include "gpu_pica.h"
+#include "gpu_pica_debug.h"
 #include "../gpulib/pica_layout.h"
 #include "../../frontend/plugin_lib.h"
 
@@ -228,8 +229,8 @@ static u32 vram_gen[32][16];
 static u32 gen_clock = 1;
 // 8x8 is the native PICA tile. Keep palette rows and framebuffer edges
 // independent; the old 64x16 tracker remains available for hardware A/B.
-#define RTT_OLD 262144
-#define RTT_FORCE_NEW 1048576
+#define RTT_OLD PICA_DEBUG_RTT_OLD
+#define RTT_FORCE_NEW PICA_DEBUG_RTT_NEW
 static bool rtt_detected, rtt_cache_rebuild;
 extern int pica_debug;
 static u32 fine_gen[64][128], fine_draw_gen[64][128];
@@ -333,7 +334,7 @@ static PICA_COLD u64 phase_begin_sample(unsigned k)
 }
 static inline u64 phase_begin(unsigned k)
 {
- if (PICA_UNLIKELY(pica_debug & 8388608)) return phase_begin_sample(k);
+ if (PICA_UNLIKELY(pica_debug & PICA_DEBUG_PHASE_TIMING)) return phase_begin_sample(k);
  return 0;
 }
 static PICA_COLD void phase_end_sample(unsigned k, u64 start)
@@ -349,7 +350,7 @@ static inline void phase_end(unsigned k, u64 start)
 #else
 static u64 phase_begin(unsigned k)
 {
- if (!(pica_debug & 8388608)) return 0;
+ if (!(pica_debug & PICA_DEBUG_PHASE_TIMING)) return 0;
  if (k != 0 && k != 6) {
   phase_random[k] = phase_random[k] * 1664525u + 1013904223u;
   if (phase_random[k] >> 28) return 0;
@@ -460,7 +461,7 @@ static void apply_fill_reference(const pfill *f)
 static void apply_fill(const pfill *f)
 {
 	// gldbg=131072: baseline renderer CPU paths.
-	if (pica_debug & 131072) { apply_fill_reference(f); return; }
+	if (pica_debug & PICA_DEBUG_REFERENCE_CACHE) { apply_fill_reference(f); return; }
 	// GP0 fills start and end on 16-pixel boundaries. Split horizontal
 	// wrapping once, then fill pairs without a wrap test for every pixel.
 	int first = f->w < VRAM_W - f->x ? f->w : VRAM_W - f->x;
@@ -717,7 +718,7 @@ static PICA_INLINE_HOT(mark_drawn) void mark_drawn(int x0, int y0, int x1, int y
 		gpu_readable=false;
 		if ((x0>>3)>=known_fx0 && (x1>>3)<=known_fx1 &&
 			(y0>>3)>=known_fy0 && (y1>>3)<=known_fy1) return;
-	} else if ((pica_debug & 33554432) && x0 >= 0 && y0 >= 0 &&
+	} else if ((pica_debug & PICA_DEBUG_COARSE_BOUNDS) && x0 >= 0 && y0 >= 0 &&
 		x1 < VRAM_W && y1 < VRAM_H &&
 		(x0 >> 6) >= known_bx0 && (x1 >> 6) <= known_bx1 &&
 		(y0 >> 4) >= known_by0 && (y1 >> 4) <= known_by1) {
@@ -823,7 +824,7 @@ static void PICA_COLD readback_fine(int x, int y, int w, int h)
 			if (bx > invalidated_until) {
 				int end=bx+1;
 				while (end<=x1 && (fine_drawn[by][end>>5] & (1u<<(end&31)))) end++;
-				int ty = (pica_debug & 16384) ? 63 - by : by;
+				int ty = (pica_debug & PICA_DEBUG_FLIP_READBACK) ? 63 - by : by;
 				GSPGPU_InvalidateDataCache(src + tiled(bx*8, ty*8, VRAM_W), (end-bx)*128);
 				st_read_bytes += (end-bx)*128;
 				invalidated_until=end-1;
@@ -832,7 +833,7 @@ static void PICA_COLD readback_fine(int x, int y, int w, int h)
 				int py = by*8+r;
 				u16 *dst = gpu.vram + py*VRAM_W + bx*8;
 				for (int c = 0; c < 8; c++) {
-					u16 p = src[tiled(bx*8+c, (pica_debug & 16384) ? VRAM_H-1-py : py, VRAM_W)];
+					u16 p = src[tiled(bx*8+c, (pica_debug & PICA_DEBUG_FLIP_READBACK) ? VRAM_H-1-py : py, VRAM_W)];
 					dst[c] = (p >> 11) | (((p >> 6) & 31) << 5) | (((p >> 1) & 31) << 10) | ((p & 1) << 15);
 				}
 			}
@@ -917,7 +918,7 @@ static void PICA_COLD readback_part_impl(int x, int y, int w, int h)
 				for (int c = 0; c < 64; c++) {
 					// render target memory holds VRAM rows top-down (the
 					// display samples VRAM row y at t = 1 - y / 512)
-					u16 p = src[tiled(bx * 64 + c, (pica_debug & 16384) ? VRAM_H - 1 - py : py, VRAM_W)];
+					u16 p = src[tiled(bx * 64 + c, (pica_debug & PICA_DEBUG_FLIP_READBACK) ? VRAM_H - 1 - py : py, VRAM_W)];
 					// RGBA5551 -> PS1 15-bit, the alpha bit is the mask bit
 					u16 value = (p >> 11) | (((p >> 6) & 31) << 5) | (((p >> 1) & 31) << 10) | ((p & 1) << 15);
 #ifdef PSX3D_SIM
@@ -1149,7 +1150,7 @@ static bool PICA_COLD cache_valid(tcache *c)
 {
 	if (!rtt_old()) return cache_valid_fine(c);
 	// gldbg=131072: baseline renderer CPU paths.
-	if (pica_debug & 131072) { return cache_valid_reference(c); }
+	if (pica_debug & PICA_DEBUG_REFERENCE_CACHE) { return cache_valid_reference(c); }
 	if (c->checked == gen_clock)   // nothing written since the last check
 		return true;
 	int px = (c->page & 15) * 64, py = ((c->page >> 4) & 1) * 256;
@@ -1218,7 +1219,7 @@ void pica_flush_vertices(void)
 static void PICA_COLD decode_rect_impl(tcache *c, u64 need, unsigned rect)
 {
 	int t0=rect&7, t1=(rect>>3)&7, s0=(rect>>6)&7, s1=(rect>>9)&7;
-	if (pica_debug & 131072) {
+	if (pica_debug & PICA_DEBUG_REFERENCE_CACHE) {
 		need = 0;
 		for (int r=s0; r<=s1; r++)
 			for (int k=t0; k<=t1; k++) need |= 1ull << (r*8+k);
@@ -1230,7 +1231,7 @@ static void PICA_COLD decode_rect_impl(tcache *c, u64 need, unsigned rect)
 		need &= ~c->tiles;
 	}
 	if (!need) return;
-	if (!(pica_debug & 131072) && !rtt_old() && c->depth == 2 && !c->win && decode_gpu(c, need)) return;
+	if (!(pica_debug & PICA_DEBUG_REFERENCE_CACHE) && !rtt_old() && c->depth == 2 && !c->win && decode_gpu(c, need)) return;
 	trace_cache("decode", c, need);
 	u32 *dst = atlas[0].tex.data;
 	int aw = atlas[0].w, ah = atlas[0].h;
@@ -1543,7 +1544,7 @@ static tcache *take_entry(int depth, u16 pg, int u0, int u1, int v0, int v1, int
 // Several disjoint sprites may share a page/CLUT. Growing their union to
 // 256x256 throws away decoded cells, wastes the atlas and waits for queued
 // readers. Keep independent, tightly bounded squares for those regions.
-static inline bool region_cache(void) { return !rtt_old() && !(pica_debug & 524288); }
+static inline bool region_cache(void) { return !rtt_old() && !(pica_debug & PICA_DEBUG_NO_REGION_CACHE); }
 static inline bool covers(const tcache *c, int u0, int u1, int v0, int v1)
 {
 	return u0 >= c->rx && u1 < c->rx + 32 * c->cw && v0 >= c->ry && v1 < c->ry + 32 * c->ch;
@@ -1666,14 +1667,14 @@ static noinline tcache *PICA_HOT(texture_for_slow) texture_for_slow(u32 page, u3
 	int s0 = (v0-c->ry)>>5, s1 = (v1-c->ry)>>5;
 	u32 columns = ((1u << (t1-t0+1))-1) << t0;
 	u64 need;
-	if (pica_texmask && !(pica_debug & 131072)) {
+	if (pica_texmask && !(pica_debug & PICA_DEBUG_REFERENCE_CACHE)) {
 		static const u64 rows[9] = { 0, 0xff, 0xffff, 0xffffff,
 			0xffffffff, 0xffffffffff, 0xffffffffffff, 0xffffffffffffff, ~0ull };
 		u32 repeated = columns * 0x01010101u;
 		need = ((u64)repeated | ((u64)repeated << 32)) & (rows[s1+1] ^ rows[s0]);
 		need &= ~c->tiles;
 	} else need = 0;
-	if (need || (!pica_texmask || (pica_debug & 131072))) decode_rect(c, need, t0 | (t1<<3) | (s0<<6) | (s1<<9));
+	if (need || (!pica_texmask || (pica_debug & PICA_DEBUG_REFERENCE_CACHE))) decode_rect(c, need, t0 | (t1<<3) | (s0<<6) | (s1<<9));
 	c->lru = ++lru_clock;
 	last_tex = c;
 	have_last = true;
@@ -1984,10 +1985,10 @@ static void flush_current(void)
 	u64 t1 = svcGetSystemTick();
 #endif
 	u64 submit_start = phase_begin(5);
-	if (!(pica_debug & 1024))   // debug: no GPU drawing (CPU cost alone)
+	if (!(pica_debug & PICA_DEBUG_NO_DRAW))   // debug: no GPU drawing (CPU cost alone)
 		C3D_DrawArrays(GPU_TRIANGLES, vstart, vpos - vstart);
 	// gldbg=32768: skip this pass for a hardware submission-cost comparison.
-	if (!(pica_debug & (1024 | 32768)) && cur.blend != BL_OPAQUE && (cur.blend < BL_SUB || cur.pass == 1) &&
+	if (!(pica_debug & (PICA_DEBUG_NO_DRAW | PICA_DEBUG_NO_MASK_PASS)) && cur.blend != BL_OPAQUE && (cur.blend < BL_SUB || cur.pass == 1) &&
 		!(cur.blend == BL_HALF && (cur.mask & 1)) && !(cur.mask & 4)) {
 		// RGB blending needs alpha 1 for opaque texels and 1/2 for STP.
 		// VRAM's mask bit instead needs 0 for opaque and 1 for STP. Write
@@ -2108,7 +2109,7 @@ static unsigned st_splits;
 static noinline void send_early(void)
 {
 	flush();
-	if (frame_open && !(pica_debug & 8192)) {
+	if (frame_open && !(pica_debug & PICA_DEBUG_NO_SPLIT)) {
 		C3D_FrameSplit(0);
 		st_splits++;
 	}
@@ -2199,7 +2200,7 @@ static bool add_overlap(int x0, int y0, int x1, int y1)
 // blending commutes.
 static inline bool defer_allowed(void)
 {
-	return !(ps.mask & 2) && !(pica_debug & 65536);
+	return !(ps.mask & 2) && !(pica_debug & PICA_DEBUG_NO_MERGE);
 }
 
 // the batch being filled already has this state: draw straight into it
@@ -2477,7 +2478,7 @@ static PICA_COLD int clip_tris(const pvtx *v, int ntri, int x0, int y0, int x1, 
 static void noinline PICA_HOT(emit_tris) emit_tris(const pvtx *v, int ntri, int blend, int texmode, tcache *tex, bool polygon, bool dither)
 {
 	bool semi = blend != BL_OPAQUE;
-	if (!ready || (pica_debug & 4096))   // debug 4096: primitives decoded, not drawn
+	if (!ready || (pica_debug & PICA_DEBUG_NO_PRIMITIVES))   // debug 4096: primitives decoded, not drawn
 		return;
 	// anything reaching outside the drawing area is cut to it here
 	pvtx clipped[2 * 3 * 7];
@@ -2648,7 +2649,7 @@ static void PICA_HOT(draw_poly_impl) draw_poly_impl(const u32 *w, u32 cmd)
 	// the PS1's size limit (so no triangle of it is dropped), solid, half-transparent
 	// or additive. Finished vertices go straight to the buffer.
 	if (bx0 < ps.dx1 || bx1 > ps.dx2 || by0 < ps.dy1 || by1 > ps.dy2 || bx1 - bx0 > 1023 || by1 - by0 > 511 ||
-		blend > BL_ADD || !ready || (pica_debug & 4096)) {
+		blend > BL_ADD || !ready || (pica_debug & PICA_DEBUG_NO_PRIMITIVES)) {
 		for (int k = 0; k < n; k++)
 			v[k].rgba |= 0xff000000;
 		draw_poly_slow(v, n, quad, textured, page, clut, cmd);
@@ -2691,7 +2692,7 @@ static void PICA_HOT(draw_poly_impl) draw_poly_impl(const u32 *w, u32 cmd)
 	}
 	u32a *ow = (u32a *)o;
 	static const u8 order[6] = { 0, 1, 2, 1, 3, 2 };
-	if ((pica_debug & 16777216) || PRIM_TEST(PRIM_PACK_COPY)) {
+	if ((pica_debug & PICA_DEBUG_PACK_COPY) || PRIM_TEST(PRIM_PACK_COPY)) {
 		// Same triangle order, fixed copies let ARM use block transfers.
 		memcpy(ow, q, 3 * sizeof(q[0]));
 		if (quad) {
@@ -2774,7 +2775,7 @@ static void draw_poly_slow(pvtx *v, int n, bool quad, bool textured, u32 page, u
 static bool PICA_COLD __attribute__((section(".pica_rtt.text")))
 native_sprite(int x, int y, int w, int h, int u, int v, u32 col, u32 cmd)
 {
-	if (rtt_old() || (pica_debug & (1024 | 131072)) || !native_tex.data || !frame_open ||
+	if (rtt_old() || (pica_debug & (PICA_DEBUG_NO_DRAW | PICA_DEBUG_REFERENCE_CACHE)) || !native_tex.data || !frame_open ||
 		w < 128 || w > 256 || h > 4 ||
 		(cmd & 2) || (ps.mask & 3) != 1 || ((ps.texpage >> 7) & 3) != 2 ||
 		(ps.texpage & 0x3000) || (ps.texwin & 0x3ff) ||
@@ -3117,7 +3118,7 @@ static void PICA_COLD push_to_target(int x, int y, int w, int h)
 {
 	gpu_readable = false;
 	// gldbg=131072: baseline renderer CPU paths.
-	if (pica_debug & 131072) { push_to_target_reference(x, y, w, h); return; }
+	if (pica_debug & PICA_DEBUG_REFERENCE_CACHE) { push_to_target_reference(x, y, w, h); return; }
 	if (!ready || w <= 0 || h <= 0)
 		return;
 	if (!frame_open) {   // e.g. a state load: do it when the next GPU frame opens
@@ -3357,9 +3358,9 @@ static int PICA_HOT(renderer_do_cmd_list_impl) renderer_do_cmd_list_impl(uint32_
 #endif
 	int cpu_cycles_sum = 0, cpu_cycles = *cycles_last;
 	u32 *list = (u32 *)list_, *list_start = list, *list_end = list + list_len;
-	if ((pica_debug & 4194304) && !frame_open && pica_open_frame && ready) pica_open_frame();
+	if ((pica_debug & PICA_DEBUG_EAGER_FRAME) && !frame_open && pica_open_frame && ready) pica_open_frame();
 	u32 cmd = 0, len;
-	const bool skip_draw = !ready || (pica_debug & 2048);
+	const bool skip_draw = !ready || (pica_debug & PICA_DEBUG_SKIP_COMMANDS);
 
 	for (; list < list_end; list += 1 + len) {
 		cmd = list[0] >> 24;
@@ -3764,13 +3765,13 @@ int pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w
 	}
 	st_pic[PICA_PIC_GPU]++;
 	int x = gpu.screen.src_x, y = gpu.screen.src_y, sw = gpu.screen.w, sh = gpu.screen.h;
-	if (pica_debug & 32) {   // debug: the whole of VRAM
+	if (pica_debug & PICA_DEBUG_VRAM) {   // debug: the whole of VRAM
 		x = 0; y = 0; sw = VRAM_W; sh = VRAM_H;
 	} else if (disp_used && gpu.frameskip.set) {   // the last frame that was drawn
 		x = disp_x; y = disp_y; sw = disp_w; sh = disp_h;
 	}
 	pic_x = x; pic_y = y; pic_w = sw; pic_h = sh;
-	*tex = disp_used && gpu.frameskip.set && !(pica_debug & 32) ? &disp_tex : &vram_tex;
+	*tex = disp_used && gpu.frameskip.set && !(pica_debug & PICA_DEBUG_VRAM) ? &disp_tex : &vram_tex;
 	pic_tex = *tex;
 	*l = (float)x / VRAM_W;
 	*r = (float)(x + sw) / VRAM_W;

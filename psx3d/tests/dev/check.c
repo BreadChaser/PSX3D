@@ -2,6 +2,7 @@
 // console: lifecycle, renderer changes, warmup, averages, stop-on-failure, paths.
 #define PSX3D_H
 #define PSX3D_VERSION "test"
+#define PSX3D_BUILD PSX3D_VERSION
 #define PICA_LAYOUT_NAME "split"
 #include <assert.h>
 #include <stdbool.h>
@@ -199,7 +200,7 @@ int main(void)
 	assert(!switches_run(bad, game, sizeof(game), err, sizeof(err)));
 	command("batch-id test", false);
 	command("bench game=Crash_Bandicoot state=2 renderer=gpu warmup=1 seconds=2 shot=0;game=Crash_Bandicoot "
-	        "state=2 renderer=sw warmup=0 seconds=1 shot=0",
+	        "state=2 renderer=gpu warmup=0 seconds=1 shot=0",
 	        false);
 	assert(batch_active && strstr(response, "started"));
 	assert(dev_next_game(path, save, title) && sw_state == 2);
@@ -253,10 +254,8 @@ int main(void)
 	assert(!switches_set("hack_spunearest=off"));
 	assert(!switches_set("dyn_lookup=on") && !switches_set("dyn_nclip=on") && !switches_set("g1sync=off"));
 	command("set dyn_lookup=off", true);
-	assert(switches_set("idleptr=on") && psx3d_idle_pointer);
-	assert(switches_set("idledelay=on") && psx3d_idle_delay);
-	command("set idleptr=off", true);
-	assert(strstr(response, "false") && psx3d_idle_pointer);
+	assert(!switches_set("idleptr=on"));
+	assert(!switches_set("idledelay=on"));
 	command("set pica_prims_fast", true);
 	assert(pica_prims == 7 && strstr(response, "true"));
 	command("set pica_prims_old", true);
@@ -267,11 +266,10 @@ int main(void)
 	assert(!switches_set("pica_prims_invalid"));
 	char defaults[] = "game=Crash_Bandicoot";
 	assert(switches_run(defaults, game, sizeof(game), err, sizeof(err)));
-	assert(sw_fsmart);
-	assert(switches_set("fsmart=old") && !sw_fsmart);
-	assert(switches_set("fsmart=new") && sw_fsmart);
-	assert(!switches_set("fsmart=invalid"));
-	assert(sw_frontend && !sw_floataudio && !sw_rtfs && !sw_rtfsdense && sw_rtfscap == 4);
+	const char *retired[] = {"frontend=old", "frontend=new", "audio=old", "audio=new",
+	    "fsmart=old", "fsmart=new", "rtfs", "rtfs=dense", "rtfs=model", "rtfscap=5", "rtfslevel=2",
+	    "showright", "sbs", "renderer=sw"};
+	for (unsigned k=0;k<sizeof(retired)/sizeof(*retired);k++) assert(!switches_set(retired[k]));
 	assert(pica_submit == 7 && pica_prims == 7 && pica_texmask && pica_texmemo && psx3d_skipgate);
 	assert(!psx3d_idle_pointer && !psx3d_idle_delay);
 	command("set renderer=gpu", true);

@@ -11,6 +11,10 @@
 #include "safefile.h"
 
 #define PSX3D_VERSION  "0.5.0"
+// Optional private test identity; the release reports its human version.
+#ifndef PSX3D_BUILD
+#define PSX3D_BUILD PSX3D_VERSION
+#endif
 #define PSX3D_DIR      "sdmc:/3ds/PSX3D"
 #define PSX3D_BIOS_DIR PSX3D_DIR "/bios"
 #define PSX3D_SAVE_DIR PSX3D_DIR "/saves"
@@ -166,10 +170,7 @@ extern unsigned long long psx3d_prof_t[6];
 extern unsigned int psx3d_prof_c[6];
 extern int psx3d_prof_on;
 void new_dynarec_print_stats(void);
-extern bool sw_frontend, sw_floataudio, sw_ff;
-extern int sw_rtfscap, sw_rtfslevel;
-extern bool sw_fsmart;
-extern bool sw_rtfs, sw_rtfswindow, sw_rtfsmodel;
+extern bool sw_ff;
 extern bool sw_prof, sw_stats, sw_o3ds, sw_fs1, sw_fs3, sw_noskip, sw_nosputhread, sw_acap;
 extern int sw_state, sw_gldbg, sw_vramdump, sw_autosave_test;
 extern unsigned pica_prims;
@@ -184,7 +185,7 @@ void pmu_end(void);
 extern bool sw_pmuphase;
 extern void (*pica_pmu)(int end);
 void pmu_renderer(double values[4]);
-extern bool sw_pmuclass, sw_rtfsdense;
+extern bool sw_pmuclass;
 u64 emu_audio_ticks(void);
 void pmu_category_detail(double values[21]);
 void pmu_categories(double cycles[3], unsigned counts[3]);
@@ -500,7 +501,6 @@ extern int g_slow_reason;
 const char *slow_mode_notice(bool shortform);
 extern float sw_slider;
 extern int sw_stereo;
-extern bool sw_showright, sw_sbs;
 float slider_get(void);
 extern bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_aa, sw_nolcd, sw_nocovers;
 extern bool g_new3ds;

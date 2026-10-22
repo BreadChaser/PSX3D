@@ -7,33 +7,19 @@
 extern float sw_slider;
 extern int sw_stereo;
 extern unsigned pica_submit;
-extern int psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay;
-extern bool sw_aa, sw_showright, sw_sbs;
+extern int psx3d_idle_skip;
+extern bool sw_aa;
 void debug_parse_switch(const char *word);
 
 // Per-run overrides never persist to the user's config. Subsystem startup switches
 // remain startup-only: changing SOC/audio allocation mid-session is unsafe.
 bool switches_set(const char *word)
 {
-	/* Development A/B only; never persisted as a user setting. */
-	if (!strcmp(word, "fsmart=old") || !strcmp(word, "fsmart=new")) {
-		sw_fsmart = !strcmp(word, "fsmart=new"); return true;
-	}
 	/* Recorder options apply to both startup and remote loads. */
 	if (clip_switch(word)) return true;
 	if (!strcmp(word, "wsbundle=on") || !strcmp(word, "wsbundle=off") ||
 	    !strcmp(word, "wsscreen=4:3") || !strcmp(word, "wsscreen=stretch") || !strcmp(word, "wsscreen=wide")) {
 		debug_parse_switch(word); return true;
-	}
-	if (!strncmp(word, "rtfscap=", 8)) {
-        char *end; long n = strtol(word+8, &end, 10);
-        if (!word[8] || *end || n < 4 || n > 5) return false;
-        sw_rtfscap = n; sw_rtfs = true; return true;
-    }
-	if (!strncmp(word, "rtfslevel=", 10)) {
-		char *end; long n = strtol(word+10, &end, 10);
-		if (!word[10] || *end || n < 0 || n > 7) return false;
-		sw_rtfslevel = n; sw_rtfs = true; return true;
 	}
 	if (!strncmp(word, "frameskip=", 10)) {
 		const char *v = word + 10;
@@ -84,9 +70,8 @@ bool switches_set(const char *word)
 		return false;
 	}
 	static const char *flags[] = {"prof",         "stats",     "fs1",         "fs3",  "noskip",
-	                              "nogputhread",  "gputhread", "nosputhread", "acap", "renderer=sw",
-	                              "renderer=gpu", "state0",    "showright",   "sbs",  "gpuasync",
-	                              "nogpuasync",   "gpuflush",  "nogpuflush",  "aa", "rtt=old", "rtt=new", "rtt=auto", "rttcache=old", "rttcache=new", "rtfs", "rtfs=old", "rtfs=new", "rtfs=model", "rtfs=dense", "frontend=old", "frontend=new", "audio=old", "audio=new", "ff=on", "ff=off", "submitstate=old", "submitstate=new", "submitclip=old", "submitclip=new", "submittex=old", "submittex=new", "pmuclass=on", "pmuclass=off", "pmurender=on", "pmurender=off", "pica_prims_old", "pica_prims_fast", "pica_prims_copy", "pica_prims_clip", "pica_prims_round", "skipgate=old", "skipgate=new", "texmask=old", "texmask=new", "texmemo=old", "texmemo=new", "idle=on", "idle=off", "idleptr=on", "idleptr=off", "idledelay=on", "idledelay=off"};
+	                              "nogputhread",  "gputhread", "nosputhread", "acap", "renderer=gpu", "state0",    "gpuasync",
+	                              "nogpuasync",   "gpuflush",  "nogpuflush",  "aa", "rtt=old", "rtt=new", "rtt=auto", "rttcache=old", "rttcache=new", "ff=on", "ff=off", "submitstate=old", "submitstate=new", "submitclip=old", "submitclip=new", "submittex=old", "submittex=new", "pmuclass=on", "pmuclass=off", "pmurender=on", "pmurender=off", "pica_prims_old", "pica_prims_fast", "pica_prims_copy", "pica_prims_clip", "pica_prims_round", "skipgate=old", "skipgate=new", "texmask=old", "texmask=new", "texmemo=old", "texmemo=new", "idle=on", "idle=off", };
 	static const char *prefix[] = {"slider=", "stereo=", "state=", "autosavetest=", "gldbg=", "vramdump=", "pmu=", "cdra=", "clock="};
 	bool known = false;
 	for (unsigned k = 0; k < sizeof(flags) / sizeof(*flags); k++)
@@ -108,28 +93,28 @@ bool switches_set(const char *word)
  * replay= ignored local input, state= loaded a benchmark slot, o: options stuck). */
 static struct {
 	bool saved;
-	int idle_skip, idle_pointer, idle_delay, rtfslevel, rtfscap, state, autosave_test, pmu0, pmu1, gldbg, vramdump, skipgate, stereo;
+	int idle_skip, state, autosave_test, pmu0, pmu1, gldbg, vramdump, skipgate, stereo;
 	int clip_requested, clip_seconds;
 	unsigned submit, prims;
-	bool rtfsdense, rtfsmodel, rtfswindow, rtfs, ff, floataudio, frontend, fsmart, prof, stats, fs1, fs3, noskip;
-	bool nosputhread, acap, nogputhread, aa, showright, sbs, gpu_async, gpu_flush, pmuphase, pmuclass;
+	bool ff, prof, stats, fs1, fs3, noskip;
+	bool nosputhread, acap, nogputhread, aa, gpu_async, gpu_flush, pmuphase, pmuclass;
 	bool texmask, texmemo, clip_enabled;
 	float slider;
 	char opt[8][48], cdra[8], clock[8];
 } local;
 #define SWITCH_COPY(TO, FROM)                                                                                  \
 	do {                                                                                                         \
-		TO(idle_skip, psx3d_idle_skip); TO(idle_pointer, psx3d_idle_pointer); TO(idle_delay, psx3d_idle_delay); \
-		TO(rtfslevel, sw_rtfslevel); TO(rtfscap, sw_rtfscap); TO(state, sw_state); TO(pmu0, sw_pmu0);           \
+		TO(idle_skip, psx3d_idle_skip); \
+		TO(state, sw_state); TO(pmu0, sw_pmu0);           \
 		TO(autosave_test, sw_autosave_test);                                                                   \
 		TO(pmu1, sw_pmu1); TO(gldbg, sw_gldbg); TO(vramdump, sw_vramdump); TO(skipgate, psx3d_skipgate);       \
 		TO(clip_requested, clip_requested); TO(clip_seconds, clip_seconds); TO(submit, pica_submit);           \
-		TO(prims, pica_prims); TO(rtfsdense, sw_rtfsdense); TO(rtfsmodel, sw_rtfsmodel);                       \
-		TO(rtfswindow, sw_rtfswindow); TO(rtfs, sw_rtfs); TO(ff, sw_ff); TO(floataudio, sw_floataudio);        \
-		TO(frontend, sw_frontend); TO(fsmart, sw_fsmart); TO(prof, sw_prof); TO(stats, sw_stats);              \
+		TO(prims, pica_prims); \
+		TO(ff, sw_ff); \
+		TO(prof, sw_prof); TO(stats, sw_stats);              \
 		TO(fs1, sw_fs1); TO(fs3, sw_fs3); TO(noskip, sw_noskip); TO(nosputhread, sw_nosputhread);              \
-		TO(acap, sw_acap); TO(nogputhread, sw_nogputhread); TO(aa, sw_aa); TO(showright, sw_showright);        \
-		TO(sbs, sw_sbs); TO(gpu_async, sw_gpu_async); TO(gpu_flush, sw_gpu_flush); TO(pmuphase, sw_pmuphase);  \
+		TO(acap, sw_acap); TO(nogputhread, sw_nogputhread); TO(aa, sw_aa); \
+		TO(gpu_async, sw_gpu_async); TO(gpu_flush, sw_gpu_flush); TO(pmuphase, sw_pmuphase);  \
 		TO(pmuclass, sw_pmuclass); TO(texmask, pica_texmask); TO(texmemo, pica_texmemo);                       \
 		TO(clip_enabled, clip_enabled); TO(slider, sw_slider); TO(stereo, sw_stereo);                          \
 		FROM(opt, sw_opt); FROM(cdra, sw_cdra); FROM(clock, sw_clock);                                         \
@@ -153,12 +138,11 @@ bool switches_run(char *line, char *game, size_t len, char *error, size_t error_
 	}
 	clip_reset_request();
 	sw_wsbundle = true; sw_wsscreen = -1;
-	psx3d_idle_skip = 1; psx3d_idle_pointer = psx3d_idle_delay = 0;
-	sw_rtfslevel = -1; sw_rtfscap = 4; pica_submit = 7;
-	sw_rtfsdense = sw_rtfsmodel = sw_rtfswindow = sw_rtfs = sw_ff = sw_floataudio = false;
-	sw_frontend = sw_fsmart = true;
+	psx3d_idle_skip = 1;
+	pica_submit = 7;
+	sw_ff = false;
 	sw_prof = sw_stats = sw_fs1 = sw_fs3 = sw_noskip = sw_nosputhread = sw_acap = false;
-	sw_nogputhread = sw_aa = sw_showright = sw_sbs = false;
+	sw_nogputhread = sw_aa = false;
 	sw_gpu_async = sw_gpu_flush = true;
 	sw_slider = -1;
 	sw_stereo = -1;

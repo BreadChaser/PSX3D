@@ -8,6 +8,7 @@
 #include "presetupdate.h"
 #include "devtools.h"
 #include "clip.h"
+#include "../../core/plugins/gpu_pica/gpu_pica_debug.h"
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
 
 // Main thread stack; the core warns below 1MB (dynarec recursion).
@@ -126,17 +127,11 @@ static void show_error(const char *msg)
 // rebuilding.
 float sw_slider = -1;   // test: pretend the 3D slider is here
 int sw_stereo = -1;     // test: 3D mode 0/1/2 instead of the setting (New 3DS)
-// Legacy diagnostic storage retained for the validated Old 3DS code layout.
-bool sw_showright;
-bool sw_sbs;
 bool sw_prof;           // log where frame time goes, once a second
 bool sw_stats;          // log fps and renderer counters once a second (no timers)
 bool sw_o3ds;           // test: behave like an Old 3DS (settings not saved)
-bool sw_frontend = true, sw_ff;
-int sw_rtfscap, sw_rtfslevel = -1;
-bool sw_rtfsmodel, sw_rtfswindow, sw_pmuphase, sw_pmuclass, sw_rtfsdense;
-bool sw_fsmart = true;
-bool sw_rtfs;           // experimental predictive, even-cadence frameskip
+bool sw_ff;
+bool sw_pmuphase, sw_pmuclass;
 bool sw_fs3;            // test: Old 3DS auto frameskip may skip up to 3 in a row
 bool sw_fs1;            // test: force frameskip, every other frame
 bool sw_noskip;         // test: no frameskip (benchmarks)
@@ -145,7 +140,7 @@ bool sw_acap;           // test: log a checksum of 10s of the core's audio, from
 char sw_opt[8][48];     // test: o:<option>=<value> (pcsx_rearmed_ left out), up to 8
 char sw_cdra[8];        // test: Old 3DS: CD read-ahead sectors (on the syscore)
 char sw_clock[8];       // test: emulated PS1 CPU clock (pcsx_rearmed_psxclock), e.g. 40
-int sw_gldbg;           // test: hardware renderer debug bits (1 no alpha test, 2 no textures)
+int sw_gldbg;           // test: renderer diagnostics (gpu_pica_debug.h)
 char sw_game[64];       // test: start the first library game whose title contains this
 int sw_vramdump;         // test: dump PS1 VRAM this many frames after the game starts
 int sw_pmu0 = -1, sw_pmu1 = -1;   // test: ARM11 performance counter events (pmu=AA,BB, hex)
@@ -158,7 +153,7 @@ bool sw_aa;              // test: Old 3DS: gameplay supersampled too
 bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 char sw_presets_url[96];  // test: preset update server (numeric LAN HTTP), check now
 
-extern int psx3d_idle_skip, psx3d_idle_pointer, psx3d_idle_delay;
+extern int psx3d_idle_skip;
 
 static void parse_switches(int argc, char **argv)
 {
@@ -168,8 +163,6 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "csnd")) sw_csnd = true;   // test the no-firmware sound path
 		else if (!strncmp(a, "slider=", 7)) sw_slider = strtof(a + 7, NULL);
 		else if (!strncmp(a, "stereo=", 7)) sw_stereo = atoi(a + 7);
-		else if (!strcmp(a, "showright")) sw_showright = true;
-		else if (!strcmp(a, "sbs")) sw_sbs = true;
 		else if (clip_switch(a)) {}
 		else if (!strcmp(a, "prof")) sw_prof = true;
 		else if (!strcmp(a, "stats")) sw_stats = true;
@@ -184,42 +177,25 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "pmuclass=off")) sw_pmuclass = false;
 		else if (!strcmp(a, "pmurender=on")) sw_pmuphase = true;
 		else if (!strcmp(a, "pmurender=off")) sw_pmuphase = false;
-		else if (!strcmp(a, "fsmart=old")) sw_fsmart = false;
-		else if (!strcmp(a, "fsmart=new")) sw_fsmart = true;
-		else if (!strcmp(a, "rtfs")) sw_rtfs = true;
-		else if (!strcmp(a, "rtfs=old")) { sw_rtfs = true; sw_rtfswindow = false; }
-		else if (!strcmp(a, "rtfs=dense")) { sw_rtfs = sw_rtfsdense = true; }
-		else if (!strcmp(a, "rtfs=model")) { sw_rtfs = true; sw_rtfsmodel = true; }
-		else if (!strcmp(a, "rtfs=new")) { sw_rtfs = true; sw_rtfswindow = true; }
-		else if (!strncmp(a, "rtfscap=", 8)) { sw_rtfscap = atoi(a + 8); sw_rtfs = true; }
-		else if (!strncmp(a, "rtfslevel=", 10)) { sw_rtfslevel = atoi(a + 10); sw_rtfs = true; }
-		else if (!strcmp(a, "frontend=old")) { sw_frontend = false; sw_gldbg |= 4194304; }
-		else if (!strcmp(a, "frontend=new")) { sw_frontend = true; sw_gldbg &= ~4194304; }
-		else if (!strcmp(a, "audio=old")) sw_floataudio = true;
-		else if (!strcmp(a, "audio=new")) sw_floataudio = false;
 		else if (!strcmp(a, "ff=on")) sw_ff = true;
 		else if (!strcmp(a, "ff=off")) sw_ff = false;
 		else if (!strcmp(a, "fs3")) sw_fs3 = true;
 		else if (!strcmp(a, "idle=off")) psx3d_idle_skip = 0;
 		else if (!strcmp(a, "idle=on")) psx3d_idle_skip = 1;
-		else if (!strcmp(a, "idleptr=off")) psx3d_idle_pointer = 0;
-		else if (!strcmp(a, "idleptr=on")) psx3d_idle_pointer = 1;
-		else if (!strcmp(a, "idledelay=off")) psx3d_idle_delay = 0;
-		else if (!strcmp(a, "idledelay=on")) psx3d_idle_delay = 1;
 		else if (!strcmp(a, "noskip")) sw_noskip = true;
 		else if (!strcmp(a, "nogputhread")) sw_nogputhread = true;
 		else if (!strcmp(a, "gputhread")) sw_nogputhread = false;
 		else if (!strcmp(a, "nosputhread")) sw_nosputhread = true;
 		else if (!strcmp(a, "acap")) sw_acap = true;
-		else if (!strcmp(a, "renderer=sw") || !strcmp(a, "renderer=gpu")) { /* legacy key: GPU only */ }
+		else if (!strcmp(a, "renderer=gpu")) { /* legacy key: GPU only */ }
 		else if (!strcmp(a, "state0")) sw_state = 0;
 		else if (!strncmp(a, "state=", 6)) sw_state = atoi(a + 6);
 		else if (!strncmp(a, "autosavetest=", 13)) sw_autosave_test = atoi(a + 13);
-		else if (!strcmp(a, "rtt=old")) sw_gldbg = (sw_gldbg | 262144) & ~1048576;
-		else if (!strcmp(a, "rtt=new")) sw_gldbg = (sw_gldbg & ~262144) | 1048576;
-		else if (!strcmp(a, "rtt=auto")) sw_gldbg &= ~(262144 | 1048576);
-		else if (!strcmp(a, "rttcache=old")) sw_gldbg |= 524288;
-		else if (!strcmp(a, "rttcache=new")) sw_gldbg &= ~524288;
+		else if (!strcmp(a, "rtt=old")) sw_gldbg = (sw_gldbg | PICA_DEBUG_RTT_OLD) & ~PICA_DEBUG_RTT_NEW;
+		else if (!strcmp(a, "rtt=new")) sw_gldbg = (sw_gldbg & ~PICA_DEBUG_RTT_OLD) | PICA_DEBUG_RTT_NEW;
+		else if (!strcmp(a, "rtt=auto")) sw_gldbg &= ~(PICA_DEBUG_RTT_OLD | PICA_DEBUG_RTT_NEW);
+		else if (!strcmp(a, "rttcache=old")) sw_gldbg |= PICA_DEBUG_NO_REGION_CACHE;
+		else if (!strcmp(a, "rttcache=new")) sw_gldbg &= ~PICA_DEBUG_NO_REGION_CACHE;
 		else if (!strcmp(a, "submitstate=old")) pica_submit &= ~PICA_SUBMIT_STATE;
 		else if (!strcmp(a, "submitstate=new")) pica_submit |= PICA_SUBMIT_STATE;
 		else if (!strcmp(a, "submitclip=old")) pica_submit &= ~PICA_SUBMIT_CLIP;
