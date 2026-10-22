@@ -9,6 +9,7 @@
 #include <string.h>
 #include <unistd.h>
 #include "psx3d.h"
+#include "statefile.h"
 typedef int s32;
 typedef struct { pthread_mutex_t m; pthread_cond_t c; bool set; } LightEvent;
 typedef pthread_t *Thread;
@@ -24,7 +25,21 @@ static int fail_deltas;            // next N delta allocations fail
 static bool counting;              // after rewind_start: allocations are deltas
 size_t retro_serialize_size(void) { return sizeof(game); }
 bool retro_serialize(void *p, size_t n) { assert(n >= sizeof(game)); memcpy(p, game, sizeof(game)); return true; }
-bool retro_unserialize(const void *p, size_t n) { assert(n >= sizeof(game)); memcpy(game, p, sizeof(game)); return true; }
+state_result_t state_last_result;
+static int fail_loads;             // next N loads fail (half-restored)
+bool retro_unserialize(const void *p, size_t n)
+{
+	assert(n >= sizeof(game));
+	if (fail_loads > 0) {
+		fail_loads--;
+		game[0] ^= 0xdead;   // the game was partly overwritten
+		state_last_result = STATE_PARTLY;
+		return false;
+	}
+	memcpy(game, p, sizeof(game));
+	state_last_result = STATE_OK;
+	return true;
+}
 void log_printf(const char *fmt, ...) { (void)fmt; }
 
 static void LightEvent_Init(LightEvent *e, int mode)
@@ -190,6 +205,20 @@ int main(void)
 		CHECK(is_state(MAX_STEPS + 100 - back));
 	}
 	CHECK(back == MAX_STEPS);
+	rewind_stop();
+	// Review 3 F7c: a step that can't be loaded is reported (-1), the history
+	// is dropped (nothing older leads anywhere valid), and the caller is told
+	// the game was left half-restored
+	start();
+	set_game(0); capture();
+	set_game(1); capture();
+	set_game(2); capture();
+	fail_loads = 1;
+	CHECK(rewind_step() == -1 && state_last_result == STATE_PARTLY);
+	CHECK(rewind_step() == 0);
+	set_game(7); capture();
+	set_game(8); capture();
+	CHECK(rewind_step() == 1 && is_state(7));   // a new history from the next capture
 	rewind_stop();
 	if (failures) {
 		fprintf(stderr, "FAIL: %d rewind worker checks\n", failures);

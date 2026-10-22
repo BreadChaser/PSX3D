@@ -437,7 +437,7 @@ void ui_help_panel(float y0, const char *title, const char *impact, const char *
 }
 
 // Destructive settings actions require a fresh A press. B always cancels.
-typedef struct { const char *title, *message, *action; } confirm_t;
+typedef struct { const char *title, *message, *action, *back; } confirm_t;
 static void confirm_draw(void *ud)
 {
 	confirm_t *c = ud;
@@ -449,7 +449,7 @@ static void confirm_draw(void *ud)
 		C2D_DrawText(&t, C2D_WithColor | C2D_WordWrap, 16.0f, 62.0f, 0.7f, 0.5f, 0.5f,
 			C2D_Color32(170, 185, 220, 255), 288.0f);
 	ui_text_ex(NULL, 160, 183, 0.5f, C2D_Color32(235, 238, 255, 255), C2D_AlignCenter, c->action);
-	ui_text_ex(NULL, 160, 213, 0.45f, C2D_Color32(130, 150, 190, 255), C2D_AlignCenter, "B  Cancel");
+	ui_text_ex(NULL, 160, 213, 0.45f, C2D_Color32(130, 150, 190, 255), C2D_AlignCenter, c->back ? c->back : "B  Cancel");
 }
 
 bool ui_confirm(const char *title, const char *message, bool show_game)
@@ -459,7 +459,13 @@ bool ui_confirm(const char *title, const char *message, bool show_game)
 
 bool ui_confirm_action(const char *title, const char *message, const char *action, bool show_game)
 {
-	confirm_t c = { title, message, action };
+	return ui_confirm_choice(title, message, action, NULL, show_game);
+}
+
+// back: what B does (NULL: "B  Cancel")
+bool ui_confirm_choice(const char *title, const char *message, const char *action, const char *back, bool show_game)
+{
+	confirm_t c = { title, message, action, back };
 	bool released = false;
 	while (aptMainLoop()) {
 		input_poll();

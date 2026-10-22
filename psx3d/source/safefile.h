@@ -17,17 +17,27 @@
 typedef enum { SAFE_NONE, SAFE_CURRENT, SAFE_BACKUP, SAFE_TEMP } safe_source_t;
 
 // What a good copy of a binary file is: exactly size bytes whose first head
-// bytes pass valid() (NULL: any content). This is all a "good" backup means.
+// bytes pass valid() (NULL: any content) and, if given, whose whole content
+// passes deep() (memory card checksums). A copy that passes valid() but not
+// deep() is "weak": it is loaded only when no good copy exists, it never
+// takes the place of a good backup, and it is kept as <name>.bad instead.
 typedef struct {
 	size_t size;
 	size_t head;
 	bool (*valid)(const void *head);
+	bool (*deep)(const void *data, size_t size);
+	// the backup about to be replaced (a version two saves old): keep it
+	// somewhere else (history.c renames it away). NULL, or if it is still
+	// there afterwards: it is deleted.
+	void (*retire)(const char *bak, void *ctx);
+	void *ctx;
 } safe_format_t;
 
 typedef struct {
 	safe_source_t from;   // where the returned copy came from
 	bool rejected;        // a copy was there but damaged (or could not be read)
 	bool failed;          // no memory to read it: nothing is known
+	bool weak;            // the returned copy fails deep(): there is no better one
 } safe_info_t;
 
 // Write size = fmt->size bytes. keep_backup: a good current version stays as
@@ -42,7 +52,8 @@ bool safe_finish(FILE *f, const char *path, bool ok);
 void safe_recover(const char *path);
 
 // The best good copy, in a new buffer of fmt->size bytes (NULL: none). Tries
-// <name>, then <name>.bak, then <name>.tmp, minus the sources in skip (bits
+// <name>, then <name>.bak, then <name>.tmp (the first weak copy if none is
+// good), minus the sources in skip (bits
 // 1 << SAFE_CURRENT etc., for copies the caller could not use). Nothing on the
 // SD card changes.
 void *safe_load(const char *path, const safe_format_t *fmt, unsigned skip, safe_info_t *info);

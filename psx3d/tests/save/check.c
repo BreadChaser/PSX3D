@@ -21,7 +21,7 @@ static char ctx[160];
 #define CHECK(c) do { checks++; if (!(c)) { failures++; fprintf(stderr, "%s:%d: %s (%s)\n", __FILE__, __LINE__, #c, ctx); } } while (0)
 
 static bool head_ok(const void *head) { const unsigned char *h = head; return h[0] == 'M' && h[1] == 'C'; }
-static const safe_format_t FMT = { SIZE, 2, head_ok };
+static const safe_format_t FMT = { .size = SIZE, .head = 2, .valid = head_ok };
 
 // ---------------------------------------------------------------- faults
 static struct {

@@ -3,8 +3,10 @@
 // Replace steps; a power cut between any two leaves a good copy:
 //   1. write <name>.tmp completely and close it (the 3DS FS flushes on close)
 //   2. remove <name>.bak                    (<name> still the old good file)
+//      (or hand it to fmt->retire, which renames it into the history)
 //   3. rename <name> -> <name>.bak          (old good file now the backup)
-//      or, if <name> is damaged: rename it -> <name>.bad (the backup stays)
+//      or, if <name> is damaged, or weak while the backup is good: rename it
+//      -> <name>.bad (the backup stays)
 //   4. rename <name>.tmp -> <name>          (new file in place)
 //   5. text files only: remove <name>.bak
 // FAT on the 3DS SD card cannot rename over an existing file, hence 2 and 3.
@@ -49,24 +51,37 @@ static long file_size(const char *path)
 	return stat(path, &st) == 0 ? (long)st.st_size : -1;
 }
 
-// 1: path is a good copy (read into data if given), 0: no such file,
-// -1: there but damaged or unreadable
+#define GOOD 2
+#define WEAK 1
+
+// GOOD: path is a good copy (read into data if given), WEAK: it passes the
+// header check but not fmt->deep, 0: no such file, -1: there but damaged or
+// unreadable
 static int read_good(const char *path, const safe_format_t *fmt, void *data)
 {
 	FILE *f = fopen(path, "rb");
 	if (!f)
 		return file_size(path) < 0 ? 0 : -1;
 	unsigned char head[HEAD_MAX];
-	size_t want = data ? fmt->size : (fmt->head < fmt->size ? fmt->head : fmt->size);
+	void *whole = data;
+	if (!whole && fmt->deep)   // the deep check needs everything
+		whole = malloc(fmt->size);
+	size_t want = whole ? fmt->size : (fmt->head < fmt->size ? fmt->head : fmt->size);
 	bool ok = fmt->head <= HEAD_MAX && file_size(path) == (long)fmt->size;
-	if (ok && data)
-		ok = fread(data, 1, want, f) == want && fgetc(f) == EOF;
+	if (ok && whole)
+		ok = fread(whole, 1, want, f) == want && fgetc(f) == EOF;
 	else if (ok)
 		ok = fread(head, 1, want, f) == want;
 	fclose(f);
 	if (ok && fmt->valid && fmt->head)
-		ok = fmt->valid(data ? data : head);
-	return ok ? 1 : -1;
+		ok = fmt->valid(whole ? whole : head);
+	int r = ok ? GOOD : -1;
+	// no memory for the deep check: can't call it good
+	if (ok && fmt->deep && !(whole && fmt->deep(whole, fmt->size)))
+		r = WEAK;
+	if (whole != data)
+		free(whole);
+	return r;
 }
 
 static bool write_tmp(const char *tmp, const void *data, size_t size)
@@ -96,13 +111,23 @@ static bool keep_damaged(const char *path)
 	return rename(path, bad) == 0;
 }
 
+// the backup is about to be replaced: the history may take it first
+static void retire(const char *bak, const safe_format_t *fmt)
+{
+	if (fmt && fmt->retire && file_size(bak) >= 0)
+		fmt->retire(bak, fmt->ctx);
+	remove(bak);
+}
+
 // steps 2-5: <name>.tmp is complete. fmt NULL: a text file (no backup kept).
 static bool put_in_place(const char *path, const char *tmp, const char *bak, const safe_format_t *fmt)
 {
 	bool moved = false;
 	if (file_size(path) >= 0) {
-		if (!fmt || read_good(path, fmt, NULL) > 0) {
-			remove(bak);
+		int cur = fmt ? read_good(path, fmt, NULL) : GOOD;
+		// a weak <name> never pushes a good backup out
+		if (cur == GOOD || (cur == WEAK && read_good(bak, fmt, NULL) != GOOD)) {
+			retire(bak, fmt);
 			STEP();
 			if (rename(path, bak))
 				return false;
@@ -196,24 +221,38 @@ void *safe_load(const char *path, const safe_format_t *fmt, unsigned skip, safe_
 	if (!info)
 		info = &dummy;
 	info->from = SAFE_NONE;
-	info->rejected = info->failed = false;
+	info->rejected = info->failed = info->weak = false;
 	void *buf = fmt->size ? malloc(fmt->size) : NULL;
 	if (!buf) {
 		info->failed = true;
 		return NULL;
 	}
+	int weak = SAFE_NONE;   // the first weak copy: used if none is good
 	for (int s = SAFE_CURRENT; s <= SAFE_TEMP; s++) {
 		char name[528];
 		if (skip & (1u << s))
 			continue;
 		name_with(name, sizeof(name), path, ext[s]);
 		int r = read_good(name, fmt, buf);   // only a good copy is returned
-		if (r > 0) {
+		if (r == GOOD) {
 			info->from = (safe_source_t)s;
+			info->rejected |= weak != SAFE_NONE;
 			return buf;
 		}
-		if (r < 0)
+		if (r == WEAK && weak == SAFE_NONE)
+			weak = s;
+		else if (r != 0)
 			info->rejected = true;
+	}
+	if (weak != SAFE_NONE) {
+		char name[528];
+		name_with(name, sizeof(name), path, ext[weak]);
+		if (read_good(name, fmt, buf) == WEAK) {
+			info->from = (safe_source_t)weak;
+			info->weak = true;
+			return buf;
+		}
+		info->rejected = true;
 	}
 	free(buf);
 	return NULL;

@@ -19,6 +19,9 @@ muts = {
  'taken alias reused': ('				continue;   // taken by yet another game', '				;'),
  'case-sensitive names': ('		if (strcasecmp(g->cover_key, cur.base) || !g->ndiscs)', '		if (strcmp(g->cover_key, cur.base) || !g->ndiscs)'),
  'fallback unrecorded': ('			*created = !r.ok;\n			rec_claim(final, &r, serial);\n		}\n		log_printf', '		}\n		log_printf'),
+ 'unknown size is same': ('	if (serial[0] && r->nserials)   // a size unknown: the serials still tell\n		return rec_has(r, serial);', ''),
+ 'owner settings before load': ('	saveid_provisional = r.ok && r.size && cur.size && r.size != cur.size && !strcasecmp(cur.name, cur.base);', '	saveid_provisional = false;'),
+ 'unwritten record silent': ('		saveid_unrecorded = true;   // the next game', '		(void)0;   // the next game'),
  'fake serial is real': ('	if (n != 9 || (in && *in) || !strcmp(out, "SLUS99999"))', '	if (n != 9 || (in && *in))'),
 }
 tmp = tempfile.mkdtemp()

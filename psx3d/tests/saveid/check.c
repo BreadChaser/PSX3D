@@ -657,6 +657,44 @@ static void serials(void)
 	CHECK(!card_of_others("SLUS00001"));
 }
 
+// Review 3 F7d: the cases that used to fail open
+static void fail_closed(void)
+{
+	ctx = "fail closed";
+	reset();
+	disc("sdmc:/x/1/game.bin", 1000);
+	disc("sdmc:/x/2/game.bin", 2000);
+	launch_t a = launch("sdmc:/x/1/game.bin", NULL, "SLUS00001");
+	CHECK(!strcmp(a.name, "game") && !saveid_provisional && !saveid_unrecorded);
+	// another game with that name, its size known before loading: none of the
+	// owner's per-game settings may apply while it loads
+	char begun[PATH_LEN];
+	saveid_begin("sdmc:/x/2/game.bin", NULL, begun, sizeof(begun));
+	CHECK(!strcmp(begun, "game") && saveid_provisional);
+	bool created;
+	CHECK(saveid_confirm("SLUS00002", begun, sizeof(begun), &created) && strcmp(begun, "game") && created);
+	saveid_begin("sdmc:/x/1/game.bin", NULL, begun, sizeof(begun));
+	CHECK(!saveid_provisional);   // the owner itself
+	// a disc whose size can't be read is no longer "the same game": its
+	// serial decides when the record has serials (a record without a disc 1
+	// serial: first started from disc 2)
+	reset();
+	put_text(SAVES "/game.id", "version=1\nsize=1000\nserial=SLUS00001\ndisc=x/1/game.bin\n");
+	launch_t m = launch("sdmc:/x/9/game.bin", NULL, "SLUS00003");
+	CHECK(strcmp(m.name, "game") && m.created);
+	launch_t o = launch("sdmc:/x/9/game.bin", NULL, "SLUS00001");
+	CHECK(!strcmp(o.name, "game"));   // the owner's serial: the owner's saves
+	// the owner record can't be written: said so (the next twin couldn't tell)
+	reset();
+	disc("sdmc:/x/1/game.bin", 1000);
+	chmod(SAVES, 0555);
+	launch_t r = launch("sdmc:/x/1/game.bin", NULL, "SLUS00001");
+	CHECK(!strcmp(r.name, "game") && saveid_unrecorded);
+	chmod(SAVES, 0755);
+	r = launch("sdmc:/x/1/game.bin", NULL, "SLUS00001");
+	CHECK(!saveid_unrecorded && exists(SAVES "/game.id"));
+}
+
 int main(void)
 {
 	char dir[] = "/tmp/saveid-XXXXXX";
@@ -670,6 +708,7 @@ int main(void)
 	multi_disc();
 	records();
 	serials();
+	fail_closed();
 	lib_clear();
 	if (chdir("/"))
 		return 2;

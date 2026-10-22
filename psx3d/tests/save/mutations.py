@@ -13,13 +13,21 @@ muts={
  'tolerant size': ('bool ok = fmt->head <= HEAD_MAX && file_size(path) == (long)fmt->size;', 'bool ok = fmt->head <= HEAD_MAX && file_size(path) > 0;'),
  'no head check': ('	if (ok && fmt->valid && fmt->head)', '	if (0)'),
  'unchecked close': ('	if (fclose(f))\n		ok = false;\n	return ok && file_size(tmp)', '	fclose(f);\n	return ok && file_size(tmp)'),
- 'rotate damaged': ('		if (!fmt || read_good(path, fmt, NULL) > 0) {', '		if (1) {'),
+ 'rotate damaged': ('		if (cur == GOOD || (cur == WEAK && read_good(bak, fmt, NULL) != GOOD)) {', '		if (1) {'),
+ 'weak pushes good backup': ('		if (cur == GOOD || (cur == WEAK && read_good(bak, fmt, NULL) != GOOD)) {', '		if (cur > 0) {'),
+ 'weak preferred': ('		if (r == WEAK && weak == SAFE_NONE)\n			weak = s;', '		if (r == WEAK) { info->from = (safe_source_t)s; info->weak = true; return buf; }'),
+ 'no deep check': ('	if (ok && fmt->deep && !(whole && fmt->deep(whole, fmt->size)))', '	if (0)'),
 }
 card_muts={
  'shadow failed repair': ('	srm_dirty = r == CARD_UNSAVED;', '	srm_dirty = false;'),
  'no retry delay': ('	if (srm_dirty && osGetTime() < srm_retry_at)', '	if (0)'),
  'tolerant card': ('	if (!card) {\n		if (info.failed)', '	if (!card) {\n		FILE *f = fopen(path, "rb"); if (f) { fread(data, 1, size, f); fclose(f); }\n		if (info.failed)'),
  'card 2 in place': ('	str[0] = 0;               // the core', '	(void)0;               // the core'),
+ 'directory unchecked': ('	for (int f = 0; f < 16; f++) {\n		u8 x = 0;', '	for (int f = 0; f < 1; f++) {\n		u8 x = 0;'),
+ 'damaged plays on': ('	srm_locked = srm_trouble != CARD_TROUBLE_NONE;\n	srm_dirty = r == CARD_UNSAVED;   // never', '	srm_locked = srm_trouble == CARD_TROUBLE_MEMORY;\n	srm_dirty = r == CARD_UNSAVED;   // never'),
+ 'no pin before format': ('	if (history_add(h->group, HIST_CARD_PIN, h->ext, old, size))', '	if (0)'),
+ 'no session copy': ('	history_add(h->group, HIST_CARD_SESSION, h->ext, data, size);', '	(void)0;'),
+ 'put back keeps nothing': ('	history_add(t.h->group, HIST_CARD_PIN, t.h->ext, t.mem, t.size);   // the card as it is now', '	(void)0;'),
 }
 tmp = tempfile.mkdtemp()
 missed = 0
@@ -30,7 +38,7 @@ def run(name, safefile, cards_src):
     shutil.copy('psx3d/source/safefile.h', tmp+'/safefile.h')
     flags=['cc','-std=gnu11','-w','-g','-DSAFEFILE_TEST','-include','psx3d/tests/save/host.h','-I'+tmp,'-Ipsx3d/tests/host','-Ipsx3d/source','-Icore/deps/libretro-common/include']
     caught = False
-    for test, extra in (('check', []), ('cards', [tmp+'/cards.c'])):
+    for test, extra in (('check', []), ('cards', [tmp+'/cards.c', 'psx3d/source/history.c'])):
         r=subprocess.run(flags+['psx3d/tests/save/'+test+'.c',tmp+'/safefile.c',*extra,'-o',tmp+'/t'],capture_output=True,text=True)
         if r.returncode: print(name,'BUILD FAIL',r.stderr[:300]); missed += 1; return
         caught |= subprocess.run([tmp+'/t'],capture_output=True,text=True).returncode != 0
@@ -49,7 +57,14 @@ state_muts={
  'tail error ignored': ('	if (stream_refused) {   // a record', '	if (0) {   // a record'),
  'negative seek': ('(offs < 0 ? (size_t)-(offs + 1) >= base :', '(offs < 0 ? false :'),
  'tail unchecked': ('	return check_tail(p, size, SPU_SIZE_AT + sizeof(spu) + spu);', '	return STATE_OK;'),
- 'pads unchecked': ('		if (saved > size - pos)\n			return STATE_DAMAGED;', ''),
+ 'pads unchecked': ('		if (saved < PAD_MIN || saved > size - pos)\n			return STATE_DAMAGED;', ''),
+ 'no crc check': ('	if (t && !crc_ok)\n		return STATE_DAMAGED;', ''),
+ 'other build layout': ('	if (t && t->tail && t->tail != tail_expected())\n		return STATE_VERSION;', ''),
+ 'respSize unchecked': ('			if (resp > sizeof(((PadDataS *)0)->rxData) || resp_old > sizeof(((PadDataS *)0)->rxData))\n				return STATE_DAMAGED;', ''),
+ 'learn from a loaded state': ('	} else\n		// the block list elsewhere: the records before it have other sizes\n		for (size_t i = at; i + sizeof(magic) <= size && i < at + TAIL_SCAN; i++)\n			if (!memcmp(p + i, magic, sizeof(magic)))\n				return STATE_VERSION;', '	} else\n		for (size_t i = at; i + sizeof(magic) <= size && i < at + TAIL_SCAN; i++)\n			if (!memcmp(p + i, magic, sizeof(magic))) {\n				state_tail_measured = i - at;\n				return check_tail(p, size, at);\n			}'),
+ 'disc index kept patched': ('	if (fixed == 0) {\n		char *p = (char *)data', '	if (0) {\n		char *p = (char *)data'),
+ 'other disc loads': ('	if (fixed == -2) {\n		state_last_result = STATE_OTHER_DISC;\n		return false;\n	}', ''),
+ 'hle not restored': ('		Config.HLE = hle;   // the game is restarted', '		(void)hle;   // the game is restarted'),
 }
 os.makedirs(tmp+'/x/y', exist_ok=True)
 os.symlink(os.path.join(root, 'core'), tmp+'/core')

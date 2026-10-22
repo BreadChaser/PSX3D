@@ -10,12 +10,23 @@
 #ifndef STATEFILE_C
 #define STATEFILE_C "../../source/statefile.c"
 #endif
+#define STATE_TAIL (300 + 2000 + 4 + 200 + 1000)   // the model's sio, cdr, rcnt, mdec
 #include STATEFILE_C
 #include <assert.h>
+#include <stdarg.h>
 #include <limits.h>
 #include <stdio.h>
 
 struct PcsxSaveFuncs SaveFuncs;
+PcsxConfig Config;
+static char logged[256];
+void log_printf(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(logged, sizeof(logged), fmt, ap);
+	va_end(ap);
+}
 #define VERSION 0x8b410006u
 #define STATE_SIZE 0x440000u
 #define TAIL_FIXED (300 + 2000 + 4 + 200 + 1000)   // sio, cdr, rcnt, mdec
@@ -100,6 +111,7 @@ bool __real_retro_serialize(void *data, size_t size)
 }
 
 static int load_calls;
+static int model_extra;   // a core with one more record the check doesn't know
 // misc.c LoadState and the component freezes: the same reads/seeks, the
 // same early refusals (header, version), the same "skip a broken SPU size"
 bool __real_retro_unserialize(const void *data, size_t size)
@@ -121,6 +133,7 @@ bool __real_retro_unserialize(const void *data, size_t size)
 		SaveFuncs.close(f);
 		return false;
 	}
+	Config.HLE = hle;   // as LoadState: before anything can fail
 	SaveFuncs.seek(f, EX_SCREENPIC_SIZE, SEEK_CUR);
 	for (int i = 0; i < 6; i++)
 		SaveFuncs.read(f, (unsigned char *[]){ live.ram, live.bios, live.hw, live.regs, live.gpu, live.vram }[i], sizes[i]);
@@ -150,6 +163,11 @@ bool __real_retro_unserialize(const void *data, size_t size)
 		SaveFuncs.read(f, &live.pad[i], PAD_SIZE);
 		if (live.pad[i].saveSize != sizeof(PadDataS))   // as pad.c (32-bit ARM long)
 			SaveFuncs.seek(f, (long)live.pad[i].saveSize - PAD_SIZE, SEEK_CUR);
+	}
+	if (model_extra) {
+		unsigned char extra[64];
+		SaveFuncs.read(f, extra, model_extra);
+		live.ram[0] ^= extra[0] | 1;   // restored into the game
 	}
 	SaveFuncs.close(f);
 	return true;
@@ -301,20 +319,179 @@ static void bad_sizes(void)
 		CHECK(try_load(s, end + 64) == STATE_OK);
 		CHECK(try_load(good, STATE_SIZE) == STATE_OK);
 	}
-	// before the layout after the SPU block is known, a damaged record is
-	// still caught by the stream: the game is reported partly restored
-	{
-		size_t learned = tail_fixed;
-		tail_fixed = 0;
+	// pad.c indexes its 8-byte rxData with respSize: a record of this
+	// build's size with a longer response is refused first
+	for (int k = 0; k < PADS; k += 3) {
 		memcpy(s, good, STATE_SIZE);
-		memcpy(s + ndrc_size_at - 8, "ARIBLKS", 8);   // no block list to find
-		unsigned short big = 0xffff;
-		memcpy(s + tail_at + TAIL_FIXED + offsetof(PadDataS, saveSize), &big, 2);
-		snprintf(ctx, sizeof(ctx), "unknown tail");
-		CHECK(try_load(s, pad_at + 100) == STATE_PARTLY);
-		CHECK(tail_fixed == 0);   // a damaged state teaches nothing
-		CHECK(try_load(good, STATE_SIZE) == STATE_OK && tail_fixed == learned);
+		s[pad_at + k * PAD_SIZE + offsetof(PadDataS, respSize)] = 9;
+		snprintf(ctx, sizeof(ctx), "pad %d respSize", k);
+		CHECK(try_load(s, STATE_SIZE) == STATE_DAMAGED);
+		memcpy(s, good, STATE_SIZE);
+		s[pad_at + k * PAD_SIZE + offsetof(PadDataS, respSizeOld)] = 200;
+		CHECK(try_load(s, STATE_SIZE) == STATE_DAMAGED);
+		memcpy(s, good, STATE_SIZE);
+		s[pad_at + k * PAD_SIZE + offsetof(PadDataS, respSize)] = 8;
+		CHECK(try_load(s, STATE_SIZE) == STATE_OK);
 	}
+	CHECK(try_load(good, STATE_SIZE) == STATE_OK);
+	free(s);
+}
+
+// Review 3 F7a: a state from another build whose records are 16 bytes
+// longer (same core version number) must not teach its layout: before
+// PSX3D's first own save and after it, it is refused and good states load.
+static void poisoning(void)
+{
+	size_t saved = state_tail_measured;
+	unsigned char *s = calloc(1, STATE_SIZE);
+	for (int round = 0; round < 2; round++) {
+		state_tail_measured = round ? saved : 0;   // round 0: nothing measured yet
+		memcpy(s, good, tail_at + 300);
+		memset(s + tail_at + 300, 0x5a, 16);   // the extra record bytes
+		memcpy(s + tail_at + 300 + 16, good + tail_at + 300, pad_at + PADS * PAD_SIZE - tail_at - 300);
+		memset(s + STATE_SIZE - sizeof(state_trailer_t), 0, sizeof(state_trailer_t));   // an older build: no trailer
+		snprintf(ctx, sizeof(ctx), "poison round %d", round);
+		state_result_t r = try_load(s, STATE_SIZE);
+		CHECK(r == STATE_VERSION);   // the block list is not where this build has it
+		CHECK(state_tail_measured == (round ? saved : 0));   // nothing learned
+		CHECK(try_load(good, STATE_SIZE) == STATE_OK);
+		for (int i = 0; i < 5; i++)   // later loads still check at the right place
+			CHECK(try_load(s, STATE_SIZE) != STATE_OK);
+		// without a block list (interpreter): the pads are read where this
+		// build has them, and the shifted record is no pad record
+		memcpy(s + tail_at + 300 + 16 + TAIL_FIXED - 300, "ARIBLKS", 8);
+		CHECK(try_load(s, STATE_SIZE) != STATE_OK);
+	}
+	// the same build with a trailer saying so: another build's layout
+	memcpy(s, good, STATE_SIZE);
+	state_trailer_t t;
+	memcpy(&t, s + STATE_SIZE - sizeof(t), sizeof(t));
+	t.tail += 16;
+	memcpy(s + STATE_SIZE - sizeof(t), &t, sizeof(t));
+	snprintf(ctx, sizeof(ctx), "trailer layout");
+	int calls = load_calls;
+	CHECK(try_load(s, STATE_SIZE) == STATE_VERSION && load_calls == calls);
+	state_tail_measured = saved;
+	free(s);
+}
+
+// own saves: the layout is measured, the trailer written, a sealed state
+// is checked whole (every damaged byte refused before the core reads it)
+static void trailer(void)
+{
+	snprintf(ctx, sizeof(ctx), "trailer");
+	CHECK(state_tail_measured == STATE_TAIL);
+	bool crc_ok;
+	const state_trailer_t *t = state_trailer(good, STATE_SIZE, &crc_ok);
+	CHECK(t && crc_ok && !(t->flags & STATE_SEALED) && t->tail == STATE_TAIL &&
+	      t->data_len == pad_at + PADS * PAD_SIZE && !strcmp(t->disc, "Game (Disc 2).cue") && t->disc_index == 1);
+	CHECK(state_crc32("123456789", 9, 0) == 0xcbf43926u);   // the CRC-32 check value
+	unsigned char *s = malloc(STATE_SIZE);
+	memcpy(s, good, STATE_SIZE);
+	CHECK(state_seal(s, STATE_SIZE));
+	t = state_trailer(s, STATE_SIZE, &crc_ok);
+	CHECK(t && crc_ok && (t->flags & STATE_SEALED));
+	CHECK(try_load(s, STATE_SIZE) == STATE_OK);
+	CHECK(!memcmp(s, good, STATE_SIZE - sizeof(state_trailer_t)));   // sealing changes only the trailer
+	srand(5);
+	for (int it = 0; it < 300; it++) {
+		size_t at = it < 40 ? (size_t)(STATE_SIZE - sizeof(state_trailer_t) + it % sizeof(state_trailer_t))
+		                    : (size_t)rand() % (pad_at + PADS * PAD_SIZE);
+		unsigned char bit = (unsigned char)(1u << (rand() % 8));
+		s[at] ^= bit;
+		snprintf(ctx, sizeof(ctx), "sealed flip at %zu", at);
+		int calls = load_calls;
+		state_result_t r = try_load(s, STATE_SIZE);
+		// a flip in the trailer may only make it "no trailer" (an old state)
+		if (at < STATE_SIZE - sizeof(state_trailer_t))
+			CHECK(r != STATE_OK && r != STATE_PARTLY && load_calls == calls);
+		else
+			CHECK(r != STATE_PARTLY);
+		s[at] ^= bit;
+	}
+	CHECK(try_load(s, STATE_SIZE) == STATE_OK);
+	// no room for a trailer: none written, the state still loads
+	size_t full = pad_at + PADS * PAD_SIZE;
+	unsigned char *tight = malloc(full + 8);
+	CHECK(__wrap_retro_serialize(tight, full + 8));
+	CHECK(!state_trailer(tight, full + 8, NULL) && !state_seal(tight, full + 8));
+	CHECK(try_load(tight, full + 8) == STATE_OK);
+	free(tight);
+	free(s);
+}
+
+// the disc: mapped by file name to this launch's list, the state's index set
+// for the load and put back; a disc not in the list refuses the load
+static int map_result;
+static char map_name[96];
+static int disc_map(const char *name, unsigned index, unsigned count)
+{
+	(void)index; (void)count;
+	snprintf(map_name, sizeof(map_name), "%s", name);
+	return map_result;
+}
+static void disc_query(char *name, size_t len, unsigned *index, unsigned *count)
+{
+	snprintf(name, len, "Game (Disc 2).cue");
+	*index = 1;
+	*count = 2;
+}
+static void discs(void)
+{
+	unsigned char *s = malloc(STATE_SIZE);
+	memcpy(s, good, STATE_SIZE);
+	state_seal(s, STATE_SIZE);
+	unsigned char *copy = malloc(STATE_SIZE);
+	memcpy(copy, s, STATE_SIZE);
+	state_disc_map = disc_map;
+	int idx;
+	for (map_result = -2; map_result <= 3; map_result++) {
+		snprintf(ctx, sizeof(ctx), "disc map %d", map_result);
+		state_result_t r = try_load(s, STATE_SIZE);
+		CHECK(!strcmp(map_name, "Game (Disc 2).cue"));
+		CHECK(!memcmp(s, copy, STATE_SIZE));   // the caller's copy as it was (checksum still good)
+		if (map_result == -1) {
+			CHECK(r == STATE_OTHER_DISC);
+			continue;
+		}
+		CHECK(r == STATE_OK);
+		memcpy(&idx, live.hw + 0xf000 + 32, sizeof(idx));
+		CHECK(idx == (map_result >= 0 ? map_result : 1));   // -2: can't tell, as saved
+	}
+	// a state without a trailer: the core's index, no mapping
+	memset(s + STATE_SIZE - sizeof(state_trailer_t), 0, sizeof(state_trailer_t));
+	map_result = 0;
+	map_name[0] = 0;
+	CHECK(try_load(s, STATE_SIZE) == STATE_OK && !map_name[0]);
+	state_disc_map = NULL;
+	free(copy);
+	free(s);
+}
+
+// a damaged record only the stream sees (a state without a trailer): the
+// game is restarted, with the BIOS setting it had (LoadState set the state's)
+static void partly(void)
+{
+	unsigned char *s = malloc(STATE_SIZE);
+	memcpy(s, good, STATE_SIZE);
+	memset(s + STATE_SIZE - sizeof(state_trailer_t), 0, sizeof(state_trailer_t));
+	unsigned short big = 0xffff;
+	memcpy(s + pad_at + PADS * PAD_SIZE - PAD_SIZE + offsetof(PadDataS, saveSize), &big, 2);
+	Config.HLE = 0;
+	snprintf(ctx, sizeof(ctx), "partly");
+	state_result_t r = try_load(s, pad_at + PADS * PAD_SIZE + 100);
+	CHECK(r == STATE_DAMAGED);   // the check sees the last pad's size
+	// a core that reads one more record than the check knows: cut off there,
+	// only the stream sees it, after the core began restoring
+	memcpy(s, good, STATE_SIZE);
+	memset(s + STATE_SIZE - sizeof(state_trailer_t), 0, sizeof(state_trailer_t));
+	model_extra = 32;
+	Config.HLE = 0;   // the state says HLE 1
+	r = try_load(s, pad_at + PADS * PAD_SIZE + 16);
+	CHECK(r == STATE_PARTLY && Config.HLE == 0);   // the game restarts with the BIOS it ran with
+	CHECK(try_load(s, pad_at + PADS * PAD_SIZE + 32) == STATE_OK && Config.HLE == 1);
+	model_extra = 0;
+	CHECK(try_load(good, STATE_SIZE) == STATE_OK);
 	free(s);
 }
 
@@ -350,7 +527,10 @@ static void fuzz(void)
 int main(void)
 {
 	state_stream_install();
+	state_disc_query = disc_query;
 	live_alloc();
+	memcpy(live.hw + 0xf000, &(u32){ MISC_MAGIC }, 4);   // misc_save_data, disc index 1
+	memcpy(live.hw + 0xf000 + 32, &(int){ 1 }, 4);
 	good = malloc(STATE_SIZE);
 	CHECK(__wrap_retro_serialize(good, STATE_SIZE));
 	layout();
@@ -360,6 +540,10 @@ int main(void)
 	streams();
 	boundaries();
 	bad_sizes();
+	poisoning();
+	trailer();
+	discs();
+	partly();
 	fuzz();
 	printf("state streams: %d checks, %d failed\n", checks, failures);
 	return failures != 0;

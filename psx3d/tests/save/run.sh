@@ -11,11 +11,15 @@ cc -std=gnu11 -Wall -Wextra -Werror -fsanitize=address,undefined -g -DSAFEFILE_T
 cc -std=gnu11 -Wall -Wextra -Werror -Wno-format-truncation -fsanitize=address,undefined -g -DSAFEFILE_TEST \
   -include "$repo_root/psx3d/tests/save/host.h" -I"$repo_root/psx3d/tests/host" -I"$repo_root/psx3d/source" \
   -I"$repo_root/core/deps/libretro-common/include" "$repo_root/psx3d/tests/save/cards.c" \
-  "$repo_root/psx3d/source/cards.c" "$repo_root/psx3d/source/safefile.c" -o "$tmp/cards"
+  "$repo_root/psx3d/source/cards.c" "$repo_root/psx3d/source/safefile.c" "$repo_root/psx3d/source/history.c" -o "$tmp/cards"
 "$tmp/cards"
 cc -std=gnu11 -O1 -Wall -Wextra -Wno-sign-compare -Werror -fsanitize=address,undefined -g \
   -I"$repo_root/core/include" "$repo_root/psx3d/tests/save/states.c" -o "$tmp/states"
 "$tmp/states"
+cc -std=gnu11 -Wall -Wextra -Werror -fsanitize=address,undefined -g -DSAFEFILE_TEST -DHIST_BUDGET=12000 \
+  -I"$repo_root/psx3d/source" "$repo_root/psx3d/tests/save/history.c" "$repo_root/psx3d/source/history.c" \
+  "$repo_root/psx3d/source/safefile.c" -o "$tmp/history"
+"$tmp/history"
 python3 "$repo_root/psx3d/tests/save/mutations.py"
 "$tmp/check"
 cc -std=gnu11 -O2 -Wall -Wextra -Werror -fsanitize=address,undefined -g \

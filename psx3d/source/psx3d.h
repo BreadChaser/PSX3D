@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include "libretro.h"
 #include "safefile.h"
+#include "history.h"
 
 #define PSX3D_VERSION  "0.5.0"
 // Optional private test identity; the release reports its human version.
@@ -208,7 +209,7 @@ bool rewind_start(void);
 void rewind_stop(void);
 bool rewind_active(void);
 void rewind_capture(void);
-bool rewind_step(void);
+int rewind_step(void);   // 1 done, 0 used up, -1 failed (see rewind.c)
 void rewind_reset(void);
 
 // gamecfg.c - per-game settings (sdmc:/3ds/PSX3D/games/<game>.ini)
@@ -243,7 +244,19 @@ void cards_begin(const char *srm_path);   // a game starts: read its cards
 bool cards_check(void);                   // write changed cards; true if one was
 void cards_save_now(void);                // leaving, sleep, HOME, pause menu
 void cards_end(void);
+// A card that could not be loaded when the game started (the game then runs
+// on an empty stand-in): emu.c asks the player before the game runs.
+typedef enum { CARD_TROUBLE_NONE, CARD_TROUBLE_MEMORY, CARD_TROUBLE_DAMAGED } card_trouble_t;
+card_trouble_t cards_trouble(char *label, size_t len);   // the first one, its name
+bool cards_retry(void);                   // read them again; true: all loaded now
+void cards_accept(void);                  // play on (a damaged file stays as .bad)
+int card_saves(const void *card, size_t size);   // saves on a PS1 card image
+// save backups of the cards (history.h): which group/ext a card's copies use
+bool cards_backup_group(int i, char *group, size_t glen, char *ext, size_t elen, const char **label);
+bool cards_put_back(const hist_entry_t *copy);   // then restart the game
+int cards_saves_now(int i);
 void emu_osd(const char *text);           // emu.c: short message in the game
+void emu_osd_alert(const char *text);     // ... about the player's data: unmissable
 
 // saveid.c - which game a save name belongs to (saves/<name>.id)
 // Before loading path: the save name to start with. base: the library's name
@@ -253,6 +266,9 @@ void saveid_begin(const char *path, const char *base, char *name, size_t len);
 // given the serial the core read (CdromId); records it. true when it differs
 // from saveid_begin's. *created: a new name was just made for this game.
 bool saveid_confirm(const char *serial, char *name, size_t len, bool *created);
+// saveid_begin: the name is another game's (its settings must not apply
+// before saveid_confirm); saveid_confirm: the owner record could not be written
+extern bool saveid_provisional, saveid_unrecorded;
 
 // savestates.c - save state browser with screenshots
 #define STATE_AUTO -1
@@ -261,8 +277,20 @@ bool state_thumb_write(const char *prefix, int slot);
 u16 *state_thumb_take(void);
 bool state_thumb_save(const char *prefix, int slot, const u16 *px);
 void state_thumb_restore(const char *prefix, int slot);
-bool states_resume_prompt(const char *prefix);
-int states_run(bool saving, const char *prefix, const char *title, int *slot);
+bool state_thumb_save_file(const char *thm_path, const u16 *px);
+// "Continue?" at game start
+enum { RESUME_NONE, RESUME_START, RESUME_CONTINUE, RESUME_OLDER };
+int states_resume_prompt(const char *prefix);
+// The state browser. Loading has pages: save slots, the save backups' ring
+// of automatic saves, memory card copies (L/R). Returns the page of the
+// pick (STATES_PAGE_SLOTS: the slot is *slot, else pick->entry) or -1.
+// pick->page on entry: the page to start on.
+enum { STATES_PAGE_SLOTS, STATES_PAGE_RING, STATES_PAGE_CARDS };
+typedef struct { int page; hist_entry_t entry; } states_pick_t;
+int states_run(bool saving, const char *prefix, const char *title, int *slot, states_pick_t *pick);
+// a slot deleted in the browser went into the ring as this entry
+typedef struct { bool done; int slot; hist_entry_t entry; } states_deleted_t;
+extern states_deleted_t states_deleted;
 
 // stereo.c - real 3D from the core's depth map
 bool stereo_init(void);
@@ -400,6 +428,7 @@ void ui_begin(void);
 bool ui_confirm(const char *title, const char *message, bool show_game);
 const char *ui_fit(const char *s, float size, float width);
 bool ui_confirm_action(const char *title, const char *message, const char *action, bool show_game);
+bool ui_confirm_choice(const char *title, const char *message, const char *action, const char *back, bool show_game);
 void ui_text_ex(C2D_Font font, float x, float y, float size, u32 color, u32 flags, const char *s);
 void ui_text_pixels(C2D_Font font, float x, float baseline, float pixels, float spacing,
 	float width, u32 color, u32 align, const char *s);

@@ -6,6 +6,9 @@
 #define _GNU_SOURCE
 #include "psx3d.h"
 #include "clip.h"
+#include "history.h"
+#include <dirent.h>
+#include <utime.h>
 #include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -31,6 +34,8 @@ size_t retro_get_memory_size(unsigned id) { (void)id; return sizeof(ram); }
 u64 osGetTime(void) { return now_ms; }
 void log_printf(const char *fmt, ...) { (void)fmt; }
 void emu_osd(const char *text) { snprintf(last_osd, sizeof(last_osd), "%s", text); osd_count++; }
+static int alerts;
+void emu_osd_alert(const char *text) { emu_osd(text); alerts++; }
 void __real_LoadMcd(int mcd, char *str) { (void)mcd; real_loads++; snprintf(real_path, sizeof(real_path), "%s", str ? str : "(null)"); }
 void __wrap_LoadMcd(int mcd, char *str);
 
@@ -45,16 +50,66 @@ size_t safe_test_fwrite(const void *p, size_t size, size_t n, FILE *f) { return 
 size_t safe_test_fread(void *p, size_t size, size_t n, FILE *f) { return fread(p, size, n, f); }
 int safe_test_fclose(FILE *f) { return fclose(f); }
 
-static void blank(void *card)   // what the core starts with
+// the PS1 checksums: byte 127 of the header and directory frames
+static void sum(unsigned char *c)
+{
+	for (int f = 0; f < 16; f++) {
+		unsigned char x = 0;
+		for (int i = 0; i < 127; i++) x ^= c[f * 128 + i];
+		c[f * 128 + 127] = x;
+	}
+}
+static void blank(void *card)   // what the core starts with (formatted)
 {
 	memset(card, 0, CARD);
 	memcpy(card, "MC", 2);
+	for (int f = 1; f < 16; f++) ((unsigned char *)card)[f * 128] = 0xa0;
+	sum(card);
 }
 static void pattern(void *card, int seed)
 {
 	unsigned char *c = card;
 	for (int i = 0; i < CARD; i++) c[i] = (unsigned char)(i * seed + seed);
 	c[0] = 'M'; c[1] = 'C';
+	sum(c);
+}
+static void weaken(void *card)   // the header is fine, the directory is not
+{
+	((unsigned char *)card)[5 * 128 + 40] ^= 0x10;
+}
+static int history_count(const char *group, const char *ext)
+{
+	hist_entry_t e[32];
+	int n = history_list(group, true, e, 32), k = 0;
+	for (int i = 0; i < n; i++) k += !strcmp(e[i].ext, ext);
+	return k;
+}
+static int count_kind(const char *group, hist_kind_t kind)
+{
+	hist_entry_t e[32];
+	int n = history_list(group, true, e, 32), k = 0;
+	for (int i = 0; i < n; i++) k += e[i].kind == kind;
+	return k;
+}
+static void history_clear(void)
+{
+	const char *groups[] = { "hist/game", "hist/card2" };
+	for (int g = 0; g < 2; g++) {
+		DIR *d = opendir(groups[g]);
+		struct dirent *de;
+		char p[700];
+		while (d && (de = readdir(d)))
+			if (de->d_name[0] != '.') { snprintf(p, sizeof(p), "%s/%s", groups[g], de->d_name); remove(p); }
+		if (d) closedir(d);
+		rmdir(groups[g]);
+	}
+}
+static void age(const char *path, long seconds)   // as if written that long ago
+{
+	struct stat st;
+	if (stat(path, &st)) return;
+	struct utimbuf t = { st.st_atime - seconds, st.st_mtime - seconds };
+	utime(path, &t);
 }
 static void put(const char *path, const void *d, size_t n)
 {
@@ -82,9 +137,11 @@ static void reset(void)
 	safe_remove("game.srm");
 	safe_remove("card2.mcd");
 	remove("card2.mcd.bad");
+	remove("game.srm.bad");
 	write_fail = rename_fail_all = 0;
 	clip_replay_session = false;
-	osd_count = real_loads = 0;
+	osd_count = real_loads = alerts = 0;
+	history_clear();
 	last_osd[0] = 0;
 	blank(ram);
 	blank(Mcd1Data);
@@ -108,68 +165,114 @@ static void card1(void)
 	CHECK(cards_check() && file_is("game.srm", b) && file_is("game.srm.bak", a));
 	CHECK(!cards_check());   // unchanged: no write
 
-	// wrong size, no backup: not loaded (empty card), the file kept, and it
-	// becomes .bad (byte for byte) when the game first writes the card
+	// wrong size, no backup: not loaded (empty card), reported before the
+	// game runs (F1e) and never written while unanswered; the player plays
+	// on: the file is kept and becomes .bad (byte for byte) at the first write
 	reset();
 	put("game.srm", "garbage", 7);
 	snprintf(ctx, sizeof(ctx), "wrong size");
 	cards_begin("game.srm");
 	unsigned char empty[CARD];
+	char label[600];
 	blank(empty);
-	CHECK(!memcmp(ram, empty, CARD) && size_of("game.srm") == 7 && strstr(last_osd, "damaged"));
+	CHECK(!memcmp(ram, empty, CARD) && size_of("game.srm") == 7);
+	CHECK(cards_trouble(label, sizeof(label)) == CARD_TROUBLE_DAMAGED && !strcmp(label, "game.srm"));
 	memcpy(ram, a, CARD);
+	CHECK(!cards_check() && size_of("game.srm") == 7);   // locked: nothing written
+	cards_save_now();
+	CHECK(size_of("game.srm") == 7);
+	CHECK(!cards_retry());   // still damaged
+	cards_accept();
+	CHECK(cards_trouble(label, sizeof(label)) == CARD_TROUBLE_NONE);
 	CHECK(cards_check() && file_is("game.srm", a) && size_of("game.srm.bad") == 7);
 
-	// cut-off card, good backup: the backup is loaded and put back
+	// "Try again" after the file was fixed: loaded, unlocked
 	reset();
-	put("game.srm", a, CARD / 2);
-	put("game.srm.bak", b, CARD);
-	snprintf(ctx, sizeof(ctx), "backup");
+	put("game.srm", "garbage", 7);
+	snprintf(ctx, sizeof(ctx), "retry");
 	cards_begin("game.srm");
-	CHECK(!memcmp(ram, b, CARD) && file_is("game.srm", b) && strstr(last_osd, "restored"));
-	CHECK(!cards_check());
-
-	// the repair fails: loaded, told so, and NOT taken as saved: the next
-	// check writes it again without any change
-	reset();
-	put("game.srm", a, 10);
-	put("game.srm.bak", b, CARD);
-	snprintf(ctx, sizeof(ctx), "failed repair");
-	write_fail = rename_fail_all = 1;
-	cards_begin("game.srm");
-	CHECK(!memcmp(ram, b, CARD) && strstr(last_osd, "could not fix"));
-	write_fail = rename_fail_all = 0;
-	CHECK(cards_check() && file_is("game.srm", b) && file_is("game.srm.bak", b));
-	CHECK(size_of("game.srm.bad") == 10);
-
-	// a failing write: reported, retried after the delay, at exit at once
-	reset();
-	snprintf(ctx, sizeof(ctx), "write fails");
-	cards_begin("game.srm");
+	CHECK(cards_trouble(label, sizeof(label)) == CARD_TROUBLE_DAMAGED);
+	put("game.srm", b, CARD);
+	CHECK(cards_retry() && !memcmp(ram, b, CARD) && cards_trouble(label, sizeof(label)) == CARD_TROUBLE_NONE);
 	memcpy(ram, a, CARD);
-	write_fail = 1;
-	CHECK(!cards_check() && strstr(last_osd, "Could not save") && size_of("game.srm") < 0);
-	write_fail = 0;
-	int shown = osd_count;
-	CHECK(!cards_check() && osd_count == shown);   // waits CARD_RETRY_MS
-	now_ms += 31 * 1000;
-	CHECK(cards_check() && file_is("game.srm", a));
-	memcpy(ram, b, CARD);
-	write_fail = 1;
-	CHECK(!cards_check());
-	write_fail = 0;
-	cards_save_now();               // leaving the game: tried at once
-	CHECK(file_is("game.srm", b));
+	CHECK(cards_check() && file_is("game.srm", a) && file_is("game.srm.bak", b));
 
-	// input-replay sessions never write the player's card
+	// F1b: header intact, directory garbage, good backup: the backup is
+	// loaded, the damaged file kept as .bad, the backup never pushed out
 	reset();
-	snprintf(ctx, sizeof(ctx), "replay");
+	unsigned char w[CARD];
+	memcpy(w, a, CARD);
+	weaken(w);
+	put("game.srm", w, CARD);
+	put("game.srm.bak", b, CARD);
+	snprintf(ctx, sizeof(ctx), "weak card, good backup");
+	cards_begin("game.srm");
+	CHECK(!memcmp(ram, b, CARD) && file_is("game.srm", b) && file_is("game.srm.bad", w) && alerts == 1);
+	CHECK(file_is("game.srm.bak", b));
+	// ... and if the file goes bad during the session, the next save keeps
+	// it as .bad, not as the backup
+	put("game.srm", w, CARD);
+	memcpy(ram, a, CARD);
+	CHECK(cards_check() && file_is("game.srm", a) && file_is("game.srm.bak", b) && file_is("game.srm.bad", w));
+
+	// weak card, no good copy at all: loaded as it is (the game may read
+	// most of it), the player told; saving rotates it as usual
+	reset();
+	put("game.srm", w, CARD);
+	snprintf(ctx, sizeof(ctx), "weak card alone");
+	cards_begin("game.srm");
+	CHECK(!memcmp(ram, w, CARD) && alerts == 1 && strstr(last_osd, "looks damaged"));
+	CHECK(cards_trouble(label, sizeof(label)) == CARD_TROUBLE_NONE);
+	memcpy(ram, a, CARD);
+	CHECK(cards_check() && file_is("game.srm", a) && file_is("game.srm.bak", w));
+
+	// backups (history.h): a session copy of the card as loaded (newest
+	// only), the first card of each day, a pinned copy before the game
+	// empties it, and putting a copy back
+	reset();
+	put("game.srm", a, CARD);
+	snprintf(ctx, sizeof(ctx), "card copies");
+	cards_begin("game.srm");
+	CHECK(history_count("game", ".srm") == 2);   // session + today
+	cards_end();
+	pattern(b, 5);
+	put("game.srm", b, CARD);
+	cards_begin("game.srm");
+	{
+		hist_entry_t e[8];
+		int n = history_list("game", true, e, 8);
+		CHECK(n == 2 && e[0].kind == HIST_CARD_SESSION && file_is(e[0].path, b));
+		CHECK(e[1].kind == HIST_CARD_DAY && file_is(e[1].path, a));   // today's first card
+		age(e[1].path, 86400 * 2);   // as if from two days ago
+	}
+	cards_end();
+	cards_begin("game.srm");
+	CHECK(count_kind("game", HIST_CARD_DAY) == 2 && count_kind("game", HIST_CARD_SESSION) == 1);
+	// formatted by the game: the SD card's version is pinned first
+	unsigned char saves[CARD];
+	blank(saves);
+	for (int f = 1; f <= 4; f++) saves[f * 128] = 0x51;   // four saves
+	sum(saves);
+	memcpy(ram, saves, CARD);
+	CHECK(cards_check() && count_kind("game", HIST_CARD_PIN) == 0);   // more saves: no pin
+	blank(ram);
+	alerts = 0;
+	CHECK(cards_check() && count_kind("game", HIST_CARD_PIN) == 1 && alerts == 1);
+	{
+		hist_entry_t e[16];
+		int n = history_list("game", true, e, 16);
+		CHECK(n >= 1 && e[0].kind == HIST_CARD_PIN && file_is(e[0].path, saves) && card_saves(saves, CARD) == 4);
+		// put it back: the card now is pinned too, the copy written and in memory
+		CHECK(cards_put_back(&e[0]));
+		CHECK(!memcmp(ram, saves, CARD) && file_is("game.srm", saves) && count_kind("game", HIST_CARD_PIN) == 2);
+		CHECK(!cards_check());   // the card in memory is what the SD card holds
+	}
+	// replay sessions make no copies
+	reset();
+	put("game.srm", a, CARD);
 	clip_replay_session = true;
 	cards_begin("game.srm");
-	memcpy(ram, a, CARD);
-	CHECK(!cards_check());
-	cards_save_now();
-	CHECK(size_of("game.srm") < 0);
+	CHECK(history_count("game", ".srm") == 0);
 }
 
 static void card2(void)
@@ -210,15 +313,25 @@ static void card2(void)
 	__wrap_LoadMcd(2, path);
 	CHECK(!memcmp(Mcd2Data, b, CARD) && file_is("card2.mcd", b) && size_of("card2.mcd.bad") == 100);
 
-	// a damaged card without a backup is not read (empty card), and kept
+	// a damaged card without a backup is not read (empty card), reported,
+	// locked until the player answers, and kept
 	reset();
 	put("card2.mcd", a, 5000);
 	snprintf(ctx, sizeof(ctx), "card 2 damaged");
 	snprintf(path, sizeof(path), "card2.mcd");
 	__wrap_LoadMcd(2, path);
+	char label[600];
 	CHECK(!memcmp(Mcd2Data, empty, CARD) && size_of("card2.mcd") == 5000);
+	CHECK(cards_trouble(label, sizeof(label)) == CARD_TROUBLE_DAMAGED && !strcmp(label, "card2.mcd"));
 	memcpy(Mcd2Data, a, CARD);
+	CHECK(!cards_check() && size_of("card2.mcd") == 5000);
+	cards_accept();
 	CHECK(cards_check() && file_is("card2.mcd", a) && size_of("card2.mcd.bad") == 5000);
+	// its copies live under the card's own name
+	cards_end();
+	snprintf(path, sizeof(path), "card2.mcd");
+	__wrap_LoadMcd(2, path);
+	CHECK(history_count("card2", ".mcd") == 2 && history_count("game", ".mcd") == 0);
 
 	// DexDrive/VGS files (with a header), "none" and "": the core as before
 	reset();
@@ -240,10 +353,12 @@ int main(void)
 {
 	char dir[] = "/tmp/psx3d-cards-XXXXXX";
 	if (!mkdtemp(dir) || chdir(dir)) return 2;
+	history_set_root("hist");
 	card1();
 	card2();
 	reset();
 	remove("game.srm.bad");
+	rmdir("hist");
 	rmdir(dir);
 	printf("memory cards: %d checks, %d failed\n", checks, failures);
 	return failures != 0;

@@ -359,6 +359,8 @@ static bool rec_same(const rec_t *r, const char *serial)
 		return false;
 	if (r->size && cur.size)
 		return r->size == cur.size || (serial[0] && rec_has(r, serial));
+	if (serial[0] && r->nserials)   // a size unknown: the serials still tell
+		return rec_has(r, serial);
 	return true;   // nothing to tell them apart by: as before
 }
 
@@ -384,6 +386,8 @@ static void rec_claim(const char *name, rec_t *r, const char *serial)
 	}
 	if (dirty && rec_write(name, r))
 		r->ok = true;
+	else if (dirty)
+		saveid_unrecorded = true;   // the next game with this name can't tell: say so
 }
 
 // the other names of base ("base [...]"), each passed to each() until it
@@ -454,8 +458,11 @@ static bool card_of_others(const char *serial)
 
 // ---------------------------------------------------------------- API
 
+bool saveid_unrecorded, saveid_provisional;
+
 void saveid_begin(const char *path, const char *base, char *name, size_t len)
 {
+	saveid_unrecorded = saveid_provisional = false;
 	char disc1[PATH_LEN], data[PATH_LEN];
 	memset(&cur, 0, sizeof(cur));
 	snprintf(disc1, sizeof(disc1), "%s", path);
@@ -508,6 +515,10 @@ void saveid_begin(const char *path, const char *base, char *name, size_t len)
 	snprintf(cur.name, sizeof(cur.name), "%s", cur.base);
 	if (r.ok && r.size && cur.size && r.size != cur.size)
 		aliases(alias_by_size, cur.name);
+	// the name belongs to another game and none of ours was found: its
+	// per-game settings must not apply while this one loads (saveid_confirm
+	// decides the name after loading)
+	saveid_provisional = r.ok && r.size && cur.size && r.size != cur.size && !strcasecmp(cur.name, cur.base);
 	snprintf(name, len, "%s", cur.name);
 	log_printf("saves: %s (disc 1 %s, %lld bytes%s)\n", cur.name, cur.disc, cur.size,
 		cur.twins ? ", same file name as another library game" : "");

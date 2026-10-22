@@ -28,7 +28,7 @@ EXTERN_SYMS := psx3d_depth_get psx3d_depth_frame psx3d_overlay_get psx3d_ov_seq 
 	psx3d_irq_t psx3d_irq_c CdromId
 EXTERN_SYMS += CdromExeHash psx3d_widescreen_hook psx3d_widescreen_state_hook psx3d_patch_clear
 EXTERN_SYMS += Mcd1Data Mcd2Data psx3d_clip_prepare padAnalogMode padToggleAnalog
-EXTERN_SYMS += SaveFuncs LoadMcd
+EXTERN_SYMS += SaveFuncs LoadMcd Config
 # core-internal calls that go to PSX3D (the core's code stays as it is)
 WRAP_SYMS := LoadMcd
 EXTERN_SYMS += psx3d_idle_skip psx3d_idle_pointer psx3d_idle_delay

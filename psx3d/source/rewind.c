@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "psx3d.h"
+#include "statefile.h"
 
 #define REWIND_MB  24
 #define INTERVAL   10        // frames between captures (6 per second)
@@ -178,22 +179,30 @@ void rewind_capture(void)
 	}
 }
 
-// one step back in time; false when the history is used up
-bool rewind_step(void)
+// one step back in time: 1 done, 0 the history is used up, -1 the step
+// could not be loaded (the history is dropped; the caller restarts the game
+// if it was left half-restored, state_last_result STATE_PARTLY)
+int rewind_step(void)
 {
 	if (!active || !have_cur)
-		return false;
+		return 0;
 	while (__atomic_load_n(&busy, __ATOMIC_ACQUIRE))
 		svcSleepThread(1000000LL);
 	if (!count)
-		return false;
+		return 0;
 	int last = (first + count - 1) % MAX_STEPS;
 	apply(cur, steps[last], step_bytes[last]);
 	free(steps[last]);
 	total -= step_bytes[last];
 	count--;
 	frame_ctr = 0;
-	return retro_unserialize(cur, words * 4);
+	if (retro_unserialize(cur, words * 4))
+		return 1;
+	log_printf("rewind: a step could not be loaded (%d), history dropped\n", state_last_result);
+	while (count)
+		drop_oldest();
+	have_cur = false;
+	return -1;
 }
 
 // a state was loaded or the game reset: the history no longer leads here
