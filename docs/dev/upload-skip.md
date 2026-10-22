@@ -58,8 +58,9 @@ Correctness (all against origin/main):
 - Guest checkpoints, IRQ trace and the serialized state identical: 13 heavy + 6 std states
   and 68 HLE boots × 600 frames, plus 5 issue-#3 scenes. Draw hashes identical everywhere
   except Worms (fewer texture decodes there, by design).
-- Real citro3d 1.7.1 register write sequence (direct-draw path with vs without the
-  wrapper): 19 states × 600 frames identical.
+- Real citro3d 1.7.1 register write sequence, one binary with the skip off vs on, 19 states
+  × 600 frames: identical in 17; SotN (both scenes) sends 1,168 fewer command words, the
+  pushes of its 8 kept uploads, and is otherwise the same.
 - Core code, core data page offsets and library code keep rc4's addresses
   (`tools/layout/compare.py`, `tools/layout/check.sh` PASS); `uploadskip.o` links after
   every other frontend object.
