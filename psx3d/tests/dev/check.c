@@ -38,13 +38,11 @@ bool settings_ui_debug_key(const char *name) { return settings_ui_key(name); }
 bool input_remote_key(const char *name) { (void)name; return false; }
 bool devnet_import_active(void) { return false; }
 void devnet_import_reply(const char *path, const char *sha256) { (void)path; (void)sha256; }
-int sw_rtfscap, sw_rtfslevel;
-bool sw_fsmart;
-bool sw_rtfsmodel, sw_rtfswindow, sw_rtfs, sw_ff, sw_floataudio, sw_frontend;
+bool sw_ff;
 typedef struct { unsigned emulated, elapsed_ms, presented, held, top, bottom; float run_ms, present_ms, audio_ms, misc_ms, pace_ms; float spu_ms, spu_wait_ms, pica_ms; float phase_ms[8], draw_fraction; unsigned skip_level, drawn, skipped; double picture_mean, picture_square; unsigned picture_intervals; } emu_frontend_sample;
 const emu_frontend_sample *emu_frontend_stats(void) { static emu_frontend_sample f; return &f; }
 bool sw_prof, sw_stats, sw_fs1, sw_fs3, sw_noskip, sw_nosputhread, sw_acap;
-bool sw_nogputhread, sw_aa, sw_showright, sw_sbs, sw_gpu_async, sw_gpu_flush;
+bool sw_nogputhread, sw_aa, sw_gpu_async, sw_gpu_flush;
 float sw_slider;
 int sw_stereo = -1;
 void gpustereo_status(char *out, int n) { (void)n; out[0] = 0; }
@@ -59,7 +57,7 @@ unsigned pica_submit;
 unsigned pica_prims;
 bool pica_texmask = true, pica_texmemo = true;
 int psx3d_idle_skip=1, psx3d_idle_pointer, psx3d_idle_delay;
-bool sw_pmuphase, sw_pmuclass, sw_rtfsdense;
+bool sw_pmuphase, sw_pmuclass;
 void pmu_category_detail(double values[21]) { for (int k=0;k<21;k++) values[k]=-1; }
 void pmu_renderer(double values[4]) { for (int k=0;k<4;k++) values[k]=-1; }
 int psx3d_skipgate = 1;
