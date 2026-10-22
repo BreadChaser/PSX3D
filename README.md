@@ -115,7 +115,9 @@ Or install [**PSX3D.cia**](https://github.com/BreadChaser/PSX3D/releases/latest/
 with FBI (a 3DSX for Homebrew Launcher is also on the release page).
 
 Put games (`.cue/.bin`, `.chd`, `.pbp`, `.iso`, `.m3u`) in `sdmc:/roms/psx/`, or
-press **Y** in the library to pick a folder. Box art downloads automatically.
+press **Y** in the library to pick a folder. Box art downloads automatically, even for
+files with other names; your own picture goes in `sdmc:/3ds/PSX3D/covers/`
+([how](docs/box-art.md)).
 
 ## Controls
 

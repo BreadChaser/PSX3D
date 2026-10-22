@@ -4,7 +4,7 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[3]
 class Handler(http.server.BaseHTTPRequestHandler):
  def do_GET(self):
-  if self.path=='/missing.png':self.send_error(404);return
+  if self.path=='/missing.png' or self.path.startswith('/Nothing') or self.path.startswith('/SLUS'):self.send_error(404);return
   if self.path=='/error.png':self.send_error(503);return
   self.send_response(200);self.send_header('Content-Length','99999' if self.path=='/slow.png' else str(len(png)));self.end_headers()
   if self.path=='/slow.png':time.sleep(.5);return
@@ -17,6 +17,11 @@ png=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',1,1,8,6,0,0,0))+ch
 with http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler) as server,tempfile.TemporaryDirectory() as tmp:
  thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
  libs=subprocess.check_output(['pkg-config','--cflags','--libs','libpng','libcurl'],text=True).split()
- subprocess.run(['cc','-std=gnu11','-Wall','-Wextra','-Wno-deprecated-declarations','-g','-fsanitize=address,undefined',f'-DTHUMB_URL="http://127.0.0.1:{server.server_port}/"',str(root/'psx3d/tests/covers/worker.c'),str(root/'psx3d/source/covers_png.c'),str(root/'psx3d/source/covers_pack.c'),'-lm','-Wl,--wrap=curl_multi_poll',*libs,'-o',tmp+'/check'],check=True)
+ Path(tmp,'table').mkdir()
+ Path(tmp,'table/names.txt').write_text('Serial Pic (USA)\n')
+ Path(tmp,'table/serials.idx').write_text('SLUS00001 0000000\n')
+ # the player's own picture: 2x2
+ Path(tmp,'user.png').write_bytes(b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',2,2,8,6,0,0,0))+chunk(b'IDAT',zlib.compress(b'\0'+b'\xff\x00\x00\xff'*2+b'\0'+b'\x00\xff\x00\xff'*2))+chunk(b'IEND',b''))
+ subprocess.run(['cc','-std=gnu11','-Wall','-Wextra','-Wno-deprecated-declarations','-g','-fsanitize=address,undefined',f'-DBOXART_DIR="{tmp}/table"',f'-DTHUMB_URL="http://127.0.0.1:{server.server_port}/"',str(root/'psx3d/tests/covers/worker.c'),str(root/'psx3d/source/covers_png.c'),str(root/'psx3d/source/covers_pack.c'),str(root/'psx3d/source/boxart.c'),str(root/'psx3d/source/safefile.c'),'-lm','-Wl,--wrap=curl_multi_poll',*libs,'-o',tmp+'/check'],check=True)
  subprocess.run([tmp+'/check'],cwd=tmp,check=True)
  server.shutdown();thread.join()

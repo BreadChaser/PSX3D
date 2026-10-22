@@ -1,11 +1,15 @@
 // Box art. A low-priority worker thread fetches covers from the free
-// libretro-thumbnails database (by No-Intro name), decodes them, shrinks them
+// libretro-thumbnails database, decodes them, shrinks them
 // to fit 256x256 (keeping their aspect) and caches that on the SD card as a
 // finished GPU texture (RGB565, tiled; see covers_pack.c),
 // so each cover is downloaded and decoded once and the UI only copies it.
-// A user's own PNG in covers/ wins. Covers cached by older versions (128x128
-// RGBA8 .bin) show at once and are replaced by a full size download in the
-// background.
+// The database names pictures after redump names, but a game's file can be
+// called anything: boxart.c finds the picture by file name, disc serial or
+// title (see boxart.h). A picture the database does not have is remembered
+// (covers/state.txt), so it is not asked for at every start.
+// A player's own PNG, covers/<file name without extension>.png, wins over
+// every download. Covers cached by older versions (128x128 RGBA8 .bin) show at
+// once and are replaced by a full size download in the background.
 // The UI asks for the covers around the selection; ready ones get uploaded
 // to textures on the main thread.
 #include <ctype.h>
@@ -17,11 +21,17 @@
 #include <curl/curl.h>
 #include "covers_png.h"
 #include "covers_pack.h"
+#include "boxart.h"
+#include "safefile.h"
 #include "psx3d.h"
 #include "devtools.h"
 #include "presetupdate.h"
 
 #define COVER_DIR PSX3D_DIR "/covers"
+#define COVER_STATE COVER_DIR "/state.txt"
+#ifndef BOXART_DIR
+#define BOXART_DIR "romfs:/covers"   // names.txt, serials.idx (tools/boxart/make_table.py)
+#endif
 #ifndef THUMB_URL
 #define THUMB_URL "https://thumbnails.libretro.com/Sony%20-%20PlayStation/Named_Boxarts/"
 #endif
@@ -57,9 +67,12 @@ static LightLock lock;
 static LightEvent wake;
 static volatile bool quit;
 static u64 net_retry_at;   // after a network failure, wait before trying again
+static u64 net_backoff;    // that wait: 15 s, doubling to 10 min, 0 after a success
+static LightLock state_lock;   // boxart.c's memory of misses and own pictures
 static bool apt_was_paused;
 static unsigned apt_suspended;
 static unsigned attempts, downloaded, cache_hits, aborted_count, failures, upgraded;
+static unsigned miss_skips, other_names;   // not asked for (remembered miss); fetched under another name
 static unsigned uploads, upload_max_us, upload_total_us;   // main thread: texture copies
 // library frame intervals (a developer diagnostic: is the carousel smooth?)
 static u64 frame_last;
@@ -345,6 +358,14 @@ static bool network_error(CURLcode rc)
 	return rc == CURLE_COULDNT_CONNECT || rc == CURLE_COULDNT_RESOLVE_HOST || rc == CURLE_OPERATION_TIMEDOUT;
 }
 
+// no Wi-Fi, no server: every try waits twice as long as the one before
+static void net_failed(void)
+{
+	net_backoff = net_backoff ? net_backoff * 2 : 15000;
+	if (net_backoff > 600000) net_backoff = 600000;
+	net_retry_at = osGetTime() + net_backoff;
+}
+
 static u32 *download(const char *key, bool *retry, int *pw, int *ph)
 {
 	char name[256], esc[768], url[1024];
@@ -364,13 +385,17 @@ static u32 *download(const char *key, bool *retry, int *pw, int *ph)
 		log_printf("covers: decode %llums\n", osGetTime() - td);
 	}
 	else if (network_error(rc)) {
-		log_printf("covers: network error %d, retrying in 15s\n", rc);
-		net_retry_at = osGetTime() + 15000;
+		net_failed();
+		log_printf("covers: network error %d, retrying in %llus\n", rc, net_backoff / 1000);
 	} else {
 		log_printf("covers: %s -> %d / HTTP %ld\n", name, rc, code);
+		if (!aborted && code != 404)
+			net_failed();   // server trouble or a broken picture: not again at once
 	}
-	if (px) __atomic_add_fetch(&downloaded, 1, __ATOMIC_RELAXED);
-	else if (!aborted) __atomic_add_fetch(&failures, 1, __ATOMIC_RELAXED);
+	if (px) {
+		net_backoff = 0;
+		__atomic_add_fetch(&downloaded, 1, __ATOMIC_RELAXED);
+	} else if (!aborted) __atomic_add_fetch(&failures, 1, __ATOMIC_RELAXED);
 	remove(COVER_DIR "/download.tmp");
 	return px;
 }
@@ -382,7 +407,7 @@ static int presets_fetch(const char *url, const char *path, size_t limit, long *
 	CURLcode rc = fetch_file(url, path, limit, http, &aborted);
 	if (aborted) return PU_FETCH_ABORT;
 	if (network_error(rc)) {
-		net_retry_at = osGetTime() + 15000;
+		net_failed();
 		return PU_FETCH_NET;
 	}
 	return rc == CURLE_OK ? PU_FETCH_OK : PU_FETCH_FAIL;
@@ -391,58 +416,134 @@ static bool presets_stop(void) { return quit || paused; }
 
 // ---------------------------------------------------------------- worker
 
+static void state_flush(void)
+{
+	LightLock_Lock(&state_lock);
+	boxart_misses_save(COVER_STATE, PSX3D_VERSION);
+	LightLock_Unlock(&state_lock);
+}
+
 // A cover that has to come from the network (nothing cached): a finished
-// cover, or false. *retry false: the database has no such picture.
+// cover, or false. *retry false: the database has no such picture. A picture
+// it did not have lately is not asked for again (boxart_miss_*).
 static bool fetch_cover(const game_t *g, bool *retry, cover_t *c)
 {
-	bool ok = false;
-	if (!quit && !sw_nonet) {
-		LightLock_Lock(&net_lock);
-		if (!quit && !paused && osGetTime() >= net_retry_at) {
-			int w = 0, h = 0;
-			u32 *px = download(g->cover_key, retry, &w, &h);
-			ok = px && pack_cover(px, w, h, c);
-			free(px);
+	if (quit || sw_nonet)
+		return false;
+	LightLock_Lock(&state_lock);
+	bool missed = boxart_miss_known(g->cover_key, osGetTime());
+	LightLock_Unlock(&state_lock);
+	if (missed) {
+		__atomic_add_fetch(&miss_skips, 1, __ATOMIC_RELAXED);
+		*retry = false;
+		return false;
+	}
+	// the picture named like the file, else the disc's serial, else the same title
+	char own[BOXART_NAME], serial[10] = "", cand[BOXART_MAX_CANDIDATES][BOXART_NAME];
+	boxart_sanitize(g->cover_key, own, sizeof(own));
+	if (!boxart_name_known(BOXART_DIR "/names.txt", own) && g->ndiscs > 0)
+		boxart_disc_serial(g->discs[0], serial);
+	int n = boxart_candidates(BOXART_DIR "/names.txt", BOXART_DIR "/serials.idx", g->cover_key, serial,
+	                          cand, BOXART_MAX_CANDIDATES);
+	bool ok = false, all_404 = n > 0;
+	LightLock_Lock(&net_lock);
+	for (int i = 0; i < n && all_404 && !ok; i++) {
+		if (quit || paused || osGetTime() < net_retry_at) {
+			all_404 = false;
+			break;
 		}
-		LightLock_Unlock(&net_lock);
+		int w = 0, h = 0;
+		bool r = true;
+		u32 *px = download(cand[i], &r, &w, &h);
+		ok = px && pack_cover(px, w, h, c);
+		free(px);
+		if (ok && strcmp(cand[i], own))
+			__atomic_add_fetch(&other_names, 1, __ATOMIC_RELAXED);
+		if (ok || r)
+			all_404 = false;   // got it, or no word from the database: not "it has none"
+	}
+	LightLock_Unlock(&net_lock);
+	if (!ok && all_404) {
+		*retry = false;
+		LightLock_Lock(&state_lock);
+		boxart_miss_add(g->cover_key, osGetTime());
+		LightLock_Unlock(&state_lock);
+		state_flush();
+		log_printf("covers: %s: the database has none (%d names tried), asking again in 14 days\n", g->cover_key, n);
+	}
+	return ok;
+}
+
+// The cover cache holds the picture for this game's file name; a PNG of the
+// player's own beats it. Marks the cache with the PNG's size and time, so a
+// changed PNG is picked up and a removed one gives the game back to the download.
+static bool load_user_cover(const char *key, const char *own, const char *path, cover_t *c)
+{
+	struct stat ps, cs;
+	long size = 0, mtime = 0;
+	bool png = !stat(own, &ps) && S_ISREG(ps.st_mode);
+	bool marked = boxart_user_get(key, &size, &mtime);
+	if (!png) {
+		if (marked) {   // the PNG is gone: the cover made from it goes too
+			remove(path);
+			LightLock_Lock(&state_lock);
+			boxart_user_clear(key);
+			LightLock_Unlock(&state_lock);
+			state_flush();
+		}
+		return false;
+	}
+	if (marked && size == (long)ps.st_size && mtime == (long)ps.st_mtime && !stat(path, &cs) && read_cv2(path, c)) {
+		__atomic_add_fetch(&cache_hits, 1, __ATOMIC_RELAXED);
+		return true;
+	}
+	int w, h;
+	u32 *px = decode_png(NULL, 0, own, &w, &h);
+	if (!px) {
+		log_printf("covers: %s: own picture cannot be read, using the usual cover\n", own);
+		return false;
+	}
+	bool ok = pack_cover(px, w, h, c);
+	free(px);
+	if (ok) {
+		write_cv2(path, c);
+		LightLock_Lock(&state_lock);
+		boxart_user_set(key, (long)ps.st_size, (long)ps.st_mtime);
+		LightLock_Unlock(&state_lock);
+		state_flush();
 	}
 	return ok;
 }
 
 static bool load_cover(const game_t *g, bool *retry, bool refresh, cover_t *c)
 {
-	char path[PATH_LEN], legacy[PATH_LEN];
-	int w, h;
-	u32 *px;
-
-	// 1. our cache (a finished texture)
+	char path[PATH_LEN], legacy[PATH_LEN], own[PATH_LEN];
 	cache_path(g->cover_key, ".cv2", path, sizeof(path));
+	cache_path(g->cover_key, ".png", own, sizeof(own));
+
+	// 1. the player's own PNG, then our cache (a finished texture)
+	if (!refresh && load_user_cover(g->cover_key, own, path, c))
+		return true;
 	if (!refresh && read_cv2(path, c)) {
 		__atomic_add_fetch(&cache_hits, 1, __ATOMIC_RELAXED);
 		return true;
 	}
-	// 2. the user's own PNG
-	char own[PATH_LEN];
-	cache_path(g->cover_key, ".png", own, sizeof(own));
-	px = refresh ? NULL : decode_png(NULL, 0, own, &w, &h);
-	if (px) {
-		bool ok = pack_cover(px, w, h, c);
-		free(px);
-		if (ok) write_cv2(path, c);
-		return ok;
-	}
-	// 3. the old small cache: show it now, the full size one comes later
+	// 2. the old small cache: show it now, the full size one comes later
 	cache_path(g->cover_key, ".bin", legacy, sizeof(legacy));
 	if (!refresh && read_legacy(legacy, c)) {
 		c->lowres = !sw_nonet;
 		__atomic_add_fetch(&cache_hits, 1, __ATOMIC_RELAXED);
 		return true;
 	}
-	// 4. download
+	// 3. download
 	if (!fetch_cover(g, retry, c))
 		return false;
 	write_cv2(path, c);
 	remove(legacy);
+	LightLock_Lock(&state_lock);
+	boxart_user_clear(g->cover_key);
+	LightLock_Unlock(&state_lock);
+	state_flush();
 	return true;
 }
 
@@ -556,8 +657,9 @@ static void worker_main(void *arg)
 					slots[pick].refresh = false;
 					c.data = NULL;
 				}
-				// interrupted by HOME/sleep: try again later, not "no cover"
-				slots[pick].retry_at = paused ? 0 : osGetTime() + 15000;
+				// interrupted by HOME/sleep: try again later, not "no cover";
+				// without a network, not before the backoff is over
+				slots[pick].retry_at = paused ? 0 : (net_retry_at > osGetTime() + 15000 ? net_retry_at : osGetTime() + 15000);
 				if (upgrade) {
 					slots[pick].upgrading = false;
 					if (ok)
@@ -584,6 +686,8 @@ void covers_init(void)
 	for (int i = 0; i < SLOTS; i++)
 		slots[i].game = -1;
 	LightLock_Init(&lock);
+	LightLock_Init(&state_lock);
+	boxart_misses_load(COVER_STATE, PSX3D_VERSION);
 	LightEvent_Init(&wake, RESET_ONESHOT);   // each Signal wakes one worker
 	// the network: 3dslink logging may already have started it
 	// (3dslink logging may already have started the network)
@@ -641,6 +745,8 @@ void covers_exit(void)
 			C3D_TexDelete(&slots[i].tex);
 	}
 	net_close();
+	state_flush();
+	boxart_misses_free();
 	if (easy)
 		curl_easy_cleanup(easy);
 	if (share)
@@ -887,11 +993,16 @@ void covers_release_gpu(void)
 	LightLock_Unlock(&lock);
 }
 
-// forget everything (after a rescan the game indexes change)
+// forget everything (after a rescan the game indexes change). A rescan the
+// player asked for also asks the database again for pictures it did not have.
 void covers_reset(void)
 {
 	if (sw_nocovers)
 		return;
+	LightLock_Lock(&state_lock);
+	boxart_misses_clear();
+	LightLock_Unlock(&state_lock);
+	state_flush();
 	LightLock_Lock(&lock);
 	for (int i = 0; i < SLOTS; i++) {
 		slots[i].game = -1;
@@ -936,11 +1047,11 @@ void covers_debug(char *out, size_t len)
 	         "\"attempts\":%u,\"downloaded\":%u,\"cache_hits\":%u,\"aborted\":%u,"
 	         "\"failures\":%u,\"curl\":%d,\"http\":%ld,\"stop_ms\":%u,\"max_stop_ms\":%u,"
 	         "\"ready\":%d,\"wanted\":%d,\"cached\":%d,\"missing\":%d,\"invalid_cache\":%d,"
-	         "\"legacy\":%d,\"upgraded\":%u,\"uploads\":%u,\"upload_avg_us\":%u,\"upload_max_us\":%u,"
+	         "\"legacy\":%d,\"upgraded\":%u,\"miss_skips\":%u,\"other_names\":%u,\"uploads\":%u,\"upload_avg_us\":%u,\"upload_max_us\":%u,"
 	         "\"frames\":%u,\"frame_avg_us\":%u,\"frame_max_us\":%u,\"frames_over_25ms\":%u,\"frames_over_40ms\":%u}",
 	         paused ? "true" : "false", busy, net_open ? "true" : "false", attempts,
 	         downloaded, cache_hits, aborted_count, failures, last_curl, last_http,
 	         stop_ms, max_stop_ms, ready, wanted, cached, missing, invalid,
-	         legacy, upgraded, uploads, uploads ? upload_total_us / uploads : 0, upload_max_us,
+	         legacy, upgraded, miss_skips, other_names, uploads, uploads ? upload_total_us / uploads : 0, upload_max_us,
 	         frames, frames ? (unsigned)(frame_total_us / frames) : 0, frame_max_us, frames_over_25ms, frames_over_40ms);
 }

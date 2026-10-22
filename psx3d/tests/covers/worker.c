@@ -32,8 +32,8 @@ typedef int aptHookCookie;
 typedef enum { APTHOOK_ONSUSPEND, APTHOOK_ONSLEEP, APTHOOK_ONRESTORE, APTHOOK_ONWAKEUP, APTHOOK_ONEXIT } APT_HookType;
 typedef struct { void *data; } C3D_Tex;
 typedef struct { unsigned short width, height; float left, top, right, bottom; } Tex3DS_SubTexture;
-typedef struct { char cover_key[256]; } game_t;
-static game_t game = { "cover" };
+typedef struct { char cover_key[256]; char title[64]; int ndiscs; char *discs[8]; } game_t;
+static game_t game = { .cover_key = "cover", .title = "Cover Title" };
 static bool sw_nocovers,sw_nonet;
 bool dev_remote = true;
 // The daily preset check (presetupdate.c) has its own host test.
@@ -124,6 +124,63 @@ int main(void)
 		f=fopen("covers/cover.cv2","wb");assert(f);fwrite("PCV2 short",1,10,f);fclose(f);
 		cover_t bad={0};
 		assert(!read_cv2("covers/cover.cv2",&bad) && !bad.data);
+		covers_stop_wait();
+	}
+	// Box art matching, the memory of missing pictures, the player's own PNG.
+	{
+		paused=false;net_retry_at=0;net_backoff=0;
+		bool r=true;cover_t m={0};struct stat st;
+		// a file called anything: found by the serial in its name; the server has no picture under the file name
+		game_t odd={.cover_key="SLUS-00001 backup",.title="Odd"};
+		unsigned other=other_names;
+		assert(fetch_cover(&odd,&r,&m) && m.w==1);free(m.data);assert(other_names==other+1);
+		// the database has nothing: asked once, then remembered
+		game_t none={.cover_key="Nothing Here",.title="None"};
+		unsigned before=attempts;r=true;m=(cover_t){0};
+		assert(!fetch_cover(&none,&r,&m) && !r && attempts==before+1);
+		before=attempts;unsigned skips=miss_skips;r=true;
+		assert(!fetch_cover(&none,&r,&m) && !r && attempts==before && miss_skips==skips+1);
+		assert(!stat("covers/state.txt",&st));
+		// ... also after a restart (the file is read again) ...
+		boxart_misses_free();boxart_misses_load(COVER_STATE,PSX3D_VERSION);
+		before=attempts;r=true;
+		assert(!fetch_cover(&none,&r,&m) && !r && attempts==before);
+		// ... but a rescan asks again
+		covers_reset();
+		before=attempts;r=true;
+		assert(!fetch_cover(&none,&r,&m) && !r && attempts==before+1);
+		// no network is not "the database has none": nothing remembered, backoff doubles
+		game_t down={.cover_key="Down Unit",.title="Down"};
+		CURLcode dummy=0;(void)dummy;
+		net_backoff=0;net_failed();assert(net_backoff==15000);net_failed();assert(net_backoff==30000);
+		for(int i=0;i<10;i++) net_failed();
+		assert(net_backoff==600000);
+		r=true;assert(!fetch_cover(&down,&r,&m) && r); // still inside the backoff: no request
+		assert(!boxart_miss_known("Down Unit",osGetTime()));
+		net_retry_at=0;net_backoff=0;
+		// the player's own picture wins over the cached download, follows changes and removal
+		cover_t a={0};
+		strcpy(game.cover_key,"cover");
+		remove("covers/cover.png");
+		assert(load_cover(&game,&r,false,&a) && a.w==1);free(a.data);              // cache from the download
+		before=attempts;
+		assert(rename("user.png","covers/cover.png")==0);
+		a=(cover_t){0};assert(load_cover(&game,&r,false,&a) && a.w==2 && a.h==2);free(a.data);
+		a=(cover_t){0};assert(load_cover(&game,&r,false,&a) && a.w==2);free(a.data); // from the cache, marked
+		assert(attempts==before);
+		FILE *pf=fopen("covers/cover.png","ab");assert(pf);fputc(0,pf);fclose(pf);      // changed file
+		long sz,mt;assert(boxart_user_get("cover",&sz,&mt));
+		a=(cover_t){0};assert(load_cover(&game,&r,false,&a) && a.w==2);free(a.data);
+		long sz2,mt2;assert(boxart_user_get("cover",&sz2,&mt2) && sz2==sz+1);
+		remove("covers/cover.png");                                                   // PNG removed: download again
+		a=(cover_t){0};assert(load_cover(&game,&r,false,&a) && a.w==1);free(a.data);
+		assert(attempts==before+1 && !boxart_user_get("cover",&sz,&mt));
+		// a PNG that cannot be read does not hide the cover
+		pf=fopen("covers/cover.png","wb");assert(pf);fputs("not a png",pf);fclose(pf);
+		a=(cover_t){0};assert(load_cover(&game,&r,false,&a) && a.w==1);free(a.data);
+		remove("covers/cover.png");
+		for(int i=0;i<SLOTS;i++) slots[i].last_used=0;   // the rescan above emptied the slots: slot 0 is the oldest again
+		covers_get(0,NULL);
 		covers_stop_wait();
 	}
 	blocked=true;covers_resume();assert(paused);blocked=false;
