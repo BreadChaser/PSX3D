@@ -123,6 +123,7 @@ static void show_error(const char *msg)
 	log_printf("error: %s\n", msg);
 	bool released = false;
 	while (aptMainLoop()) {
+		dev_tick_keys();   // remote ui-key and shot still answer here
 		input_poll();
 		u32 k = ui_header_back(ui_bar_input(error_bar, 1, input_keys_down()));
 		if (released && (k & (KEY_A | KEY_B)))
