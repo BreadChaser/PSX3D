@@ -65,12 +65,12 @@ static const theme_t themes[] = {
 		.help_bar = C(255, 80, 180), .help_bg = CA(16, 4, 26, 225), .header_right = C(170, 110, 170),
 		.hint_lib = C(140, 90, 140), .hint_menu = C(170, 110, 170), .section = C(210, 140, 210),
 		.scrollbar = C(140, 60, 140),
-		// a peach sun in a magenta sky
+		// a pink sun in a magenta sky
 		.card_top = C(50, 14, 58), .card_bottom = C(20, 5, 30), .card_ink = C(245, 220, 240),
 		.card_stack = C(74, 32, 82), .folder = C(235, 170, 220),
 		.version_ink = CA(190, 140, 190, 160), .logo_3d = CA(255, 150, 205, 200),
-		.sky = { { 256, 0, 0, 0 }, { 0, 180, 26, 0 }, { 115, 0, 90, 0 } },
-		.grid_near = C(255, 90, 190), .grid_side = C(170, 60, 210), .grid_far = C(255, 185, 140) },
+		.sky = { { 218, 0, 38, 0 }, { 0, 154, 0, 0 }, { 141, 0, 115, 0 } },
+		.grid_near = C(255, 90, 190), .grid_side = C(170, 60, 210), .grid_far = C(255, 190, 230) },
 	{ ORIGINAL, .id = "high-contrast", .name = "High contrast",
 		.menu_bg = C(0, 0, 0), .hl_top = CA(30, 70, 200, 255), .hl_bottom = CA(20, 50, 160, 255),
 		.hl_glow = CA(0, 0, 0, 0), .row_dim = { 215, 215, 225 }, .value = C(170, 210, 255),
