@@ -334,13 +334,16 @@ static void big_title(const char *title, const char *line, float ease)
 
 static void top_common(void)
 {
-	// small PSX3D wordmark
-	float w = text_w(libui_font(), 0.42f, "PSX");
-	ui_text_ex(libui_font(), 10, 6, 0.42f, C2D_Color32(245, 240, 255, 200), 0, "PSX");
-	ui_text_ex(libui_font(), 10 + w + 0.42f * 6, 6, 0.42f, C2D_Color32(255, 90, 190, 200), 0, "3D");
+	// small PSX3D wordmark (the slow-mode banner takes its place)
+	if (!slow_mode_notice(false)) {
+		float w = text_w(libui_font(), 0.42f, "PSX");
+		ui_text_ex(libui_font(), 10, 6, 0.42f, C2D_Color32(245, 240, 255, 200), 0, "PSX");
+		ui_text_ex(libui_font(), 10 + w + 0.42f * 6, 6, 0.42f, C2D_Color32(255, 90, 190, 200), 0, "3D");
+	}
 	if (!have_games) {   // first start: one friendly line
-		C2D_DrawRectSolid(0, 0, 0.6f, 400, 2, accent(1, 255));
-		ui_text_ex(NULL, 390, 8, 0.38f, C2D_Color32(255, 210, 120, 255), C2D_AlignRight, "Welcome! No games yet.");
+		float y = slow_mode_notice(false) ? 32 : 0;   // under the slow-mode banner
+		C2D_DrawRectSolid(0, y, 0.6f, 400, 2, accent(1, 255));
+		ui_text_ex(NULL, 390, y + 8, 0.38f, C2D_Color32(255, 210, 120, 255), C2D_AlignRight, "Welcome! No games yet.");
 	}
 	slow_banner();
 	ui_text_ex(NULL, 396, 226, 0.35f, C2D_Color32(150, 160, 200, 160), C2D_AlignRight, "v" PSX3D_VERSION);
