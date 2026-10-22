@@ -505,11 +505,11 @@ static void menu_draw_top(void *ud)
 {
 	(void)ud;
 	const theme_t *th = theme();
-	C2D_DrawRectSolid(0, 0, 0.6f, 400, 240, th->veil);
+	C2D_DrawRectSolid(0, 0, 0.6f, 400, 240, th->pause_veil);
 	float dx = ui_depth(-0.8f);
 	ui_text_ex(libui_font(), 201 + dx, 87, 1.1f, C2D_Color32(0, 0, 0, 150), C2D_AlignCenter, "PAUSED");
 	ui_text_ex(libui_font(), 200 + dx, 86, 1.1f, C2D_Color32(255, 255, 255, 255), C2D_AlignCenter, "PAUSED");
-	ui_text_ex(NULL, 200 + dx, 136, 0.55f, th->veil_text, C2D_AlignCenter, game_title);
+	ui_text_ex(NULL, 200 + dx, 136, 0.55f, th->game_sub, C2D_AlignCenter, game_title);
 	for (int i = 0; i < 4; i++)
 		C2D_DrawRectSolid(140 + i * 30 + dx, 128, 0.65f, 28, 2, th->accent[i]);
 }
@@ -529,14 +529,14 @@ static void menu_draw_bottom(void *ud)
 {
 	menu_t *m = ud;
 	const theme_t *th = theme();
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->bg);
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->menu_bg);
 	ui_menu_header("Menu", ui_fit(game_title, .42f, 150));
 	if (have_disk && disk.get_num_images)
 		snprintf(m->disc, sizeof(m->disc), "Disc %u of %u", menu_disc + 1, disk.get_num_images());
 	// Eight rows fit, so Exit stays visible when Swap disc is listed.
 	flist_draw(&m->fl, m->nitems, m->sel, 0, 40, 320, 22, 8, menu_label, menu_value, m,
 			   th->accent[m->sel & 3]);
-	ui_text_ex(NULL, 160, 222, 0.42f, th->right, C2D_AlignCenter,
+	ui_text_ex(NULL, 160, 222, 0.42f, th->hint_menu, C2D_AlignCenter,
 			   m->items[m->sel] == M_DISC ? "Left/Right choose disc    A insert    B resume"
 										  : "A select    B resume");
 }

@@ -113,9 +113,9 @@ u32 ui_header_back(u32 keys)
 void ui_menu_header(const char *title, const char *right)
 {
 	const theme_t *th = theme();
-	ui_text_ex(libui_font(), 10, 6, 0.5f, th->title, 0, title);
+	ui_text_ex(libui_font(), 10, 6, 0.5f, th->header_title, 0, title);
 	if (right)
-		ui_text_ex(NULL, 310, 9, 0.42f, th->right, C2D_AlignRight, right);
+		ui_text_ex(NULL, 310, 9, 0.42f, th->header_right, C2D_AlignRight, right);
 	for (int i=0; i<4; i++)
 		C2D_DrawRectSolid(10+i*18, 26, 0.2f, 16, 2, th->accent[i]);
 }
@@ -366,7 +366,7 @@ void flist_draw_sections(const flist_t *f, int n, int sel, float x, float y0, fl
 			ui_text_ex(NULL, x + 12, ry + 4, 0.33f, theme_alpha(th->section, alpha), 0, label(i, ud));
 			for (int j = 0; j < 4; j++)
 				C2D_DrawRectSolid(x + 12 + j * 10, ry + 19, 0.3f, 8, 1, theme_alpha(th->accent[j], alpha));
-			C2D_DrawRectSolid(x + 56, ry + 19, 0.3f, w - 68, 1, theme_alpha(th->rule, alpha));
+			C2D_DrawRectSolid(x + 56, ry + 19, 0.3f, w - 68, 1, theme_alpha(th->section_rule, alpha));
 			continue;
 		}
 		float lift = i < FLIST_MAX ? f->lift[i] : (i == sel);
@@ -438,14 +438,14 @@ static void confirm_draw(void *ud)
 	confirm_t *c = ud;
 	// Behind the header's colour rule, like the other menus.
 	const theme_t *th = theme();
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->bg);
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->menu_bg);
 	ui_menu_header(c->title, config_in_game() ? ui_fit(emu_game_title(), .42f, 150) : "All games");
 	C2D_Text t;
 	if (C2D_TextParse(&t, textbuf, c->message))
 		C2D_DrawText(&t, C2D_WithColor | C2D_WordWrap, 16.0f, 62.0f, 0.7f, 0.5f, 0.5f,
-			th->help_text, 288.0f);
-	ui_text_ex(NULL, 160, 183, 0.5f, th->title, C2D_AlignCenter, c->action);
-	ui_text_ex(NULL, 160, 213, 0.45f, th->muted, C2D_AlignCenter, "B  Cancel");
+			C2D_Color32(170, 185, 220, 255), 288.0f);
+	ui_text_ex(NULL, 160, 183, 0.5f, th->header_title, C2D_AlignCenter, c->action);
+	ui_text_ex(NULL, 160, 213, 0.45f, C2D_Color32(130, 150, 190, 255), C2D_AlignCenter, "B  Cancel");
 }
 
 bool ui_confirm(const char *title, const char *message, bool show_game)

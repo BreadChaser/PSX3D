@@ -75,7 +75,7 @@ player sees.
 Display | Screen | screen | Original, Stretch, Widescreen | Original | Original | both | all | taste
 Display | Smoothing | smooth | On, Off | On | On | both | all | taste
 Display | FPS counter | show_fps | Off, FPS, Detailed | Off | Off | both | all | taste
-Display | Theme | theme | Synthwave, Dark grey, Black, Light, PlayStation, Teal | Synthwave | Synthwave | both | lib | taste
+Display | Theme | theme | Original (v0.5.0), Midnight teal, PS1 grey, Sunset magenta, High contrast | Original (v0.5.0) | Original (v0.5.0) | both | lib | taste
 Controls | Button mappings | > | - | - | - | both | all | taste
 Controls | Controller | controller | Digital, Analog | Digital | Digital | both | all | tech
 Controls | Analog mode shortcut | analog_combo | Off, L1+R1+Select, L1+R1+Start, L1+R1+L3, L1+R1+R3, L3+R3 | L1+R1+Select | L1+R1+Select | both | all | taste
@@ -243,7 +243,7 @@ Fates:
 | smooth | Smoothing (Display) | On | On | **Setting** | taste | no |
 | stereo | 3D (Display, New) | Off (fixed) | Screen depth | **Force**: Real 3D on New, off on Old; the 3D slider is the only control | User, 2026-10-21: Screen depth for games dropped | no |
 | show_fps | Show FPS (Display) | Off | Off | **Setting** "FPS counter" | taste | no |
-| theme | Theme (Display, library only) | Synthwave | Synthwave | **Setting** "Theme" | taste; one look for the whole app, so no per-game value. Colours only: game pictures, cover art and the in-game bottom screen are unchanged | no |
+| theme | Theme (Display, library only) | Original (v0.5.0) | Original (v0.5.0) | **Setting** "Theme" | taste; one look for the whole app, so no per-game value. The five palettes of the UI mock-up; colours only (game pictures, cover art and the library backdrop are unchanged) | no |
 | touch_click_left | Bottom-screen buttons (Controls, New) | — | Right | **Setting** (New only) | taste | no |
 | audio_stretch | Smooth audio when slow (Sound) | On (5%) | On (5%) | **Force** on | Net win on both; pitch-preserving version in progress (`t3/audio-pitch`), which removes the only downside. | no |
 | sounds | Menu sounds (Sound, library) | On | On | **Force** On | User, 2026-10-21 | no |

@@ -74,7 +74,7 @@ static const char *const helps[] = {
  [F_RECOMMENDED]="Remove this game's changes to the Advanced options, so its tested settings apply again. Display, Controls and Saves are kept.",
  [F_RECORD]="Record 30 seconds of game audio for troubleshooting.",
  [F_TONE]="Play a steady tone to check audio output.",
- [F_THEME]="Choose the colours of the menus and the library backdrop. Synthwave is the original look; the others are calmer. Game pictures and cover art are not changed.",
+ [F_THEME]="Choose the colours of the menus. Original is the look the menus always had. Game pictures, cover art and the library backdrop are not changed.",
 };
 static const char *const category_tips[] = {
  [CAT_DISPLAY]="Picture shape, smoothing, FPS counter and theme.",
@@ -373,7 +373,7 @@ static void draw_settings(void *ud)
 	int sel = s->selected[s->page];
 	const theme_t *th = theme();
 	u32 muted = th->muted;
-	C2D_DrawRectSolid(0, 0, .1f, 320, 240, th->bg);
+	C2D_DrawRectSolid(0, 0, .1f, 320, 240, th->menu_bg);
 	ui_menu_header(categories[s->page], s->game ? ui_fit(emu_game_title(), .42f, 150) : "All games");
 	const char *header = advanced_header(s);
 	if (header)
@@ -410,7 +410,7 @@ static void draw_settings(void *ud)
 		ui_text_ex(NULL, 12, 183, .39f, muted, 0, tip);
 	// In a game every value belongs to that game; unchanged ones follow all games.
 	if (s->game && item >= 0 && item < CONTROL_ROW && item != F_REWIND && (item >= CORE_ROW || override_key(item)))
-		ui_text_ex(NULL, 12, 199, .4f, th->text, 0,
+		ui_text_ex(NULL, 12, 199, .4f, th->white, 0,
 				   overridden(s, item) ? "* Changed for this game    X inherit" : preset_row(s, item) ? "P Tested setting for this game" : "Same as all games");
 	// Category rows open with A; Left/Right only changes values.
 	ui_text_ex(NULL, 160, 222, .39f, muted, C2D_AlignCenter,

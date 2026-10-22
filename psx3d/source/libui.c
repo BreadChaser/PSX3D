@@ -167,20 +167,15 @@ static void draw_cover(int e, float cx, float cy, float size, float dim, float z
 					bs / COVER_SIZE, bs / COVER_SIZE);
 				continue;
 			}
-			const theme_t *th = theme();
-			int sc[3];
-			for (int j = 0; j < 3; j++) {
-				sc[j] = th->stack[j] + k * th->stack_step;
-				sc[j] = sc[j] < 0 ? 0 : sc[j] > 255 ? 255 : sc[j];
-			}
+			u8 c = (u8)(40 - k * 8);
 			C2D_DrawRectSolid(bx, y - o, bz, size, size,
-				C2D_Color32(sc[0], sc[1], sc[2], (u8)(255 * (1 - dim * 0.6f))));
+				C2D_Color32(c, c + 6, c + 30, (u8)(255 * (1 - dim * 0.6f))));
 			C2D_DrawRectSolid(bx, y - o, bz + 0.001f, size, 2,
 				(*accent(e + k) & 0x00ffffff) | ((u32)(200 * (1 - dim)) << 24));
 		}
 	}
 	// drop shadow on the "floor", a little behind the cover
-	C2D_DrawRectSolid(x + 4 + ui_depth(1.5f), y + 6, z - 0.01f, size, size, theme()->shadow);
+	C2D_DrawRectSolid(x + 4 + ui_depth(1.5f), y + 6, z - 0.01f, size, size, C2D_Color32(0, 0, 0, 110));
 	C3D_Tex *t = covers_get(i);
 	if (t) {
 		Tex3DS_SubTexture st = { COVER_SIZE, COVER_SIZE, 0.0f, 1.0f, 1.0f, 0.0f };
@@ -190,12 +185,12 @@ static void draw_cover(int e, float cx, float cy, float size, float dim, float z
 		C2D_DrawImageAt(img, x, y, z, dim > 0 ? &tint : NULL, size / COVER_SIZE, size / COVER_SIZE);
 	} else {
 		u32 c = *accent(e);
-		const theme_t *th = theme();
-		C2D_DrawRectangle(x, y, z, size, size, th->card_top, th->card_top, th->card_bottom, th->card_bottom);
+		C2D_DrawRectangle(x, y, z, size, size, C2D_Color32(20, 26, 60, 255), C2D_Color32(20, 26, 60, 255),
+			C2D_Color32(8, 10, 28, 255), C2D_Color32(8, 10, 28, 255));
 		C2D_DrawRectSolid(x, y + size - 6, z, size, 6, c);
 		char initial[2] = { g->title[0], 0 };
 		float s = size / 60.0f;
-		text(title_font, cx, cy - 14 * s, s, th->card_ink, C2D_AlignCenter, initial);
+		text(title_font, cx, cy - 14 * s, s, C2D_Color32(220, 225, 245, 255), C2D_AlignCenter, initial);
 		if (dim > 0)
 			C2D_DrawRectSolid(x, y, z + 0.005f, size, size, C2D_Color32(0, 0, 0, (u8)(dim * 255)));
 	}
@@ -321,12 +316,9 @@ static void draw_top(void *ud)
 	(void)ud;
 	int n = nview;
 	const theme_t *th = theme();
-	if (th->scene) {
-		if (bg_ok)
-			C2D_DrawImageAt(bg_img, ui_depth(3.0f), 0, 0.1f, NULL, 1.0f, 1.0f);   // sky: far back
-		draw_grid();
-	} else
-		C2D_DrawRectangle(0, 0, 0.1f, 400, 240, th->sky_top, th->sky_top, th->sky_bottom, th->sky_bottom);
+	if (bg_ok)
+		C2D_DrawImageAt(bg_img, ui_depth(3.0f), 0, 0.1f, NULL, 1.0f, 1.0f);   // sky: far back
+	draw_grid();
 
 	// carousel: neighbours first so the selection sits on top
 	float spacing = 116.0f;
@@ -373,7 +365,7 @@ static void draw_top(void *ud)
 		if (w > 380)
 			size *= 380 / w;
 		float tx = 200 + ui_depth(-0.8f);   // floats just in front of the screen
-		text(f, tx + 1, ty + 1, size, theme_fade(th->game_title_shadow, a * 5 / 8), C2D_AlignCenter, title);
+		text(f, tx + 1, ty + 1, size, C2D_Color32(0, 0, 0, a * 5 / 8), C2D_AlignCenter, title);
 		text(f, tx, ty, size, theme_alpha(th->game_title, a), C2D_AlignCenter, title);
 		if (ser >= 0 || g->ndiscs > 1) {
 			char dd[32];
@@ -394,13 +386,13 @@ static void draw_top(void *ud)
 			cut = strchr(m, ':');
 		snprintf(l1, sizeof(l1), "%.*s", cut ? (int)(cut - m) + 1 : (int)strlen(m), m);
 		snprintf(l2, sizeof(l2), "%s", cut ? cut + 2 : "");
-		C2D_DrawRectSolid(0, 0, 0.6f, 400, 32, C2D_Color32(40, 22, 14, 230));
-		ui_text_ex(NULL, 8, 2, 0.4f, C2D_Color32(255, 170, 120, 255), 0, ui_fit(l1, 0.4f, 384));
-		ui_text_ex(NULL, 8, 16, 0.4f, C2D_Color32(255, 170, 120, 255), 0, ui_fit(l2, 0.4f, 384));
+		C2D_DrawRectSolid(0, 0, 0.6f, 400, 32, th->slow_bg);
+		ui_text_ex(NULL, 8, 2, 0.4f, th->slow_text, 0, ui_fit(l1, 0.4f, 384));
+		ui_text_ex(NULL, 8, 16, 0.4f, th->slow_text, 0, ui_fit(l2, 0.4f, 384));
 	}
 
 	// which build this is, small in the corner
-	text(NULL, 396, 226, 0.35f, th->corner, C2D_AlignRight, "v" PSX3D_VERSION);
+	text(NULL, 396, 226, 0.35f, C2D_Color32(150, 160, 200, 160), C2D_AlignRight, "v" PSX3D_VERSION);
 
 	// fade from/to black (open, launch)
 	float f = fade;
@@ -436,7 +428,7 @@ static void draw_bottom(void *ud)
 	(void)ud;
 	int n = nview;
 	const theme_t *th = theme();
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->bg);
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->menu_bg);
 	flist_draw(&lst, n, sel, 0, 4, 314, ROW_H, ROWS, game_label, game_value, NULL, *accent(sel));
 	// scroll indicator
 	if (n > ROWS) {
@@ -458,7 +450,7 @@ static void draw_bottom(void *ud)
 			snprintf(msg, sizeof(msg), "Library updated: %d games", library_count());
 		ui_text_ex(NULL, 8, 222, omitted ? 0.36f : 0.4f, th->message, 0, msg);
 	} else
-		ui_text_ex(NULL, 8, 223, 0.36f, th->hint, 0,
+		ui_text_ex(NULL, 8, 223, 0.36f, th->hint_lib, 0,
 			open_series >= 0 ? "A play   B back   X settings   SELECT rescan   START quit" :
 			entry_series(sel) >= 0 ? "A open   X settings   Y folders   SELECT rescan   START quit" :
 			"A play   X settings   Y folders   SELECT rescan   START quit");

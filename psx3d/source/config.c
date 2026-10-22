@@ -87,7 +87,7 @@ static int factory(const char *key)
 		{ "smooth", "off|on" }, { "show_fps", "off|fps|detailed" }, { "stereo", "off|screen|real" },
 		{ "sounds", "off|on" }, { "music", "off|on" }, { "touch_click_left", "right|left" },
 		{ "screen", "original|stretch|widescreen" }, { "controller", "digital|analog" }, { "rewind", "off|on" },
-		{ "theme", "synthwave|grey|black|light|playstation|teal" },
+		{ "theme", "original|midnight-teal|ps1-grey|sunset-magenta|high-contrast" },
 	};
 	for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++)
 		if (!strcmp(words[i][0], key))

@@ -196,17 +196,17 @@ static void draw_top(void *ud)
 {
 	(void)ud;
 	const theme_t *th = theme();
-	C2D_DrawRectSolid(0, 0, 0.1f, 400, 240, th->bg);
-	ui_text_ex(libui_font(), 16, 14, 0.8f, th->title, 0, "PSX3D");
+	C2D_DrawRectSolid(0, 0, 0.1f, 400, 240, th->menu_bg);
+	ui_text_ex(libui_font(), 16, 14, 0.8f, th->header_title, 0, "PSX3D");
 	char version[64];
 	snprintf(version, sizeof(version), "Version " PSX3D_VERSION " (game presets %d), based on PCSX-ReARMed (GPL v2)",
 		game_presets_pack());
 	ui_text_ex(NULL, 16, 46, 0.42f, th->muted, 0, version);
-	ui_text_ex(NULL, 16, 70, 0.39f, th->right, 0, "Games folder");
-	ui_text_ex(NULL, 16, 84, 0.42f, th->help_text, 0,
+	ui_text_ex(NULL, 16, 70, 0.39f, th->header_right, 0, "Games folder");
+	ui_text_ex(NULL, 16, 84, 0.42f, C2D_Color32(170, 185, 220, 255), 0,
 		g_cfg.games_dir[0] ? ui_fit(g_cfg.games_dir, .42f, 368) : "None chosen yet");
 	if (slow_mode_notice(false))
-		ui_text_ex(NULL, 16, 108, 0.42f, th->message, 0,
+		ui_text_ex(NULL, 16, 108, 0.42f, C2D_Color32(255, 160, 120, 255), 0,
 			ui_fit(slow_mode_notice(true), .42f, 368));
 	ui_help_panel(150, "This folder", truncated ? "Over 4096 entries; the list is cut off" : NULL, cwd);
 }
@@ -232,7 +232,7 @@ static void draw_bottom(void *ud)
 	(void)ud;
 	const theme_t *th = theme();
 	u32 muted = th->muted;
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->bg);
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->menu_bg);
 	const char *name = strrchr(cwd, '/');
 	ui_menu_header("Folders", ui_fit(name && name[1] ? name + 1 : cwd, .42f, 170));
 	flist_draw(&lst, nentries + 1, sel, 0, 40, 320, ROW_H, ROWS, row_label, row_value, NULL,

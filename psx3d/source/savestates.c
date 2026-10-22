@@ -223,10 +223,9 @@ static void draw_top(void *ud)
 	browser_t *b = ud;
 	slot_t *s = &b->slot[b->sel];
 	C2D_Font font = libui_font();
-	const theme_t *th = theme();
-	u32 white = C2D_Color32(240, 242, 255, 255), dim = th->veil_text;
+	u32 white = C2D_Color32(240, 242, 255, 255), dim = C2D_Color32(150, 160, 200, 255);
 
-	C2D_DrawRectSolid(0, 0, 0.6f, 400, 240, th->slot_veil);
+	C2D_DrawRectSolid(0, 0, 0.6f, 400, 240, C2D_Color32(4, 6, 18, 225));
 
 	// the preview: the slot's screenshot, or for saving to an empty slot the
 	// frame that would be saved
@@ -234,7 +233,7 @@ static void draw_top(void *ud)
 	float dx = ui_depth(-0.6f);
 	C3D_Tex *t = s->tex_ok ? &s->tex : (b->saving && b->now_ok ? &b->now : NULL);
 	C2D_DrawRectSolid(px - 3 + dx, py - 3, 0.62f, pw + 6, ph + 6, accent[b->sel & 3]);
-	C2D_DrawRectSolid(px + dx, py, 0.63f, pw, ph, th->slot_frame);
+	C2D_DrawRectSolid(px + dx, py, 0.63f, pw, ph, C2D_Color32(10, 12, 30, 255));
 	if (t)
 		draw_tex(t, px + dx, py, pw, ph, 0.64f);
 	else
@@ -258,10 +257,9 @@ static void draw_bottom(void *ud)
 {
 	browser_t *b = ud;
 	C2D_Font font = libui_font();
-	const theme_t *tm = theme();
-	u32 white = tm->title, dim = tm->right;
+	u32 white = C2D_Color32(235, 238, 255, 255), dim = C2D_Color32(110, 120, 160, 255);
 
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, tm->bg);
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, theme()->menu_bg);
 	ui_text_ex(font, 10, 6, 0.5f, white, 0, b->saving ? "Save state" : "Load state");
 	ui_text_ex(NULL, 310, 9, 0.42f, dim, C2D_AlignRight, b->title);
 	for (int i = 0; i < 4; i++)
@@ -282,11 +280,11 @@ static void draw_bottom(void *ud)
 			C2D_DrawRectSolid(x - 5, y - 5, z, w + 10, h + 10, (accent[i & 3] & 0x00ffffff) | 0x40000000);
 			C2D_DrawRectSolid(x - 2, y - 2, z + 0.01f, w + 4, h + 4, accent[i & 3]);
 		}
-		C2D_DrawRectSolid(x, y, z + 0.02f, w, h, tm->slot_card);
+		C2D_DrawRectSolid(x, y, z + 0.02f, w, h, C2D_Color32(18, 22, 48, 255));
 		if (s->tex_ok) {
 			draw_tex(&s->tex, x, y, w, h, z + 0.03f);
 			if (!sel)
-				C2D_DrawRectSolid(x, y, z + 0.04f, w, h, tm->slot_dim);
+				C2D_DrawRectSolid(x, y, z + 0.04f, w, h, C2D_Color32(6, 9, 24, 90));
 		} else {
 			ui_text_ex(NULL, cx, cy - 8, 0.45f, dim, C2D_AlignCenter,
 				s->used ? "?" : (b->saving ? "+" : "-"));
@@ -309,7 +307,7 @@ static void draw_bottom(void *ud)
 		snprintf(line, sizeof(line), "Saved %s", when);
 	else
 		snprintf(line, sizeof(line), b->saving ? "Empty slot" : "Nothing saved here yet");
-	ui_text_ex(NULL, 160, 180, 0.5f, b->confirm ? tm->message : white,
+	ui_text_ex(NULL, 160, 180, 0.5f, b->confirm ? theme()->message : white,
 		C2D_AlignCenter, line);
 
 	const char *hint = b->saving ? (s->used ? "A save    X delete    B back" : "A save    B back")
@@ -427,7 +425,7 @@ typedef struct { C3D_Tex tex; bool tex_ok; u32 saved; float t; } resume_t;
 static void resume_top(void *ud)
 {
 	resume_t *r = ud;
-	C2D_DrawRectSolid(0, 0, 0.6f, 400, 240, theme_alpha(theme()->slot_veil, 255));
+	C2D_DrawRectSolid(0, 0, 0.6f, 400, 240, C2D_Color32(4, 6, 18, 255));
 	const float pw = 264, ph = 198, px = (400 - pw) / 2, py = 10;
 	float dx = ui_depth(-0.6f);
 	C2D_DrawRectSolid(px - 3 + dx, py - 3, 0.62f, pw + 6, ph + 6, accent[2]);
@@ -443,10 +441,10 @@ static void resume_bottom(void *ud)
 {
 	(void)ud;
 	const theme_t *th = theme();
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->bg);
-	ui_text_ex(libui_font(), 160, 70, 0.6f, th->title, C2D_AlignCenter, "Continue?");
-	ui_text_ex(NULL, 160, 120, 0.5f, th->help_text, C2D_AlignCenter, "A  pick up where you left off");
-	ui_text_ex(NULL, 160, 145, 0.5f, th->help_text, C2D_AlignCenter, "B  start the game");
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->menu_bg);
+	ui_text_ex(libui_font(), 160, 70, 0.6f, C2D_Color32(235, 238, 255, 255), C2D_AlignCenter, "Continue?");
+	ui_text_ex(NULL, 160, 120, 0.5f, th->game_sub, C2D_AlignCenter, "A  pick up where you left off");
+	ui_text_ex(NULL, 160, 145, 0.5f, th->game_sub, C2D_AlignCenter, "B  start the game");
 }
 
 // The game was auto-saved when it was last closed: offer to continue.
