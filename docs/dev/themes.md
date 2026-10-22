@@ -4,7 +4,9 @@ Settings > Display > Theme (library only, one look for the whole app) picks one 
 palettes. They are the palettes of the UI mock-up, token for token: `Original (v0.5.0)`,
 `Midnight teal`, `PS1 grey`, `Sunset magenta`, `High contrast`. Original is the default and
 the look the menus always had. Every alternative overrides only some of the Original's
-tokens. The library backdrop (sunset and floor) is the same in every palette, as in the mock-up.
+tokens. The console adds a few fields of its own (cards, wordmark, backdrop; see below), so the
+top-screen backdrop changes with the palette too: the sunset picture is recoloured through the
+palette's colour matrix and the wire floor uses its grid colours.
 
 - Table: `psx3d/source/theme.c`; API: `psx3d/source/theme.h`.
 - Config: `theme=<id>` in config.ini (`original`, `midnight-teal`, `ps1-grey`, `sunset-magenta`,
@@ -12,7 +14,8 @@ tokens. The library backdrop (sunset and floor) is the same in every palette, as
 - The Settings row changes `g_cfg.theme` and every menu reads `theme()` each frame, so the
   new colours show at once.
 - `tools/themes/check-mock.py` compares the table with the mock-up's theme code
-  (`devtools/ui-mock/js/theme.js`): names, order and all 34 values per palette.
+  (`devtools/ui-mock/js/theme.js`): names, order and all 34 values per palette. The mock may
+  list more palettes (proposals) after the five shipped ones; those are not checked.
 
 ## API
 
@@ -48,8 +51,28 @@ ones a new screen is likely to need (`TH_CARD_TOP`, `TH_COVER_SHADOW`, ...).
 | `pause_veil` | veil over the paused game |
 | `touch_face`, `touch_border` | kept for the mock-up; the in-game touch panel (input.c) keeps its v0.5.0 colours in every theme, so its per-frame code stays where it was |
 
-Not themed (constant in the mock-up too): touch accents and symbol colours, `brandInk`, `osdText`,
-cover placeholder cards, shadows, the save state picker's veil and cards.
+Console-only fields (not in the mock's palettes):
+
+| Field | Used for |
+|---|---|
+| `card_top`, `card_bottom`, `card_ink` | cover placeholder cards (library, main menu), unselected main menu tiles and the Play together box, picture placeholders and icon holes |
+| `card_stack` | the cards stacked behind a series' cover (each card further back 8 levels darker) |
+| `version_ink` | the version in the top screen's corner |
+| `logo`, `logo_3d` | "PSX" and "3D" of the small wordmark on the main menu |
+| `folder` | the games folder line on the folder browser's top screen |
+| `sky[3][4]` | colour matrix for the sunset picture: each output channel is `(row[0]·r + row[1]·g + row[2]·b) / 256 + row[3]`, clamped. The Original's is the identity, so the picture is drawn as stored. The hills under the floor are filled with the picture's floor colour (16,2,44) through the same matrix. |
+| `grid_near`, `grid_side`, `grid_far` | wire floor: the middle near the viewer, the sides, toward the horizon (the Original's 150,60,255 / 40,90,255 / 255,70,200) |
+
+The backdrop picture is recoloured in place (`libui.c` `sky_sync`) the first time a menu frame
+draws it after the theme changed: a pass over the 512x256 RGB565 texture, then a cache flush. When
+it holds another theme's colours it is loaded again from romfs first. Menu frames begin only after
+the previous frame has finished on the GPU, and the sky is the first thing a frame draws, so
+nothing reads the texture while it changes. Nothing of this runs in a game.
+
+Not themed (constant in the mock-up too): touch accents and symbol colours (`ui_input_color`,
+shared with the in-game touch panel), `brandInk`, `osdText`, shadows, the save state picker's veil
+and cards (`savestates.c`, `TH_SLOT_*`). Fixed on purpose and marked `// fixed:` where drawn:
+dimming toward black, black fades, the QR code's black on white.
 
 ## Differences from the mock-up while the console has the v0.5.0 layout
 
