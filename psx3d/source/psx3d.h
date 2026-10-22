@@ -422,6 +422,7 @@ u32 ui_header_back(u32 keys);   // header tap -> KEY_B
 enum { UI_ICON_NONE, UI_ICON_STAR, UI_ICON_SORT, UI_ICON_RESCAN, UI_ICON_LEFT, UI_ICON_RIGHT, UI_ICON_FOLDER };
 typedef struct { u32 key; const char *label; u8 icon; bool on; } ui_button_t;
 #define UI_BAR_MAX 6
+extern int ui_bar_style;   // test switch barstyle=: 0 boxes, 1 classic prompts, 2 pills, 3 round icons
 void ui_bar_draw(const ui_button_t *b, int n);           // bottom screen, y 208..240
 u32 ui_bar_input(const ui_button_t *b, int n, u32 keys);  // tap -> its key; presses light it
 int ui_bar_parse(const char *hint, ui_button_t *out, int max);   // "A open    B back"
