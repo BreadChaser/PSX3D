@@ -18,7 +18,7 @@ enum {
     PICA_DEBUG_RTT_NEW = 1048576,
     PICA_DEBUG_EAGER_FRAME = 4194304,
     PICA_DEBUG_PHASE_TIMING = 8388608,
-    PICA_DEBUG_PACK_COPY = 16777216,
-    PICA_DEBUG_COARSE_BOUNDS = 33554432
+    PICA_DEBUG_PACK_COPY = 16777216
+    /* 33554432 (coarse drawn-area comparison) is always on since renderer round two */
 };
 #endif

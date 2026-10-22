@@ -69,7 +69,7 @@ for private workers; all production bit tests now use names.
 | 4194304 `EAGER_FRAME` | Start frame while parsing commands |
 | 8388608 `PHASE_TIMING` | Renderer phase timing |
 | 16777216 `PACK_COPY` | Primitive packed-copy experiment |
-| 33554432 `COARSE_BOUNDS` | Coarse drawn-area comparison |
+| 33554432 | Retired: the coarse drawn-area comparison is always on (renderer round two) |
 
 ## Other debug paths and build controls
 
