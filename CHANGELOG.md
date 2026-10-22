@@ -17,6 +17,7 @@ Speed figures are for specific saved scenes; see [Performance](README.md#perform
 - New: Real 3D falls back to screen depth for menus, movies and 2D scenes.
 - Faster: Old 3DS: OLD_GATE_SUMMARY.
 - Fixed: the picture sits where a TV shows it, including borders, 480i and PAL movies.
+- Fixed: a possible New 3DS crash with Real 3D in busy game start-ups (Crash Bandicoot, Harvest Moon).
 - Fixed: memory cards are checked before a backup is replaced; damaged cards ask what to do.
 - Known: Play together comes in a later version.
 
