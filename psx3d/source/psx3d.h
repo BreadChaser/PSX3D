@@ -428,7 +428,8 @@ int ui_bar_parse(const char *hint, ui_button_t *out, int max);   // "A open    B
 enum { UI_COL_BAR, UI_COL_RULE, UI_COL_NOTICE, UI_COL_STAR };
 u32 ui_bar_color(int which);
 void ui_star(float cx, float cy, float r, u32 c, u32 hollow, float z);
-void ui_notice(const char *s, int frames);   // top screen, fades over its last 20 frames
+void ui_notice(const char *s, int frames);
+void ui_first_letter(char *out, const char *title);   // out[8]: one whole UTF-8 letter   // top screen, fades over its last 20 frames
 void ui_text_wrap(float x, float y, float size, u32 color, float width, const char *s);
 void ui_button_text(float x, float y, float pixels, float spacing, u32 color, int id);
 
@@ -463,6 +464,11 @@ typedef struct {
 	int disc_no[8];
 } game_t;
 bool library_load(const char *root, bool rescan);
+bool library_guess_dir(void);
+bool library_is_ps1_image(const char *path);   // cheap check: not another system's disc
+bool library_missing_file(const char *path, char *out, size_t len);   // a disc or track that isn't there
+// emu.c: why the last game didn't start, and what to do (a title line, then the advice)
+const char *emu_load_error(void);   // browser.c: first run, find a folder with PS1 games
 int library_count(void);
 const game_t *library_get(int i);
 int library_series_count(void);

@@ -59,7 +59,35 @@ static void put(const char *root, const char *rel, const char *text)
 		printf("cannot create %s\n", path);
 		exit(2);
 	}
-	fputs(text, f);
+	// disc images get a real (tiny) PS1 file system unless the text says
+	// otherwise: the scanner reads the volume descriptor (ps1_image_at)
+	const char *e = strrchr(path, '.');
+	if (e && !strcmp(text, "x") && (!strcasecmp(e, ".bin") || !strcasecmp(e, ".iso") || !strcasecmp(e, ".img"))) {
+		static unsigned char img[17 * 2048];
+		memset(img, 0, sizeof(img));
+		img[16 * 2048] = 1;
+		memcpy(img + 16 * 2048 + 1, "CD001", 5);
+		memcpy(img + 16 * 2048 + 8, "PLAYSTATION", 11);
+		fwrite(img, 1, sizeof(img), f);
+	} else
+		fputs(text, f);
+	fclose(f);
+}
+
+// a file with exactly these bytes
+static void put_bytes(const char *root, const char *rel, const void *data, size_t n, long at)
+{
+	char path[PATH_MAX];
+	snprintf(path, sizeof(path), "%s/%s", root, rel);
+	char *slash = strrchr(path, '/');
+	*slash = 0;
+	mkdirs(path);
+	*slash = '/';
+	FILE *f = fopen(path, "wb");
+	static unsigned char zero[17 * 2352 + 64];
+	fwrite(zero, 1, (size_t)at, f);
+	fwrite(data, 1, n, f);
+	fwrite(zero, 1, 64, f);
 	fclose(f);
 }
 
@@ -440,7 +468,8 @@ static void test_teardown(void)
 		CHECK(library_count() == 7);
 	}
 	CHECK(find("Two") && find("Two")->ndiscs == 2);
-	CHECK(library_series_count() == 2);   // the Tekkens and the Spyros
+	CHECK(library_series_count() == 1);   // the Tekkens; the two Spyros now differ by region
+	CHECK(find("Spyro (USA)") && find("Spyro (Europe)"));
 	library_load(NULL, true);
 	CHECK(library_count() == 0);
 }
@@ -528,6 +557,94 @@ static void test_launch_path(void)
 	CHECK(slurp(m3u) && !strcmp(slurp(m3u), old2));
 }
 
+// review F3/F4 (2026-10-22): other systems' discs and folders stay out, the
+// region tells two copies apart, whole-word tags, no .ccd, playlists by hash
+static void test_other_systems(void)
+{
+	const char *r = fresh();
+	put(r, "Ridge Racer (USA).bin", "x");                       // PS1, cooked
+	unsigned char pvd[40] = { 1, 'C', 'D', '0', '0', '1' };
+	memcpy(pvd + 8, "PLAYSTATION", 11);
+	put_bytes(r, "Raw (USA).bin", pvd, sizeof(pvd), 16 * 2352 + 24);   // PS1, raw mode 2
+	put(r, "Cart.bin", "x not a disc");                         // a cartridge .bin
+	put_bytes(r, "Sonic CD (USA).bin", "SEGADISCSYSTEM  ", 16, 16);    // raw Sega CD
+	put_bytes(r, "Saturn.iso", "SEGA SEGASATURN ", 16, 0);
+	unsigned char psp[40] = { 1, 'C', 'D', '0', '0', '1' };
+	memcpy(psp + 8, "PSP GAME", 8);
+	put_bytes(r, "Psp.iso", psp, sizeof(psp), 16 * 2048);
+	put(r, "segacd/Snatcher (USA).cue", "FILE \"Snatcher (USA).bin\" BINARY\n");
+	put(r, "segacd/Snatcher (USA).bin", "x");                    // looks like PS1 but in segacd/
+	put(r, "3ds/PSX3D/m3u/Old.m3u", "x.chd\n");
+	put(r, "Clone.ccd", "[CloneCD]\n");
+	put(r, "PC Engine (USA).cue", "FILE \"PC Engine (USA) (Track 1).bin\" BINARY\n  TRACK 01 AUDIO\n");
+	put(r, "PC Engine (USA) (Track 1).bin", "audio, no file system");
+	scan(r);
+	CHECK(library_count() == 2);
+	CHECK(find("Ridge Racer") && find("Raw"));
+	CHECK(library_omitted() == 0);
+	// a lone PS1 eboot and a PSP one
+	r = fresh();
+	unsigned char pbp[40] = { 0, 'P', 'B', 'P' };
+	pbp[36] = 64;
+	put_bytes(r, "Ps1 Eboot.pbp", pbp, sizeof(pbp), 0);
+	{
+		char path[PATH_MAX];
+		snprintf(path, sizeof(path), "%s/Ps1 Eboot.pbp", r);
+		FILE *f = fopen(path, "r+b");
+		fseek(f, 64, SEEK_SET);
+		fwrite("PSISOIMG0000", 1, 12, f);
+		fclose(f);
+	}
+	put_bytes(r, "Psp Eboot.pbp", pbp, sizeof(pbp), 0);
+	scan(r);
+	CHECK(library_count() == 1 && find("Ps1 Eboot"));
+	// launch checks: missing track, other console
+	char miss[160];
+	r = fresh();
+	put(r, "Gone.cue", "FILE \"Gone (Track 1).bin\" BINARY\n");
+	char p[PATH_MAX];
+	snprintf(p, sizeof(p), "%s/Gone.cue", r);
+	CHECK(library_missing_file(p, miss, sizeof(miss)) && !strcmp(miss, "Gone (Track 1).bin"));
+	snprintf(p, sizeof(p), "%s/Nothing.bin", r);
+	CHECK(library_missing_file(p, miss, sizeof(miss)) && !strcmp(miss, "Nothing.bin"));
+	put(r, "Here.cue", "FILE \"Here.bin\" BINARY\n");
+	put(r, "Here.bin", "x");
+	snprintf(p, sizeof(p), "%s/Here.cue", r);
+	CHECK(!library_missing_file(p, miss, sizeof(miss)) && library_is_ps1_image(p));
+}
+
+static void test_regions(void)
+{
+	const char *r = fresh();
+	put(r, "Resident Evil 2 (USA) (Disc 1).bin", "x");
+	put(r, "Resident Evil 2 (Europe) (Disc 1).bin", "x");
+	put(r, "Tomba (Italy).bin", "x");
+	put(r, "Tomba (USA).bin", "x");
+	put(r, "Spyro (USA) (Demo).bin", "x");
+	put(r, "Spyro (USA).bin", "x");
+	put(r, "Alone (USA).bin", "x");
+	scan(r);
+	CHECK(find("Resident Evil 2 (USA)") && find("Resident Evil 2 (Europe)"));
+	CHECK(find("Tomba (Italy)") && find("Tomba"));   // "Italy" is not the language "It"
+	CHECK(find("Spyro (Demo)") && find("Spyro"));          // "Demo" is not "De"
+	CHECK(find("Alone"));                                 // no collision: no tag
+	CHECK(interesting_tag("Italy", 5) && !interesting_tag("En,Fr,De", 8) && !interesting_tag("Rev 1", 5) &&
+		interesting_tag("Revelations", 11) && interesting_tag("Demo", 4));
+}
+
+static void test_playlist_hash(void)
+{
+	game_t a = { 0 }, b = { 0 };
+	char *da[2] = { "sdmc:/x/1.cue", "sdmc:/x/2.cue" };
+	a.cover_key = "\xe3\x83\x89\xe3\x83\xa9\xe3\x82\xaf\xe3\x82\xa8";   // Japanese title
+	b.cover_key = "\xe3\x83\x95\xe3\x82\xa1\xe3\x82\xa4\xe3\x83\x8a";
+	a.ndiscs = b.ndiscs = 2;
+	a.discs[0] = b.discs[0] = da[0];
+	a.discs[1] = b.discs[1] = da[1];
+	char pa[PATH_MAX], pb[PATH_MAX];
+	CHECK(library_launch_path(&a, pa, sizeof(pa)) && library_launch_path(&b, pb, sizeof(pb)) && strcmp(pa, pb));
+}
+
 int main(void)
 {
 	char dir[] = "/tmp/psx3d-library-XXXXXX";
@@ -548,6 +665,9 @@ int main(void)
 	test_unknown_type();
 	test_teardown();
 	test_launch_path();
+	test_other_systems();
+	test_regions();
+	test_playlist_hash();
 	library_load(NULL, true);
 
 	char cmd[PATH_MAX + 16];

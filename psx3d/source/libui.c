@@ -296,7 +296,8 @@ static void draw_cover(int e, float cx, float cy, float size, float dim, float z
 		C2D_DrawRectangle(x, y, z, size, size, C2D_Color32(20, 26, 60, 255), C2D_Color32(20, 26, 60, 255),
 			C2D_Color32(8, 10, 28, 255), C2D_Color32(8, 10, 28, 255));
 		C2D_DrawRectSolid(x, y + size - 6, z, size, 6, c);
-		char initial[2] = { g->title[0], 0 };
+		char initial[8];
+		ui_first_letter(initial, g->title);
 		float s = size / 60.0f;
 		text(title_font, cx, cy - 14 * s, s, C2D_Color32(220, 225, 245, 255), C2D_AlignCenter, initial);
 		if (dim > 0)
@@ -844,7 +845,7 @@ static int letter_jump(int dir)
 }
 
 // Returns 1 with path filled to play a game, 2 to open the folder browser,
-// 4 back to the main menu, 0 to quit.
+// 4 back to the main menu, 5 when a rescan found no games, 0 to quit.
 // the game picked last time libui_run returned 1
 const game_t *libui_picked(void)
 {
@@ -944,7 +945,12 @@ int libui_run(char *out_path, size_t len)
 		}
 		if (k & KEY_SELECT) {
 			covers_reset();
-			library_load(g_cfg.games_dir, true);
+			if (!library_load(g_cfg.games_dir, true)) {
+				// nothing there any more: the empty-library screen says what to do
+				aptSetHomeAllowed(true);
+				ui_wants_3d = false;
+				return 5;
+			}
 			enter_view(-1, 0);
 			n = nview;
 			char msg[96];

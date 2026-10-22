@@ -311,7 +311,8 @@ static void cover_card(int game, float cx, float cy, float size, float angle, fl
 	u8 d = (u8)(255 * (1 - dim));
 	C2D_DrawRectangle(x, y, z, size, size, TH_CARD_TOP, TH_CARD_TOP, TH_CARD_BOTTOM, TH_CARD_BOTTOM);
 	C2D_DrawRectSolid(x, y + size - 6, z + 0.001f, size, 6, accent(game, 255));
-	char initial[2] = { g->title[0], 0 };
+	char initial[8];
+	ui_first_letter(initial, g->title);
 	float s = size / 60.0f;
 	ui_text_ex(libui_font(), cx, cy - 14 * s, s, theme_alpha(TH_CARD_INK, d), C2D_AlignCenter, initial);
 	if (dim > 0)

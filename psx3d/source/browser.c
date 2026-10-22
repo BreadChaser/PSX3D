@@ -1,3 +1,4 @@
+#define _GNU_SOURCE   // strcasestr
 // Game browser. Reads one folder at a time with readdir() and never stats
 // files or asks the card for its free space, so it stays fast on huge
 // (1TB+) SD cards and folders with thousands of files.
@@ -166,20 +167,55 @@ static bool dir_exists(const char *path)
 	return d != NULL;
 }
 
-// first run: guess where the PS1 games are
-static void guess_games_dir(void)
+// First run: find the PS1 games without asking. The usual folders first,
+// then any folder on the card or in sdmc:/roms named like PlayStation, then
+// sdmc:/roms itself; a folder counts only when the scan finds PS1 discs in it
+// (other systems' folders and images are left out, library.c). Returns true
+// with games_dir set and the library loaded.
+static bool ps1_name(const char *n)
+{
+	return strcasestr(n, "psx") || strcasestr(n, "ps1") || strcasestr(n, "playstation") || strcasestr(n, "psone");
+}
+
+bool library_guess_dir(void)
 {
 	static const char *const guesses[] = {
-		"sdmc:/roms/psx", "sdmc:/roms/PSX", "sdmc:/roms/ps1", "sdmc:/roms/PS1",
-		"sdmc:/roms/playstation", "sdmc:/psx", "sdmc:/PSX", "sdmc:/roms",
+		"sdmc:/roms/psx", "sdmc:/roms/ps1", "sdmc:/roms/playstation", "sdmc:/psx", "sdmc:/ps1",
 	};
-	if (g_cfg.games_dir[0])
-		return;
+	static char found[24][PATH_LEN];
+	int n = 0;
 	for (size_t i = 0; i < sizeof(guesses) / sizeof(guesses[0]); i++)
-		if (dir_exists(guesses[i])) {
-			snprintf(g_cfg.games_dir, sizeof(g_cfg.games_dir), "%s", guesses[i]);
-			return;
+		if (dir_exists(guesses[i]))
+			snprintf(found[n++], PATH_LEN, "%s", guesses[i]);
+	static const char *const parents[] = { "sdmc:/roms", "sdmc:" };
+	for (int p = 0; p < 2; p++) {
+		DIR *d = opendir(p ? "sdmc:/" : parents[p]);
+		struct dirent *de;
+		while (d && n < 22 && (de = readdir(d)))
+			if (de->d_name[0] != '.' && ps1_name(de->d_name)) {
+				char path[PATH_LEN];
+				snprintf(path, sizeof(path), "%s/%s", parents[p], de->d_name);
+				bool dup = false;
+				for (int k = 0; k < n; k++)
+					dup |= !strcasecmp(found[k], path);
+				if (!dup && dir_exists(path))
+					snprintf(found[n++], PATH_LEN, "%s", path);
+			}
+		if (d)
+			closedir(d);
+	}
+	if (dir_exists("sdmc:/roms"))
+		snprintf(found[n++], PATH_LEN, "sdmc:/roms");
+	for (int i = 0; i < n; i++)
+		if (library_load(found[i], true)) {
+			log_printf("library: first run, PS1 games found in %s\n", found[i]);
+			snprintf(g_cfg.games_dir, sizeof(g_cfg.games_dir), "%.*s", (int)sizeof(g_cfg.games_dir) - 1, found[i]);
+			config_save();
+			return true;
 		}
+	log_printf("library: first run, no PS1 games found (%d folders tried)\n", n);
+	library_load(NULL, false);   // nothing listed
+	return false;
 }
 
 // a folder holding exactly one game and nothing else: that game
@@ -296,7 +332,6 @@ bool browser_run(char *out_path, size_t out_len)
 	static int rep_down, rep_up, rep_l, rep_r;
 
 	// Back from a game started here: that folder. Otherwise the games folder.
-	guess_games_dir();
 	if (back_sel[0] && dir_exists(g_cfg.last_dir)) {
 		load_dir(g_cfg.last_dir);
 		select_name(back_sel);

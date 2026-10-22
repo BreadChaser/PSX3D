@@ -783,3 +783,18 @@ void ui_notice(const char *s, int frames)
 	C2D_DrawRectSolid(x, 104, 0.665f, 3, 30, theme_alpha(theme()->accent[3], a));
 	ui_text_ex(NULL, 200, 111, 0.48f, theme_alpha(theme()->header_title, a), C2D_AlignCenter, s);
 }
+
+// The first letter of a title for a placeholder card: a whole UTF-8 sequence,
+// never half of one (out has room for 8 bytes).
+void ui_first_letter(char *out, const char *title)
+{
+	size_t n = 1;
+	unsigned char c = (unsigned char)title[0];
+	if (c >= 0xf0) n = 4;
+	else if (c >= 0xe0) n = 3;
+	else if (c >= 0xc0) n = 2;
+	size_t i = 0;
+	for (; i < n && title[i]; i++)
+		out[i] = title[i];
+	out[i] = 0;
+}

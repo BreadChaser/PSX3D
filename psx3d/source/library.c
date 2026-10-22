@@ -39,6 +39,7 @@ static struct {
 	int discs;     // over MAX_DISCS for one game
 	int nomem;     // out of memory
 	int refs;      // .cue/.m3u names not read: list too long (extra files may show)
+	int notps1;    // disc images of other systems (logged; not counted as omitted)
 } omit;
 
 // series: games sharing a folder (or, failing that, a title stem)
@@ -105,7 +106,7 @@ static bool is_disc_ext(const char *e)
 {
 	return !strcasecmp(e, ".cue") || !strcasecmp(e, ".chd") || !strcasecmp(e, ".pbp") ||
 		!strcasecmp(e, ".iso") || !strcasecmp(e, ".img") || !strcasecmp(e, ".mdf") ||
-		!strcasecmp(e, ".ccd") || !strcasecmp(e, ".bin");
+		!strcasecmp(e, ".bin");   // the core's valid_extensions; no .ccd (it can't load CloneCD)
 }
 
 // "Metal Gear Solid (USA) (Disc 2) (Rev 1)" -> disc 2, group key
@@ -478,6 +479,30 @@ static void count_deep(const char *dir)
 	closedir(d);
 }
 
+// Folders the scan never opens: PSX3D's own (its playlists and states) and
+// the usual folders of other systems, whose disc images (.cue/.bin/.iso/.chd
+// of Sega CD, Saturn, PC Engine CD, PSP...) and cartridge .bin files would
+// otherwise show up as PS1 games when the games folder is e.g. sdmc:/roms.
+static bool skip_folder(const char *path, const char *name)
+{
+	static const char *const others[] = {
+		"segacd", "sega cd", "megacd", "mega cd", "mega-cd", "sega-cd", "saturn", "segasaturn", "sega saturn",
+		"dreamcast", "dc", "psp", "ps2", "ps3", "pce", "pcecd", "pce-cd", "pcengine", "pc engine", "pcenginecd",
+		"tg16", "tg-cd", "tgcd", "turbografx", "turbografx-16", "turbografx16", "3do", "cdi", "cd-i", "neogeo",
+		"neogeocd", "ngcd", "jaguar", "jaguarcd", "pcfx", "pc-fx", "gamecube", "gc", "ngc", "wii", "n64", "nes",
+		"snes", "sfc", "fds", "gb", "gbc", "gba", "nds", "3ds", "md", "genesis", "megadrive", "mega drive",
+		"sega32x", "32x", "mastersystem", "sms", "gamegear", "gg", "atari2600", "atari7800", "lynx", "a2600",
+		"a7800", "ngp", "ngpc", "wonderswan", "ws", "wsc", "msx", "c64", "amiga", "dos", "scummvm", "mame",
+		"fbneo", "arcade", "cps1", "cps2", "cps3", "vb", "virtualboy", "pokemini", "coleco", "intellivision",
+	};
+	if (!strcasecmp(path, PSX3D_DIR))
+		return true;
+	for (size_t i = 0; i < sizeof(others) / sizeof(others[0]); i++)
+		if (!strcasecmp(name, others[i]))
+			return true;
+	return false;
+}
+
 static void scan_dir(const char *dir, int depth)
 {
 	static u32 dir_seq;
@@ -519,6 +544,8 @@ static void scan_dir(const char *dir, int depth)
 			bool fits = snprintf(sub, sizeof(sub), "%s/%s", dir, ents[i].name) < (int)sizeof(sub);
 			if (!fits)
 				omit.folders++;
+			else if (skip_folder(sub, ents[i].name))
+				log_printf("library: skipped %s (not PS1 games)\n", sub);
 			else if (depth < MAX_DEPTH)
 				scan_dir(sub, depth + 1);
 			else
@@ -549,6 +576,78 @@ static void scan_free(void)
 	ncands = cands_cap = nrefs = refs_cap = 0;
 }
 
+// Is the disc image at path a PlayStation disc as far as one cheap read can
+// tell? ISO-9660 images (.iso/.img/.bin, and the first file of a .cue) need a
+// volume descriptor whose system is not a PSP; Sega CD/Saturn/Dreamcast discs
+// are recognised by their first sector; PBP files must hold a PS1 image.
+// .chd and .mdf are not opened (their folder names already filter them).
+static bool ps1_image_at(const char *path, int depth)
+{
+	const char *e = ext_of(path);
+	if (!strcasecmp(e, ".chd") || !strcasecmp(e, ".mdf") || !strcasecmp(e, ".m3u"))
+		return true;   // a playlist's discs are checked when they are listed on their own
+	FILE *f = fopen(path, "rb");
+	if (!f)
+		return true;   // can't tell: list it, the launch will say what's wrong
+	static u8 buf[2352 + 64];
+	bool ok = true;
+	if (!strcasecmp(e, ".cue")) {
+		// the first file the sheet names
+		static char cue[2048 + 1];
+		size_t n = fread(cue, 1, sizeof(cue) - 1, f);
+		fclose(f);
+		cue[n] = 0;
+		char *name = NULL;
+		for (char *l = cue; *l && !name; ) {
+			size_t len = strcspn(l, "\r\n");
+			char next = l[len];
+			l[len] = 0;
+			name = cue_name(l);
+			if (!next) break;
+			l += len + 1;
+		}
+		if (!name || !*name || depth)
+			return true;
+		char dir[PATH_LEN], track[PATH_LEN];
+		snprintf(dir, sizeof(dir), "%s", path);
+		char *slash = strrchr(dir, '/');
+		if (slash) *slash = 0;
+		if (name[0] == '/' || !strncasecmp(name, "sdmc:", 5))
+			snprintf(track, sizeof(track), "%s", name);
+		else if (snprintf(track, sizeof(track), "%s/%s", dir, name) >= (int)sizeof(track))
+			return true;
+		return ps1_image_at(track, depth + 1);
+	}
+	if (!strcasecmp(e, ".pbp")) {
+		// PBP header: the DATA.PSAR offset at 0x24; a PS1 eboot's PSAR starts "PSISOIMG" or "PSTITLEIMG"
+		u8 h[40];
+		u32 psar = 0;
+		if (fread(h, 1, 40, f) == 40 && !memcmp(h, "\0PBP", 4))
+			psar = h[36] | h[37] << 8 | h[38] << 16 | (u32)h[39] << 24;
+		ok = psar && !fseek(f, psar, SEEK_SET) && fread(buf, 1, 10, f) == 10 &&
+			(!memcmp(buf, "PSISOIMG", 8) || !memcmp(buf, "PSTITLEIMG", 10));
+		fclose(f);
+		return ok;
+	}
+	// first sector: Sega's discs say so (cooked, or after a raw sector header)
+	size_t n = fread(buf, 1, 64, f);
+	for (int off = 0; off <= 16 && n >= 64; off += 16)
+		if (!memcmp(buf + off, "SEGADISCSYSTEM", 14) || !memcmp(buf + off, "SEGA SEGASATURN", 15) ||
+		    !memcmp(buf + off, "SEGA SEGAKATANA", 15))
+			ok = false;
+	// sector 16: the primary volume descriptor, 2048-byte or raw 2352-byte sectors (mode 1 or 2)
+	bool pvd = false;
+	static const long at[3] = { 16 * 2048, 16 * 2352 + 16, 16 * 2352 + 24 };
+	for (int i = 0; i < 3 && ok && !pvd; i++)
+		if (!fseek(f, at[i], SEEK_SET) && fread(buf, 1, 40, f) == 40 && buf[0] == 1 && !memcmp(buf + 1, "CD001", 5)) {
+			pvd = true;
+			if (!memcmp(buf + 8, "PSP GAME", 8) || !memcmp(buf + 8, "UMD", 3))
+				ok = false;
+		}
+	fclose(f);
+	return ok && pvd;   // no file system at all: a cartridge or audio disc, not a PS1 game
+}
+
 static void scan_library(const char *root)
 {
 	scan_dir(root, 0);
@@ -557,8 +656,14 @@ static void scan_library(const char *root)
 	for (int i = 0; i < ncands; i++) {
 		char key[PATH_LEN], *k = key;
 		norm_path("", cands[i].path, key, sizeof(key));
-		if (!nrefs || !bsearch(&k, refs, nrefs, sizeof(refs[0]), cmp_ref))
-			add_disc(cands[i].dir_id, cands[i].path);
+		if (nrefs && bsearch(&k, refs, nrefs, sizeof(refs[0]), cmp_ref))
+			continue;
+		if (!ps1_image_at(cands[i].path, 0)) {
+			omit.notps1++;
+			log_printf("library: not a PS1 disc, left out: %s\n", cands[i].path);
+			continue;
+		}
+		add_disc(cands[i].dir_id, cands[i].path);
 	}
 	scan_free();
 	if (library_omitted())
@@ -589,17 +694,41 @@ static void fix_article(game_t *g)
 }
 
 // the "(...)" tags of a No-Intro name, minus the boring ones
+// Whole words only: "(It)" is a language, "(Italy)" is not, "(Demo)" is
+// interesting (an earlier prefix match hid "Italy" behind "It" and "Demo"
+// behind "De"). A tag is boring when every comma-separated item is.
+static bool boring_item(const char *t, size_t n)
+{
+	static const char *const boring[] = { "USA", "Europe", "Japan", "World", "En", "Fr", "De", "Es",
+		"It", "Pt", "Sv", "Nl", "Da", "No", "Fi", "Ja" };
+	for (size_t i = 0; i < sizeof(boring) / sizeof(boring[0]); i++)
+		if (n == strlen(boring[i]) && !strncasecmp(t, boring[i], n))
+			return true;
+	// "Rev 1", "Disc 2", "v1.1"
+	return (n >= 3 && !strncasecmp(t, "Rev", 3) && (n == 3 || t[3] == ' ')) ||
+		(n >= 4 && !strncasecmp(t, "Disc", 4) && (n == 4 || t[4] == ' ')) ||
+		(n >= 2 && (t[0] == 'v' || t[0] == 'V') && isdigit((unsigned char)t[1]));
+}
+
 static bool interesting_tag(const char *t, size_t n)
 {
-	static const char *const boring[] = { "USA", "Europe", "Japan", "World", "En", "Fr", "De",
-		"Es", "It", "Pt", "Sv", "Rev", "Disc", "v1", "Beta", "Demo" };
-	for (size_t i = 0; i < sizeof(boring) / sizeof(boring[0]); i++)
-		if (!strncasecmp(t, boring[i], strlen(boring[i])))
-			return false;
-	return n > 0;
+	bool any = false;
+	for (size_t i = 0; i < n; ) {
+		while (i < n && (t[i] == ',' || t[i] == ' ')) i++;
+		size_t j = i;
+		while (j < n && t[j] != ',') j++;
+		size_t k = j;
+		while (k > i && t[k - 1] == ' ') k--;
+		if (k > i && !boring_item(t + i, k - i))
+			any = true;
+		i = j;
+	}
+	return any;
 }
 
 // two different games with the same clean title: keep what tells them apart
+// (an interesting tag like "Demo" or "Italy"; else, for two regional copies,
+// their region, so "Resident Evil 2 (USA)" and "(Europe)" never look the same)
 static void disambiguate(void)
 {
 	for (int i = 0; i < ngames; i++)
@@ -607,20 +736,26 @@ static void disambiguate(void)
 			if (strcasecmp(games[i].title, games[j].title))
 				continue;
 			game_t *gs[2] = { &games[i], &games[j] };
+			char tags[2][128] = { "", "" }, region[2][64] = { "", "" };
 			for (int k = 0; k < 2; k++) {
 				const char *p = gs[k]->cover_key;
-				char tags[128] = "";
 				while ((p = strchr(p, '('))) {
 					const char *q = strchr(p, ')');
 					if (!q)
 						break;
-					if (interesting_tag(p + 1, q - p - 1) && !tags[0])
-						snprintf(tags, sizeof(tags), "%.*s", (int)(q - p - 1), p + 1);
+					if (interesting_tag(p + 1, q - p - 1) && !tags[k][0])
+						snprintf(tags[k], sizeof(tags[k]), "%.*s", (int)(q - p - 1), p + 1);
+					if (!region[k][0])   // the first tag of a No-Intro name is its region
+						snprintf(region[k], sizeof(region[k]), "%.*s", (int)(q - p - 1), p + 1);
 					p = q;
 				}
-				if (tags[0]) {
+			}
+			bool by_region = !tags[0][0] && !tags[1][0] && strcmp(region[0], region[1]);
+			for (int k = 0; k < 2; k++) {
+				const char *t = by_region ? region[k] : tags[k];
+				if (t[0]) {
 					char buf[PATH_LEN];
-					snprintf(buf, sizeof(buf), "%s (%s)", gs[k]->title, tags);
+					snprintf(buf, sizeof(buf), "%s (%s)", gs[k]->title, t);
 					replace_str(&gs[k]->title, buf);
 				}
 			}
@@ -884,6 +1019,64 @@ bool library_load(const char *root, bool rescan)
 	return ngames > 0;
 }
 
+bool library_is_ps1_image(const char *path) { return ps1_image_at(path, 0); }
+
+// The first file a game needs that isn't there: the disc itself, a track a
+// .cue names, or a disc a .m3u names (and that disc's tracks). out gets its
+// name; false when everything is present.
+bool library_missing_file(const char *path, char *out, size_t len)
+{
+	struct stat st;
+	if (stat(path, &st)) {
+		const char *s = strrchr(path, '/');
+		snprintf(out, len, "%s", s ? s + 1 : path);
+		return true;
+	}
+	const char *e = ext_of(path);
+	bool cue = !strcasecmp(e, ".cue");
+	if (!cue && strcasecmp(e, ".m3u"))
+		return false;
+	static char buf[REF_BYTES + 1];
+	FILE *f = fopen(path, "rb");
+	if (!f)
+		return false;
+	size_t n = fread(buf, 1, REF_BYTES, f);
+	fclose(f);
+	buf[n] = 0;
+	char *copy = strdup(buf);
+	if (!copy)
+		return false;
+	char dir[PATH_LEN];
+	snprintf(dir, sizeof(dir), "%s", path);
+	char *slash = strrchr(dir, '/');
+	if (slash)
+		*slash = 0;
+	bool missing = false;
+	for (char *l = copy; *l && !missing; ) {
+		size_t ll = strcspn(l, "\r\n");
+		char next = l[ll];
+		l[ll] = 0;
+		char *name = cue ? cue_name(l) : m3u_name(l);
+		if (name && *name) {
+			char ref[PATH_LEN];
+			if (name[0] == '/' || !strncasecmp(name, "sdmc:", 5))
+				snprintf(ref, sizeof(ref), "%s%s", name[0] == '/' ? "sdmc:" : "", name);
+			else
+				snprintf(ref, sizeof(ref), "%.250s/%.250s", dir, name);
+			if (stat(ref, &st)) {
+				snprintf(out, len, "%s", name);
+				missing = true;
+			} else if (!cue && !strcasecmp(ext_of(ref), ".cue"))
+				missing = library_missing_file(ref, out, len);
+		}
+		if (!next)
+			break;
+		l += ll + 1;
+	}
+	free(copy);
+	return missing;
+}
+
 // Path to start a game with: the disc itself, or for multi-disc games a
 // playlist (so the core can swap discs). NULL if the playlist could not be
 // written; the one from before is then left as it was, and the game must not
@@ -902,7 +1095,18 @@ const char *library_launch_path(const game_t *g, char *buf, size_t len)
 	for (const char *p = g->cover_key; *p && n < sizeof(safe) - 1; p++)
 		safe[n++] = (isalnum((unsigned char)*p) || *p == ' ' || *p == '-') ? *p : '_';
 	safe[n] = 0;
-	snprintf(buf, len, PSX3D_DIR "/m3u/%s.m3u", safe);
+	// names with non-ASCII letters (Japanese titles become "____") get a hash,
+	// so two such games never share one playlist
+	bool changed = false;
+	for (const char *p = g->cover_key; *p && !changed; p++)
+		changed = (u8)*p >= 0x80;
+	if (changed) {
+		u32 h = 2166136261u;
+		for (const char *p = g->cover_key; *p; p++)
+			h = (h ^ (u8)*p) * 16777619u;
+		snprintf(buf, len, PSX3D_DIR "/m3u/%s %08lx.m3u", safe, (unsigned long)h);
+	} else
+		snprintf(buf, len, PSX3D_DIR "/m3u/%s.m3u", safe);
 	FILE *f = safe_begin(buf);
 	if (!f) {
 		log_printf("library: cannot write %s\n", buf);

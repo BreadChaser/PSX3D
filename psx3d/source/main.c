@@ -103,19 +103,32 @@ static bool running_in_emulator(void)
 	return R_SUCCEEDED(svcGetSystemInfo(&out, 0x20000, 0)) && out > 0;
 }
 
+// A failure the player can act on: a title line, then what happened and what to do.
+static const ui_button_t error_bar[1] = { { KEY_A, "OK", 0, false } };
 static void draw_message(void *ud)
 {
-	ui_text(10, 10, 0.5f, C2D_Color32(255, 255, 255, 255), "%s", (const char *)ud);
-	ui_text(10, 200, 0.45f, C2D_Color32(170, 170, 180, 255), "Press any button");
+	const char *msg = ud, *nl = strchr(msg, '\n');
+	const theme_t *th = theme();
+	char title[96];
+	snprintf(title, sizeof(title), "%.*s", nl ? (int)(nl - msg) : (int)strlen(msg), msg);
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->menu_bg);
+	ui_menu_header(title, NULL);
+	if (nl)
+		ui_text_wrap(14, 44, 0.48f, th->help_text, 292, nl + 1);
+	ui_bar_draw(error_bar, 1);
 }
 
 static void show_error(const char *msg)
 {
 	log_printf("error: %s\n", msg);
+	bool released = false;
 	while (aptMainLoop()) {
 		input_poll();
-		if (input_keys_down())
+		u32 k = ui_header_back(ui_bar_input(error_bar, 1, input_keys_down()));
+		if (released && (k & (KEY_A | KEY_B)))
 			break;
+		if (!(input_keys_held() & (KEY_A | KEY_B | KEY_TOUCH)))
+			released = true;
 		ui_begin();
 		video_present_vsync(false, NULL, draw_message, (void *)msg);
 	}
@@ -405,7 +418,8 @@ int main(int argc, char **argv)
 	// PSX3D opens to the main menu (home.c). Its Library is the game library
 	// (needs a games folder); Settings > Games folder opens the folder browser,
 	// which is where a games folder gets picked.
-	bool use_library = g_cfg.games_dir[0] && library_load(g_cfg.games_dir, false);
+	// first run: look for the games instead of opening the folder browser
+	bool use_library = g_cfg.games_dir[0] ? library_load(g_cfg.games_dir, false) : library_guess_dir();
 	if (use_library && g_cfg.last_title[0])
 		libui_select_title(g_cfg.last_title);
 	bool at_home = true;
@@ -437,13 +451,13 @@ int main(int argc, char **argv)
 				log_printf("test: starting %s\n", picked->title);
 				dev_local_game();
 				if (!emu_run_game(path, picked->cover_key, picked->title))
-					show_error("Could not load that game.\nCheck sdmc:/3ds/PSX3D/log.txt");
+					show_error(emu_load_error());
 				if (aptShouldClose())
 					break;
 				continue;
 			}
 			if (picked)
-				show_error("Could not write the disc list for this game.\nIs the SD card full?");
+				show_error("Could not start the game\nPSX3D could not write the list of this game's discs. Is the SD card full or locked?");
 			else
 				log_printf("test: no game matches %s\n", want);
 			picked = NULL;
@@ -464,7 +478,7 @@ int main(int argc, char **argv)
 				at_home = false;
 				dev_local_game();
 				if (!emu_run_game(path, NULL, NULL))
-					show_error("Could not load that game.\nCheck sdmc:/3ds/PSX3D/log.txt");
+					show_error(emu_load_error());
 				if (aptShouldClose())
 					break;
 				continue;
@@ -475,7 +489,7 @@ int main(int argc, char **argv)
 			dev_local_game();
 			emu_continue_now = hl.resume;
 			if (!emu_run_game(path, hl.save[0] ? hl.save : NULL, hl.title[0] ? hl.title : NULL))
-				show_error("Could not load that game.\nCheck sdmc:/3ds/PSX3D/log.txt");
+				show_error(emu_load_error());
 			emu_continue_now = false;
 			if (aptShouldClose())
 				break;
@@ -484,6 +498,7 @@ int main(int argc, char **argv)
 		if (use_library) {
 			int r = libui_run(path, sizeof(path));
 			if (r == 3) continue;
+			if (r == 5) { use_library = false; continue; }   // a rescan found nothing: the empty-library screen
 			if (r == 4) { at_home = true; continue; }
 			if (r == 0)
 				break;
@@ -520,7 +535,7 @@ int main(int argc, char **argv)
 		// disc from the folder browser
 		dev_local_game();
 		if (!emu_run_game(path, picked ? picked->cover_key : NULL, picked ? picked->title : NULL))
-			show_error("Could not load that game.\nCheck sdmc:/3ds/PSX3D/log.txt");
+			show_error(emu_load_error());
 		if (aptShouldClose())
 			break;
 	}
