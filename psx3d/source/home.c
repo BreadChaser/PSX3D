@@ -431,11 +431,9 @@ static void draw_top(void *ud)
 	}
 	case E_LIBRARY:
 		if (have_games) cover_fan(cx, cy, size * 0.8f, 0.5f);
-		else empty_card(cx, cy, size * 0.8f, 0.5f);
 		break;
-	case E_HOST: case E_JOIN: draw_consoles(cx, cy, size / 100, 0.5f); break;
-	case E_SHARE: draw_consoles(cx, cy + size * 0.1f, size / 95, 0.5f); break;
-	default: icon_settings(cx, cy, size * 0.36f, theme()->value, MENU_BG, 0.5f); break;
+	default:   // owner: no drawn pictures up here until there are better ones
+		break;
 	}
 	if (!no_title)
 		big_title(title, line, ease);
@@ -852,7 +850,6 @@ static void empty_top(void *ud)
 	(void)ud;
 	libui_draw_backdrop();
 	C2D_DrawRectSolid(0, 0, 0.3f, 400, 240, theme_alpha(theme()->menu_bg, 70));
-	empty_card(200 + ui_depth(-1.0f), 92, 112, 0.5f);
 	big_title("No games yet", "Put PS1 games in " DEFAULT_GAMES_DIR " and press SELECT", 1);
 	top_common();
 	if (fade > 0.001f)
