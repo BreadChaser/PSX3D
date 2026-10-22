@@ -23,9 +23,9 @@ DATA = os.path.join(ROOT, "docs", "performance.json")
 README = os.path.join(ROOT, "README.md")
 THEMES = {
     "dark": dict(ink="#f0f6fc", ink2="#c9d1d9", muted="#8b949e", grid="#30363d", axis="#6e7681",
-                 off="#3987e5", auto="#d95926", tick="#f0f6fc"),
+                 off="#3987e5", auto="#f0884f", auto_bar=0.72, tick="#f0f6fc"),
     "light": dict(ink="#0b0b0b", ink2="#52514e", muted="#7a7974", grid="#e4e3df", axis="#8a8984",
-                  off="#2a78d6", auto="#eb6834", tick="#0b0b0b"),
+                  off="#2a78d6", auto="#eb6834", auto_bar=0.38, tick="#0b0b0b"),
 }
 FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
 W = 900
@@ -34,23 +34,29 @@ def svg(d, c):
     out = []
     def t(x, y, s, size=13, fill=c["ink"], anchor="start", weight="normal"):
         out.append(f'<text x="{x:.1f}" y="{y:.1f}" font-size="{size}" fill="{fill}" text-anchor="{anchor}" font-weight="{weight}">{escape(str(s))}</text>')
-    def bar(x, y, w, h, fill):
+    def bar(x, y, w, h, fill, opacity=1):
         if w <= 0: return
-        r = min(3, h / 2, w / 2)
-        out.append(f'<path d="M{x:.1f},{y:.1f} H{x+w-r:.1f} Q{x+w:.1f},{y:.1f} {x+w:.1f},{y+r:.1f} V{y+h-r:.1f} Q{x+w:.1f},{y+h:.1f} {x+w-r:.1f},{y+h:.1f} H{x:.1f} Z" fill="{fill}"/>')
+        r = min(4, h / 2, w / 2)
+        out.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h}" rx="{r:.1f}" fill="{fill}" fill-opacity="{opacity}"/>')
+    def pair(x, y, off, auto, unit):
+        # "88% · 98%": off in its colour, auto in its colour
+        out.append(f'<text x="{x:.1f}" y="{y:.1f}" font-size="11.5" font-weight="600" xml:space="preserve">'
+                   f'<tspan fill="{c["off"]}">{off:.0f}{unit}</tspan><tspan fill="{c["muted"]}"> · </tspan>'
+                   f'<tspan fill="{c["auto"]}">{auto:.0f}{unit}</tspan></text>')
     games = d["games"]
     LABEL_R = 190                     # right edge of game names
-    P1, P2 = 210, 560                 # panel starts
-    PW = 270                          # panel width
+    P1, P2 = 210, 572                 # panel starts
+    PW = 255                          # panel width
     y = 34
     t(24, y, d["title"], 20, weight="600"); y += 22
     for line in d["subtitle"].split("\n"):   # one text line each
         t(24, y, line, 12.5, c["ink2"]); y += 17
     y += 13
     # legend
-    for k, (label, col) in enumerate((("Frameskip off", c["off"]), ("Auto frameskip", c["auto"]))):
-        out.append(f'<rect x="{24 + k*150}" y="{y-10}" width="12" height="12" rx="2" fill="{col}"/>')
-        t(24 + k * 150 + 18, y, label, 12.5, c["ink2"])
+    bar(24, y - 7, 20, 6, c["off"])
+    t(50, y, "Frameskip off", 12.5, c["ink2"])
+    bar(160, y - 12, 20, 16, c["auto"], c["auto_bar"])
+    t(186, y, "Auto frameskip", 12.5, c["ink2"])
     y += 10
     shown = [("old", "Old 3DS")]
     for console, title in shown:
@@ -59,23 +65,26 @@ def svg(d, c):
         t(P1, y, "Speed", 13, c["ink2"], weight="600")
         t(P2, y, "FPS", 13, c["ink2"], weight="600")
         top = y + 14
-        rh, bh = 34, 11
+        rh, ah, oh = 30, 20, 8            # row, outer (Auto) and inner (off) bar heights
         for i, g in enumerate(games):
             r = g[console]; ry = top + i * rh
-            t(LABEL_R, ry + 18, g["name"], 13, anchor="end")
-            for k, mode in enumerate(("off", "auto")):
-                yy = ry + 4 + k * (bh + 2)
-                sp, fp = r[f"{mode}_speed"], r[f"{mode}_fps"]
-                col = c[mode]
-                bar(P1, yy, min(sp, 100) / 100 * PW, bh, col)
-                t(P1 + min(sp, 100) / 100 * PW + 6, yy + bh - 1, f"{sp:.0f}%", 11.5, weight="600")
-                fp = min(fp, g["native_fps"])      # counting jitter can read 30.3 / 60.6
-                bar(P2, yy, fp / 60 * PW, bh, col)
-                nx = P2 + g["native_fps"] / 60 * PW
-                lx = max(P2 + fp / 60 * PW, nx if fp > g["native_fps"] * 0.8 else 0) + 6
-                t(lx, yy + bh - 1, f"{fp:.0f}", 11.5, weight="600")
-            nx = P2 + g["native_fps"] / 60 * PW   # the game's own picture rate
-            out.append(f'<line x1="{nx:.1f}" y1="{ry+1}" x2="{nx:.1f}" y2="{ry+2*bh+7}" stroke="{c["tick"]}" stroke-width="2" stroke-dasharray="3 2"/>')
+            t(LABEL_R, ry + 19, g["name"], 13, anchor="end")
+            nat = g["native_fps"]
+            for P, scale, unit, key in ((P1, 100, "%", "speed"), (P2, 60, "", "fps")):
+                off, auto = r[f"off_{key}"], r[f"auto_{key}"]
+                if key == "fps":                 # counting jitter can read 30.3 / 60.6
+                    off, auto = min(off, nat), min(auto, nat)
+                wo, wa = min(off, scale) / scale * PW, min(auto, scale) / scale * PW
+                bar(P, ry + 4, wa, ah, c["auto"], c["auto_bar"])
+                bar(P, ry + 4 + (ah - oh) / 2, wo, oh, c["off"])
+                end = max(wo, wa)
+                if key == "fps":
+                    nx = P2 + nat / 60 * PW      # the game's own maximum FPS
+                    out.append(f'<line x1="{nx:.1f}" y1="{ry+1}" x2="{nx:.1f}" y2="{ry+ah+7}" stroke="{c["tick"]}" stroke-width="1.5" stroke-dasharray="3 2" stroke-opacity="0.7"/>')
+                    if nx - P < end + 60 and nx - P > end - 4:
+                        end = nx - P
+                pair(P + end + 7, ry + 18, r[f"off_{key}"] if key == "speed" else off,
+                     r[f"auto_{key}"] if key == "speed" else auto, unit)
         bottom = top + len(games) * rh
         for v in (0, 50, 100):
             x = P1 + v / 100 * PW
