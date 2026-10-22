@@ -10,6 +10,21 @@
 #define TH_RGBA(r, g, b, a) ((u32)(r) | ((u32)(g) << 8) | ((u32)(b) << 16) | ((u32)(a) << 24))
 #define TH_RGB(r, g, b) TH_RGBA(r, g, b, 255)
 
+// Colours the mock-up's palettes never change: they are the same in every theme.
+#define TH_CARD_TOP      TH_RGB(20, 26, 60)       // cover placeholder card, top
+#define TH_CARD_BOTTOM   TH_RGB(8, 10, 28)        // ... bottom
+#define TH_CARD_INK      TH_RGB(220, 225, 245)    // ... initial
+#define TH_COVER_SHADOW  TH_RGBA(0, 0, 0, 110)    // drop shadow behind covers
+#define TH_TITLE_SHADOW  TH_RGBA(0, 0, 0, 255)    // library title shadow (alpha scaled by the caller)
+#define TH_VERSION_INK   TH_RGBA(150, 160, 200, 160)   // "v0.5.0" in the library corner
+#define TH_SLOT_VEIL     TH_RGBA(4, 6, 18, 225)   // save state picker, top screen
+#define TH_SLOT_FRAME    TH_RGB(10, 12, 30)       // ... preview frame
+#define TH_SLOT_CARD     TH_RGB(18, 22, 48)       // ... slot thumbnail card
+#define TH_SLOT_DIM      TH_RGBA(6, 9, 24, 90)    // ... unselected thumbnail veil
+#define TH_SLOT_WHITE    TH_RGB(235, 238, 255)    // ... selected text
+#define TH_SLOT_DIM_INK  TH_RGB(110, 120, 160)    // ... other text
+#define TH_SKY_FALLBACK  TH_RGB(16, 2, 44)        // library sky when its texture is missing
+
 typedef struct {
 	const char *id, *name;       // config.ini value, name shown in Settings (the mock's palette name)
 	u32 menu_bg;                 // menu pages (bottom screen, plain top screens)
