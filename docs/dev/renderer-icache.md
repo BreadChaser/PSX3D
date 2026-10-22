@@ -30,6 +30,15 @@ Clipped polygons also fetch the existing slow decoder, emit/clip paths and
 rounding helpers. Full per-format/function and source-line tables are in
 `map-base/` and `map-cliploop/` (`summary.md`, `summary.json`, `lines.tsv`).
 
+The weighted function map (`map-base/function-weighted.md`) puts the shared
+polygon decoder at 42.51/112.88 lines in GT2, 51.16/104.36 in Tekken,
+50.37/108.81 in CTR and 49.21/121.33 in R4. Clipping itself accounts for
+7.98, 2.06, 5.63 and 6.22 lines respectively. Even removing all clipping
+would leave most of the footprint. These boundaries include draw-handler
+callees, but exclude caller-side gpulib dispatch, frontend work and real
+citro3d code; the hardware renderer PMU and whole-frame speed gates cover
+costs the simulator map omits.
+
 ## Experiments prepared offline
 
 These are candidates, not accepted speed improvements. Each production build and
@@ -123,3 +132,10 @@ to 116.80 lines and Tekken from 104.36 to 108.53. Adding `flatten` keeps helper
 calls inline but still grows GT2 to 114.85 lines and Tekken to 107.87. Both
 experiments are rejected offline, without a hardware speed claim. A smaller
 function body is not sufficient when its callers fetch more code overall.
+
+
+Combining the texture memo's generation/epoch/key/window equality tests with
+bitwise XOR/OR also fails the footprint screen: GT2 112.88 →112.50 lines,
+but Tekken104.36 →105.40, R4 121.33 →122.21 and CTR108.81 →109.07. Klonoa
+improves158.35 →155.97; instructions barely change. That mixed result does not
+justify a separate hardware install (`gpu-memokey.c`, `map-memokey/`).
