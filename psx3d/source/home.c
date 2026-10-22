@@ -117,24 +117,39 @@ static void together_at(float x, float y, float w, float h)
 	tiles[ntiles++] = (tile_t){ E_JOIN, K_SUB, x + 12 + bw, y + 30, bw, h - 36 };
 }
 
+// Play together arrives with multiplayer (v0.6): until then the tile is not
+// shown and the main menu is Continue, Library, Share PSX3D and Settings.
+#define HOME_PLAY_TOGETHER 0
+
 static void layout(void)
 {
 	ntiles = 0;
 	have_group = false;
-	if (!have_games) {
-		// a friend who just installed PSX3D: joining needs no games
-		tiles[ntiles++] = (tile_t){ E_JOIN, K_HERO, 8, 8, 304, 94 };
-		tiles[ntiles++] = (tile_t){ E_LIBRARY, K_MID, 8, 108, 304, 76 };
-	} else if (cont_ok) {
+	if (HOME_PLAY_TOGETHER) {
+		if (!have_games) {
+			// a friend who just installed PSX3D: joining needs no games
+			tiles[ntiles++] = (tile_t){ E_JOIN, K_HERO, 8, 8, 304, 94 };
+			tiles[ntiles++] = (tile_t){ E_LIBRARY, K_MID, 8, 108, 304, 76 };
+		} else if (cont_ok) {
+			tiles[ntiles++] = (tile_t){ E_CONTINUE, K_HERO, 8, 8, 304, 94 };
+			tiles[ntiles++] = (tile_t){ E_LIBRARY, K_MID, 8, 108, 149, 76 };
+			together_at(163, 108, 149, 76);
+		} else {
+			tiles[ntiles++] = (tile_t){ E_LIBRARY, K_HERO, 8, 8, 304, 94 };
+			together_at(8, 108, 304, 76);
+		}
+		tiles[ntiles++] = (tile_t){ E_SHARE, K_SMALL, 8, 190, 149, 42 };
+		tiles[ntiles++] = (tile_t){ E_SETTINGS, K_SMALL, 163, 190, 149, 42 };
+	} else if (have_games && cont_ok) {
 		tiles[ntiles++] = (tile_t){ E_CONTINUE, K_HERO, 8, 8, 304, 94 };
-		tiles[ntiles++] = (tile_t){ E_LIBRARY, K_MID, 8, 108, 149, 76 };
-		together_at(163, 108, 149, 76);
+		tiles[ntiles++] = (tile_t){ E_LIBRARY, K_MID, 8, 108, 304, 76 };
+		tiles[ntiles++] = (tile_t){ E_SHARE, K_SMALL, 8, 190, 149, 42 };
+		tiles[ntiles++] = (tile_t){ E_SETTINGS, K_SMALL, 163, 190, 149, 42 };
 	} else {
-		tiles[ntiles++] = (tile_t){ E_LIBRARY, K_HERO, 8, 8, 304, 94 };
-		together_at(8, 108, 304, 76);
+		tiles[ntiles++] = (tile_t){ E_LIBRARY, K_HERO, 8, 8, 304, 136 };
+		tiles[ntiles++] = (tile_t){ E_SHARE, K_MID, 8, 152, 149, 80 };
+		tiles[ntiles++] = (tile_t){ E_SETTINGS, K_MID, 163, 152, 149, 80 };
 	}
-	tiles[ntiles++] = (tile_t){ E_SHARE, K_SMALL, 8, 190, 149, 42 };
-	tiles[ntiles++] = (tile_t){ E_SETTINGS, K_SMALL, 163, 190, 149, 42 };
 }
 
 static int sel_index(void)
@@ -503,10 +518,6 @@ static void draw_tile(const tile_t *t, bool lit, int i)
 	} else {
 		tile_icon(t->id, x + 20, y + h / 2, 10, ink, hole, 0.4f);
 		ui_text_ex(NULL, x + 38, y + (h - 15) / 2, 0.45f, ink, 0, label(t->id));
-		if (t->id == E_SETTINGS) {   // X opens it too: show the letter
-			C2D_DrawRectSolid(x + w - 20, y + h / 2 - 6, 0.4f, 12, 12, C2D_Color32(47, 111, 196, 255));
-			ui_text_ex(NULL, x + w - 14, y + h / 2 - 7.5f, 0.36f, C2D_Color32(255, 255, 255, 255), C2D_AlignCenter, "X");
-		}
 	}
 }
 
@@ -870,7 +881,8 @@ static void empty_bottom(void *ud)
 		ui_text_ex(NULL, 40, y, 0.48f, white, 0, steps[i]);
 	}
 	ui_text_ex(NULL, 14, 132, 0.4f, muted, 0, ".cue + .bin, .chd, .pbp, .iso, .m3u");
-	ui_text_wrap(14, 156, 0.4f, muted, 292, "No games? You can still join a friend: B, then Play together.");
+	if (HOME_PLAY_TOGETHER)
+		ui_text_wrap(14, 156, 0.4f, muted, 292, "No games? You can still join a friend: B, then Play together.");
 	if (empty_msg_frames > 0)
 		ui_text_ex(NULL, 8, 186, 0.4f, th->message, 0, ui_fit(empty_msg, 0.4f, 304));
 	ui_bar_draw(empty_bar, 3);
