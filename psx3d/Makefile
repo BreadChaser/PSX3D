@@ -76,7 +76,7 @@ LDFLAGS += -Wl,--wrap=C3D_UpdateUniforms,--wrap=C3Di_LoadShaderUniforms,--wrap=C
 LDFLAGS += -Wl,--wrap=C3D_DrawArrays,--wrap=GX_TextureCopy
 # Real 3D draw-order layers (gpustereo_layers.c) hook into the existing code
 LDFLAGS += -Wl,--wrap=gs_shift,--wrap=gs_core_frame,--wrap=gs_core_alloc,--wrap=gs_core_clear,--wrap=gs_core_free
-LDFLAGS += -Wl,--wrap=gpustereo_status,--wrap=pica_picture
+LDFLAGS += -Wl,--wrap=gpustereo_status,--wrap=pica_picture,--wrap=gs_flat
 
 LIBS	:= $(CORELIB) -lcitro2d -lcitro3d -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lpng16 -lz -lctru -lm
 

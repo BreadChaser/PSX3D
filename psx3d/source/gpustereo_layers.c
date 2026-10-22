@@ -97,6 +97,13 @@ static bool lmap_used;
 static struct lsegent { uint32_t key; unsigned pass; uint8_t last, now; } *lsegs, *lsegcur;   // LAY_SEGS
 static float lblend;                 // 0: layers .. 1: Real 3D
 static bool lflat;                   // the picture shown has nothing to separate
+// Screen depth instead of layers (the fallback of frames without polygon
+// depth, gpustereo_core.c): for pictures with nothing to separate (logos,
+// text on black, a still) and movies the frontend shows itself. 0: layers
+// .. 1: screen depth, faded over LAY_SCREEN_FADE frames.
+#define LAY_SCREEN_FADE 12
+static float lscreen;
+static bool lnotgpu;                 // the last picture shown wasn't drawn by the GPU (a 24-bit movie)
 static unsigned ltris, ldepth;       // triangles this frame, those with a GTE depth
 
 // Until a buffer's first pass has been measured (and for drawing outside
@@ -129,6 +136,8 @@ static void lay_reset(void)
 	lkind = -1;
 	lblend = 0;
 	lflat = false;
+	lscreen = 0;
+	lnotgpu = false;
 	ltris = ldepth = 0;
 }
 
@@ -452,6 +461,9 @@ GS_COLD void __wrap_gs_core_frame(float strength, int hres)
 {
 	__real_gs_core_frame(strength, hres);
 	lstrength = strength;
+	float want = lnotgpu || gs_picture_flat() ? 1 : 0;
+	lscreen += want > lscreen ? 1.0f / LAY_SCREEN_FADE : want < lscreen ? -1.0f / LAY_SCREEN_FADE : 0;
+	lscreen = lscreen < 0.01f ? 0 : lscreen > 0.99f ? 1 : lscreen;
 	lhres = hres > 0 ? hres : 320;
 }
 
@@ -463,7 +475,7 @@ int __wrap_gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 	if (!lcell || lstrength <= 0)
 		return moved;
 	float a = gs_focus() > 0 ? lblend : 0;
-	float k = 16 * LAY_MAX * lhres / 320.0f * lstrength * (1 - a);
+	float k = 16 * LAY_MAX * lhres / 320.0f * lstrength * (1 - a) * (1 - lscreen);
 	moved = 0;
 	for (int t = 0; t + 3 <= n; t += 3) {
 		gs_vtx *d = &dst[t];
@@ -514,11 +526,22 @@ int __real_pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, f
 int __wrap_pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h)
 {
 	int pic = __real_pica_picture(tex, l, t, r, b, w, h);
+	lnotgpu = pic != PICA_PIC_GPU;
 	if (pic == PICA_PIC_GPU && lcell && lstrength > 0 && ldrew) {
 		// once per picture: both eyes and thumbnails ask again
 		ldrew = false;
 		gs_core_shown((int)lrintf(*l * 1024), (int)lrintf((1 - *t) * 512), (int)*w, (int)*h);
 	}
 	return pic;
+}
+
+// How much of the 3D effect is screen depth (video.c). Without polygon
+// depth (gpustereo_core.c's gs_flat) the layers take over, except for
+// pictures with nothing to separate and movies: there screen depth stays.
+float __real_gs_flat(void);
+float __wrap_gs_flat(void)
+{
+	float f = __real_gs_flat();
+	return lcell && lstrength > 0 ? f * lscreen : f;
 }
 #endif
