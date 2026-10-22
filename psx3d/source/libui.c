@@ -617,18 +617,19 @@ static const char *game_label(int r, void *ud)
 	return ui_fit(entry_title(e), 0.5f, entry_series(e) >= 0 ? 238 : favourite(entry_game(e)) ? 256 : 276);
 }
 
-// "Today", "3 days ago", "Oct 13"
+// "Today", "3 days ago", "Oct 13". The 3DS clock is local time, so whole
+// days of the timestamps are calendar days (gmtime: no time zone to apply).
 static void ago(char *out, size_t len, u32 when)
 {
 	time_t now = time(NULL), t = when;
-	struct tm a = *localtime(&now), b = *localtime(&t);
-	long days = (long)(mktime(&(struct tm){ .tm_year = a.tm_year, .tm_mon = a.tm_mon, .tm_mday = a.tm_mday, .tm_hour = 12 }) -
-		mktime(&(struct tm){ .tm_year = b.tm_year, .tm_mon = b.tm_mon, .tm_mday = b.tm_mday, .tm_hour = 12 })) / 86400;
+	long days = (long)(now / 86400) - (long)(t / 86400);
 	static const char *const mon[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+	struct tm *b = gmtime(&t);
 	if (days <= 0) snprintf(out, len, "Today");
 	else if (days == 1) snprintf(out, len, "Yesterday");
 	else if (days < 7) snprintf(out, len, "%ld days ago", days);
-	else snprintf(out, len, "%s %d", mon[b.tm_mon], b.tm_mday);
+	else if (b) snprintf(out, len, "%s %d", mon[b->tm_mon % 12], b->tm_mday);
+	else out[0] = 0;
 }
 
 static const char *game_value(int r, void *ud)

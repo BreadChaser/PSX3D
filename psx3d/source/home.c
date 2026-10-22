@@ -51,9 +51,10 @@ static void pick_covers(void)
 	npicks = 0;
 	if (n <= 0)
 		return;
-	srand((unsigned)time(NULL));
+	u32 seed = (u32)svcGetSystemTick();   // a small generator of our own: no new library code
 	while (npicks < 3 && npicks < n) {
-		int g = rand() % n, dup = 0;
+		seed = seed * 1664525u + 1013904223u;
+		int g = (int)((seed >> 8) % (u32)n), dup = 0;
 		for (int i = 0; i < npicks; i++)
 			dup |= picks[i] == g;
 		if (!dup)
@@ -308,7 +309,6 @@ static void cover_card(int game, float cx, float cy, float size, float angle, fl
 	}
 	float x = cx - size / 2, y = cy - size / 2;
 	u8 d = (u8)(255 * (1 - dim));
-	const theme_t *th = theme();
 	C2D_DrawRectangle(x, y, z, size, size, TH_CARD_TOP, TH_CARD_TOP, TH_CARD_BOTTOM, TH_CARD_BOTTOM);
 	C2D_DrawRectSolid(x, y + size - 6, z + 0.001f, size, 6, accent(game, 255));
 	char initial[2] = { g->title[0], 0 };
