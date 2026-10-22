@@ -9,7 +9,7 @@
 # ImageMagick (`magick` or `convert`). Logs go to $HOST_TEST_OUT (default: a temp dir).
 set -uo pipefail
 cd "$(dirname "$0")/../.."
-out=${HOST_TEST_OUT:-$(mktemp -d /tmp/psx3d-host-tests.XXXXXX)}
+out=${HOST_TEST_OUT:-$(mktemp -d "${TMPDIR:-/tmp}/psx3d-host-tests.XXXXXX")}
 mkdir -p "$out"
 if ! command -v magick >/dev/null 2>&1; then   # ImageMagick 6 only ships `convert`
 	mkdir -p "$out/bin"
@@ -20,6 +20,9 @@ fi
 filter=${1:-}
 passed=0
 failed=()
+skipped=()
+# Exit 77 is a missing prerequisite, never a pass. Local opt-out is explicit.
+allow_skips=${HOST_TEST_ALLOW_SKIPS:-0}
 
 # The gcc-12 AddressSanitizer in the pinned image crashes at random (an endless stream of
 # "AddressSanitizer:DEADLYSIGNAL") on kernels with high-entropy ASLR (vm.mmap_rnd_bits=32:
@@ -38,6 +41,13 @@ run() { # run <name> <command...>
 		passed=$((passed + 1))
 		printf 'PASS %3ds  %s\n' $((SECONDS - start)) "$name"
 	else
+		local rc=$?
+		if [[ $rc == 77 ]]; then
+			skipped+=("$name")
+			printf "SKIP %3ds  %s\n" $((SECONDS - start)) "$name"
+			cat "$out/$name.log"
+			return 0
+		fi
 		failed+=("$name")
 		printf 'FAIL %3ds  %s\n' $((SECONDS - start)) "$name"
 		tail -n 40 "$out/$name.log" | sed 's/^/     | /'
@@ -64,6 +74,7 @@ run save-safety      bash psx3d/tests/save/run.sh
 run save-names       bash psx3d/tests/saveid/run.sh
 run c3d-abi          bash tests/c3d_abi/run.sh
 run covers-worker    python3 psx3d/tests/covers/worker.py
+run core-microtests bash tests/core/run.sh
 # Core/renderer/video code extracted from the sources and run on the host.
 run video-scanout    python3 psx3d/tests/vout/check.py
 run video-teardown   python3 tools/frontend-overhead/library_check.py
@@ -71,5 +82,10 @@ run gpu-reference    env BUILD_DIR="$out/gpu" bash tools/gpu-compare/regress.sh
 run pica-layout      env PICA_LAYOUT_CHECK_OUT="$out/pica-layout" bash tools/pica-layout/check.sh
 
 echo
-echo "$passed passed, ${#failed[@]} failed (logs: $out)"
+echo "$passed passed, ${#failed[@]} failed, ${#skipped[@]} skipped (logs: $out)"
 [[ ${#failed[@]} -eq 0 ]] || { echo "failed: ${failed[*]}"; exit 1; }
+
+if (( ${#skipped[@]} )) && [[ $allow_skips != 1 ]]; then
+ echo "skipped suites fail this run: ${skipped[*]} (local opt-out: HOST_TEST_ALLOW_SKIPS=1)" >&2
+ exit 1
+fi

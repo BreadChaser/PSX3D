@@ -122,9 +122,10 @@ host:
 | `renderer-config`, `widescreen`, `presets` | config/options/gamecfg code; widescreen bundles including every shipped `.ws`; preset files and v0.4.1 equivalence (`tools/presets/check.py`) |
 | `statsview`, `audio-resampler`, `frameskip` | the stats formatter, audio resampler and frameskip controller |
 | `input-replay` | the clip codec, input, analog and checkpoint handling |
-| `dev-server` (`psx3d/tests/dev`) | developer server lifecycle, a loopback TCP transport and the updater guards (the Python client half needs `psx3dctl.py` and `fastbench.py` from the untracked `devtools/` and is skipped without them) |
+| `dev-server` (`psx3d/tests/dev`) | developer server lifecycle, a loopback TCP transport and the updater guards (including the tracked Python control client and benchmark driver) |
 | `covers`, `covers-worker` | the cover PNG decoder on generated images and the download worker against a loopback HTTP server |
 | `library`, `save-safety`, `save-names` | library scanner, crash-safe save/state/card files with backups, save-name ownership (`psx3d/tests/{library,save,saveid}`) |
+| `core-microtests` | real ARMv6 dynarec vs interpreter, load-delay/memory/SMC/GTE programs and HLE determinism; qemu-arm, no ROM/BIOS (`tests/core/README.md`) |
 | `c3d-abi` | the private citro3d structure layout PSX3D relies on |
 | `video-scanout`, `video-teardown` | `vout_flip` from `core/frontend/libretro.c` and `video_game_end` from `video.c`, extracted and run with fakes |
 | `gpu-reference`, `pica-layout` | `gpu_pica.c` against the independent software rasteriser; baseline and split layouts must draw identically |
@@ -241,3 +242,7 @@ For a new release, first run `tools/perfchart/perfchart.py --version vX.Y.Z`.
 verified measurement; plain `tools/perfchart/perfchart.py` regenerates all
 outputs. The importer reads game speed from `speed_pct` and shown pictures per
 second from `top_count`, choosing off or auto from the benchmark request.
+
+Host suites returning 77 are reported as SKIP and fail the aggregate run.
+For a deliberate local partial run only, set `HOST_TEST_ALLOW_SKIPS=1`; CI
+forces this to 0 and installs the ARM Linux cross compiler and qemu-user.

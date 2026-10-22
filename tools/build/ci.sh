@@ -39,7 +39,7 @@ build() {
 }
 
 layout() { bash tools/layout/check.sh; }
-host_tests() { HOST_TEST_OUT="$out/host-tests" bash tools/build/host-tests.sh; }
+host_tests() { HOST_TEST_ALLOW_SKIPS=0 HOST_TEST_OUT="$out/host-tests" bash tools/build/host-tests.sh; }
 
 case $step in
 toolchain) toolchain ;;

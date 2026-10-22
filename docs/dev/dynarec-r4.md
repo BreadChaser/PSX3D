@@ -178,7 +178,7 @@ CP2/PC/cycle checkpoints, IRQ/exception trace digests, serialized state
 
 ### 4.3 Microtests
 
-`tools/dynarec-r4/microtest.c`, run as
+`tests/core/memory.c`, run as
 `microtest "<Crash cue>" 1 - o3hw_off.ini` (`E/mt-v2.log`; final source
 `E/mt-v3.log`, self-check `E/selfcheck3/`, same results):
 

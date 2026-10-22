@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
 
-HOST_TOOLS = Path(os.environ.get('PSX3D_HOST_TOOLS', '/home/tony/Development/PS1_3ds/devtools'))
+HOST_TOOLS = Path(os.environ.get('PSX3D_HOST_TOOLS', str(Path(__file__).resolve().parents[3] / 'tools/input-replay')))
 sys.path.insert(0, str(HOST_TOOLS))
 from psx3dctl import Client, ControlError
 import fastbench

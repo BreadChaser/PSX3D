@@ -9,13 +9,13 @@ cc -D_GNU_SOURCE -std=gnu11 -Wall -Wextra -Werror -Wno-format-truncation -fsanit
 
 cc -D_GNU_SOURCE -std=gnu11 -Wall -Wextra -Werror -Wno-format-truncation -fsanitize=address,undefined \
   -I"$ROOT/core/deps/libretro-common/include" -I"$ROOT/psx3d/tests/dev" -g "$ROOT/psx3d/tests/dev/transport.c" $(pkg-config --cflags --libs libpng) -pthread -I"$ROOT/psx3d/source" "$ROOT/psx3d/source/clip.c" "$ROOT/psx3d/source/benchstate.c" "$ROOT/tools/input-replay/mock-core.c" -lz -lcrypto -o "$TMP/transport"
-# The client half imports psx3dctl.py and fastbench.py from the maintainer's untracked
-# devtools/ (tools/input-replay/ only wraps them). Without them it cannot run: say so.
-HOST_TOOLS=${PSX3D_HOST_TOOLS:-/home/tony/Development/PS1_3ds/devtools}
+# The tracked client and benchmark driver also exercise the real TCP protocol.
+HOST_TOOLS=${PSX3D_HOST_TOOLS:-$ROOT/tools/input-replay}
 if [[ -f $HOST_TOOLS/psx3dctl.py && -f $HOST_TOOLS/fastbench.py ]]; then
   (cd "$TMP" && python3 "$ROOT/psx3d/tests/dev/client_test.py" "$TMP/transport")
 else
-  echo "SKIPPED client_test.py: psx3dctl.py and fastbench.py not found in $HOST_TOOLS (set PSX3D_HOST_TOOLS)"
+  echo "SKIP client_test.py: psx3dctl.py and fastbench.py not found in $HOST_TOOLS (set PSX3D_HOST_TOOLS)"
+  exit 77
 fi
 cc -D_GNU_SOURCE -std=gnu11 -Wall -Wextra -Werror -Wno-format-truncation -fsanitize=address,undefined \
   -I"$ROOT/psx3d/tests/dev" -g "$ROOT/psx3d/tests/dev/update.c" -lcrypto -o "$TMP/update"

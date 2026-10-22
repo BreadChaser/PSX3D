@@ -8370,7 +8370,9 @@ static noinline void pass1a_disassemble(struct compile_state *st, u_int pagelimi
     dops[i].is_jump  = type == RJUMP || type == UJUMP || type == CJUMP || type == SJUMP;
     dops[i].is_ujump = type == RJUMP || type == UJUMP;
     dops[i].is_load  = type == LOAD || type == LOADLR || op == 0x32; // LWC2
-    dops[i].is_delay_load = (dops[i].is_load || (st->source[i] & 0xf3d00000) == 0x40000000); // MFC/CFC
+    // Decode the COP read, not rt: bit 20 belongs to r16-r31 and
+    // rs bit 22 selects CFC2. Both reads have an architectural load delay.
+    dops[i].is_delay_load = dops[i].is_load || (st->source[i] & 0xf3a00000) == 0x40000000; // MFC/CFC
     dops[i].is_store = type == STORE || type == STORELR || op == 0x3a; // SWC2
     dops[i].is_exception = type == SYSCALL || type == HLECALL || type == INTCALL;
     dops[i].may_except = dops[i].is_exception || (type == ALU && (op2 == 0x20 || op2 == 0x22)) || op == 8;

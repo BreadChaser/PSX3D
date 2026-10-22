@@ -37,7 +37,7 @@ jobs:
 
       # The image's gcc-12 AddressSanitizer crashes at random on the runner kernel's
       # high-entropy ASLR (vm.mmap_rnd_bits=32); the container cannot turn ASLR off itself.
-      - name: Host tests (no ROMs)
+      - name: Host and ARM core tests (no ROMs, no skipped suites)
         if: ${{ !cancelled() }}
         run: |
           sudo sysctl -w vm.mmap_rnd_bits=28 || true

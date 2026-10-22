@@ -12,7 +12,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 apt-get -o APT::Sandbox::User=root update -qq
 apt-get -o APT::Sandbox::User=root install -y --no-install-recommends \
-	ca-certificates fontconfig fonts-dejavu-core imagemagick libcurl4-openssl-dev \
+	gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc6-dev-armhf-cross qemu-user rsync ca-certificates fontconfig fonts-dejavu-core imagemagick libcurl4-openssl-dev \
 	libfreetype-dev libpng-dev librsvg2-bin libssl-dev pkg-config zlib1g-dev
 rm -rf /var/lib/apt/lists/*
 

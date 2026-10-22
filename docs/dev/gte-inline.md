@@ -205,3 +205,8 @@ Code commits: `8f8aaf9`, `111f812`, `a5fb4d2`, `3a054d8`, `e47e20a`. Skip identi
 `e47e20a` after the earlier code commits: the net production change is only
 the ARMv6-compatible integer NCCT path and the recomputed dynarec pad. No push or
 publication was performed.
+
+The tracked regression is `tests/core/gte.c`; run `bash tests/core/run.sh`
+(no ROM or BIOS). CI compares the production dynarec to the interpreter and
+repeats each program to check cycle determinism. Research mode switches and
+the private original-codegen oracle are not required.
