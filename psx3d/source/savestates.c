@@ -253,6 +253,19 @@ static void draw_top(void *ud)
 	ui_text_ex(NULL, 200 + dx, 215, 0.5f, white, C2D_AlignCenter, line);
 }
 
+// B Back, X Delete (a used slot), A Save / Load (nothing to load: no A)
+static int states_bar(const browser_t *b, ui_button_t *out)
+{
+	const slot_t *s = &b->slot[b->sel];
+	int n = 0;
+	out[n++] = (ui_button_t){KEY_B, b->confirm ? "Cancel" : "Back", 0, false};
+	if (s->used)
+		out[n++] = (ui_button_t){KEY_X, "Delete", 0, false};
+	if (b->saving || s->used)
+		out[n++] = (ui_button_t){KEY_A, b->saving ? "Save" : "Load", 0, false};
+	return n;
+}
+
 static void draw_bottom(void *ud)
 {
 	browser_t *b = ud;
@@ -310,9 +323,8 @@ static void draw_bottom(void *ud)
 	ui_text_ex(NULL, 160, 180, 0.5f, b->confirm ? theme()->message : white,
 		C2D_AlignCenter, line);
 
-	const char *hint = b->saving ? (s->used ? "A save    X delete    B back" : "A save    B back")
-	                             : (s->used ? "A load    X delete    B back" : "B back");
-	ui_text_ex(NULL, 160, 222, 0.42f, dim, C2D_AlignCenter, hint);
+	ui_button_t bar[3];
+	ui_bar_draw(bar, states_bar(b, bar));
 }
 
 // ---------------------------------------------------------------- run
@@ -339,7 +351,8 @@ int states_run(bool saving, const char *prefix, const char *title, int *slot)
 	while (aptMainLoop()) {
 		if (dev_tick(true) || dev_ui_pending()) break;
 		input_poll();
-		u32 k = input_keys_down();
+		ui_button_t bar[3];
+		u32 k = ui_header_back(ui_bar_input(bar, states_bar(&b, bar), input_keys_down()));
 		int before = b.sel;
 
 		if (k & KEY_RIGHT) b.sel = (b.sel + 1) % SLOTS;
@@ -437,14 +450,16 @@ static void resume_top(void *ud)
 	ui_text_ex(NULL, 200 + dx, 215, 0.5f, C2D_Color32(240, 242, 255, 255), C2D_AlignCenter, line);
 }
 
+static const ui_button_t resume_bar[2] = { { KEY_B, "Start game", 0, false }, { KEY_A, "Continue", 0, false } };
+
 static void resume_bottom(void *ud)
 {
 	(void)ud;
 	const theme_t *th = theme();
 	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->menu_bg);
-	ui_text_ex(libui_font(), 160, 70, 0.6f, C2D_Color32(235, 238, 255, 255), C2D_AlignCenter, "Continue?");
-	ui_text_ex(NULL, 160, 120, 0.5f, th->game_sub, C2D_AlignCenter, "A  pick up where you left off");
-	ui_text_ex(NULL, 160, 145, 0.5f, th->game_sub, C2D_AlignCenter, "B  start the game");
+	ui_text_ex(libui_font(), 160, 70, 0.6f, th->header_title, C2D_AlignCenter, "Continue?");
+	ui_text_wrap(30, 112, 0.5f, th->help_text, 260, "Pick up where you left off, or start the game from the beginning.");
+	ui_bar_draw(resume_bar, 2);
 }
 
 // The game was auto-saved when it was last closed: offer to continue.
@@ -466,13 +481,7 @@ bool states_resume_prompt(const char *prefix)
 	while (aptMainLoop()) {
 		dev_tick_keys();
 		input_poll();
-		u32 k = input_keys_down();
-		if (k & KEY_TOUCH) {
-			touchPosition tp;
-			hidTouchRead(&tp);
-			if (tp.py >= 110 && tp.py < 135) k |= KEY_A;
-			if (tp.py >= 135 && tp.py < 160) k |= KEY_B;
-		}
+		u32 k = ui_bar_input(resume_bar, 2, input_keys_down());
 		if (k & KEY_A) { resume = true; sfx_play(SFX_SELECT); break; }
 		if (k & KEY_B) { sfx_play(SFX_BACK); break; }
 		ui_begin();

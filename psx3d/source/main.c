@@ -403,8 +403,8 @@ int main(int argc, char **argv)
 	dev_init();
 
 	// PSX3D opens to the main menu (home.c). Its Library is the game library
-	// (needs a games folder); Y there switches to the folder browser, which
-	// also is where a games folder gets picked.
+	// (needs a games folder); Settings > Games folder opens the folder browser,
+	// which is where a games folder gets picked.
 	bool use_library = g_cfg.games_dir[0] && library_load(g_cfg.games_dir, false);
 	if (use_library && g_cfg.last_title[0])
 		libui_select_title(g_cfg.last_title);
@@ -455,6 +455,20 @@ int main(int argc, char **argv)
 				break;
 			if (h == HOME_AGAIN)
 				continue;
+			if (h == HOME_FOLDERS) {
+				// Settings > Games folder: the browser, then back to the main menu
+				play = browser_run(path, sizeof(path));
+				use_library = g_cfg.games_dir[0] && library_load(g_cfg.games_dir, false);
+				if (dev_transition() || !play)
+					continue;
+				at_home = false;
+				dev_local_game();
+				if (!emu_run_game(path, NULL, NULL))
+					show_error("Could not load that game.\nCheck sdmc:/3ds/PSX3D/log.txt");
+				if (aptShouldClose())
+					break;
+				continue;
+			}
 			at_home = false;   // after a game: the library
 			if (h == HOME_LIBRARY)
 				continue;

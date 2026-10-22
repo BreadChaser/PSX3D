@@ -47,6 +47,7 @@ typedef struct {
 	int  touch_stick;  // Old 3DS virtual right stick
 	int  touch_click_left; // global New 3DS bottom-screen layout: 0 right, 1 left
 	int  controller;   // all-games Controller: 0 digital, 1 analog (DualShock at start)
+	int  library_view; // library Sort: 0 A-Z, 1 recently played, 2 most played, 3 favourites
 	// main menu Continue: the last game played here (home.c)
 	char last_game[256];        // its title ("" = name from the path)
 	char last_game_save[256];   // save name it was started with ("" = from the path)
@@ -72,6 +73,7 @@ const char *input_control_key(int row);
 void config_control_clear(int row);
 bool settings_ui_run(bool game, void (*draw_top)(void *));
 bool settings_ui_cheats(void);
+bool settings_ui_take_folders(void);   // Settings > Games folder: open the folder browser
 bool settings_ui_active(void);
 bool settings_ui_debug_capture(void);
 bool settings_ui_debug_key(const char *name);
@@ -416,6 +418,17 @@ bool ui_input_symbol(int id, float x, float y, float size, u32 color);
 u32 ui_input_color(int id);
 void ui_menu_header(const char *title, const char *right);
 u32 ui_header_back(u32 keys);   // header tap -> KEY_B
+// touch button bar replacing the prompt lines (ui.c): B leftmost, A rightmost
+enum { UI_ICON_NONE, UI_ICON_STAR, UI_ICON_SORT, UI_ICON_RESCAN, UI_ICON_LEFT, UI_ICON_RIGHT, UI_ICON_FOLDER };
+typedef struct { u32 key; const char *label; u8 icon; bool on; } ui_button_t;
+#define UI_BAR_MAX 6
+void ui_bar_draw(const ui_button_t *b, int n);           // bottom screen, y 208..240
+u32 ui_bar_input(const ui_button_t *b, int n, u32 keys);  // tap -> its key; presses light it
+int ui_bar_parse(const char *hint, ui_button_t *out, int max);   // "A open    B back"
+enum { UI_COL_BAR, UI_COL_RULE, UI_COL_NOTICE, UI_COL_STAR };
+u32 ui_bar_color(int which);
+void ui_star(float cx, float cy, float r, u32 c, u32 hollow, float z);
+void ui_notice(const char *s, int frames);   // top screen, fades over its last 20 frames
 void ui_text_wrap(float x, float y, float size, u32 color, float width, const char *s);
 void ui_button_text(float x, float y, float pixels, float spacing, u32 color, int id);
 
@@ -494,6 +507,8 @@ void libui_exit(void);
 void share_about_run(bool game);
 // mp_ui.c - Play together and Share PSX3D screens, opened from the main menu
 void mp_hub_run(void);
+void mp_host_run(void);   // main menu > Play together > Host (devtools/ui-impl/INTERFACES.md)
+void mp_join_run(void);   // main menu > Play together > Join
 // after mp_hub_run: a game to start (Host a game), path filled
 bool mp_launch_request(char *path, size_t len);
 void share_run(void);
@@ -503,6 +518,14 @@ bool share_about_visible(void);
 int libui_run(char *out_path, size_t len);
 // the library's top-screen backdrop: sky picture and rolling wire grid
 void libui_draw_backdrop(void);
+// playlog.c - play history and favourites, keyed by save name
+u32 playlog_last(const char *name);      // unix time, 0 = never played
+u32 playlog_seconds(const char *name);
+bool playlog_favourite(const char *name);
+bool playlog_toggle_favourite(const char *name);   // returns the new state
+void playlog_begin(const char *name);    // a local game starts
+void playlog_pause(bool paused);         // pause menu, HOME Menu, sleep
+void playlog_end(void);                  // the game ends: time added, file written
 void libui_select_title(const char *title);
 const game_t *libui_picked(void);
 
@@ -512,7 +535,7 @@ typedef struct {
 	char title[256];   // title for emu_run_game ("" = NULL)
 	bool resume;       // load the Continue auto-save without asking
 } home_launch_t;
-enum { HOME_QUIT, HOME_AGAIN, HOME_LIBRARY, HOME_PLAY };
+enum { HOME_QUIT, HOME_AGAIN, HOME_LIBRARY, HOME_PLAY, HOME_FOLDERS };
 int home_run(bool have_games, char *path, size_t len, home_launch_t *out);
 // Library with no games: 0 quit, 1 main menu, 2 folder browser, 3 look again
 int home_empty_library_run(void);

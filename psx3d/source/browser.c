@@ -209,6 +209,7 @@ static void draw_top(void *ud)
 		ui_text_ex(NULL, 16, 108, 0.42f, C2D_Color32(255, 160, 120, 255), 0,
 			ui_fit(slow_mode_notice(true), .42f, 368));
 	ui_help_panel(150, "This folder", truncated ? "Over 4096 entries; the list is cut off" : NULL, cwd);
+	ui_notice(msg, msg_frames);
 }
 
 static const char *row_label(int i, void *ud)
@@ -227,6 +228,20 @@ static const char *row_value(int i, void *ud)
 	return entries[i - 1].dir ? ">" : "Play";
 }
 
+// B Up (Back at the top of the card), Y the games folder, START Done, A Open
+static int browser_bar(ui_button_t *b)
+{
+	int n = 0;
+	bool root = !strcmp(cwd, "sdmc:/");
+	if (!root || g_cfg.games_dir[0])
+		b[n++] = (ui_button_t){KEY_B, root ? "Back" : "Up", 0, false};
+	if (g_cfg.games_dir[0] && strcmp(cwd, g_cfg.games_dir))
+		b[n++] = (ui_button_t){KEY_Y, "Games folder", UI_ICON_FOLDER, false};
+	b[n++] = (ui_button_t){KEY_START, "Done", 0, false};
+	b[n++] = (ui_button_t){KEY_A, !sel ? "Use this" : sel <= nentries && entries[sel - 1].dir ? "Open" : "Play", 0, false};
+	return n;
+}
+
 static void draw_bottom(void *ud)
 {
 	(void)ud;
@@ -241,14 +256,12 @@ static void draw_bottom(void *ud)
 		float h = ROWS * (float)ROW_H;
 		C2D_DrawRectSolid(317, 40 + h * lst.scroll / (nentries + 1), .3f, 2, h * ROWS / (nentries + 1), muted);
 	}
-	if (msg_frames > 0) {
+	if (msg_frames > 0)
 		msg_frames--;
-		ui_text_ex(NULL, 12, 204, .4f, th->message, 0, msg);
-	} else if (!nentries)
-		ui_text_ex(NULL, 12, 204, .4f, muted, 0, "No games or folders here");
-	ui_text_ex(NULL, 160, 222, .39f, muted, C2D_AlignCenter,
-		g_cfg.games_dir[0] ? "A open    B up    Y games folder    START library"
-		                   : "A open    B up    START quit");
+	if (!nentries)
+		ui_text_ex(NULL, 12, 72, .4f, muted, 0, "No games or folders here");
+	ui_button_t bar[4];
+	ui_bar_draw(bar, browser_bar(bar));
 }
 
 // held-button repeat: fires on press, then after 18 frames every 3 frames
@@ -298,7 +311,8 @@ bool browser_run(char *out_path, size_t out_len)
 		if (dev_ui_take() == DEV_UI_LIBRARY)
 			break;   // remote: back to the library
 		input_poll();
-		u32 k = input_keys_down(), h = input_keys_held();
+		ui_button_t bar[4];
+		u32 k = ui_header_back(ui_bar_input(bar, browser_bar(bar), input_keys_down())), h = input_keys_held();
 		int n = nentries + 1, before = sel;
 
 		if (k & KEY_START)

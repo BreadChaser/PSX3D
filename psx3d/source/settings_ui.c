@@ -9,7 +9,7 @@
 #include <string.h>
 
 // Available only inside this navigator; the network mailbox authenticates first.
-static bool active, capture_debug, resume_requested;
+static bool active, capture_debug, resume_requested, folders_requested;
 bool settings_ui_active(void) { return active; }
 bool settings_ui_debug_capture(void) { return active && capture_debug; }
 // Volatile inspection only: no config write, reset on closing settings.
@@ -44,13 +44,13 @@ static const char *const categories[] = {"Settings",
 										 "Button mappings",
 										 "Debug"};
 enum { F_SCREEN, F_SMOOTH, F_FPS, F_CONTROLLER, F_SIDE,
-       F_REWIND, F_HEADING, F_RECOMMENDED, F_RECORD, F_TONE, F_THEME, F_COUNT };
+       F_REWIND, F_HEADING, F_RECOMMENDED, F_RECORD, F_TONE, F_THEME, F_FOLDER, F_COUNT };
 static const char *const labels[] = {
  [F_SCREEN]="Screen", [F_SMOOTH]="Smoothing", [F_FPS]="FPS counter",
  [F_CONTROLLER]="Controller",
  [F_SIDE]="Bottom-screen buttons", [F_REWIND]="Rewind", [F_HEADING]="Compatibility",
  [F_RECOMMENDED]="Reset to recommended", [F_RECORD]="Record audio", [F_TONE]="Test tone",
- [F_THEME]="Theme"
+ [F_THEME]="Theme", [F_FOLDER]="Games folder"
 };
 static const char *const tips[] = {
  [F_SCREEN]="Widescreen only in games with a widescreen fix.",
@@ -62,6 +62,7 @@ static const char *const tips[] = {
  [F_RECOMMENDED]="Remove this game's Advanced changes.",
  [F_RECORD]="Capture 30 seconds for troubleshooting.", [F_TONE]="Play a tone to check audio output.",
  [F_THEME]="Change the colours of the menus.",
+ [F_FOLDER]="Pick the folder the library shows.",
 };
 // Longer help, shown on the top screen while the row is selected.
 static const char *const helps[] = {
@@ -74,7 +75,8 @@ static const char *const helps[] = {
  [F_RECOMMENDED]="Remove this game's changes to the Advanced options, so its tested settings apply again. Display, Controls and Saves are kept.",
  [F_RECORD]="Record 30 seconds of game audio for troubleshooting.",
  [F_TONE]="Play a steady tone to check audio output.",
- [F_THEME]="Choose the colours of the menus. Original is the look the menus always had. Game pictures, cover art and the library backdrop are not changed.",
+ [F_FOLDER]="The folder on the SD card that the library lists. Opens the folder browser; you can also start a game from there.",
+ [F_THEME]="Choose the colours of the menus and the library backdrop. Synthwave is the original look; the others are calmer. Game pictures and cover art are not changed.",
 };
 static const char *const category_tips[] = {
  [CAT_DISPLAY]="Picture shape, smoothing, FPS counter and theme.",
@@ -119,7 +121,7 @@ static bool frontend_visible(settings_ui_t *s, int i)
 	// Only physical limits hide a row (docs/settings.md section 1).
 	if (i == F_SIDE && !g_new3ds)
 		return false;
-	if (i == F_THEME && s->game)   // one look for the whole app
+	if ((i == F_THEME || i == F_FOLDER) && s->game)   // one look, one library for the whole app
 		return false;
 	if (i == F_REWIND && (!s->game || !g_new3ds))
 		return false;
@@ -155,6 +157,8 @@ static void build_page(settings_ui_t *s, int page)
 		for (int i = CAT_DISPLAY; i <= CAT_RESET; i++) {
 			settings_ui_t probe = {.game = s->game};
 			build_page(&probe, i);
+			if (i == CAT_RESET)   // the folder picker moved here from the library's Y
+				add_frontend(s, F_FOLDER);
 			if (i == CAT_RESET || probe.count)
 				add(s, CATEGORY_ROW + i);
 		}
@@ -324,6 +328,10 @@ static const char *row_value(int i, void *ud)
 		return (const char *const[]){"Off", "FPS", "Detailed"}[g_cfg.show_fps];
 	case F_THEME:
 		return theme()->name;
+	case F_FOLDER: {
+		const char *dir = strrchr(g_cfg.games_dir, '/');
+		return g_cfg.games_dir[0] ? ui_fit(dir && dir[1] ? dir + 1 : g_cfg.games_dir, .45f, 120) : "None";
+	}
 	case F_SIDE:
 		return g_cfg.touch_click_left ? "Left side" : "Right side";
 	case F_REWIND:
@@ -367,6 +375,45 @@ static const char *advanced_header(settings_ui_t *s)
 static float list_top(settings_ui_t *s) { return advanced_header(s) ? 62 : 40; }
 static float row_height(settings_ui_t *s) { return s->page == CAT_HOME ? 20 : 23; }
 static int list_rows(settings_ui_t *s) { return s->page == CAT_HOME ? 8 : advanced_header(s) ? 5 : VISIBLE_ROWS; }
+// The category L or R moves to (Display .. Advanced, skipping empty ones).
+static int neighbour_page(settings_ui_t *s, int dir)
+{
+	int page = s->page == CAT_DEBUG ? CAT_ADVANCED : s->page == CAT_BINDINGS ? CAT_CONTROLS : s->page;
+	settings_ui_t probe = {.game = s->game};
+	for (int tries = 0; tries < CAT_ADVANCED; tries++) {
+		page += dir;
+		if (page < CAT_DISPLAY)
+			page = CAT_ADVANCED;
+		if (page > CAT_ADVANCED)
+			page = CAT_DISPLAY;
+		build_page(&probe, page);
+		if (probe.count)
+			break;
+	}
+	return page;
+}
+// The touch buttons for the page and the selected row; unusable ones are left out.
+static int settings_bar(settings_ui_t *s, ui_button_t *b)
+{
+	int n = 0, item = s->count ? s->items[s->selected[s->page]] : -1;
+	b[n++] = (ui_button_t){KEY_B, "Back", 0, false};
+	if (s->page != CAT_HOME && s->page != CAT_CHEATS && s->page != CAT_BINDINGS) {
+		b[n++] = (ui_button_t){KEY_L, categories[neighbour_page(s, -1)], UI_ICON_LEFT, false};
+		b[n++] = (ui_button_t){KEY_R, categories[neighbour_page(s, 1)], UI_ICON_RIGHT, false};
+	}
+	if (s->page == CAT_CHEATS)
+		b[n++] = (ui_button_t){KEY_X, "Add code", 0, false};
+	else if (s->page == CAT_BINDINGS) {
+		if (s->game && item >= CONTROL_ROW && item < CHEAT_ROW && config_control_overridden(item - CONTROL_ROW))
+			b[n++] = (ui_button_t){KEY_X, "Inherit", 0, false};
+		b[n++] = (ui_button_t){s->game ? KEY_Y : KEY_X, "Reset all", 0, false};
+	} else if (s->game && item >= 0 && item < CONTROL_ROW && overridden(s, item))
+		b[n++] = (ui_button_t){KEY_X, "Inherit", 0, false};
+	if (item >= 0 && item != F_HEADING)
+		b[n++] = (ui_button_t){KEY_A, item >= CATEGORY_ROW || item == F_FOLDER ? "Open"
+			: s->page == CAT_CHEATS ? "On / off" : item == F_RECOMMENDED ? "Reset" : "Change", 0, false};
+	return n;
+}
 static void draw_settings(void *ud)
 {
 	settings_ui_t *s = ud;
@@ -390,14 +437,11 @@ static void draw_settings(void *ud)
 		ui_text_ex(NULL, 160, 90, .48f, muted, C2D_AlignCenter,
 				   s->page == CAT_CHEATS ? "No cheats for this game yet" : "No options available");
 	int item = s->count ? s->items[sel] : -1;
-	const char *tip = "A open category";
+	const char *tip = NULL;
 	if (item >= CATEGORY_ROW)
 		tip = category_tips[item - CATEGORY_ROW];
-	else if (item >= CHEAT_ROW)
-		tip = "X add a GameShark code";
 	else if (item >= CONTROL_ROW)
-		tip =
-			s->game ? "X use inherited mapping    Y reset controls" : "X reset all button and touch mappings";
+		tip = NULL;   // the buttons below say it
 	else if (item >= CORE_ROW)
 		tip = options_impact(item - CORE_ROW);
 	else if (item == F_SCREEN && s->game && screen_note())
@@ -405,19 +449,15 @@ static void draw_settings(void *ud)
 	else if (item >= 0 && item < F_COUNT)
 		tip = tips[item];
 	if (message_frames > 0)
-		ui_text_ex(NULL, 12, 183, .39f, th->message, 0, message);
+		ui_text_ex(NULL, 12, 179, .39f, th->message, 0, message);
 	else if (tip && s->page != CAT_HOME)
-		ui_text_ex(NULL, 12, 183, .39f, muted, 0, tip);
+		ui_text_ex(NULL, 12, 179, .39f, muted, 0, tip);
 	// In a game every value belongs to that game; unchanged ones follow all games.
 	if (s->game && item >= 0 && item < CONTROL_ROW && item != F_REWIND && (item >= CORE_ROW || override_key(item)))
-		ui_text_ex(NULL, 12, 199, .4f, th->white, 0,
-				   overridden(s, item) ? "* Changed for this game    X inherit" : preset_row(s, item) ? "P Tested setting for this game" : "Same as all games");
-	// Category rows open with A; Left/Right only changes values.
-	ui_text_ex(NULL, 160, 222, .39f, muted, C2D_AlignCenter,
-			   s->page == CAT_HOME ? "A open    B back"
-			   : s->page == CAT_CHEATS ? "A on/off    X add code    B back"
-			   : item >= CATEGORY_ROW ? "A open    L/R category    B back"
-			   : "Left/Right change    L/R category    B back");
+		ui_text_ex(NULL, 12, 193, .4f, th->white, 0,
+				   overridden(s, item) ? "* Changed for this game" : preset_row(s, item) ? "P Tested setting for this game" : "Same as all games");
+	ui_button_t bar[UI_BAR_MAX];
+	ui_bar_draw(bar, settings_bar(s, bar));
 }
 static void change(settings_ui_t *s, int item, int dir)
 {
@@ -481,6 +521,10 @@ static void change(settings_ui_t *s, int item, int dir)
 		}
 		else
 			g_cfg.show_fps = (g_cfg.show_fps + dir + 3) % 3;
+		break;
+	case F_FOLDER:
+		// the caller opens the folder browser once Settings has closed
+		folders_requested = resume_requested = true;
 		break;
 	case F_THEME:
 		// the menus redraw in the new colours at once
@@ -546,7 +590,8 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 		if (dev_tick(game) || dev_ui_pending())
 			break;
 		input_poll();
-		u32 k = ui_header_back(input_keys_down());
+		ui_button_t bar[UI_BAR_MAX];
+		u32 k = ui_header_back(ui_bar_input(bar, settings_bar(s, bar), input_keys_down()));
 		if (k & KEY_B) {
 			sfx_play(SFX_BACK);
 			// Cheats is opened from the pause menu: B returns there.
@@ -562,21 +607,7 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 			sfx_play(SFX_MOVE);
 		}
 		if (s->page != CAT_HOME && s->page != CAT_CHEATS && (k & (KEY_L | KEY_R))) {
-			int page = s->page;
-			if (page == CAT_DEBUG)
-				page = CAT_ADVANCED;
-			if (page == CAT_BINDINGS)
-				page = CAT_CONTROLS;
-			settings_ui_t probe = {.game = s->game};
-			do {
-				page += k & KEY_R ? 1 : -1;
-				if (page < CAT_DISPLAY)
-					page = CAT_ADVANCED;
-				if (page > CAT_ADVANCED)
-					page = CAT_DISPLAY;
-				build_page(&probe, page);
-			} while (!probe.count);
-			open_page(s, page);
+			open_page(s, neighbour_page(s, k & KEY_R ? 1 : -1));
 			sel = &s->selected[s->page];
 			k = 0;
 		}
@@ -615,7 +646,7 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 			sync_picture();
 		}
 		int dir = k & KEY_LEFT ? -1 : k & (KEY_RIGHT | KEY_A) ? 1 : 0;
-		if (item >= 0 && dir && ((item < CATEGORY_ROW && item != F_RECOMMENDED) || (k & KEY_A))) {
+		if (item >= 0 && dir && ((item < CATEGORY_ROW && item != F_RECOMMENDED && item != F_FOLDER) || (k & KEY_A))) {
 			if (item == CATEGORY_ROW + CAT_RESET) {
 				if (ui_confirm(game ? "Reset this game?" : "Reset all settings?",
 							   game ? "Remove this game's settings and control overrides. Return to its "
@@ -657,4 +688,11 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 }
 
 bool settings_ui_run(bool game, void (*draw_top)(void *)) { return run_settings(game, CAT_HOME, draw_top); }
+// Settings > Games folder was chosen: open the folder browser (asks once).
+bool settings_ui_take_folders(void)
+{
+	bool r = folders_requested;
+	folders_requested = false;
+	return r;
+}
 bool settings_ui_cheats(void) { return run_settings(true, CAT_CHEATS, NULL); }

@@ -142,8 +142,9 @@ endif
 
 # picadirect.o and presetupdate.o link after every other frontend object, so
 # they move no existing frontend code (docs/dev/pica-direct.md); presetupdate.o
-# runs only in the idle library. Share PSX3D (qrcode.o, share.o, mp_ui.o) follows them.
-LATE_OFILES := picadirect.o presetupdate.o qrcode.o share.o mp_ui.o
+# runs only in the idle library. Share PSX3D (qrcode.o, share.o, mp_ui.o)
+# follows them, then playlog.o (library play history and favourites).
+LATE_OFILES := picadirect.o presetupdate.o qrcode.o share.o mp_ui.o playlog.o
 export OFILES_SOURCES 	:=	$(CPPFILES:.cpp=.o) $(filter-out $(LATE_OFILES),$(CFILES:.c=.o)) $(SFILES:.s=.o) $(LATE_OFILES)
 
 export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES)) \

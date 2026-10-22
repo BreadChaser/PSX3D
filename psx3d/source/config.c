@@ -215,6 +215,12 @@ void config_load(void)
 			g_cfg.smooth = atoi(v) != 0;
 		else if (strcmp(k, "show_fps") == 0)
 			g_cfg.show_fps = atoi(v) >= 0 && atoi(v) <= 2 ? atoi(v) : 0;
+		else if (strcmp(k, "library_view") == 0) {
+			static const char *const views[] = { "az", "recent", "most", "fav" };
+			for (int i = 0; i < 4; i++)
+				if (!strcmp(v, views[i]))
+					g_cfg.library_view = i;
+		}
 		else if (strcmp(k, "theme") == 0) {
 			int t = theme_from_id(v);   // by name, so the list can grow
 			if (t >= 0)
@@ -250,6 +256,8 @@ void config_save(void)
 		fprintf(f, "games_dir=%s\n", g_cfg.games_dir);
 	if (g_cfg.last_title[0])
 		fprintf(f, "last_title=%s\n", g_cfg.last_title);
+	if (g_cfg.library_view > 0 && g_cfg.library_view < 4)   // library state like last_title; A-Z not written
+		fprintf(f, "library_view=%s\n", (const char *const[]){ "az", "recent", "most", "fav" }[g_cfg.library_view]);
 	if (g_cfg.last_game_state[0])
 		fprintf(f, "last_game=%s\nlast_game_save=%s\nlast_game_state=%s\nlast_game_path=%s\n",
 			g_cfg.last_game, g_cfg.last_game_save, g_cfg.last_game_state, g_cfg.last_game_path);
@@ -331,6 +339,7 @@ void config_reset_defaults(void)
 	strcpy(g_cfg.last_dir, old.last_dir);
 	strcpy(g_cfg.games_dir, old.games_dir);
 	strcpy(g_cfg.last_title, old.last_title);
+	g_cfg.library_view = old.library_view;
 	strcpy(g_cfg.last_game, old.last_game);
 	strcpy(g_cfg.last_game_save, old.last_game_save);
 	strcpy(g_cfg.last_game_state, old.last_game_state);

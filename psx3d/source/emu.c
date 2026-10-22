@@ -525,6 +525,18 @@ static const char *menu_value(int i, void *ud)
 	// Every entry that opens another screen shows the same arrow.
 	return item == M_DISC ? m->disc : item == M_SAVE || item == M_LOAD || item == M_CHEATS || item == M_SETTINGS ? ">" : NULL;
 }
+static int menu_bar(const menu_t *m, ui_button_t *b)
+{
+	int n = 0;
+	b[n++] = (ui_button_t){KEY_B, "Resume", 0, false};
+	if (m->items[m->sel] == M_DISC) {
+		b[n++] = (ui_button_t){KEY_DLEFT, "Disc", UI_ICON_LEFT, false};
+		b[n++] = (ui_button_t){KEY_DRIGHT, "Disc", UI_ICON_RIGHT, false};
+		b[n++] = (ui_button_t){KEY_A, "Insert", 0, false};
+	} else
+		b[n++] = (ui_button_t){KEY_A, "Select", 0, false};
+	return n;
+}
 static void menu_draw_bottom(void *ud)
 {
 	menu_t *m = ud;
@@ -533,12 +545,11 @@ static void menu_draw_bottom(void *ud)
 	ui_menu_header("Menu", ui_fit(game_title, .42f, 150));
 	if (have_disk && disk.get_num_images)
 		snprintf(m->disc, sizeof(m->disc), "Disc %u of %u", menu_disc + 1, disk.get_num_images());
-	// Eight rows fit, so Exit stays visible when Swap disc is listed.
-	flist_draw(&m->fl, m->nitems, m->sel, 0, 40, 320, 22, 8, menu_label, menu_value, m,
+	// Eight rows fit above the buttons, so Exit stays visible when Swap disc is listed.
+	flist_draw(&m->fl, m->nitems, m->sel, 0, 40, 320, 21, 8, menu_label, menu_value, m,
 			   th->accent[m->sel & 3]);
-	ui_text_ex(NULL, 160, 222, 0.42f, th->hint_menu, C2D_AlignCenter,
-			   m->items[m->sel] == M_DISC ? "Left/Right choose disc    A insert    B resume"
-										  : "A select    B resume");
+	ui_button_t bar[4];
+	ui_bar_draw(bar, menu_bar(m, bar));
 }
 static bool game_menu_open;
 static bool autosave_is_due(void);
@@ -550,6 +561,7 @@ static bool menu_run(int initial_screen)
 	if (initial_screen == DEV_UI_RESUME)
 		return true;
 	game_menu_open = true;
+	playlog_pause(true);
 	input_gameplay(false);
 	bottom_backlight(true);
 	menu_t m = {0};
@@ -571,6 +583,7 @@ static bool menu_run(int initial_screen)
 	while (aptMainLoop()) {
 		if (dev_tick(true)) {
 			game_menu_open = false;
+			playlog_pause(false);
 			return false;
 		}
 		int screen = dev_ui_take();
@@ -596,12 +609,13 @@ static bool menu_run(int initial_screen)
 			continue;
 		}
 		input_poll();
-		u32 k = ui_header_back(input_keys_down());
+		ui_button_t bar[4];
+		u32 k = ui_header_back(ui_bar_input(bar, menu_bar(&m, bar), input_keys_down()));
 		if (k & KEY_TOUCH) {
 			touchPosition tp;
 			hidTouchRead(&tp);
-			int row = flist_row_at(&m.fl, 40, 22, tp.py);
-			if (tp.py >= 40 && tp.py < 216 && row >= 0 && row < m.nitems) {
+			int row = flist_row_at(&m.fl, 40, 21, tp.py);
+			if (tp.py >= 40 && tp.py < 208 && row >= 0 && row < m.nitems) {
 				if (row == m.sel)
 					k |= KEY_A;
 				else {
@@ -682,6 +696,7 @@ static bool menu_run(int initial_screen)
 				if (k & KEY_A) {
 					config_save();
 					game_menu_open = false;
+					playlog_pause(false);
 					return false;
 				}
 				break;
@@ -692,9 +707,11 @@ static bool menu_run(int initial_screen)
 	}
 	if (!aptShouldClose())
 		goto resume;
+	playlog_pause(false);
 	return false;
 resume:
 	game_menu_open = false;
+	playlog_pause(false);
 	input_gameplay(true);
 	sfx_play(SFX_BACK);
 	config_save();
@@ -1059,6 +1076,10 @@ static void game_apt(APT_HookType hook, void *param)
 		pmu_stop();
 	else if ((hook == APTHOOK_ONRESTORE || hook == APTHOOK_ONWAKEUP) && sw_pmu0 >= 0)
 		pmu_start(sw_pmu0, sw_pmu1 >= 0 ? sw_pmu1 : 0);
+	if (hook == APTHOOK_ONSUSPEND || hook == APTHOOK_ONSLEEP)
+		playlog_pause(true);
+	else if (hook == APTHOOK_ONRESTORE || hook == APTHOOK_ONWAKEUP)
+		playlog_pause(false);
 	if (hook == APTHOOK_ONSUSPEND) {
 		input_gameplay(false);
 		bottom_backlight(true);
@@ -1174,8 +1195,10 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		emu_continue_now = false;
 		if (clip_requested<0 && !dev_remote_game() && sw_state < 0 && (now || states_resume_prompt(prefix)) && state_load_from(STATE_AUTO))
 			osd("Continuing where you left off");
-		if (clip_requested < 0 && !clip_replay_session && !dev_remote_game())
+		if (clip_requested < 0 && !clip_replay_session && !dev_remote_game()) {
 			home_note_game(path, save_name, title, game_name);   // the main menu's Continue
+			playlog_begin(save_name ? save_name : game_name);   // the library's play history
+		}
 	}
 	if (clip_requested<0 && game_capabilities().rewind && config_rewind_on())
 		rewind_start();
@@ -1645,6 +1668,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 			log_printf("auto-save: %s\n", home_save_write() ? "written" : "none");
 		home_save_drop();
 		cards_save_now();
+		playlog_end();
 		config_game_end();
 		clip_close();
 		core_initialized = false;   // emu_deinit must not tear the core down
@@ -1658,6 +1682,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		log_printf("auto-save: %s\n", state_save_to(STATE_AUTO) ? "written" : "failed");
 	bottom_backlight(true);
 	cards_save_now();
+	playlog_end();
 	cheats_unload();
 	retro_unload_game();
 	config_game_end();
