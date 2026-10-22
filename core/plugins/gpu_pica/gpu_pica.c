@@ -2607,33 +2607,33 @@ static void PICA_HOT(draw_poly_impl) draw_poly_impl(const u32 *w, u32 cmd)
 	bool quad = cmd & 8, gouraud = cmd & 0x10, textured = cmd & 4;
 	int n = quad ? 4 : 3;
 	pvtx v[4];
-	u32 col = w[0] & 0xffffff;
 	u32 clut = 0, page = ps.texpage;
-	int i = 1;
-	// decode, tracking the bounding box and the texture coordinate range
+	const int stride = 1 + textured + gouraud;
+	const u32 *xyword = w + 1;
+	if (textured) {
+		clut = w[2] >> 16;
+		page = w[2 + stride] >> 16;
+	}
+	// Decode positions and texture bounds first. Colours are only needed
+	// after texture/state setup, so keep them in the original packet.
 	int bx0 = 0x7fff, bx1 = -0x8000, by0 = 0x7fff, by1 = -0x8000;
 	int u0 = 255, u1 = 0, v0 = 255, v1 = 0;
-	for (int k = 0; k < n; k++) {
-		if (gouraud && k)
-			col = w[i++] & 0xffffff;
-		u32 xy = w[i++];
+	for (int k = 0; k < n; k++, xyword += stride) {
+		u32 xy = *xyword;
 		// Keep relative positions across x=1024/y=1024. The PS1 wraps one
 		// offset for the whole triangle, not each post-offset vertex.
 		int x = sext11(xy) + ps.ox, y = sext11(xy >> 16) + ps.oy;
 		v[k].x = x;
 		v[k].y = y;
-		v[k].rgba = col;
 		bx0 = x < bx0 ? x : bx0; bx1 = x > bx1 ? x : bx1;
 		by0 = y < by0 ? y : by0; by1 = y > by1 ? y : by1;
 		if (textured) {
-			u32 uv = w[i++];
+			u32 uv = xyword[1];
 			int tu = uv & 0xff, tv = (uv >> 8) & 0xff;
 			v[k].u = tu;
 			v[k].v = tv;
 			u0 = tu < u0 ? tu : u0; u1 = tu > u1 ? tu : u1;
 			v0 = tv < v0 ? tv : v0; v1 = tv > v1 ? tv : v1;
-			if (k == 0) clut = uv >> 16;
-			if (k == 1) page = uv >> 16;
 		}
 	}
 	if (textured)   // textured polygons also set the global texpage (bits 0-8, and 11)
@@ -2645,7 +2645,7 @@ static void PICA_HOT(draw_poly_impl) draw_poly_impl(const u32 *w, u32 cmd)
 	if (bx0 < ps.dx1 || bx1 > ps.dx2 || by0 < ps.dy1 || by1 > ps.dy2 || bx1 - bx0 > 1023 || by1 - by0 > 511 ||
 		blend > BL_ADD || !ready || (pica_debug & PICA_DEBUG_NO_PRIMITIVES)) {
 		for (int k = 0; k < n; k++)
-			v[k].rgba |= 0xff000000;
+			v[k].rgba = w[gouraud ? k * stride : 0] | 0xff000000;
 		draw_poly_slow(v, n, quad, textured, page, clut, cmd);
 		return;
 	}
@@ -2682,7 +2682,7 @@ static void PICA_HOT(draw_poly_impl) draw_poly_impl(const u32 *w, u32 cmd)
 		gy = gy < VRAM_H * GPU_UNIT ? gy : VRAM_H * GPU_UNIT - 1;
 		q[k][0] = (u32)gx | ((u32)gy << 16);
 		q[k][1] = (u32)(u & 0xffff) | ((u32)vv << 16);
-		q[k][2] = (rawcol ? rawcol : v[k].rgba) | a;
+		q[k][2] = (rawcol ? rawcol : (w[gouraud ? k * stride : 0] & 0xffffff)) | a;
 	}
 	u32a *ow = (u32a *)o;
 	static const u8 order[6] = { 0, 1, 2, 1, 3, 2 };
