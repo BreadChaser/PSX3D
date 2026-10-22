@@ -41,7 +41,7 @@ source snapshot is retained in the ignored evidence directory.
 | Reuse decoded vertices for packed words, with strides | polygon 2,868 → 2,784 B | about 1–2% fewer fetched lines |
 | Fuse the finishing loops in emit_tris, with the above | emit_tris 2,060 → 2,048 B | not yet mapped or gated |
 | Load CLUT/page outside the vertex loop, with strides/in-place packing | polygon size in artifacts-packet | instructions fall ~2–3%; Tekken fetched lines grow 0.6%, set aside |
-| Compact clipping, independently of the above | clip_tris 1,416 → 1,204 B | table below |
+| Compact clipping, independently of the above | clip_tris 1,416 → 1,208 B | table below |
 
 The current candidate is compact clipping only. Alternate two scratch buffers
 between clipping planes instead of copying every output polygon back; wrap the
@@ -78,9 +78,9 @@ texture lookup and state/effect handling without duplicating the existing path.
 The six standard and twelve completed heavy guest-state runs have identical
 draw/guest timelines and serialized states; Crash 2 fails identically on both
 with the known simulator assertion. Both renderer sanitizer suites and the
-frontend-growth/new-library layout proof pass. Full 19-trace VRAM/draw hashes
-and all 68 HLE cold boots (all currently available directories) have identical
-timelines and serialized states. Full VRAM and final draw hashes match rc4 on all 19 native traces × 600
+frontend-growth/new-library layout proof pass. All 68 HLE cold boots (all
+currently available directories) have identical guest timelines and serialized
+states. Full VRAM and final draw hashes match rc4 on all 19 native traces × 600
 frames (11,400 full-VRAM comparisons). Azahar boots the library and loads
 Crash slot 0 through the shared silent headless wrapper. The
 rc4-to-candidate layout comparison records 414 C symbols shifted by up to
@@ -90,7 +90,8 @@ hardware A/B/A risk; no padding objects are added to hide it.
 
 ## Hardware coordination
 
-Do not start until `psx3d-oldqueue-20261022` finishes. Always hold
+Do not start until `psx3d-oldqueue-20261022`, `psx3d-x6-v050` and the first
+quickwins session (`psx3d-quickwins-old`) finish. Always hold
 `devtools/fastloop/lock.old`, re-check `OLD_UNAVAILABLE`, and start only with
 rc4 idle in the library. Every test/restore needs a title version higher than
 the installed one. Finish on the exact `artifacts-rc4` ELF, library idle, with
@@ -110,5 +111,15 @@ SH alley 117.43 → 117.80, CTR 108.81 → 107.72, R4 121.33 → 120.91,
 Klonoa 158.35 → 154.15. Instruction counts barely change: the gain sought is
 fewer function lines/calls, not less bookkeeping. The production core C symbols
 move by at most 16 bytes; other regions keep their addresses. Guest-state gates
-match (same baseline Crash 2 failure); full VRAM, boots and sanitizers are still
-in progress. This candidate is independent of compact clipping.
+match (same baseline Crash 2 failure); all 19 native full-VRAM/draw traces,
+68 HLE boots and both sanitizer suites pass. This candidate is independent of
+compact clipping.
+
+
+Compiling the shared polygon function for size (`optimize("Os")`) makes its
+production body 2,868 → 1,816 bytes, but outlining helpers increases the fetched
+footprint by 3–4% and instructions by 4–7% in most scenes. GT2 grows from 112.88
+to 116.80 lines and Tekken from 104.36 to 108.53. Adding `flatten` keeps helper
+calls inline but still grows GT2 to 114.85 lines and Tekken to 107.87. Both
+experiments are rejected offline, without a hardware speed claim. A smaller
+function body is not sufficient when its callers fetch more code overall.
