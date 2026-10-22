@@ -37,8 +37,9 @@ Base: `release/v0.5.0-candidate` (`4bc03da`, presets-v2 merged). It replaces
 
 ## 2. Menu tree
 
-Open Settings with **X** in the library (scope: all games) or from the pause
-menu (scope: this game). Both use the same tree. The header shows the scope
+Open Settings from the main menu's Settings tile (or **X** there; scope: all
+games) or from the pause menu (scope: this game). In the library X sorts the
+list since the library round 3 (2026-10-22); Settings is one B away. Both use the same tree. The header shows the scope
 ("All games" or the game title). Rows marked *library only* or *game only*
 appear in one scope only.
 
@@ -50,13 +51,18 @@ Settings
 ├─ Saves
 ├─ Advanced
 │   └─ (Compatibility group at the bottom of the same page)
+├─ Games folder  (library only: opens the folder browser)
 └─ Reset this game  |  Reset all settings
 ```
 
 ```settings-home
-library | Display, Controls, Saves, Advanced, Reset all settings
+library | Display, Controls, Saves, Advanced, Games folder, Reset all settings
 game | Display, Controls, Saves, Advanced, Reset this game
 ```
+
+Every page ends in a bar of touch buttons instead of a prompt line (B Back
+leftmost, L/R the neighbouring categories, X Inherit only on a row changed for
+this game, A Open/Change rightmost; library round 3).
 
 Navigation stays as it is today: A opens or changes, B goes back, L/R cycles
 categories, Left/Right changes values, and X on a row clears this game's
@@ -75,6 +81,7 @@ player sees.
 Display | Screen | screen | Original, Stretch, Widescreen | Original | Original | both | all | taste
 Display | Smoothing | smooth | On, Off | On | On | both | all | taste
 Display | FPS counter | show_fps | Off, FPS, Detailed | Off | Off | both | all | taste
+Display | Theme | theme | Original (v0.5.0), Midnight teal, PS1 grey, Sunset magenta, High contrast | Original (v0.5.0) | Original (v0.5.0) | both | lib | taste
 Controls | Button mappings | > | - | - | - | both | all | taste
 Controls | Controller | controller | Digital, Analog | Digital | Digital | both | all | tech
 Controls | Analog mode shortcut | analog_combo | Off, L1+R1+Select, L1+R1+Start, L1+R1+L3, L1+R1+R3, L3+R3 | L1+R1+Select | L1+R1+Select | both | all | taste
@@ -119,6 +126,10 @@ game without a widescreen fix, Screen offers only Original and Stretch. Scope
   - `hidden`: not offered (it cannot work).
   In the library, Widescreen means "use widescreen in games that have a fix".
 - **3D**: no row (principle 8). The slider alone decides.
+- **Games folder** (library only, home page; moved from the library's Y, which
+  is Favourite now). A opens the folder browser; its "Use this folder for games"
+  row sets `games_dir`. The value shows the folder's name. It is not a stored
+  setting of its own (`games_dir` is library state, see §3.2).
 - **FPS counter** (renamed from "Show FPS"). Detailed stays: it is the player's
   speed readout, not a debug tool.
 - **Controller** (new; replaces analog guessing). Digital or Analog DualShock.
@@ -242,6 +253,7 @@ Fates:
 | smooth | Smoothing (Display) | On | On | **Setting** | taste | no |
 | stereo | 3D (Display, New) | Off (fixed) | Screen depth | **Force**: Real 3D on New, off on Old; the 3D slider is the only control | User, 2026-10-21: Screen depth for games dropped | no |
 | show_fps | Show FPS (Display) | Off | Off | **Setting** "FPS counter" | taste | no |
+| theme | Theme (Display, library only) | Original (v0.5.0) | Original (v0.5.0) | **Setting** "Theme" | taste; one look for the whole app, so no per-game value. The five palettes of the UI mock-up; colours only (game pictures, cover art and the library backdrop are unchanged) | no |
 | touch_click_left | Bottom-screen buttons (Controls, New) | — | Right | **Setting** (New only) | taste | no |
 | audio_stretch | Smooth audio when slow (Sound) | On (5%) | On (5%) | **Force** on | Net win on both; pitch-preserving version in progress (`t3/audio-pitch`), which removes the only downside. | no |
 | sounds | Menu sounds (Sound, library) | On | On | **Force** On | User, 2026-10-21 | no |
@@ -257,7 +269,8 @@ Fates:
 | input maps, touch slots, hotkeys | Button mappings | factory | factory | **Setting** (sub-page unchanged) | taste | `touch_*`, `l2r2`, `l3r3`, `touch_controls`: 6 `l3r3` files |
 | (new) volume | — | — | — | **Not added** | User (Q2) | — |
 | (new) controller | — | Digital | Digital | **Setting** "Controller" | planned feature, user list | new preset key `controller` |
-| games_dir, last_dir, last_title, settings_format, touch_slots | — | — | — | internal, unchanged | library state / format metadata | — |
+| games_dir | Games folder (Settings home, library only) | — | — | picked in the folder browser, opened from Settings | library state; was the library's Y | — |
+| last_dir, last_title, settings_format, touch_slots, last_game* , library_view | — | — | — | internal | library state / format metadata (library_view = the library's Sort view) | — |
 | "Continue where I left off" | (removed 2026-10-19) | always on | always on | already forced | user | — |
 
 ### 3.3 Pause menu

@@ -149,8 +149,10 @@ static bool allocate(void)
 void gpustereo_after_present(void)
 {
 	float s = want;
-	if (s > 0 && !failed && !right_tex.data && !allocate())
-		failed = true;
+	if (s > 0 && !failed && !right_tex.data && !allocate()) {
+		failed = true;   // until the game ends; say so once instead of a flat picture (issue #4)
+		emu_osd("3D isn't available right now (not enough memory)");
+	}
 	bool on = s > 0 && right_tex.data;
 	if (on && !mirror) {
 		need_seed = true;

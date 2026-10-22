@@ -130,7 +130,8 @@ int main(void)
 				config_game_begin("navigation");
 			settings_ui_t s = {.game = game};
 			open_page(&s, CAT_HOME);
-			assert(s.count == 5);   // Display, Controls, Saves, Advanced, Reset
+			// Display, Controls, Saves, Advanced, (Games folder in the library,) Reset
+			assert(s.count == (game ? 5 : 6) && has_row(&s, F_FOLDER) == !game);
 			assert(!has_row(&s, CATEGORY_ROW + CAT_CHEATS)); // pause menu only
 			for (unsigned p = 0; p < sizeof(pages) / sizeof(pages[0]); p++) {
 				int page = pages[p];

@@ -65,7 +65,7 @@ typedef struct {
 	float t;
 } browser_t;
 
-static const u32 accent[4] = { 0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28 }; // ABGR: red, yellow, green, blue
+#define accent (theme()->accent)
 
 // ---------------------------------------------------------------- files
 
@@ -484,14 +484,39 @@ static void draw_grid(browser_t *b, slot_t *slots, int sel, bool ring)
 	}
 }
 
+#define STATES_BAR_MAX 4
+
+// B Back; loading: R next page. Slots: X Delete (a used slot), A Save / Load
+// (nothing to load: no A). Auto-saves: A Load. Cards: A Restore.
+static int states_bar(const browser_t *b, ui_button_t *out)
+{
+	int n = 0;
+	out[n++] = (ui_button_t){KEY_B, b->confirm ? "Cancel" : "Back", b->confirm ? UI_ICON_CROSS : UI_ICON_BACK, false};
+	if (!b->saving && !b->confirm)
+		out[n++] = (ui_button_t){KEY_R, "Page", UI_ICON_RIGHT, false};
+	if (b->page == STATES_PAGE_RING) {
+		if (b->ring_sel < b->ring_n)
+			out[n++] = (ui_button_t){KEY_A, "Load", UI_ICON_LOAD, false};
+	} else if (b->page == STATES_PAGE_CARDS) {
+		if (b->cards_n)
+			out[n++] = (ui_button_t){KEY_A, "Restore", UI_ICON_LOAD, false};
+	} else {
+		const slot_t *s = &b->slot[b->sel];
+		if (s->used)
+			out[n++] = (ui_button_t){KEY_X, "Delete", UI_ICON_TRASH, false};
+		if (b->saving || s->used)
+			out[n++] = (ui_button_t){KEY_A, b->saving ? "Save" : "Load", b->saving ? UI_ICON_SAVE : UI_ICON_LOAD, false};
+	}
+	return n;
+}
+
 static void draw_bottom(void *ud)
 {
 	browser_t *b = ud;
 	C2D_Font font = libui_font();
 	u32 white = C2D_Color32(235, 238, 255, 255), dim = C2D_Color32(110, 120, 160, 255);
-	u32 warn = C2D_Color32(255, 210, 120, 255);
 
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, theme()->menu_bg);
 	ui_text_ex(font, 10, 6, 0.5f, white, 0, b->saving ? "Save state" : "Load state");
 	if (b->saving)
 		ui_text_ex(NULL, 310, 9, 0.42f, dim, C2D_AlignRight, b->title);
@@ -507,7 +532,6 @@ static void draw_bottom(void *ud)
 		C2D_DrawRectSolid(10 + i * 18, 26, 0.2f, 16, 2, accent[i]);
 
 	char when[40], line[96];
-	const char *hint;
 	if (b->page == STATES_PAGE_RING) {
 		draw_grid(b, b->ring, b->ring_sel, true);
 		if (b->ring_sel < b->ring_n) {
@@ -516,7 +540,6 @@ static void draw_bottom(void *ud)
 		} else
 			snprintf(line, sizeof(line), "The last %d automatic saves are kept here", SLOTS);
 		ui_text_ex(NULL, 160, 180, 0.5f, white, C2D_AlignCenter, line);
-		hint = b->ring_sel < b->ring_n ? "A go back to this    L/R pages    B back" : "L/R pages    B back";
 	} else if (b->page == STATES_PAGE_CARDS) {
 		for (int r = 0; r < CARD_ROWS && b->card_top + r < b->cards_n; r++) {
 			int i = b->card_top + r;
@@ -531,7 +554,6 @@ static void draw_bottom(void *ud)
 		}
 		if (!b->cards_n)
 			ui_text_ex(NULL, 160, 90, 0.5f, dim, C2D_AlignCenter, "No memory card copies yet");
-		hint = b->cards_n ? "A put this card back    L/R pages    B back" : "L/R pages    B back";
 	} else {
 		draw_grid(b, b->slot, b->sel, false);
 		slot_t *s = &b->slot[b->sel];
@@ -545,13 +567,13 @@ static void draw_bottom(void *ud)
 			snprintf(line, sizeof(line), "Saved %s", when);
 		else
 			snprintf(line, sizeof(line), b->saving ? "Empty slot" : "Nothing saved here yet");
-		ui_text_ex(NULL, 160, 180, 0.5f, b->confirm ? warn : white, C2D_AlignCenter, line);
+		ui_text_ex(NULL, 160, 180, 0.5f, b->confirm ? theme()->message : white, C2D_AlignCenter, line);
 		if (b->confirm)   // where the old save goes
-			ui_text_ex(NULL, 160, 200, 0.42f, dim, C2D_AlignCenter, "The old save goes to Auto-saves first");
-		hint = b->saving ? (s->used ? "A save    X delete    B back" : "A save    B back")
-		                 : (s->used ? "A load    X delete    L/R pages    B back" : "L/R pages    B back");
+			ui_text_ex(NULL, 160, 196, 0.42f, dim, C2D_AlignCenter, "The old save goes to Auto-saves first");
 	}
-	ui_text_ex(NULL, 160, 222, 0.42f, dim, C2D_AlignCenter, hint);
+
+	ui_button_t bar[STATES_BAR_MAX];
+	ui_bar_draw(bar, states_bar(b, bar));
 }
 
 // ---------------------------------------------------------------- run
@@ -611,7 +633,8 @@ int states_run(bool saving, const char *prefix, const char *title, int *slot, st
 	while (aptMainLoop()) {
 		if (dev_tick(true) || dev_ui_pending()) break;
 		input_poll();
-		u32 k = input_keys_down();
+		ui_button_t bar[STATES_BAR_MAX];
+		u32 k = ui_header_back(ui_bar_input(bar, states_bar(&b, bar), input_keys_down()));
 
 		if (!saving && (k & (KEY_L | KEY_R))) {
 			b.page = (b.page + (k & KEY_R ? 1 : 2)) % 3;
@@ -728,22 +751,22 @@ static void resume_top(void *ud)
 		draw_tex(&r->tex, px + dx, py, pw, ph, 0.64f);
 	char when[40], line[64];
 	when_text(when, sizeof(when), r->saved);
-	snprintf(line, sizeof(line), "Left off %s", when);
+	snprintf(line, sizeof(line), r->saved ? "Left off %s" : "", when);
 	ui_text_ex(NULL, 200 + dx, 215, 0.5f, C2D_Color32(240, 242, 255, 255), C2D_AlignCenter, line);
 }
+
+// Y (an older auto-save) only when the backups have one
+static const ui_button_t resume_bar[3] = { { KEY_B, "Restart", UI_ICON_RESET, false }, { KEY_A, "Continue", UI_ICON_PLAY, false }, { KEY_Y, "Older", UI_ICON_LOAD, false } };
 
 static void resume_bottom(void *ud)
 {
 	resume_t *r = ud;
-	u32 c = C2D_Color32(170, 185, 230, 255);
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
-	ui_text_ex(libui_font(), 160, 70, 0.6f, C2D_Color32(235, 238, 255, 255), C2D_AlignCenter, "Continue?");
-	ui_text_ex(NULL, 160, 120, 0.5f, c, C2D_AlignCenter, "A  pick up where you left off");
-	ui_text_ex(NULL, 160, 145, 0.5f, c, C2D_AlignCenter, "B  start the game");
-	if (r->older)
-		ui_text_ex(NULL, 160, 170, 0.5f, c, C2D_AlignCenter, "Y  an older auto-save");
-	ui_text_ex(NULL, 160, 210, 0.42f, C2D_Color32(110, 120, 160, 255), C2D_AlignCenter,
-		"Starting the game keeps this spot in Auto-saves");
+	const theme_t *th = theme();
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->menu_bg);
+	ui_text_ex(libui_font(), 160, 70, 0.6f, th->header_title, C2D_AlignCenter, "Continue?");
+	ui_text_wrap(30, 112, 0.5f, th->help_text, 260, "Pick up where you left off, or start the game from the beginning.");
+	ui_text_wrap(30, 160, 0.42f, th->hint_lib, 260, "Starting the game keeps this spot in Auto-saves.");
+	ui_bar_draw(resume_bar, r->older ? 3 : 2);
 }
 
 // The game was auto-saved when it was last closed: offer to continue.
@@ -771,14 +794,7 @@ int states_resume_prompt(const char *prefix)
 	while (aptMainLoop()) {
 		dev_tick_keys();
 		input_poll();
-		u32 k = input_keys_down();
-		if (k & KEY_TOUCH) {
-			touchPosition tp;
-			hidTouchRead(&tp);
-			if (tp.py >= 110 && tp.py < 135) k |= KEY_A;
-			if (tp.py >= 135 && tp.py < 160) k |= KEY_B;
-			if (tp.py >= 160 && tp.py < 185) k |= KEY_Y;
-		}
+		u32 k = ui_bar_input(resume_bar, r.older ? 3 : 2, input_keys_down());
 		if (k & KEY_A) { resume = RESUME_CONTINUE; sfx_play(SFX_SELECT); break; }
 		if (k & KEY_B) { resume = RESUME_START; sfx_play(SFX_BACK); break; }
 		if ((k & KEY_Y) && r.older) { resume = RESUME_OLDER; sfx_play(SFX_SELECT); break; }
@@ -788,4 +804,39 @@ int states_resume_prompt(const char *prefix)
 	if (r.tex_ok)
 		C3D_TexDelete(&r.tex);
 	return resume;
+}
+
+// ---------------------------------------------------------------- main menu
+
+// The main menu's Continue tile: is there an auto-save, when was it made and
+// its picture (tex is made only when *tex_ok comes back true).
+bool states_auto_peek(const char *prefix, u32 *saved, C3D_Tex *tex, bool *tex_ok)
+{
+	char path[PATH_LEN], bak[PATH_LEN + 8];
+	struct stat st;
+	*tex_ok = false;
+	*saved = 0;
+	slot_path(path, sizeof(path), prefix, STATE_AUTO, false);
+	snprintf(bak, sizeof(bak), "%s.bak", path);
+	if (stat(path, &st) && stat(bak, &st))
+		return false;
+	*saved = (u32)st.st_mtime;
+	u16 *px = malloc(TW * TH * 2);
+	thm_hdr_t h;
+	if (px && thumb_read(prefix, STATE_AUTO, px, &h, false)) {
+		*tex_ok = make_tex(tex, px);
+		*saved = h.saved;
+	}
+	free(px);
+	return true;
+}
+
+void states_thumb_draw(C3D_Tex *t, float x, float y, float w, float h, float z)
+{
+	draw_tex(t, x, y, w, h, z);
+}
+
+void states_when_text(char *out, size_t len, u32 saved)
+{
+	when_text(out, len, saved);
 }

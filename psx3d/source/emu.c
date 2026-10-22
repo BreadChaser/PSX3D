@@ -989,17 +989,17 @@ typedef struct {
 } menu_t;
 static const char *const menu_names[] = {"Resume", "Undo", "Record test clip", "Save state", "Load state", "Swap disc",
 										 "Cheats", "Settings",	 "Reset game", "Exit to library"};
-static const u32 menu_accent_cols[] = {0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28};
 static void menu_draw_top(void *ud)
 {
 	(void)ud;
-	C2D_DrawRectSolid(0, 0, 0.6f, 400, 240, C2D_Color32(2, 4, 16, 170));
+	const theme_t *th = theme();
+	C2D_DrawRectSolid(0, 0, 0.6f, 400, 240, th->pause_veil);
 	float dx = ui_depth(-0.8f);
 	ui_text_ex(libui_font(), 201 + dx, 87, 1.1f, C2D_Color32(0, 0, 0, 150), C2D_AlignCenter, "PAUSED");
 	ui_text_ex(libui_font(), 200 + dx, 86, 1.1f, C2D_Color32(255, 255, 255, 255), C2D_AlignCenter, "PAUSED");
-	ui_text_ex(NULL, 200 + dx, 136, 0.55f, C2D_Color32(170, 185, 230, 255), C2D_AlignCenter, game_title);
+	ui_text_ex(NULL, 200 + dx, 136, 0.55f, th->game_sub, C2D_AlignCenter, game_title);
 	for (int i = 0; i < 4; i++)
-		C2D_DrawRectSolid(140 + i * 30 + dx, 128, 0.65f, 28, 2, menu_accent_cols[i]);
+		C2D_DrawRectSolid(140 + i * 30 + dx, 128, 0.65f, 28, 2, th->accent[i]);
 }
 static const char *menu_label(int i, void *ud)
 {
@@ -1015,19 +1015,31 @@ static const char *menu_value(int i, void *ud)
 	// Every entry that opens another screen shows the same arrow.
 	return item == M_DISC ? m->disc : item == M_SAVE || item == M_LOAD || item == M_CHEATS || item == M_SETTINGS ? ">" : NULL;
 }
+static int menu_bar(const menu_t *m, ui_button_t *b)
+{
+	int n = 0;
+	b[n++] = (ui_button_t){KEY_B, "Resume", UI_ICON_PLAY, false};
+	if (m->items[m->sel] == M_DISC) {
+		b[n++] = (ui_button_t){KEY_DLEFT, "Disc", UI_ICON_LEFT, false};
+		b[n++] = (ui_button_t){KEY_DRIGHT, "Disc", UI_ICON_RIGHT, false};
+		b[n++] = (ui_button_t){KEY_A, "Insert", UI_ICON_DISC, false};
+	} else
+		b[n++] = (ui_button_t){KEY_A, "Select", UI_ICON_OPEN, false};
+	return n;
+}
 static void menu_draw_bottom(void *ud)
 {
 	menu_t *m = ud;
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
+	const theme_t *th = theme();
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->menu_bg);
 	ui_menu_header("Menu", ui_fit(game_title, .42f, 150));
 	if (have_disk && disk.get_num_images)
 		snprintf(m->disc, sizeof(m->disc), "Disc %u of %u", menu_disc + 1, disk.get_num_images());
-	// Eight rows fit, so Exit stays visible when Swap disc is listed.
-	flist_draw(&m->fl, m->nitems, m->sel, 0, 40, 320, 22, 8, menu_label, menu_value, m,
-			   menu_accent_cols[m->sel & 3]);
-	ui_text_ex(NULL, 160, 222, 0.42f, C2D_Color32(110, 120, 160, 255), C2D_AlignCenter,
-			   m->items[m->sel] == M_DISC ? "Left/Right choose disc    A insert    B resume"
-										  : "A select    B resume");
+	// Eight rows fit above the buttons, so Exit stays visible when Swap disc is listed.
+	flist_draw(&m->fl, m->nitems, m->sel, 0, 40, 320, 21, 8, menu_label, menu_value, m,
+			   th->accent[m->sel & 3]);
+	ui_button_t bar[4];
+	ui_bar_draw(bar, menu_bar(m, bar));
 }
 static bool game_menu_open;
 static bool autosave_is_due(void);
@@ -1063,6 +1075,7 @@ static bool menu_run(int initial_screen)
 	if (initial_screen == DEV_UI_RESUME)
 		return true;
 	game_menu_open = true;
+	playlog_pause(true);
 	input_gameplay(false);
 	bottom_backlight(true);
 	menu_t m = {0};
@@ -1079,6 +1092,7 @@ static bool menu_run(int initial_screen)
 	while (aptMainLoop()) {
 		if (dev_tick(true)) {
 			game_menu_open = false;
+			playlog_pause(false);
 			return false;
 		}
 		int screen = dev_ui_take();
@@ -1104,12 +1118,13 @@ static bool menu_run(int initial_screen)
 			continue;
 		}
 		input_poll();
-		u32 k = ui_header_back(input_keys_down());
+		ui_button_t bar[4];
+		u32 k = ui_header_back(ui_bar_input(bar, menu_bar(&m, bar), input_keys_down()));
 		if (k & KEY_TOUCH) {
 			touchPosition tp;
 			hidTouchRead(&tp);
-			int row = flist_row_at(&m.fl, 40, 22, tp.py);
-			if (tp.py >= 40 && tp.py < 216 && row >= 0 && row < m.nitems) {
+			int row = flist_row_at(&m.fl, 40, 21, tp.py);
+			if (tp.py >= 40 && tp.py < 208 && row >= 0 && row < m.nitems) {
 				if (row == m.sel)
 					k |= KEY_A;
 				else {
@@ -1217,6 +1232,7 @@ static bool menu_run(int initial_screen)
 				if (k & KEY_A) {
 					config_save();
 					game_menu_open = false;
+					playlog_pause(false);
 					return false;
 				}
 				break;
@@ -1227,9 +1243,11 @@ static bool menu_run(int initial_screen)
 	}
 	if (!aptShouldClose())
 		goto resume;
+	playlog_pause(false);
 	return false;
 resume:
 	game_menu_open = false;
+	playlog_pause(false);
 	input_gameplay(true);
 	sfx_play(SFX_BACK);
 	config_save();
@@ -1261,7 +1279,7 @@ static void game_draw_bottom(void *ud)
 	}
 	if (!has_audio)
 		ui_text(4, 186, 0.42f, C2D_Color32(255, 160, 120, 255),
-			"No sound available");
+			"No sound: run DSP1 once (it saves the 3DS sound firmware)");
 }
 
 // Without a touch panel or FPS counter the bottom backlight can turn off.
@@ -1604,6 +1622,10 @@ static void game_apt(APT_HookType hook, void *param)
 		pmu_stop();
 	else if ((hook == APTHOOK_ONRESTORE || hook == APTHOOK_ONWAKEUP) && sw_pmu0 >= 0)
 		pmu_start(sw_pmu0, sw_pmu1 >= 0 ? sw_pmu1 : 0);
+	if (hook == APTHOOK_ONSUSPEND || hook == APTHOOK_ONSLEEP)
+		playlog_pause(true);
+	else if (hook == APTHOOK_ONRESTORE || hook == APTHOOK_ONWAKEUP)
+		playlog_pause(false);
 	if (hook == APTHOOK_ONSUSPEND) {
 		input_gameplay(false);
 		bottom_backlight(true);
@@ -1676,12 +1698,44 @@ PSX3D_COLD static bool card_trouble_dialog(void)
 	return true;
 }
 
+bool emu_continue_now;
+
+// Why a game didn't start, in words a player can act on (main.c shows it).
+static char load_error[320];
+PSX3D_COLD const char *emu_load_error(void)
+{
+	return load_error[0] ? load_error : "Could not start the game\nThe disc could not be read.";
+}
+
+// After a failed load: the likeliest reason, checked from the files.
+PSX3D_COLD static void explain_failure(const char *path)
+{
+	char name[160];
+	const char *ext = strrchr(path, '.');
+	if (library_missing_file(path, name, sizeof(name))) {
+		bool self = !strcmp(name, strrchr(path, '/') ? strrchr(path, '/') + 1 : path);
+		if (self)
+			snprintf(load_error, sizeof(load_error), "Game not found\n%s is not on the SD card any more. "
+				"If you moved or renamed it, press SELECT in the library to look for games again.", name);
+		else
+			snprintf(load_error, sizeof(load_error), "A disc file is missing\n%s is named in the game's "
+				"%s file but is not next to it. Copy it into the same folder.", name, ext ? ext + 1 : "disc list");
+	} else if (!library_is_ps1_image(path))
+		snprintf(load_error, sizeof(load_error), "Not a PlayStation disc\nThis looks like a disc of another "
+			"console. PSX3D only plays PS1 games.");
+	else
+		snprintf(load_error, sizeof(load_error), "Could not start the game\nThe disc could not be read. It may "
+			"be damaged or in a format PSX3D can't open. PSX3D opens .cue + .bin, .chd, .pbp, .iso, .img, "
+			".mdf and .m3u.");
+}
+
 static bool run_game(const char *path, const char *save_name, const char *title)
 {
 	struct retro_game_info info = { .path = path };
 	struct retro_system_av_info av;
 	u64 fps_t0;
 	int fps_frames = 0, present_count = 0, srm_counter = 0;
+	load_error[0] = 0;
 
 	if (save_name)
 		snprintf(game_name, sizeof(game_name), "%s", save_name);
@@ -1721,6 +1775,8 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	log_printf("renderer: GPU\n");
 	if (!video_game_begin()) {
 		log_printf("renderer initialization failed\n");
+		snprintf(load_error, sizeof(load_error), "Not enough memory\nThe game's picture could not be set up. "
+			"Close PSX3D from the HOME Menu and start it again.");
 		config_game_end();
 		clip_close();
 		return false;
@@ -1731,6 +1787,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	core_initialized = true;
 	if (!retro_load_game(&info)) {
 		log_printf("retro_load_game failed\n");
+		explain_failure(path);
 		config_game_end();
 		retro_deinit();
 		core_initialized = false;
@@ -1792,8 +1849,19 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		make_path(prefix, sizeof(prefix), PSX3D_STATE_DIR, "");
 		// Remote-started games skip continue and the save on exit, so test runs
 		// never touch the player's place. Local play always offers continue.
-		if (clip_requested<0 && !dev_remote_game() && sw_state < 0)
-			continue_prompt(prefix);
+		// The main menu's Continue is the answer already: no prompt.
+		bool now = emu_continue_now;
+		emu_continue_now = false;
+		if (clip_requested<0 && !dev_remote_game() && sw_state < 0) {
+			if (!now)
+				continue_prompt(prefix);
+			else if (state_load_from(STATE_AUTO))
+				osd("Continuing where you left off");
+		}
+		if (clip_requested < 0 && !clip_replay_session && !dev_remote_game()) {
+			home_note_game(path, save_name, title, game_name);   // the main menu's Continue
+			playlog_begin(save_name ? save_name : game_name);   // the library's play history
+		}
 	}
 	if (clip_requested<0 && game_capabilities().rewind && config_rewind_on())
 		rewind_start();
@@ -2254,6 +2322,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		if (!clip_replay_session && !dev_remote_game())
 			log_printf("auto-save: %s\n", home_save_write() ? "written" : "none");
 		home_save_drop();
+		playlog_end();
 		config_game_end();
 		clip_close();
 		core_initialized = false;   // emu_deinit must not tear the core down
@@ -2267,6 +2336,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	if (!clip_replay_session && !dev_remote_game() && !continue_frozen)
 		log_printf("auto-save: %s\n", state_save_to(STATE_AUTO) ? "written" : "failed");
 	bottom_backlight(true);
+	playlog_end();
 	cheats_unload();
 	retro_unload_game();
 	config_game_end();

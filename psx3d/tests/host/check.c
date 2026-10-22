@@ -24,6 +24,7 @@ const char *emu_game_title(void) { return "Crash Bandicoot"; }
 #ifndef PSX3D_TEST_PRESETS
 #error "build with -DPSX3D_TEST_PRESETS=\"<repo>/psx3d/romfs/presets\""
 #endif
+#include "../../source/theme.c"
 #include "../../source/presets.c"
 #include "../../source/input.c"
 #include "../../source/config.c"
@@ -669,8 +670,8 @@ int main(void)
  fps_mockups();
  confirm_accept=false; confirm_step=0; assert(!ui_confirm("RESET?","Cancel test",false));
  confirm_accept=true; confirm_step=0; assert(ui_confirm("RESET?","Accept test",false));
- shot("reset-global"); confirm_t c={"RESET ALL SETTINGS?","Restore this console's defaults and all slot bindings? Game overrides are kept."}; confirm_draw(&c); shot_end();
- shot("reset-game"); c=(confirm_t){"RESET THIS GAME?","Remove this game's settings and control overrides?"}; confirm_draw(&c); shot_end();
+ shot("reset-global"); confirm_t c={"RESET ALL SETTINGS?","Restore this console's defaults and all slot bindings? Game overrides are kept.","A  Reset to defaults",{{KEY_B,"Cancel",0,false},{KEY_A,"Reset to defaults",0,false}}}; confirm_draw(&c); shot_end();
+ shot("reset-game"); c=(confirm_t){"RESET THIS GAME?","Remove this game's settings and control overrides?","A  Reset to defaults",{{KEY_B,"Cancel",0,false},{KEY_A,"Reset to defaults",0,false}}}; confirm_draw(&c); shot_end();
  clean_input(false); controls_shot("controls-old-unlisted",14); clean_input(true); controls_shot("controls",14);
  FT_Done_Face(title_face); FT_Done_Face(body_face); FT_Done_FreeType(ft); options_clear(); clear_overrides();
  puts("PASS: confirmation fresh-A/cancel and production drawing mockups"); return 0;

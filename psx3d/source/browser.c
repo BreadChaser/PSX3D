@@ -1,3 +1,4 @@
+#define _GNU_SOURCE   // strcasestr
 // Game browser. Reads one folder at a time with readdir() and never stats
 // files or asks the card for its free space, so it stays fast on huge
 // (1TB+) SD cards and folders with thousands of files.
@@ -166,20 +167,59 @@ static bool dir_exists(const char *path)
 	return d != NULL;
 }
 
-// first run: guess where the PS1 games are
-static void guess_games_dir(void)
+// First run: find the PS1 games without asking. The usual folders first,
+// then any folder on the card or in sdmc:/roms named like PlayStation, then
+// sdmc:/roms itself; a folder counts only when the scan finds PS1 discs in it
+// (other systems' folders and images are left out, library.c). Returns true
+// with games_dir set and the library loaded.
+static bool ps1_name(const char *n)
+{
+	return strcasestr(n, "psx") || strcasestr(n, "ps1") || strcasestr(n, "playstation") || strcasestr(n, "psone");
+}
+
+bool library_guess_dir(void)
 {
 	static const char *const guesses[] = {
-		"sdmc:/roms/psx", "sdmc:/roms/PSX", "sdmc:/roms/ps1", "sdmc:/roms/PS1",
-		"sdmc:/roms/playstation", "sdmc:/psx", "sdmc:/PSX", "sdmc:/roms",
+		"sdmc:/roms/psx", "sdmc:/roms/ps1", "sdmc:/roms/playstation", "sdmc:/psx", "sdmc:/ps1",
 	};
-	if (g_cfg.games_dir[0])
-		return;
+	char (*found)[PATH_LEN] = malloc(24 * PATH_LEN);   // once, at first start
+	int n = 0;
+	if (!found)
+		return false;
 	for (size_t i = 0; i < sizeof(guesses) / sizeof(guesses[0]); i++)
-		if (dir_exists(guesses[i])) {
-			snprintf(g_cfg.games_dir, sizeof(g_cfg.games_dir), "%s", guesses[i]);
-			return;
+		if (dir_exists(guesses[i]))
+			snprintf(found[n++], PATH_LEN, "%s", guesses[i]);
+	static const char *const parents[] = { "sdmc:/roms", "sdmc:" };
+	for (int p = 0; p < 2; p++) {
+		DIR *d = opendir(p ? "sdmc:/" : parents[p]);
+		struct dirent *de;
+		while (d && n < 22 && (de = readdir(d)))
+			if (de->d_name[0] != '.' && ps1_name(de->d_name)) {
+				char path[PATH_LEN];
+				snprintf(path, sizeof(path), "%s/%s", parents[p], de->d_name);
+				bool dup = false;
+				for (int k = 0; k < n; k++)
+					dup |= !strcasecmp(found[k], path);
+				if (!dup && dir_exists(path))
+					snprintf(found[n++], PATH_LEN, "%s", path);
+			}
+		if (d)
+			closedir(d);
+	}
+	if (dir_exists("sdmc:/roms"))
+		snprintf(found[n++], PATH_LEN, "sdmc:/roms");
+	for (int i = 0; i < n; i++)
+		if (library_load(found[i], true)) {
+			log_printf("library: first run, PS1 games found in %s\n", found[i]);
+			snprintf(g_cfg.games_dir, sizeof(g_cfg.games_dir), "%.*s", (int)sizeof(g_cfg.games_dir) - 1, found[i]);
+			config_save();
+			free(found);
+			return true;
 		}
+	free(found);
+	log_printf("library: first run, no PS1 games found (%d folders tried)\n", n);
+	library_load(NULL, false);   // nothing listed
+	return false;
 }
 
 // a folder holding exactly one game and nothing else: that game
@@ -195,19 +235,21 @@ static bool single_game(char *out, size_t len)
 static void draw_top(void *ud)
 {
 	(void)ud;
-	C2D_DrawRectSolid(0, 0, 0.1f, 400, 240, C2D_Color32(6, 9, 24, 255));
-	ui_text_ex(libui_font(), 16, 14, 0.8f, C2D_Color32(235, 238, 255, 255), 0, "PSX3D");
+	const theme_t *th = theme();
+	C2D_DrawRectSolid(0, 0, 0.1f, 400, 240, th->menu_bg);
+	ui_text_ex(libui_font(), 16, 14, 0.8f, th->header_title, 0, "PSX3D");
 	char version[64];
 	snprintf(version, sizeof(version), "Version " PSX3D_VERSION " (game presets %d), based on PCSX-ReARMed (GPL v2)",
 		game_presets_pack());
-	ui_text_ex(NULL, 16, 46, 0.42f, C2D_Color32(130, 150, 190, 255), 0, version);
-	ui_text_ex(NULL, 16, 70, 0.39f, C2D_Color32(110, 120, 160, 255), 0, "Games folder");
+	ui_text_ex(NULL, 16, 46, 0.42f, th->muted, 0, version);
+	ui_text_ex(NULL, 16, 70, 0.39f, th->header_right, 0, "Games folder");
 	ui_text_ex(NULL, 16, 84, 0.42f, C2D_Color32(170, 185, 220, 255), 0,
 		g_cfg.games_dir[0] ? ui_fit(g_cfg.games_dir, .42f, 368) : "None chosen yet");
 	if (slow_mode_notice(false))
 		ui_text_ex(NULL, 16, 108, 0.42f, C2D_Color32(255, 160, 120, 255), 0,
 			ui_fit(slow_mode_notice(true), .42f, 368));
 	ui_help_panel(150, "This folder", truncated ? "Over 4096 entries; the list is cut off" : NULL, cwd);
+	ui_notice(msg, msg_frames);
 }
 
 static const char *row_label(int i, void *ud)
@@ -226,27 +268,42 @@ static const char *row_value(int i, void *ud)
 	return entries[i - 1].dir ? ">" : "Play";
 }
 
+// B Up (Back at the top of the card), Y the games folder, START Done, A Open
+static int browser_bar(ui_button_t *b)
+{
+	int n = 0;
+	bool root = !strcmp(cwd, "sdmc:/");
+	if (!root || g_cfg.games_dir[0])
+		b[n++] = (ui_button_t){KEY_B, root ? "Back" : "Up", root ? UI_ICON_BACK : UI_ICON_UP, false};
+	if (g_cfg.games_dir[0] && strcmp(cwd, g_cfg.games_dir))
+		b[n++] = (ui_button_t){KEY_Y, "Games", UI_ICON_FOLDER, false};
+	b[n++] = (ui_button_t){KEY_START, "Done", UI_ICON_EXIT, false};
+	b[n++] = !sel ? (ui_button_t){KEY_A, "Use", UI_ICON_CHECK, false}
+		: sel <= nentries && entries[sel - 1].dir ? (ui_button_t){KEY_A, "Open", UI_ICON_OPEN, false}
+		: (ui_button_t){KEY_A, "Play", UI_ICON_PLAY, false};
+	return n;
+}
+
 static void draw_bottom(void *ud)
 {
 	(void)ud;
-	u32 muted = C2D_Color32(130, 150, 190, 255);
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
+	const theme_t *th = theme();
+	u32 muted = th->muted;
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->menu_bg);
 	const char *name = strrchr(cwd, '/');
 	ui_menu_header("Folders", ui_fit(name && name[1] ? name + 1 : cwd, .42f, 170));
 	flist_draw(&lst, nentries + 1, sel, 0, 40, 320, ROW_H, ROWS, row_label, row_value, NULL,
-		(const u32[]){0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28}[sel & 3]);
+		th->accent[sel & 3]);
 	if (nentries + 1 > ROWS) {
 		float h = ROWS * (float)ROW_H;
 		C2D_DrawRectSolid(317, 40 + h * lst.scroll / (nentries + 1), .3f, 2, h * ROWS / (nentries + 1), muted);
 	}
-	if (msg_frames > 0) {
+	if (msg_frames > 0)
 		msg_frames--;
-		ui_text_ex(NULL, 12, 204, .4f, C2D_Color32(255, 210, 120, 255), 0, msg);
-	} else if (!nentries)
-		ui_text_ex(NULL, 12, 204, .4f, muted, 0, "No games or folders here");
-	ui_text_ex(NULL, 160, 222, .39f, muted, C2D_AlignCenter,
-		g_cfg.games_dir[0] ? "A open    B up    Y games folder    START library"
-		                   : "A open    B up    START quit");
+	if (!nentries)
+		ui_text_ex(NULL, 12, 72, .4f, muted, 0, "No games or folders here");
+	ui_button_t bar[4];
+	ui_bar_draw(bar, browser_bar(bar));
 }
 
 // held-button repeat: fires on press, then after 18 frames every 3 frames
@@ -281,7 +338,6 @@ bool browser_run(char *out_path, size_t out_len)
 	static int rep_down, rep_up, rep_l, rep_r;
 
 	// Back from a game started here: that folder. Otherwise the games folder.
-	guess_games_dir();
 	if (back_sel[0] && dir_exists(g_cfg.last_dir)) {
 		load_dir(g_cfg.last_dir);
 		select_name(back_sel);
@@ -296,7 +352,8 @@ bool browser_run(char *out_path, size_t out_len)
 		if (dev_ui_take() == DEV_UI_LIBRARY)
 			break;   // remote: back to the library
 		input_poll();
-		u32 k = input_keys_down(), h = input_keys_held();
+		ui_button_t bar[4];
+		u32 k = ui_header_back(ui_bar_input(bar, browser_bar(bar), input_keys_down())), h = input_keys_held();
 		int n = nentries + 1, before = sel;
 
 		if (k & KEY_START)

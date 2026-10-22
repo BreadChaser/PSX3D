@@ -878,11 +878,11 @@ static void edge(float x, float y, float x2, float y2, float width, u32 color)
 
 static void touch_panel_draw(tbutton_t b, bool enabled, bool hit)
 {
-	C2D_DrawRectSolid(b.x, b.y, 0.51f, b.w, b.h, button_ink(rgb(0x1f2a5a), enabled));
+	C2D_DrawRectSolid(b.x, b.y, 0.51f, b.w, b.h, button_ink(theme()->touch_border, enabled));
 	if (hit)
 		C2D_DrawRectangle(b.x+1, b.y+1, 0.52f, b.w-2, b.h-2,
 			gradient(0), gradient(0), gradient(1), gradient(1));
-	else C2D_DrawRectSolid(b.x+1, b.y+1, 0.52f, b.w-2, b.h-2, button_ink(rgb(0x0c1230), enabled));
+	else C2D_DrawRectSolid(b.x+1, b.y+1, 0.52f, b.w-2, b.h-2, button_ink(theme()->touch_face, enabled));
 }
 
 static void quadrant_draw(int i)

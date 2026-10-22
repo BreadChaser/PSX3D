@@ -10,6 +10,7 @@
 #include "libretro.h"
 #include "safefile.h"
 #include "history.h"
+#include "theme.h"
 
 #define PSX3D_VERSION  "0.5.0"
 // Optional private test identity; the release reports its human version.
@@ -43,6 +44,7 @@ typedef struct {
 	char games_dir[PATH_LEN];   // Y in the browser jumps here
 	char last_title[256];       // library: game to select on start
 	int  smooth;       // bilinear filtering
+	int  theme;        // menu colours (theme.c), index into the theme table
 	int  show_fps;
 	int  stereo;       // 3D slider: 0 off, 1 screen depth, 2 real (per-object)
 	int  debug;        // show debug tools in the menu
@@ -54,6 +56,12 @@ typedef struct {
 	int  touch_stick;  // Old 3DS virtual right stick
 	int  touch_click_left; // global New 3DS bottom-screen layout: 0 right, 1 left
 	int  controller;   // all-games Controller: 0 digital, 1 analog (DualShock at start)
+	int  library_view; // library Sort: 0 A-Z, 1 recently played, 2 most played, 3 favourites
+	// main menu Continue: the last game played here (home.c)
+	char last_game[256];        // its title ("" = name from the path)
+	char last_game_save[256];   // save name it was started with ("" = from the path)
+	char last_game_state[256];  // save name it ended up with (states/<this>.sta)
+	char last_game_path[PATH_LEN];
 } psx3d_config;
 
 extern psx3d_config g_cfg;
@@ -74,6 +82,7 @@ const char *input_control_key(int row);
 void config_control_clear(int row);
 bool settings_ui_run(bool game, void (*draw_top)(void *));
 bool settings_ui_cheats(void);
+bool settings_ui_take_folders(void);   // Settings > Games folder: open the folder browser
 bool settings_ui_active(void);
 bool settings_ui_debug_capture(void);
 bool settings_ui_debug_key(const char *name);
@@ -295,6 +304,9 @@ int states_run(bool saving, const char *prefix, const char *title, int *slot, st
 // a slot deleted in the browser went into the ring as this entry
 typedef struct { bool done; int slot; hist_entry_t entry; } states_deleted_t;
 extern states_deleted_t states_deleted;
+bool states_auto_peek(const char *prefix, u32 *saved, C3D_Tex *tex, bool *tex_ok);
+void states_thumb_draw(C3D_Tex *t, float x, float y, float w, float h, float z);
+void states_when_text(char *out, size_t len, u32 saved);
 
 // stereo.c - real 3D from the core's depth map
 bool stereo_init(void);
@@ -440,6 +452,21 @@ bool ui_input_symbol(int id, float x, float y, float size, u32 color);
 u32 ui_input_color(int id);
 void ui_menu_header(const char *title, const char *right);
 u32 ui_header_back(u32 keys);   // header tap -> KEY_B
+// touch button bar replacing the prompt lines (ui.c): B leftmost, A rightmost
+// each tab shows an icon over a one-word caption; no icon: B back, A check
+enum { UI_ICON_NONE, UI_ICON_STAR, UI_ICON_SORT, UI_ICON_RESCAN, UI_ICON_LEFT, UI_ICON_RIGHT, UI_ICON_FOLDER,
+	UI_ICON_BACK, UI_ICON_PLAY, UI_ICON_CHECK, UI_ICON_CROSS, UI_ICON_PLUS, UI_ICON_TRASH, UI_ICON_SAVE,
+	UI_ICON_LOAD, UI_ICON_RESET, UI_ICON_UP, UI_ICON_OPEN, UI_ICON_CHANGE, UI_ICON_TOGGLE, UI_ICON_DISC, UI_ICON_EXIT };
+typedef struct { u32 key; const char *label; u8 icon; bool on; } ui_button_t;
+#define UI_BAR_MAX 6
+void ui_bar_draw(const ui_button_t *b, int n);           // bottom screen, y 208..240
+u32 ui_bar_input(const ui_button_t *b, int n, u32 keys);  // tap -> its key; presses light it
+int ui_bar_parse(const char *hint, ui_button_t *out, int max);   // "A open    B back"
+enum { UI_COL_BAR, UI_COL_RULE, UI_COL_NOTICE, UI_COL_STAR };
+u32 ui_bar_color(int which);
+void ui_star(float cx, float cy, float r, u32 c, u32 hollow, float z);
+void ui_notice(const char *s, int frames);
+void ui_first_letter(char *out, const char *title);   // out[8]: one whole UTF-8 letter   // top screen, fades over its last 20 frames
 void ui_text_wrap(float x, float y, float size, u32 color, float width, const char *s);
 void ui_button_text(float x, float y, float pixels, float spacing, u32 color, int id);
 
@@ -474,6 +501,11 @@ typedef struct {
 	int disc_no[8];
 } game_t;
 bool library_load(const char *root, bool rescan);
+bool library_guess_dir(void);
+bool library_is_ps1_image(const char *path);   // cheap check: not another system's disc
+bool library_missing_file(const char *path, char *out, size_t len);   // a disc or track that isn't there
+// emu.c: why the last game didn't start, and what to do (a title line, then the advice)
+const char *emu_load_error(void);   // browser.c: first run, find a folder with PS1 games
 int library_count(void);
 const game_t *library_get(int i);
 int library_series_count(void);
@@ -516,9 +548,43 @@ void music_update(void);
 void libui_init(void);
 C2D_Font libui_font(void);
 void libui_exit(void);
+// Settings > About: version and a QR code to share PSX3D (share.c)
+void share_about_run(bool game);
+// mp_ui.c - Play together and Share PSX3D screens, opened from the main menu
+void mp_hub_run(void);
+void mp_host_run(void);   // main menu > Play together > Host (devtools/ui-impl/INTERFACES.md)
+void mp_join_run(void);   // main menu > Play together > Join
+// after mp_hub_run: a game to start (Host a game), path filled
+bool mp_launch_request(char *path, size_t len);
+void share_run(void);
+bool share_about_visible(void);
+// Returns 1 to play (path filled), 2 folder browser, 3 remote, 4 back to the
+// main menu, 0 quit.
 int libui_run(char *out_path, size_t len);
+// the library's top-screen backdrop: sky picture and rolling wire grid
+void libui_draw_backdrop(void);
+// playlog.c - play history and favourites, keyed by save name
+u32 playlog_last(const char *name);      // unix time, 0 = never played
+u32 playlog_seconds(const char *name);
+bool playlog_favourite(const char *name);
+bool playlog_toggle_favourite(const char *name);   // returns the new state
+void playlog_begin(const char *name);    // a local game starts
+void playlog_pause(bool paused);         // pause menu, HOME Menu, sleep
+void playlog_end(void);                  // the game ends: time added, file written
 void libui_select_title(const char *title);
 const game_t *libui_picked(void);
+
+// home.c - the main menu PSX3D opens to
+typedef struct {
+	char save[256];    // save name for emu_run_game ("" = NULL)
+	char title[256];   // title for emu_run_game ("" = NULL)
+	bool resume;       // load the Continue auto-save without asking
+} home_launch_t;
+enum { HOME_QUIT, HOME_AGAIN, HOME_LIBRARY, HOME_PLAY, HOME_FOLDERS };
+int home_run(bool have_games, char *path, size_t len, home_launch_t *out);
+// Library with no games: 0 quit, 1 main menu, 2 folder browser, 3 look again
+int home_empty_library_run(void);
+void home_note_game(const char *path, const char *save_name, const char *title, const char *state_name);
 
 // browser.c - returns true and fills path when a game is chosen
 bool browser_run(char *out_path, size_t out_len);
@@ -527,6 +593,7 @@ bool browser_run(char *out_path, size_t out_len);
 bool emu_init(void);
 void emu_deinit(void);
 bool emu_run_game(const char *path, const char *save_name, const char *title);
+extern bool emu_continue_now;   // next game: load its Continue auto-save, no prompt
 
 extern int __ctr_svchax;
 // Why fast mode (the dynarec) is off; SLOW_NONE when it is on.
