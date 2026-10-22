@@ -238,6 +238,7 @@ make cia    # psx3d/PSX3D.cia
   libretro contributors; based on PCSX, PCSX-Reloaded and P.E.Op.S.
 - The PCSX-ReARMed 3DS port authors; devkitPro (libctru, citro2d, citro3d)
 - [DSP1](https://github.com/zoogie/DSP1) by zoogie; [artwork, fonts and cheat sources](tools/art/CREDITS.md)
+- Icons by [Dreamstale](https://www.flaticon.com/authors/dreamstale) from [Flaticon](https://www.flaticon.com) (Flaticon licence, not GPL)
 
 PSX3D is licensed under the [GPL-2.0](LICENSE). It is not affiliated with Sony,
 Nintendo or libretro.

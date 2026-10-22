@@ -1,0 +1,35 @@
+# slot	kind	flaticon id	drawing
+# kind pic: top pictures, tiles and category pictures (gradient + glow, draw-on);
+# kind bar: button bar tabs, in psx3d.h UI_ICON_* order (one colour, thick strokes).
+together	pic	511587	users
+share	pic	511576	share nodes
+settings	pic	511574	gear
+host	pic	514170	arcade console
+join	pic	511536	enter arrow
+display	pic	514161	dual-screen handheld
+controls	pic	514153	gamepad
+saves	pic	514176	floppy disk
+advanced	pic	520281	chip (gradient style only: its alpha is the mask)
+folder	pic	441285	folder
+reset	pic	511563	sync arrows
+star	bar	511580	star
+sort	bar	693161	up/down arrows
+rescan	bar	511564	rotate
+left	bar	693120	chevron left
+right	bar	693130	chevron right
+folder	bar	441285	folder
+back	bar	693153	return arrow
+play	bar	511531	play triangle
+check	bar	511519	check
+cross	bar	511524	cross
+plus	bar	511558	plus
+trash	bar	511582	bin
+save	bar	514176	floppy disk
+load	bar	511526	arrow into tray
+reset	bar	511563	sync arrows
+up	bar	693158	arrow up
+open	bar	693137	arrow into box
+change	bar	693136	swap arrows
+toggle	bar	511551	switch
+disc	bar	514154	CD
+exit	bar	511554	door
