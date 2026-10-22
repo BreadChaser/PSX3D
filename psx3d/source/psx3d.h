@@ -12,10 +12,10 @@
 #include "history.h"
 #include "theme.h"
 
-#define PSX3D_VERSION  "0.5.0"
+#define PSX3D_VERSION  "0.5.1"
 // Optional private test identity; the release reports its human version.
 #ifndef PSX3D_BUILD
-#define PSX3D_BUILD PSX3D_VERSION
+#define PSX3D_BUILD "release-v051-rc1"
 #endif
 #define PSX3D_DIR      "sdmc:/3ds/PSX3D"
 #define PSX3D_BIOS_DIR PSX3D_DIR "/bios"
