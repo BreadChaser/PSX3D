@@ -46,7 +46,7 @@ ones a new screen is likely to need (`TH_CARD_TOP`, `TH_COVER_SHADOW`, ...).
 | `slow_bg`, `slow_text` | "fast mode is off" banner in the library |
 | `game_title`, `game_sub` | library title and second line; pause menu game name; Continue prompt lines |
 | `pause_veil` | veil over the paused game |
-| `touch_face`, `touch_border` | touch button panel (input.c), the only touch colours the palettes change |
+| `touch_face`, `touch_border` | kept for the mock-up; the in-game touch panel (input.c) keeps its v0.5.0 colours in every theme, so its per-frame code stays where it was |
 
 Not themed (constant in the mock-up too): touch accents and symbol colours, `brandInk`, `osdText`,
 cover placeholder cards, shadows, the save state picker's veil and cards.
