@@ -484,7 +484,7 @@ static void draw_grid(browser_t *b, slot_t *slots, int sel, bool ring)
 	}
 }
 
-#define STATES_BAR_MAX 4
+#define STATES_BAR_MAX 5
 
 // B Back; loading: R next page. Slots: X Delete (a used slot), A Save / Load
 // (nothing to load: no A). Auto-saves: A Load. Cards: A Restore.
@@ -492,8 +492,11 @@ static int states_bar(const browser_t *b, ui_button_t *out)
 {
 	int n = 0;
 	out[n++] = (ui_button_t){KEY_B, b->confirm ? "Cancel" : "Back", b->confirm ? UI_ICON_CROSS : UI_ICON_BACK, false};
-	if (!b->saving && !b->confirm)
-		out[n++] = (ui_button_t){KEY_R, "Page", UI_ICON_RIGHT, false};
+	if (!b->saving && !b->confirm) {   // the pages around this one, by name
+		static const char *const page[] = { "Slots", "Auto-saves", "Cards" };
+		out[n++] = (ui_button_t){KEY_L, page[(b->page + 2) % 3], UI_ICON_LEFT, false};
+		out[n++] = (ui_button_t){KEY_R, page[(b->page + 1) % 3], UI_ICON_RIGHT, false};
+	}
 	if (b->page == STATES_PAGE_RING) {
 		if (b->ring_sel < b->ring_n)
 			out[n++] = (ui_button_t){KEY_A, "Load", UI_ICON_LOAD, false};

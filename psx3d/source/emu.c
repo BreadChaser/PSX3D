@@ -1035,8 +1035,10 @@ static void menu_draw_bottom(void *ud)
 	ui_menu_header("Menu", ui_fit(game_title, .42f, 150));
 	if (have_disk && disk.get_num_images)
 		snprintf(m->disc, sizeof(m->disc), "Disc %u of %u", menu_disc + 1, disk.get_num_images());
-	// Eight rows fit above the buttons, so Exit stays visible when Swap disc is listed.
-	flist_draw(&m->fl, m->nitems, m->sel, 0, 40, 320, 21, 8, menu_label, menu_value, m,
+	// Eight rows fit above the buttons; with Undo and Swap disc both listed,
+	// nine slightly lower rows keep Exit visible.
+	bool nine = m->nitems > 8;
+	flist_draw(&m->fl, m->nitems, m->sel, 0, 40, 320, nine ? 18 : 21, nine ? 9 : 8, menu_label, menu_value, m,
 			   th->accent[m->sel & 3]);
 	ui_button_t bar[4];
 	ui_bar_draw(bar, menu_bar(m, bar));
@@ -1051,8 +1053,14 @@ PSX3D_COLD static void menu_build(menu_t *m)
 	m->nitems = 0;
 	for (int i = 0; i < M_COUNT; i++) {
 		if (i == M_UNDO) {   // the latest risky action, its age
-			if (undo.what == UNDO_NONE || clip_replay_session || dev_remote_game())
+			if (clip_replay_session || dev_remote_game())
 				continue;
+			if (undo.what == UNDO_NONE) {   // listed anyway, so players know where it is
+				snprintf(m->undo, sizeof(m->undo), "Undo");
+				snprintf(m->undo_age, sizeof(m->undo_age), "nothing yet");
+				m->items[m->nitems++] = i;
+				continue;
+			}
 			u64 min = (osGetTime() - undo.at) / 60000;
 			snprintf(m->undo, sizeof(m->undo), "%s %s", undo.redo ? "Redo" : "Undo", undo_names[undo.what]);
 			if (min < 1)
@@ -1154,7 +1162,10 @@ static bool menu_run(int initial_screen)
 					goto resume;
 				break;
 			case M_UNDO:
-				if (k & KEY_A) {
+				if ((k & KEY_A) && undo.what == UNDO_NONE) {
+					sfx_play(SFX_BACK);
+					osd("Nothing to undo yet: Undo brings back what you saved over, loaded, reset or deleted");
+				} else if (k & KEY_A) {
 					undo_run();
 					goto resume;
 				}
