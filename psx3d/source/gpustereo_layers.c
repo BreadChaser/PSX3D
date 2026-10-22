@@ -47,9 +47,13 @@ static int lhres = 320;              // the picture's width in PS1 pixels
 //   visible: area (big background layers spread out, small sprites and HUD
 //   stay close to the screen) and rank (every level a step); the topmost
 //   level is the screen surface. The next pass uses that table, smoothed.
-#define LAY_MAX     8.0f   // px of a 320-wide picture: the deepest layer
+#ifndef LAY_MAX
+#define LAY_MAX     14.0f  // px of a 320-wide picture: the deepest layer (Real 3D's back: 10)
+#endif
 #define LAY_FLAT    0.5f   // a picture of one layer (FMV, a still): this deep
-#define LAY_AREA    0.6f   // area vs rank in a level's depth
+#ifndef LAY_AREA
+#define LAY_AREA    0.4f   // area vs rank in a level's depth (rank: even steps between layers)
+#endif
 #define LAY_SMOOTH  0.15f  // per pass
 #define LAY_MINOR   15     // per mille of the picture: a level this small is no step of its own
 #define LAY_SLOTS   4
@@ -489,11 +493,11 @@ int __wrap_gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 		float lay = a < 1 ? lay_tri(s, t == 0) * k : 0;
 		// A layer moves right further than the one in front of it: next to
 		// a nearer neighbour on its left it would leave a crack. Its left
-		// edge comes back by that step (3 px at most; the texture stretches).
+		// edge comes back by that step (5 px at most; the texture stretches).
 		int xmin = s[0].x < s[1].x ? s[0].x : s[1].x;
 		xmin = s[2].x < xmin ? s[2].x : xmin;
 		long whole = lrintf(lay * (1 / 16.0f)), pull = whole - lrintf((lay - lstep * k) * (1 / 16.0f));
-		pull = pull < 3 ? pull : 3;
+		pull = pull < 5 ? pull : 5;
 		for (int i = 0; i < 3; i++) {
 			float sh = a * (d[i].x - s[i].x);
 			// the buffer's left edge stays put (moved right, it would leave

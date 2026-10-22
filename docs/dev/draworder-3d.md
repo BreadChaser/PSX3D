@@ -46,9 +46,9 @@ citro3d, after Real 3D's own shift.
   later ones (fades, flashes, fog, light beams) take no step of their own and mark nothing.
 - **Depth per level.** At the end of a pass, from what is visible in the buffer: only levels
   showing at least 1.5% of the picture are steps (small pieces ride with the level below);
-  a level's depth is 60% by area (the share of the picture the levels below it show) and
-  40% by rank among the steps. The top step and anything above it is the screen surface,
-  the base `LAY_MAX` (8 px of a 320-wide picture) behind. A picture of one step (an
+  a level's depth is 40% by area (the share of the picture the levels below it show) and
+  60% by rank among the steps. The top step and anything above it is the screen surface,
+  the base `LAY_MAX` (14 px of a 320-wide picture; 8 px in the first version) behind. A picture of one step (an
   uploaded movie, a still) sits half deep, anything on it on the screen. One table for all
   buffers, smoothed (15% per pass). Shifts are whole pixels so sprites stay sharp.
 - **Real 3D or layers.** Per shown picture, the share of triangles Real 3D moved decides:
