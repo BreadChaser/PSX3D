@@ -14,12 +14,6 @@
 // picker (savestates.c), which still draws its own literals.
 #define TH_COVER_SHADOW  TH_RGBA(0, 0, 0, 110)    // drop shadow behind covers
 #define TH_TITLE_SHADOW  TH_RGBA(0, 0, 0, 255)    // library title shadow (alpha scaled by the caller)
-#define TH_SLOT_VEIL     TH_RGBA(4, 6, 18, 225)   // save state picker, top screen
-#define TH_SLOT_FRAME    TH_RGB(10, 12, 30)       // ... preview frame
-#define TH_SLOT_CARD     TH_RGB(18, 22, 48)       // ... slot thumbnail card
-#define TH_SLOT_DIM      TH_RGBA(6, 9, 24, 90)    // ... unselected thumbnail veil
-#define TH_SLOT_WHITE    TH_RGB(235, 238, 255)    // ... selected text
-#define TH_SLOT_DIM_INK  TH_RGB(110, 120, 160)    // ... other text
 
 typedef struct {
 	const char *id, *name;       // config.ini value, name shown in Settings (the mock's palette name)

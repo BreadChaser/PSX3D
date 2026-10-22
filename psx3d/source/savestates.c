@@ -379,11 +379,11 @@ static void when_text(char *out, size_t len, u32 saved)
 static void draw_preview(C3D_Tex *t, int sel, const char *empty, const char *line)
 {
 	C2D_Font font = libui_font();
-	u32 white = C2D_Color32(240, 242, 255, 255), dim = C2D_Color32(150, 160, 200, 255);
+	u32 white = theme()->help_title, dim = theme()->muted;
 	const float pw = 264, ph = 198, px = (400 - pw) / 2, py = 10;
 	float dx = ui_depth(-0.6f);
 	C2D_DrawRectSolid(px - 3 + dx, py - 3, 0.62f, pw + 6, ph + 6, accent[sel & 3]);
-	C2D_DrawRectSolid(px + dx, py, 0.63f, pw, ph, C2D_Color32(10, 12, 30, 255));
+	C2D_DrawRectSolid(px + dx, py, 0.63f, pw, ph, theme()->card_bottom);
 	if (t)
 		draw_tex(t, px + dx, py, pw, ph, 0.64f);
 	else
@@ -394,7 +394,7 @@ static void draw_preview(C3D_Tex *t, int sel, const char *empty, const char *lin
 static void draw_top(void *ud)
 {
 	browser_t *b = ud;
-	C2D_DrawRectSolid(0, 0, 0.6f, 400, 240, C2D_Color32(4, 6, 18, 225));
+	C2D_DrawRectSolid(0, 0, 0.6f, 400, 240, theme()->help_bg);
 	char line[128], when[40];
 	if (b->page == STATES_PAGE_RING) {
 		slot_t *s = &b->ring[b->ring_sel];
@@ -411,7 +411,7 @@ static void draw_top(void *ud)
 	}
 	if (b->page == STATES_PAGE_CARDS) {
 		C2D_Font font = libui_font();
-		u32 white = C2D_Color32(240, 242, 255, 255), dim = C2D_Color32(150, 160, 200, 255);
+		u32 white = theme()->help_title, dim = theme()->muted;
 		float dx = ui_depth(-0.6f);
 		if (b->card_sel >= b->cards_n) {
 			ui_text_ex(font, 200 + dx, 100, 0.6f, dim, C2D_AlignCenter, "No memory card copies yet");
@@ -451,7 +451,7 @@ static void draw_top(void *ud)
 // the 5 x 2 grid of slots or automatic saves
 static void draw_grid(browser_t *b, slot_t *slots, int sel, bool ring)
 {
-	u32 white = C2D_Color32(235, 238, 255, 255), dim = C2D_Color32(110, 120, 160, 255);
+	u32 white = theme()->help_title, dim = theme()->hint_menu;
 	const float tw = 56, th = 42, gap = 6, x0 = (320 - (5 * tw + 4 * gap)) / 2, y0 = 42, row = 62;
 	for (int i = 0; i < SLOTS; i++) {
 		slot_t *s = &slots[i];
@@ -466,11 +466,11 @@ static void draw_grid(browser_t *b, slot_t *slots, int sel, bool ring)
 			C2D_DrawRectSolid(x - 5, y - 5, z, w + 10, h + 10, (accent[i & 3] & 0x00ffffff) | 0x40000000);
 			C2D_DrawRectSolid(x - 2, y - 2, z + 0.01f, w + 4, h + 4, accent[i & 3]);
 		}
-		C2D_DrawRectSolid(x, y, z + 0.02f, w, h, C2D_Color32(18, 22, 48, 255));
+		C2D_DrawRectSolid(x, y, z + 0.02f, w, h, theme()->card_top);
 		if (s->tex_ok) {
 			draw_tex(&s->tex, x, y, w, h, z + 0.03f);
 			if (!is_sel)
-				C2D_DrawRectSolid(x, y, z + 0.04f, w, h, C2D_Color32(6, 9, 24, 90));
+				C2D_DrawRectSolid(x, y, z + 0.04f, w, h, theme_alpha(theme()->menu_bg, 90));
 		} else {
 			ui_text_ex(NULL, cx, cy - 8, 0.45f, dim, C2D_AlignCenter,
 				s->used ? "?" : (b->saving ? "+" : "-"));
@@ -517,7 +517,7 @@ static void draw_bottom(void *ud)
 {
 	browser_t *b = ud;
 	C2D_Font font = libui_font();
-	u32 white = C2D_Color32(235, 238, 255, 255), dim = C2D_Color32(110, 120, 160, 255);
+	u32 white = theme()->help_title, dim = theme()->hint_menu;
 
 	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, theme()->menu_bg);
 	ui_text_ex(font, 10, 6, 0.5f, white, 0, b->saving ? "Save state" : "Load state");
@@ -549,7 +549,7 @@ static void draw_bottom(void *ud)
 			card_copy_t *c = &b->cards[i];
 			float y = 40 + r * 22;
 			if (i == b->card_sel)
-				C2D_DrawRectSolid(6, y - 2, 0.2f, 308, 20, C2D_Color32(30, 40, 90, 255));
+				C2D_DrawRectSolid(6, y - 2, 0.2f, 308, 20, theme()->hl_bottom);
 			age_text(when, sizeof(when), (u32)c->e.when);
 			snprintf(line, sizeof(line), "Card %s  -  %s", c->label + 12 /* "Memory card N" */, card_kind(c->e.kind));
 			ui_text_ex(NULL, 12, y, 0.45f, i == b->card_sel ? white : dim, 0, line);
@@ -746,7 +746,7 @@ typedef struct { C3D_Tex tex; bool tex_ok, older; u32 saved; float t; } resume_t
 static void resume_top(void *ud)
 {
 	resume_t *r = ud;
-	C2D_DrawRectSolid(0, 0, 0.6f, 400, 240, C2D_Color32(4, 6, 18, 255));
+	C2D_DrawRectSolid(0, 0, 0.6f, 400, 240, theme_alpha(theme()->menu_bg, 255));
 	const float pw = 264, ph = 198, px = (400 - pw) / 2, py = 10;
 	float dx = ui_depth(-0.6f);
 	C2D_DrawRectSolid(px - 3 + dx, py - 3, 0.62f, pw + 6, ph + 6, accent[2]);
@@ -755,7 +755,7 @@ static void resume_top(void *ud)
 	char when[40], line[64];
 	when_text(when, sizeof(when), r->saved);
 	snprintf(line, sizeof(line), r->saved ? "Left off %s" : "", when);
-	ui_text_ex(NULL, 200 + dx, 215, 0.5f, C2D_Color32(240, 242, 255, 255), C2D_AlignCenter, line);
+	ui_text_ex(NULL, 200 + dx, 215, 0.5f, theme()->help_title, C2D_AlignCenter, line);
 }
 
 // Y (an older auto-save) only when the backups have one

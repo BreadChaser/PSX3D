@@ -995,8 +995,8 @@ static void menu_draw_top(void *ud)
 	const theme_t *th = theme();
 	C2D_DrawRectSolid(0, 0, 0.6f, 400, 240, th->pause_veil);
 	float dx = ui_depth(-0.8f);
-	ui_text_ex(libui_font(), 201 + dx, 87, 1.1f, C2D_Color32(0, 0, 0, 150), C2D_AlignCenter, "PAUSED");
-	ui_text_ex(libui_font(), 200 + dx, 86, 1.1f, C2D_Color32(255, 255, 255, 255), C2D_AlignCenter, "PAUSED");
+	ui_text_ex(libui_font(), 201 + dx, 87, 1.1f, C2D_Color32(0, 0, 0, 150), C2D_AlignCenter, "PAUSED");   // fixed: shadow
+	ui_text_ex(libui_font(), 200 + dx, 86, 1.1f, th->game_title, C2D_AlignCenter, "PAUSED");
 	ui_text_ex(NULL, 200 + dx, 136, 0.55f, th->game_sub, C2D_AlignCenter, game_title);
 	for (int i = 0; i < 4; i++)
 		C2D_DrawRectSolid(140 + i * 30 + dx, 128, 0.65f, 28, 2, th->accent[i]);
