@@ -100,8 +100,8 @@ Tekken 3 and Klonoa draw 60; Final Fantasy VII battles draw 15). See
 </details>
 
 **New 3DS:** every game in the table runs at full speed in its heaviest tested
-scene. The one exception we know of is the opening area of Metal Gear Solid,
-which needs Auto frameskip for full speed.
+scene with Auto frameskip. With frameskip off, Gran Turismo 2 and Need for Speed
+races run at 94–98%, and the opening area of Metal Gear Solid at about 80%.
 
 ## Install
 
