@@ -15,6 +15,7 @@ HEADER
 cat > "$work/citro2d.h" <<'HEADER'
 typedef struct C3D_RenderTarget C3D_RenderTarget;
 typedef struct C3D_Tex C3D_Tex;
+typedef struct { unsigned short width, height; float left, top, right, bottom; } Tex3DS_SubTexture;
 typedef void *C2D_Font;
 HEADER
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-format-truncation \

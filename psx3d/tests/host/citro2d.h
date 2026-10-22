@@ -10,6 +10,7 @@ typedef struct { int cellHeight,cellWidth,baselinePos,nRows,nLines,sheetWidth,sh
 typedef struct { TGLP_s *tglp; } FINF_s;
 typedef struct { float left, glyphWidth, charWidth; } charWidthInfo_s;
 typedef void C3D_Tex;
+typedef struct { unsigned short width, height; float left, top, right, bottom; } Tex3DS_SubTexture;
 typedef void C3D_RenderTarget;
 enum { C2D_WithColor=1, C2D_AlignCenter=2, C2D_AlignRight=4, C2D_WordWrap=8, C2D_AtBaseline=16 };
 static inline u32 C2D_Color32(u8 r, u8 g, u8 b, u8 a) { return r | g<<8 | b<<16 | (u32)a<<24; }

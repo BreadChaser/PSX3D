@@ -69,6 +69,7 @@ run frameskip        bash tools/frameskip/check.sh
 # Developer server/updater protocol and the cover downloader worker.
 run dev-server       bash psx3d/tests/dev/run.sh
 run covers           bash psx3d/tests/covers/run.sh
+run boxart           bash psx3d/tests/boxart/run.sh
 run library          bash psx3d/tests/library/run.sh
 run save-safety      bash psx3d/tests/save/run.sh
 run save-names       bash psx3d/tests/saveid/run.sh

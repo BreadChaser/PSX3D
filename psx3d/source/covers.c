@@ -439,10 +439,12 @@ static bool fetch_cover(const game_t *g, bool *retry, cover_t *c)
 		return false;
 	}
 	// the picture named like the file, else the disc's serial, else the same title
-	char own[BOXART_NAME], serial[10] = "", cand[BOXART_MAX_CANDIDATES][BOXART_NAME];
+	char own[BOXART_NAME], serial[10] = "", cand[BOXART_MAX_CANDIDATES][BOXART_NAME], disc[PATH_LEN];
 	boxart_sanitize(g->cover_key, own, sizeof(own));
-	if (!boxart_name_known(BOXART_DIR "/names.txt", own) && g->ndiscs > 0)
-		boxart_disc_serial(g->discs[0], serial);
+	// a rescan can free g while we read the disc: keep our own copy of its path
+	snprintf(disc, sizeof(disc), "%s", g->ndiscs > 0 ? g->discs[0] : "");  
+	if (!boxart_name_known(BOXART_DIR "/names.txt", own) && disc[0])
+		boxart_disc_serial(disc, serial);
 	int n = boxart_candidates(BOXART_DIR "/names.txt", BOXART_DIR "/serials.idx", g->cover_key, serial,
 	                          cand, BOXART_MAX_CANDIDATES);
 	bool ok = false, all_404 = n > 0;
