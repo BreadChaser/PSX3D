@@ -256,7 +256,7 @@ Fates:
 | touch_stick | Touch right stick (Button mappings, Old) | from preset `stick` | — | **Setting** (in Button mappings) | taste + preset starting point | `stick` key |
 | input maps, touch slots, hotkeys | Button mappings | factory | factory | **Setting** (sub-page unchanged) | taste | `touch_*`, `l2r2`, `l3r3`, `touch_controls`: 6 `l3r3` files |
 | (new) volume | — | — | — | **Not added** | User (Q2) | — |
-| (new) controller | — | Digital | Digital | **Setting** "Controller" | CLAUDE.md item 13, user list | new preset key `controller` |
+| (new) controller | — | Digital | Digital | **Setting** "Controller" | planned feature, user list | new preset key `controller` |
 | games_dir, last_dir, last_title, settings_format, touch_slots | — | — | — | internal, unchanged | library state / format metadata | — |
 | "Continue where I left off" | (removed 2026-10-19) | always on | always on | already forced | user | — |
 

@@ -119,7 +119,7 @@ is built `-Os` (6.1 KB code, 20 KB bss).
 | `psx3d/tests/saveid/mutations.py` | 15 deliberate breaks of `saveid.c` | all caught |
 | save, library, host, dev, settings, presets suites | existing | pass |
 
-Review: an independent GPT-6 Luna review of the change found two cases:
+Review: an independent review of the change found two cases:
 the record made by a disc-2-first launch (above, kept as a limit) and an
 unrecorded last-resort name once all numbered names were taken (fixed in
 `bc0ab8c`, test and mutation added).

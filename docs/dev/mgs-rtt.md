@@ -127,13 +127,8 @@ byte-identical; FPS-on and widescreen are preserved. The driver verified
 `stats` was absent and never wrote switches.txt. Restore CIA SHA-256:
 `d3f21ed27527c67844a00cd1fe54b119ea5b50feb782f92a35a20793749b10ea`.
 
-Real Old build-8 numbers remain pending. The Old froze during another worker's
-test and needs physical recovery. The coordinator's queue is crash-evidence
-pull and RC4 restore, then gameshare, then this gate. No further Old contact
-is authorized. Waiter 25959 was not signalled or relaunched by this worker;
-it exited locally with `STOP unavailable after lock`, before loading the
-hardware driver. The coordinator will launch its replacement after recovery and the earlier
-sessions. The eventual
+Real Old build-8 numbers remain pending: the Old 3DS was unavailable for this round.
+The eventual
 gate is core-first-2 A / build-8 B / core-first-2 A, heavy13 off+Auto within
 ±1%, followed by release-v041-rc4 with pure defaults. Build 7's failed results
 are historical and do not establish build 8's Old performance.
