@@ -1,8 +1,8 @@
 // The palettes of the UI mock-up (devtools/ui-mock js/theme.js, "Original" plus
 // four alternatives), token for token. Each alternative only overrides some
 // tokens of the Original; tools/themes/check-mock.py compares this table with
-// the mock's theme code. The backdrop fields are the console's own (the mock
-// draws other screens there).
+// the mock's theme code. The cards, wordmark and backdrop fields are the
+// console's own (the mock draws other screens there).
 #include <string.h>
 #include "psx3d.h"
 #include "theme.h"
@@ -24,6 +24,10 @@
 	.slow_bg = CA(40, 22, 14, 230), .slow_text = C(255, 170, 120), \
 	.game_title = C(255, 255, 255), .game_sub = C(170, 185, 230), .pause_veil = CA(2, 4, 16, 170), \
 	.touch_face = C(12, 18, 48), .touch_border = C(31, 42, 90), \
+	.card_top = C(20, 26, 60), .card_bottom = C(8, 10, 28), .card_ink = C(220, 225, 245), \
+	.card_stack = C(40, 46, 70), .version_ink = CA(150, 160, 200, 160), \
+	.logo = CA(245, 240, 255, 200), .logo_3d = CA(255, 90, 190, 200), \
+	.folder = C(170, 185, 220), \
 	.sky = { { 256, 0, 0, 0 }, { 0, 256, 0, 0 }, { 0, 0, 256, 0 } }, \
 	.grid_near = C(150, 60, 255), .grid_side = C(40, 90, 255), .grid_far = C(255, 70, 200)
 
@@ -38,6 +42,9 @@ static const theme_t themes[] = {
 		.hint_lib = C(70, 115, 125), .hint_menu = C(90, 140, 150), .section = C(100, 170, 180),
 		.touch_face = C(6, 26, 32), .touch_border = C(20, 70, 80),
 		// night: a pale teal moon over a dark sea
+		.card_top = C(12, 42, 54), .card_bottom = C(4, 16, 22), .card_ink = C(215, 240, 240),
+		.card_stack = C(30, 64, 74), .folder = C(150, 215, 220),
+		.version_ink = CA(120, 170, 180, 160), .logo_3d = CA(90, 220, 220, 200),
 		.sky = { { 26, 38, 13, 0 }, { 90, 115, 38, 0 }, { 77, 102, 90, 0 } },
 		.grid_near = C(60, 200, 210), .grid_side = C(40, 110, 200), .grid_far = C(140, 240, 230) },
 	{ ORIGINAL, .id = "ps1-grey", .name = "PS1 grey",
@@ -47,6 +54,9 @@ static const theme_t themes[] = {
 		.hint_lib = C(120, 120, 130), .hint_menu = C(140, 140, 150), .row_dim = { 170, 170, 175 },
 		.scrollbar = C(110, 110, 120), .section = C(160, 160, 170),
 		// grey scale, a silver sun
+		.card_top = C(58, 58, 66), .card_bottom = C(30, 30, 35), .card_ink = C(228, 228, 235),
+		.card_stack = C(78, 78, 88), .folder = C(200, 200, 210),
+		.version_ink = CA(160, 160, 170, 160), .logo_3d = CA(200, 205, 220, 200),
 		.sky = { { 110, 100, 40, 6 }, { 110, 100, 40, 6 }, { 115, 105, 45, 12 } },
 		.grid_near = C(175, 178, 195), .grid_side = C(115, 120, 140), .grid_far = C(225, 228, 240) },
 	{ ORIGINAL, .id = "sunset-magenta", .name = "Sunset magenta",
@@ -56,6 +66,9 @@ static const theme_t themes[] = {
 		.hint_lib = C(140, 90, 140), .hint_menu = C(170, 110, 170), .section = C(210, 140, 210),
 		.scrollbar = C(140, 60, 140),
 		// a peach sun in a magenta sky
+		.card_top = C(50, 14, 58), .card_bottom = C(20, 5, 30), .card_ink = C(245, 220, 240),
+		.card_stack = C(74, 32, 82), .folder = C(235, 170, 220),
+		.version_ink = CA(190, 140, 190, 160), .logo_3d = CA(255, 150, 205, 200),
 		.sky = { { 256, 0, 0, 0 }, { 0, 180, 26, 0 }, { 115, 0, 90, 0 } },
 		.grid_near = C(255, 90, 190), .grid_side = C(170, 60, 210), .grid_far = C(255, 185, 140) },
 	{ ORIGINAL, .id = "high-contrast", .name = "High contrast",
@@ -64,6 +77,10 @@ static const theme_t themes[] = {
 		.muted = C(190, 200, 220), .hint_lib = C(170, 180, 200), .hint_menu = C(170, 180, 200),
 		.header_right = C(170, 180, 200), .help_bg = CA(0, 0, 0, 240), .help_text = C(220, 225, 240),
 		// black sky, a white-blue sun, bright lines
+		.card_top = C(26, 28, 40), .card_bottom = C(0, 0, 0), .card_ink = C(255, 255, 255),
+		.card_stack = C(52, 54, 70), .folder = C(220, 230, 255),
+		.version_ink = CA(190, 200, 220, 220),
+		.logo = CA(255, 255, 255, 235), .logo_3d = CA(120, 190, 255, 235),
 		.sky = { { 190, 114, -95, -67 }, { 218, 131, -109, -77 }, { 256, 154, -128, -60 } },
 		.grid_near = C(200, 225, 255), .grid_side = C(90, 140, 240), .grid_far = C(255, 255, 255) },
 };

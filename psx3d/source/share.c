@@ -238,8 +238,9 @@ static bool in_game, share_failed;
 static void draw_top(void *ud)
 {
 	(void)ud;
-	u32 white = C2D_Color32(235, 238, 255, 255), dim = C2D_Color32(150, 160, 190, 255);
-	C2D_DrawRectSolid(0, 0, .1f, 400, 240, C2D_Color32(6, 9, 24, 255));
+	const theme_t *th = theme();
+	u32 white = th->header_title, dim = th->muted;
+	C2D_DrawRectSolid(0, 0, .1f, 400, 240, th->menu_bg);
 	ui_text(20, 14, .7f, white, "PSX3D %s", PSX3D_VERSION);
 	ui_text(20, 42, .45f, dim, "PS1 emulator for 3DS. Free software (GPL).");
 	ui_text(20, 70, .5f, white, "Share PSX3D with a friend:");
@@ -253,7 +254,7 @@ static void draw_top(void *ud)
 		ui_text(20, 138, .45f, white, "Official release (needs internet):");
 		ui_text(20, 156, .38f, dim, "github.com/BreadChaser/PSX3D/releases");
 		if (share_failed)
-			ui_text(20, 174, .42f, C2D_Color32(255, 200, 120, 255), "%s", cia_note);
+			ui_text(20, 174, .42f, th->message, "%s", cia_note);
 	}
 	ui_text(20, 212, .42f, dim, in_game ? "B back" : serving ? "X stop sharing    B back" : "X share from this 3DS    B back");
 }
@@ -261,12 +262,12 @@ static void draw_top(void *ud)
 static void draw_bottom(void *ud)
 {
 	(void)ud;
-	C2D_DrawRectSolid(0, 0, .1f, 320, 240, C2D_Color32(255, 255, 255, 255));
+	C2D_DrawRectSolid(0, 0, .1f, 320, 240, C2D_Color32(255, 255, 255, 255));   // fixed: the QR code scans black on white
 	if (!qr_size)
 		return;
 	float px = (float)(int)(228.0f / (qr_size + 6));
 	float x0 = (320 - px * qr_size) / 2, y0 = (240 - px * qr_size) / 2;
-	u32 black = C2D_Color32(0, 0, 0, 255);
+	u32 black = C2D_Color32(0, 0, 0, 255);   // fixed: QR modules
 	for (int y = 0; y < qr_size; y++)
 		for (int x = 0; x < qr_size;) {
 			if (!qr[y * qr_size + x]) {

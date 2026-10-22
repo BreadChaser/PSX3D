@@ -221,7 +221,7 @@ static void icon_library(float cx, float cy, float r, u32 c, float z)
 		float w = r * 1.2f, x = cx - w / 2 + (k - 1) * r * 0.42f, y = cy - w / 2 - (k - 1) * r * 0.12f;
 		float zz = z + (2 - k) * 0.002f;
 		C2D_DrawRectSolid(x, y, zz, w, w, k ? with_alpha(c, (u8)(255 - k * 70)) : c);
-		C2D_DrawRectSolid(x + 2, y + 2, zz + 0.0005f, w - 4, w - 4, k ? TH_CARD_BOTTOM : TH_CARD_TOP);
+		C2D_DrawRectSolid(x + 2, y + 2, zz + 0.0005f, w - 4, w - 4, k ? theme()->card_bottom : theme()->card_top);
 		if (!k)
 			C2D_DrawRectSolid(x, y + w - 3, zz + 0.001f, w, 3, accent(0, 255));
 	}
@@ -281,7 +281,7 @@ static void draw_consoles(float cx, float cy, float s, float z)
 		C2D_DrawRectSolid(x - 22 * s, cy - 30 * s, z, 44 * s, 27 * s, body);
 		C2D_DrawRectSolid(x - 18 * s, cy - 27 * s, z + 0.001f, 36 * s, 21 * s, lit);
 		C2D_DrawRectSolid(x - 20 * s, cy - 2 * s, z, 40 * s, 25 * s, body);
-		C2D_DrawRectSolid(x - 12 * s, cy + 1 * s, z + 0.001f, 24 * s, 18 * s, TH_CARD_BOTTOM);
+		C2D_DrawRectSolid(x - 12 * s, cy + 1 * s, z + 0.001f, 24 * s, 18 * s, th->card_bottom);
 		C2D_DrawCircleSolid(x - 16 * s, cy + 6 * s, z + 0.001f, 2 * s, th->muted);
 		C2D_DrawCircleSolid(x + 16 * s, cy + 6 * s, z + 0.001f, 2 * s, th->muted);
 	}
@@ -319,19 +319,20 @@ static void cover_card(int game, float cx, float cy, float size, float angle, fl
 		// the cover keeps its own aspect: the longer side is `size`
 		float sc = size / (st.width > st.height ? st.width : st.height);
 		C2D_ImageTint tint;
-		C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim);
+		C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim);   // fixed: dimmed toward black
 		C2D_DrawImageAtRotated((C2D_Image){ t, &st }, cx, cy, z, angle, dim > 0 ? &tint : NULL, sc, sc);
 		return;
 	}
 	float x = cx - size / 2, y = cy - size / 2;
 	u8 d = (u8)(255 * (1 - dim));
-	C2D_DrawRectangle(x, y, z, size, size, TH_CARD_TOP, TH_CARD_TOP, TH_CARD_BOTTOM, TH_CARD_BOTTOM);
+	const theme_t *th = theme();
+	C2D_DrawRectangle(x, y, z, size, size, th->card_top, th->card_top, th->card_bottom, th->card_bottom);
 	C2D_DrawRectSolid(x, y + size - 6, z + 0.001f, size, 6, accent(game, 255));
 	char initial[8];
 	ui_first_letter(initial, g->title);
 	float s = size / 60.0f;
-	ui_text_ex(libui_font(), cx, cy - 14 * s, s, theme_alpha(TH_CARD_INK, d), C2D_AlignCenter, initial);
-	if (dim > 0)
+	ui_text_ex(libui_font(), cx, cy - 14 * s, s, theme_alpha(th->card_ink, d), C2D_AlignCenter, initial);
+	if (dim > 0)   // fixed: dimmed toward black
 		C2D_DrawRectSolid(x, y, z + 0.002f, size, size, C2D_Color32(0, 0, 0, (u8)(dim * 255)));
 }
 
@@ -363,9 +364,10 @@ static void slow_banner(void)
 		cut = strchr(m, ':');
 	snprintf(l1, sizeof(l1), "%.*s", cut ? (int)(cut - m) + 1 : (int)strlen(m), m);
 	snprintf(l2, sizeof(l2), "%s", cut ? cut + 2 : "");
-	C2D_DrawRectSolid(0, 0, 0.65f, 400, 32, C2D_Color32(40, 22, 14, 230));   // under the text (0.7)
-	ui_text_ex(NULL, 8, 2, 0.4f, C2D_Color32(255, 170, 120, 255), 0, ui_fit(l1, 0.4f, 384));
-	ui_text_ex(NULL, 8, 16, 0.4f, C2D_Color32(255, 170, 120, 255), 0, ui_fit(l2, 0.4f, 384));
+	const theme_t *th = theme();
+	C2D_DrawRectSolid(0, 0, 0.65f, 400, 32, th->slow_bg);   // under the text (0.7)
+	ui_text_ex(NULL, 8, 2, 0.4f, th->slow_text, 0, ui_fit(l1, 0.4f, 384));
+	ui_text_ex(NULL, 8, 16, 0.4f, th->slow_text, 0, ui_fit(l2, 0.4f, 384));
 }
 
 static void big_title(const char *title, const char *line, float ease)
@@ -386,8 +388,8 @@ static void top_common(void)
 	// small PSX3D wordmark (the slow-mode banner takes its place)
 	if (!slow_mode_notice(false)) {
 		float w = text_w(libui_font(), 0.42f, "PSX");
-		ui_text_ex(libui_font(), 10, 6, 0.42f, C2D_Color32(245, 240, 255, 200), 0, "PSX");
-		ui_text_ex(libui_font(), 10 + w + 0.42f * 6, 6, 0.42f, C2D_Color32(255, 90, 190, 200), 0, "3D");
+		ui_text_ex(libui_font(), 10, 6, 0.42f, theme()->logo, 0, "PSX");
+		ui_text_ex(libui_font(), 10 + w + 0.42f * 6, 6, 0.42f, theme()->logo_3d, 0, "3D");
 	}
 	if (!have_games) {   // first start: one friendly line
 		float y = slow_mode_notice(false) ? 32 : 0;   // under the slow-mode banner
@@ -395,7 +397,7 @@ static void top_common(void)
 		ui_text_ex(NULL, 390, y + 8, 0.38f, theme()->message, C2D_AlignRight, "Welcome! No games yet.");
 	}
 	slow_banner();
-	ui_text_ex(NULL, 396, 226, 0.35f, TH_VERSION_INK, C2D_AlignRight, "v" PSX3D_VERSION);
+	ui_text_ex(NULL, 396, 226, 0.35f, theme()->version_ink, C2D_AlignRight, "v" PSX3D_VERSION);
 }
 
 static bool no_title;
@@ -418,8 +420,8 @@ static void draw_top(void *ud)
 		if (cont_tex_ok)
 			states_thumb_draw(&cont_tex, cx - w / 2, cy - h / 2, w, h, 0.51f);
 		else
-			C2D_DrawRectSolid(cx - w / 2, cy - h / 2, 0.51f, w, h, TH_CARD_BOTTOM);
-		icon_play(cx, cy, size * 0.18f, C2D_Color32(255, 255, 255, 200), 0.52f);
+			C2D_DrawRectSolid(cx - w / 2, cy - h / 2, 0.51f, w, h, theme()->card_bottom);
+		icon_play(cx, cy, size * 0.18f, theme_alpha(theme()->game_title, 200), 0.52f);
 		char when[40];
 		states_when_text(when, sizeof(when), cont_saved);
 		if (cont_saved)
@@ -438,7 +440,7 @@ static void draw_top(void *ud)
 	if (!no_title)
 		big_title(title, line, ease);
 	top_common();
-	if (fade > 0.001f)
+	if (fade > 0.001f)   // fixed: fade from/to black
 		C2D_DrawRectSolid(0, 0, 0.95f, 400, 240, C2D_Color32(0, 0, 0, (u8)(255 * fminf(fade, 1))));
 }
 
@@ -479,11 +481,11 @@ static void draw_tile(const tile_t *t, bool lit, int i)
 		C2D_DrawRectSolid(x - 3, y - 3, 0.2f, w + 6, h + 6, theme_alpha(th->hl_glow, 70));
 		C2D_DrawRectangle(x, y, 0.25f, w, h, th->hl_top, th->hl_top, th->hl_bottom, th->hl_bottom);
 	} else
-		C2D_DrawRectangle(x, y, 0.25f, w, h, TH_CARD_TOP, TH_CARD_TOP, TH_CARD_BOTTOM, TH_CARD_BOTTOM);
+		C2D_DrawRectangle(x, y, 0.25f, w, h, th->card_top, th->card_top, th->card_bottom, th->card_bottom);
 	C2D_DrawRectSolid(x, y, 0.3f, 3, h, lit ? accent(i, 255) : th->section_rule);
 	u32 ink = theme_row(th, lit ? 1 : 0, 255);
 	u32 subc = lit ? th->value : th->muted;
-	u32 hole = TH_CARD_BOTTOM;
+	u32 hole = th->card_bottom;
 	if (t->kind == K_HERO) {
 		if (t->id == E_CONTINUE) {
 			const float tw = 112, tht = 84;
@@ -491,8 +493,8 @@ static void draw_tile(const tile_t *t, bool lit, int i)
 			if (cont_tex_ok)
 				states_thumb_draw(&cont_tex, x + 10, y + 7, tw, tht, 0.36f);
 			else
-				C2D_DrawRectSolid(x + 10, y + 7, 0.36f, tw, tht, TH_CARD_BOTTOM);
-			icon_play(x + 10 + tw / 2, y + 7 + tht / 2, 14, C2D_Color32(255, 255, 255, 210), 0.4f);
+				C2D_DrawRectSolid(x + 10, y + 7, 0.36f, tw, tht, th->card_bottom);
+			icon_play(x + 10 + tw / 2, y + 7 + tht / 2, 14, theme_alpha(th->game_title, 210), 0.4f);
 			char when[40];
 			states_when_text(when, sizeof(when), cont_saved);
 			if (!cont_saved)
@@ -524,7 +526,7 @@ static void draw_group(bool lit)
 {
 	const theme_t *th = theme();
 	float x = group.x, y = group.y, w = group.w, h = group.h;
-	C2D_DrawRectangle(x, y, 0.22f, w, h, TH_CARD_TOP, TH_CARD_TOP, TH_CARD_BOTTOM, TH_CARD_BOTTOM);
+	C2D_DrawRectangle(x, y, 0.22f, w, h, th->card_top, th->card_top, th->card_bottom, th->card_bottom);
 	C2D_DrawRectSolid(x, y, 0.3f, 3, h, lit ? accent(1, 255) : th->section_rule);
 	u32 ink = theme_row(th, lit ? 1 : 0, 255);
 	icon_together(x + 20, y + 15, 11, ink, 0.3f);
@@ -539,7 +541,7 @@ static void draw_sub(const tile_t *t, bool lit)
 		C2D_DrawRectSolid(x - 2, y - 2, 0.32f, w + 4, h + 4, theme_alpha(th->hl_glow, 110));
 		C2D_DrawRectangle(x, y, 0.33f, w, h, th->hl_top, th->hl_top, th->hl_bottom, th->hl_bottom);
 	} else
-		C2D_DrawRectangle(x, y, 0.33f, w, h, th->menu_bg, th->menu_bg, TH_CARD_BOTTOM, TH_CARD_BOTTOM);
+		C2D_DrawRectangle(x, y, 0.33f, w, h, th->menu_bg, th->menu_bg, th->card_bottom, th->card_bottom);
 	C2D_DrawRectSolid(x, y, 0.34f, w, 1, th->scrollbar);
 	ui_text_ex(NULL, x + w / 2, y + h / 2 - 9, 0.5f, theme_row(th, lit ? 1 : 0.4f, 255), C2D_AlignCenter,
 		t->id == E_HOST ? "Host" : "Join");
@@ -558,7 +560,7 @@ static void draw_bottom(void *ud)
 		else
 			draw_tile(&tiles[i], i == s, i);
 	}
-	if (fade > 0.001f)
+	if (fade > 0.001f)   // fixed: fade from/to black
 		C2D_DrawRectSolid(0, 0, 0.95f, 320, 240, C2D_Color32(0, 0, 0, (u8)(255 * fminf(fade, 1))));
 }
 
@@ -852,7 +854,7 @@ static void empty_top(void *ud)
 	C2D_DrawRectSolid(0, 0, 0.3f, 400, 240, theme_alpha(theme()->menu_bg, 70));
 	big_title("No games yet", "Put PS1 games in " DEFAULT_GAMES_DIR " and press SELECT", 1);
 	top_common();
-	if (fade > 0.001f)
+	if (fade > 0.001f)   // fixed: fade from/to black
 		C2D_DrawRectSolid(0, 0, 0.95f, 400, 240, C2D_Color32(0, 0, 0, (u8)(255 * fminf(fade, 1))));
 }
 
@@ -883,7 +885,7 @@ static void empty_bottom(void *ud)
 	if (empty_msg_frames > 0)
 		ui_text_ex(NULL, 8, 186, 0.4f, th->message, 0, ui_fit(empty_msg, 0.4f, 304));
 	ui_bar_draw(empty_bar, 3);
-	if (fade > 0.001f)
+	if (fade > 0.001f)   // fixed: fade from/to black
 		C2D_DrawRectSolid(0, 0, 0.95f, 320, 240, C2D_Color32(0, 0, 0, (u8)(255 * fminf(fade, 1))));
 }
 

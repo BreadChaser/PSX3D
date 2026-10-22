@@ -346,14 +346,20 @@ static void draw_cover(int e, float cx, float cy, float size, float dim, float z
 				float bs = size * (1 - 0.07f * k), f = k * size * 0.11f;
 				float sc = bs / (st.width > st.height ? st.width : st.height);
 				C2D_ImageTint tint;
-				C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim + 0.15f * k);
+				C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim + 0.15f * k);   // fixed: dimmed toward black
 				C2D_DrawImageAt((C2D_Image){ t, &st }, x + size - bs + f + ui_depth(0.3f * k) + (bs - st.width * sc) / 2,
 					y - f + (bs - st.height * sc) / 2, bz, &tint, sc, sc);
 				continue;
 			}
-			u8 c = (u8)(40 - k * 8);
+			// the theme's stack colour, each card further back 8 levels darker
+			u32 stack = theme()->card_stack;
+			int c[3];
+			for (int ch = 0; ch < 3; ch++) {
+				c[ch] = (int)((stack >> (8 * ch)) & 255) - k * 8;
+				c[ch] = c[ch] < 0 ? 0 : c[ch];
+			}
 			C2D_DrawRectSolid(bx, y - o, bz, size, size,
-				C2D_Color32(c, c + 6, c + 30, (u8)(255 * (1 - dim * 0.6f))));
+				C2D_Color32(c[0], c[1], c[2], (u8)(255 * (1 - dim * 0.6f))));
 			C2D_DrawRectSolid(bx, y - o, bz + 0.001f, size, 2,
 				(*accent(e + k) & 0x00ffffff) | ((u32)(200 * (1 - dim)) << 24));
 		}
@@ -365,22 +371,22 @@ static void draw_cover(int e, float cx, float cy, float size, float dim, float z
 	float cw = t ? st.width * sc : size, ch = t ? st.height * sc : size;
 	// drop shadow on the "floor", a little behind the cover
 	C2D_DrawRectSolid(x + (size - cw) / 2 + 4 + ui_depth(1.5f), y + (size - ch) / 2 + 6, z - 0.01f, cw, ch,
-		C2D_Color32(0, 0, 0, 110));
+		TH_COVER_SHADOW);
 	if (t) {
 		C2D_Image img = { t, &st };
 		C2D_ImageTint tint;
-		C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim);
+		C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim);   // fixed: dimmed toward black
 		C2D_DrawImageAt(img, x + (size - cw) / 2, y + (size - ch) / 2, z, dim > 0 ? &tint : NULL, sc, sc);
 	} else {
 		u32 c = *accent(e);
-		C2D_DrawRectangle(x, y, z, size, size, C2D_Color32(20, 26, 60, 255), C2D_Color32(20, 26, 60, 255),
-			C2D_Color32(8, 10, 28, 255), C2D_Color32(8, 10, 28, 255));
+		const theme_t *th = theme();
+		C2D_DrawRectangle(x, y, z, size, size, th->card_top, th->card_top, th->card_bottom, th->card_bottom);
 		C2D_DrawRectSolid(x, y + size - 6, z, size, 6, c);
 		char initial[8];
 		ui_first_letter(initial, g->title);
 		float s = size / 60.0f;
-		text(title_font, cx, cy - 14 * s, s, C2D_Color32(220, 225, 245, 255), C2D_AlignCenter, initial);
-		if (dim > 0)
+		text(title_font, cx, cy - 14 * s, s, th->card_ink, C2D_AlignCenter, initial);
+		if (dim > 0)   // fixed: dimmed toward black
 			C2D_DrawRectSolid(x, y, z + 0.005f, size, size, C2D_Color32(0, 0, 0, (u8)(dim * 255)));
 	}
 	if (s < 0 && favourite(i)) {   // a favourite: a star on the corner
@@ -640,7 +646,7 @@ static void draw_top(void *ud)
 		if (w > 380)
 			size *= 380 / w;
 		float tx = 200 + ui_depth(-0.8f);   // floats just in front of the screen
-		text(f, tx + 1, ty + 1, size, C2D_Color32(0, 0, 0, a * 5 / 8), C2D_AlignCenter, title);
+		text(f, tx + 1, ty + 1, size, theme_alpha(TH_TITLE_SHADOW, a * 5 / 8), C2D_AlignCenter, title);
 		text(f, tx, ty, size, theme_alpha(th->game_title, a), C2D_AlignCenter, title);
 		char dd[64];
 		sub_line(sel, dd, sizeof(dd));
@@ -678,13 +684,13 @@ static void draw_top(void *ud)
 	}
 
 	// which build this is, small in the corner
-	text(NULL, 396, 226, 0.35f, C2D_Color32(150, 160, 200, 160), C2D_AlignRight, "v" PSX3D_VERSION);
+	text(NULL, 396, 226, 0.35f, th->version_ink, C2D_AlignRight, "v" PSX3D_VERSION);
 
 	// fade from/to black (open, launch)
 	float f = fade;
 	if (launch_t >= 0)
 		f = launch_t > 0.4f ? (launch_t - 0.4f) / 0.6f : 0;
-	if (f > 0.001f)
+	if (f > 0.001f)   // fixed: a fade to the game picture, black in every theme
 		C2D_DrawRectSolid(0, 0, 0.9f, 400, 240, C2D_Color32(0, 0, 0, (u8)(255 * (f > 1 ? 1 : f))));
 }
 
