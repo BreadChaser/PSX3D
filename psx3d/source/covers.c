@@ -1153,9 +1153,11 @@ void covers_init(void)
 	// On core 0 the UI may consume the full refresh interval. A lower
 	// priority worker never runs then (3DS does not age thread priorities).
 	// Equal priority gives TLS/decode bounded time slices on Old 3DS.
+	// (The Old 3DS has no core 2: straight to core 0 there, which is where the
+	// failed core 2 call used to end up; Azahar's Old mode stops at that call.)
 	for (int i = 0; i < WORKERS; i++) {
 		int core = 2;
-		workers[i] = threadCreate(worker_main, NULL, 64 * 1024, prio + 4, core, false);
+		workers[i] = g_new3ds ? threadCreate(worker_main, NULL, 64 * 1024, prio + 4, core, false) : NULL;
 		if (!workers[i])
 			workers[i] = threadCreate(worker_main, NULL, 64 * 1024, prio, core = 0, false);
 		log_printf("covers: worker %d on core %d\n", i, workers[i] ? core : -1);
