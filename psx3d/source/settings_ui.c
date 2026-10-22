@@ -402,16 +402,18 @@ static int settings_bar(settings_ui_t *s, ui_button_t *b)
 		b[n++] = (ui_button_t){KEY_R, categories[neighbour_page(s, 1)], UI_ICON_RIGHT, false};
 	}
 	if (s->page == CAT_CHEATS)
-		b[n++] = (ui_button_t){KEY_X, "Add code", 0, false};
+		b[n++] = (ui_button_t){KEY_X, "Add", UI_ICON_PLUS, false};
 	else if (s->page == CAT_BINDINGS) {
 		if (s->game && item >= CONTROL_ROW && item < CHEAT_ROW && config_control_overridden(item - CONTROL_ROW))
-			b[n++] = (ui_button_t){KEY_X, "Inherit", 0, false};
-		b[n++] = (ui_button_t){s->game ? KEY_Y : KEY_X, "Reset all", 0, false};
+			b[n++] = (ui_button_t){KEY_X, "Inherit", UI_ICON_RESET, false};
+		b[n++] = (ui_button_t){s->game ? KEY_Y : KEY_X, "Reset", UI_ICON_RESET, false};
 	} else if (s->game && item >= 0 && item < CONTROL_ROW && overridden(s, item))
-		b[n++] = (ui_button_t){KEY_X, "Inherit", 0, false};
+		b[n++] = (ui_button_t){KEY_X, "Inherit", UI_ICON_RESET, false};
 	if (item >= 0 && item != F_HEADING)
-		b[n++] = (ui_button_t){KEY_A, item >= CATEGORY_ROW || item == F_FOLDER ? "Open"
-			: s->page == CAT_CHEATS ? "On / off" : item == F_RECOMMENDED ? "Reset" : "Change", 0, false};
+		b[n++] = item >= CATEGORY_ROW || item == F_FOLDER ? (ui_button_t){KEY_A, "Open", UI_ICON_OPEN, false}
+			: s->page == CAT_CHEATS ? (ui_button_t){KEY_A, "On/off", UI_ICON_TOGGLE, false}
+			: item == F_RECOMMENDED ? (ui_button_t){KEY_A, "Reset", UI_ICON_RESET, false}
+			: (ui_button_t){KEY_A, "Change", UI_ICON_CHANGE, false};
 	return n;
 }
 static void draw_settings(void *ud)

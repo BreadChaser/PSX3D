@@ -104,7 +104,7 @@ static bool running_in_emulator(void)
 }
 
 // A failure the player can act on: a title line, then what happened and what to do.
-static const ui_button_t error_bar[1] = { { KEY_A, "OK", 0, false } };
+static const ui_button_t error_bar[1] = { { KEY_A, "OK", UI_ICON_CHECK, false } };
 static void draw_message(void *ud)
 {
 	const char *msg = ud, *nl = strchr(msg, '\n');
@@ -271,7 +271,6 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "aa")) sw_aa = true;
 		else if (!strcmp(a, "nolcd")) sw_nolcd = true;
 		else if (!strcmp(a, "nocovers")) sw_nocovers = true;
-		else if (!strncmp(a, "barstyle=", 9)) ui_bar_style = atoi(a + 9) & 3;   // touch bar style A/B test
 		else if (!strncmp(a, "presets_url=", 12)) snprintf(sw_presets_url, sizeof(sw_presets_url), "%s", a + 12);
 		else if (!strcmp(a, "minimal"))
 			sw_nonet = sw_nosound = sw_noirrst = sw_noaa = sw_nolcd = sw_nocovers = true;

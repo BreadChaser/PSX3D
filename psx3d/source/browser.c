@@ -274,11 +274,13 @@ static int browser_bar(ui_button_t *b)
 	int n = 0;
 	bool root = !strcmp(cwd, "sdmc:/");
 	if (!root || g_cfg.games_dir[0])
-		b[n++] = (ui_button_t){KEY_B, root ? "Back" : "Up", 0, false};
+		b[n++] = (ui_button_t){KEY_B, root ? "Back" : "Up", root ? UI_ICON_BACK : UI_ICON_UP, false};
 	if (g_cfg.games_dir[0] && strcmp(cwd, g_cfg.games_dir))
-		b[n++] = (ui_button_t){KEY_Y, "Games folder", UI_ICON_FOLDER, false};
-	b[n++] = (ui_button_t){KEY_START, "Done", 0, false};
-	b[n++] = (ui_button_t){KEY_A, !sel ? "Use this" : sel <= nentries && entries[sel - 1].dir ? "Open" : "Play", 0, false};
+		b[n++] = (ui_button_t){KEY_Y, "Games", UI_ICON_FOLDER, false};
+	b[n++] = (ui_button_t){KEY_START, "Done", UI_ICON_EXIT, false};
+	b[n++] = !sel ? (ui_button_t){KEY_A, "Use", UI_ICON_CHECK, false}
+		: sel <= nentries && entries[sel - 1].dir ? (ui_button_t){KEY_A, "Open", UI_ICON_OPEN, false}
+		: (ui_button_t){KEY_A, "Play", UI_ICON_PLAY, false};
 	return n;
 }
 

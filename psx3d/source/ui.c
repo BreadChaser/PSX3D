@@ -432,7 +432,7 @@ void ui_help_panel(float y0, const char *title, const char *impact, const char *
 }
 
 // Destructive settings actions require a fresh A press. B always cancels.
-typedef struct { const char *title, *message, *action; ui_button_t bar[2]; } confirm_t;
+typedef struct { const char *title, *message, *action; ui_button_t bar[2]; char word[24]; } confirm_t;
 static void confirm_draw(void *ud)
 {
 	confirm_t *c = ud;
@@ -457,7 +457,12 @@ bool ui_confirm_action(const char *title, const char *message, const char *actio
 	// "A  Reset game" names the A button's action
 	const char *label = action[0] == 'A' && action[1] == ' ' ? action + 1 : action;
 	while (*label == ' ') label++;
-	confirm_t c = { title, message, action, { { KEY_B, "Cancel", 0, false }, { KEY_A, label, 0, false } } };
+	confirm_t c = { title, message, action, { { KEY_B, "Cancel", UI_ICON_CROSS, false }, { KEY_A, NULL, UI_ICON_CHECK, false } }, "" };
+	// the tab shows the action's first word ("Reset game" -> Reset)
+	snprintf(c.word, sizeof(c.word), "%.*s", (int)strcspn(label, " "), label);
+	c.bar[1].label = c.word;
+	if (!strcmp(c.word, "Reset"))
+		c.bar[1].icon = UI_ICON_RESET;
 	bool released = false;
 	while (aptMainLoop()) {
 		input_poll();
@@ -474,16 +479,19 @@ bool ui_confirm_action(const char *title, const char *message, const char *actio
 }
 
 // ---------------------------------------------------------------- button bar
-// The bar of touch buttons that replaces every menu's prompt line
-// (LIBRARY-DESIGN.md section 5 in the UI mock). Each button names its action,
-// shows the physical button as a small chip and does what that button does.
-// B is always leftmost, A (the main action) rightmost; physical presses light
-// the matching button. Colours are derived from the theme's page and highlight
-// exactly as the UI mock's barTokensFor() does (no per-palette values).
+// The bar of touch buttons that replaces every menu's prompt line, in the
+// owner's chosen style (button-refs ref7, like TWiLight Menu++ and
+// Universal-Updater): flat tabs filling the strip edge to edge, thin dividers,
+// a small icon over a one-word caption, the main action (A) filled in the
+// theme's highlight colour, no button letters. B is always leftmost, A
+// rightmost; physical presses light the matching tab. Colours come from the
+// theme exactly as the UI mock's barTokensFor() derives them.
 
 #define BAR_TOP 208
-#define BAR_Y 210
-#define BAR_H 27
+#define BAR_ICON_Y 217.0f    // icon centre
+#define BAR_CAPTION_Y 233.0f // caption centre
+#define BAR_CAPTION 0.36f    // caption size; shrinks to BAR_CAPTION_MIN before shortening
+#define BAR_CAPTION_MIN 0.31f
 
 static float text_width(float size, const char *s)
 {
@@ -526,40 +534,6 @@ u32 ui_bar_color(int which)
 static u32 flash_key;
 static int flash_t;
 
-static const char *chip_text(u32 key)
-{
-	switch (key) {
-	case KEY_A: return "A";
-	case KEY_B: return "B";
-	case KEY_X: return "X";
-	case KEY_Y: return "Y";
-	case KEY_L: return "L";
-	case KEY_R: return "R";
-	case KEY_SELECT: return "SEL";
-	case KEY_START: return "START";
-	}
-	return NULL;
-}
-
-// the 3DS's own button colours, the same in every theme
-static u32 chip_color(u32 key)
-{
-	switch (key) {
-	case KEY_A: return C2D_Color32(208, 49, 59, 255);
-	case KEY_B: return C2D_Color32(240, 196, 40, 255);
-	case KEY_X: return C2D_Color32(47, 111, 196, 255);
-	case KEY_Y: return C2D_Color32(47, 163, 107, 255);
-	case KEY_L: case KEY_R: return C2D_Color32(176, 90, 222, 255);
-	}
-	return C2D_Color32(110, 116, 140, 255);
-}
-
-static float chip_w(u32 key)
-{
-	const char *t = chip_text(key);
-	return !t ? 0 : t[1] ? text_width(0.3f, t) + 6 : 12;
-}
-
 // A five-point star from triangles; hollow draws a smaller one in its colour inside.
 void ui_star(float cx, float cy, float r, u32 c, u32 hollow, float z)
 {
@@ -577,9 +551,33 @@ void ui_star(float cx, float cy, float r, u32 c, u32 hollow, float z)
 		ui_star(cx, cy + r * 0.06f, r * 0.55f, hollow, 0, z + 0.001f);
 }
 
+// an open circular arrow; dir 1 clockwise (rescan), -1 anticlockwise (reset)
+static void bar_arc(float cx, float cy, float s, u32 ink, int dir, float z)
+{
+	float r = s * 0.4f, w = fmaxf(1.4f, s * 0.14f), a0 = -(float)M_PI * 0.35f, a1 = (float)M_PI * 1.25f;
+	for (int i = 0; i < 10; i++) {
+		float p = a0 + (a1 - a0) * i / 10, q = a0 + (a1 - a0) * (i + 1) / 10;
+		C2D_DrawLine(cx + dir * cosf(p) * r, cy + sinf(p) * r, ink, cx + dir * cosf(q) * r, cy + sinf(q) * r, ink, w, z);
+	}
+	float hx = cx + dir * cosf(a0) * r, hy = cy + sinf(a0) * r;
+	C2D_DrawTriangle(hx - dir * s * 0.3f, hy - s * 0.12f, ink, hx + dir * s * 0.12f, hy - s * 0.3f, ink,
+		hx + dir * s * 0.08f, hy + s * 0.2f, ink, z);
+}
+
+// an arrow along y: dir -1 up, 1 down
+static void bar_vertical_arrow(float cx, float cy, float s, u32 ink, int dir, float z)
+{
+	float tip = cy + dir * s * 0.45f, base = cy + dir * s * 0.02f;
+	C2D_DrawTriangle(cx, tip, ink, cx - s * 0.36f, base, ink, cx + s * 0.36f, base, ink, z);
+	float y0 = fminf(base, cy - dir * s * 0.4f), y1 = fmaxf(base, cy - dir * s * 0.4f);
+	C2D_DrawRectSolid(cx - s * 0.11f, y0, z, s * 0.22f, y1 - y0, ink);
+}
+
+// Icons are simple shapes drawn in code, about s pixels across. All of them sit
+// under the caption text, which ui_text_ex draws at 0.7.
 static void bar_icon(int icon, float cx, float cy, float s, u32 ink, u32 bg, bool on)
 {
-	const float z = 0.68f;
+	const float z = 0.68f, w = fmaxf(1.5f, s * 0.15f);
 	switch (icon) {
 	case UI_ICON_STAR:
 		ui_star(cx, cy, s * 0.62f, on ? ui_bar_color(UI_COL_STAR) : ink, on ? 0 : bg, z);
@@ -588,16 +586,12 @@ static void bar_icon(int icon, float cx, float cy, float s, u32 ink, u32 bg, boo
 		for (int i = 0; i < 3; i++)
 			C2D_DrawRectSolid(cx - s * 0.5f, cy - s * 0.42f + i * s * 0.36f, z, s * (1 - i * 0.3f), fmaxf(1.5f, s * 0.16f), ink);
 		break;
-	case UI_ICON_RESCAN: {
-		float r = s * 0.4f, w = fmaxf(1.4f, s * 0.14f), a0 = -(float)M_PI * 0.35f, a1 = (float)M_PI * 1.25f;
-		for (int i = 0; i < 10; i++) {
-			float p = a0 + (a1 - a0) * i / 10, q = a0 + (a1 - a0) * (i + 1) / 10;
-			C2D_DrawLine(cx + cosf(p) * r, cy + sinf(p) * r, ink, cx + cosf(q) * r, cy + sinf(q) * r, ink, w, z);
-		}
-		float hx = cx + cosf(a0) * r, hy = cy + sinf(a0) * r;
-		C2D_DrawTriangle(hx - s * 0.3f, hy - s * 0.12f, ink, hx + s * 0.12f, hy - s * 0.3f, ink, hx + s * 0.08f, hy + s * 0.2f, ink, z);
+	case UI_ICON_RESCAN:
+		bar_arc(cx, cy, s, ink, 1, z);
 		break;
-	}
+	case UI_ICON_RESET:
+		bar_arc(cx, cy, s, ink, -1, z);
+		break;
 	case UI_ICON_LEFT:
 		C2D_DrawTriangle(cx - s * 0.32f, cy, ink, cx + s * 0.22f, cy - s * 0.4f, ink, cx + s * 0.22f, cy + s * 0.4f, ink, z);
 		break;
@@ -608,254 +602,139 @@ static void bar_icon(int icon, float cx, float cy, float s, u32 ink, u32 bg, boo
 		C2D_DrawRectSolid(cx - s * 0.5f, cy - s * 0.3f, z, s * 0.4f, s * 0.15f, ink);
 		C2D_DrawRectSolid(cx - s * 0.5f, cy - s * 0.18f, z, s, s * 0.55f, ink);
 		break;
+	case UI_ICON_BACK:   // the mock's arrow: a head and a shaft
+		C2D_DrawTriangle(cx - s * 0.5f, cy, ink, cx, cy - s * 0.42f, ink, cx, cy + s * 0.42f, ink, z);
+		C2D_DrawRectSolid(cx - 1, cy - s * 0.15f, z, s * 0.5f + 1, s * 0.3f, ink);
+		break;
+	case UI_ICON_PLAY:
+		C2D_DrawTriangle(cx - s * 0.3f, cy - s * 0.42f, ink, cx - s * 0.3f, cy + s * 0.42f, ink, cx + s * 0.42f, cy, ink, z);
+		break;
+	case UI_ICON_CHECK:
+		C2D_DrawLine(cx - s * 0.45f, cy, ink, cx - s * 0.12f, cy + s * 0.35f, ink, w * 1.3f, z);
+		C2D_DrawLine(cx - s * 0.18f, cy + s * 0.35f, ink, cx + s * 0.48f, cy - s * 0.38f, ink, w * 1.3f, z);
+		break;
+	case UI_ICON_CROSS:
+		C2D_DrawLine(cx - s * 0.38f, cy - s * 0.38f, ink, cx + s * 0.38f, cy + s * 0.38f, ink, w * 1.3f, z);
+		C2D_DrawLine(cx - s * 0.38f, cy + s * 0.38f, ink, cx + s * 0.38f, cy - s * 0.38f, ink, w * 1.3f, z);
+		break;
+	case UI_ICON_PLUS:
+		C2D_DrawRectSolid(cx - s * 0.45f, cy - w * 0.65f, z, s * 0.9f, w * 1.3f, ink);
+		C2D_DrawRectSolid(cx - w * 0.65f, cy - s * 0.45f, z, w * 1.3f, s * 0.9f, ink);
+		break;
+	case UI_ICON_TRASH:   // lid with a handle, a body with two slots
+		C2D_DrawRectSolid(cx - s * 0.12f, cy - s * 0.5f, z, s * 0.24f, s * 0.1f, ink);
+		C2D_DrawRectSolid(cx - s * 0.45f, cy - s * 0.4f, z, s * 0.9f, s * 0.12f, ink);
+		C2D_DrawRectSolid(cx - s * 0.34f, cy - s * 0.22f, z, s * 0.68f, s * 0.7f, ink);
+		C2D_DrawRectSolid(cx - s * 0.14f, cy - s * 0.12f, z + 0.001f, 1, s * 0.5f, bg);
+		C2D_DrawRectSolid(cx + s * 0.12f, cy - s * 0.12f, z + 0.001f, 1, s * 0.5f, bg);
+		break;
+	case UI_ICON_SAVE:   // an arrow down into a tray
+	case UI_ICON_LOAD:   // an arrow up out of it
+		bar_vertical_arrow(cx, cy - s * 0.1f, s * 0.85f, ink, icon == UI_ICON_SAVE ? 1 : -1, z);
+		C2D_DrawRectSolid(cx - s * 0.48f, cy + s * 0.42f, z, s * 0.96f, w, ink);
+		break;
+	case UI_ICON_UP:
+		bar_vertical_arrow(cx, cy, s, ink, -1, z);
+		break;
+	case UI_ICON_OPEN:   // a chevron
+		C2D_DrawLine(cx - s * 0.18f, cy - s * 0.42f, ink, cx + s * 0.24f, cy, ink, w * 1.3f, z);
+		C2D_DrawLine(cx + s * 0.24f, cy, ink, cx - s * 0.18f, cy + s * 0.42f, ink, w * 1.3f, z);
+		break;
+	case UI_ICON_CHANGE:   // two small arrow heads apart
+		C2D_DrawTriangle(cx - s * 0.5f, cy, ink, cx - s * 0.1f, cy - s * 0.36f, ink, cx - s * 0.1f, cy + s * 0.36f, ink, z);
+		C2D_DrawTriangle(cx + s * 0.5f, cy, ink, cx + s * 0.1f, cy - s * 0.36f, ink, cx + s * 0.1f, cy + s * 0.36f, ink, z);
+		break;
+	case UI_ICON_TOGGLE:   // a switch: a capsule and its knob
+		C2D_DrawCircleSolid(cx - s * 0.26f, cy, z, s * 0.26f, ink);
+		C2D_DrawCircleSolid(cx + s * 0.26f, cy, z, s * 0.26f, ink);
+		C2D_DrawRectSolid(cx - s * 0.26f, cy - s * 0.26f, z, s * 0.52f, s * 0.52f, ink);
+		C2D_DrawCircleSolid(cx + s * 0.26f, cy, z + 0.001f, s * 0.17f, bg);
+		break;
+	case UI_ICON_DISC:
+		C2D_DrawCircleSolid(cx, cy, z, s * 0.48f, ink);
+		C2D_DrawCircleSolid(cx, cy, z + 0.001f, s * 0.13f, bg);
+		break;
+	case UI_ICON_EXIT:   // an open box and an arrow leaving it
+		C2D_DrawRectSolid(cx - s * 0.48f, cy - s * 0.42f, z, w, s * 0.84f, ink);
+		C2D_DrawRectSolid(cx - s * 0.48f, cy - s * 0.42f, z, s * 0.4f, w, ink);
+		C2D_DrawRectSolid(cx - s * 0.48f, cy + s * 0.42f - w, z, s * 0.4f, w, ink);
+		C2D_DrawRectSolid(cx - s * 0.18f, cy - w / 2, z, s * 0.4f, w, ink);
+		C2D_DrawTriangle(cx + s * 0.5f, cy, ink, cx + s * 0.18f, cy - s * 0.3f, ink, cx + s * 0.18f, cy + s * 0.3f, ink, z);
+		break;
 	}
 }
 
-static float bar_text = 0.4f;   // label size of the bar laid out last
-
-// B first, A last, the others in the order given; buttons share the width.
-// A crowded bar first uses smaller labels, then shortens them.
-int ui_bar_style;
-
-// round button glyph: a filled circle with its letter (classic and round styles)
-static float glyph_w(u32 key, float r)
+// buttons without their own icon or caption: B goes back, A confirms
+static int bar_icon_of(const ui_button_t *p)
 {
-	const char *t = chip_text(key);
-	return !t ? 0 : t[1] ? text_width(0.3f, t) + r : 2 * r;
+	return p->icon ? p->icon : p->key == KEY_B ? UI_ICON_BACK : p->key == KEY_A ? UI_ICON_CHECK : UI_ICON_NONE;
 }
 
-static void glyph(u32 key, float x, float cy, float r, float z)
+static const char *bar_caption(const ui_button_t *p)
 {
-	const char *t = chip_text(key);
-	if (!t)
-		return;
-	u32 c = chip_color(key);
-	float w = glyph_w(key, r);
-	C2D_DrawCircleSolid(x + r, cy, z, r, c);
-	if (w > 2 * r) {   // SEL / START: a capsule
-		C2D_DrawCircleSolid(x + w - r, cy, z, r, c);
-		C2D_DrawRectSolid(x + r, cy - r, z, w - 2 * r, 2 * r, c);
+	if (p->label)
+		return p->label;
+	switch (p->icon) {
+	case UI_ICON_STAR: return "Favourite";
+	case UI_ICON_SORT: return "Sort";
+	case UI_ICON_RESCAN: return "Rescan";
+	case UI_ICON_FOLDER: return "Folders";
 	}
-	ui_text_ex(NULL, x + w / 2, cy - (t[1] ? 6.5f : 8.5f) * r / 7.5f, t[1] ? 0.3f * r / 7.5f : 0.42f * r / 7.5f,
-		key == KEY_B ? C2D_Color32(30, 24, 10, 255) : C2D_Color32(255, 255, 255, 255), C2D_AlignCenter, t);
+	return p->key == KEY_B ? "Back" : p->key == KEY_A ? "OK" : "";
 }
 
-static bool bar_icon_only;   // the last alt layout dropped the words of icon buttons
-
-// Styles 1-3 lay out their own way: B at the left edge, A at the right, the
-// others centred between them; each button's tap area is its slot of the strip.
-static int bar_layout_alt(const ui_button_t *b, int m, const int *order, float *x, float *w)
-{
-	float nat[UI_BAR_MAX] = { 0 }, total = 0;
-	float gap = ui_bar_style == 3 ? 10 : 6, avail = 320 - 12;
-	// crowded: smaller words first, then the arrow buttons (L/R) lose theirs
-	bar_icon_only = false;
-	for (int pass = 0; pass < 3; pass++) {
-		bar_text = pass ? 0.36f : 0.42f;
-		bar_icon_only = pass == 2;
-		total = 0;
-		for (int i = 0; i < m; i++) {
-			const ui_button_t *p = &b[order[i]];
-			if (ui_bar_style == 3)
-				nat[i] = 36;
-			else {
-				float g = ui_bar_style == 1 ? glyph_w(p->key, 8) : glyph_w(p->key, 7);
-				bool words = p->label && !(bar_icon_only && p->icon);
-				float lw = words ? text_width(bar_text, p->label) : 0;
-				nat[i] = g + (p->icon ? 15 : 0) + (lw ? lw + 5 : 0) + (ui_bar_style == 2 ? 20 : 8);
-			}
-			total += nat[i];
-		}
-		if (ui_bar_style == 3 || total + gap * (m - 1) <= avail)
-			break;
-	}
-	if (total + gap * (m - 1) > avail)
-		gap = m > 1 ? fmaxf(2, (avail - total) / (m - 1)) : 0;
-	// B left, A right, the rest centred
-	float left = 6, right = 314;
-	int first = 0, last = m;
-	if (m && b[order[0]].key == KEY_B) { x[0] = left; w[0] = nat[0]; left += nat[0] + gap; first = 1; }
-	if (last > first && b[order[m - 1]].key == KEY_A) { w[m - 1] = nat[m - 1]; x[m - 1] = right - nat[m - 1]; right -= nat[m - 1] + gap; last = m - 1; }
-	float mid = 0;
-	for (int i = first; i < last; i++)
-		mid += nat[i] + (i > first ? gap : 0);
-	float pos = (left + right) / 2 - mid / 2;
-	if (pos < left) pos = left;
-	for (int i = first; i < last; i++) {
-		x[i] = pos;
-		w[i] = nat[i];
-		pos += nat[i] + gap;
-	}
-	return m;
-}
-
+// B first, A last, the others in the order given; every tab is the same width.
 static int bar_layout(const ui_button_t *b, int n, int *order, float *x, float *w)
 {
 	int m = 0;
 	for (int i = 0; i < n; i++) if (b[i].key == KEY_B) order[m++] = i;
 	for (int i = 0; i < n; i++) if (b[i].key != KEY_B && b[i].key != KEY_A) order[m++] = i;
 	for (int i = 0; i < n; i++) if (b[i].key == KEY_A) order[m++] = i;
-	if (!m)
-		return 0;
-	if (ui_bar_style)
-		return bar_layout_alt(b, m, order, x, w);
-	const float gap = 4, avail = 320 - 8 - gap * (m - 1);
-	float nat[UI_BAR_MAX], total = 0;
-	for (bar_text = 0.4f;; bar_text = 0.34f) {
-		total = 0;
-		for (int i = 0; i < m; i++) {
-			const ui_button_t *p = &b[order[i]];
-			float cw = chip_w(p->key);
-			nat[i] = (cw ? cw + 5 : 0) + (p->icon ? 14 : 0) + (p->label ? text_width(bar_text, p->label) : 0) + 12;
-			total += nat[i];
-		}
-		if (total <= avail || bar_text < 0.4f)
-			break;
-	}
-	float pos = 4;
 	for (int i = 0; i < m; i++) {
-		// spare room spread evenly; too little shrinks the labelled buttons
-		float wi = nat[i] + (avail - total) / m;
-		if (total > avail) {
-			float fixed = 0, lab = 0;
-			for (int j = 0; j < m; j++) {
-				if (b[order[j]].label) lab += nat[j];
-				else fixed += nat[j];
-			}
-			wi = b[order[i]].label ? nat[i] * (avail - fixed) / lab : nat[i];
-		}
-		x[i] = pos;
-		w[i] = wi;
-		pos += wi + gap;
+		x[i] = 320.0f * i / m;
+		w[i] = 320.0f * (i + 1) / m - x[i];
 	}
 	return m;
-}
-
-static void pill(float x, float y, float w, float h, u32 c, float z)
-{
-	float r = h / 2;
-	C2D_DrawCircleSolid(x + r, y + r, z, r, c);
-	C2D_DrawCircleSolid(x + w - r, y + r, z, r, c);
-	C2D_DrawRectSolid(x + r, y, z, w - 2 * r, h, c);
-}
-
-// A: classic 3DS prompts, refined: no boxes, a glyph and its word on the page
-// colour. B: slim rounded pills in the theme's colours. C: round icon buttons.
-static void bar_draw_alt(const ui_button_t *b, int n)
-{
-	const theme_t *th = theme();
-	int order[UI_BAR_MAX];
-	float xs[UI_BAR_MAX], ws[UI_BAR_MAX];
-	int m = bar_layout(b, n, order, xs, ws);
-	if (ui_bar_style != 3) {
-		C2D_DrawRectSolid(0, BAR_TOP, 0.64f, 320, 240 - BAR_TOP, theme_alpha(th->menu_bg, 255));
-		if (ui_bar_style == 1)
-			C2D_DrawRectSolid(12, BAR_TOP + 1, 0.645f, 296, 1, th->section_rule);
-	}
-	if (flash_t > 0)
-		flash_t--;
-	for (int i = 0; i < m; i++) {
-		const ui_button_t *p = &b[order[i]];
-		float x = xs[i], w = ws[i], mid = 224;
-		bool main = p->key == KEY_A, lit = flash_t > 0 && flash_key == p->key;
-		u32 ink = theme_row(th, main || lit ? 1 : 0.55f, 255);
-		if (ui_bar_style == 1) {
-			float g = glyph_w(p->key, 8);
-			if (lit)
-				pill(x - 4, mid - 11, w + 8, 22, theme_alpha(th->hl_top, 160), 0.65f);
-			glyph(p->key, x, mid, 8, 0.67f);
-			float cx = x + g + 5;
-			if (p->icon) { bar_icon(p->icon, cx + 6, mid, 12, ink, th->menu_bg, p->on); cx += 15; }
-			if (p->label && !(bar_icon_only && p->icon))
-				ui_text_ex(NULL, cx, mid - 8.5f * bar_text / 0.42f, bar_text, ink, 0, p->label);
-		} else if (ui_bar_style == 2) {
-			u32 face = main ? theme_alpha(th->hl_top, 255) : mix(th->menu_bg, th->hl_top, 0.45f, 255);
-			if (lit) face = mix(th->hl_top, 0xffffffff, 0.35f, 255);
-			pill(x, mid - 12, w, 24, face, 0.65f);
-			bool words = p->label && !(bar_icon_only && p->icon);
-			float g = glyph_w(p->key, 7), cw = g + (p->icon ? 15 : 0) + (words ? text_width(bar_text, p->label) + 5 : 0);
-			float cx = x + (w - cw) / 2;
-			glyph(p->key, cx, mid, 7, 0.67f);
-			cx += g + 5;
-			if (p->icon) { bar_icon(p->icon, cx + 6, mid, 12, ink, face, p->on); cx += 15; }
-			if (words)
-				ui_text_ex(NULL, cx, mid - 8.5f * bar_text / 0.42f, bar_text, ink, 0, p->label);
-		} else {
-			// round: a disc with the icon (or the action's first letter), the button letter on its rim
-			float cx = x + w / 2, cy = 220, r = 15;
-			u32 face = main ? theme_alpha(th->hl_top, 255) : mix(th->menu_bg, th->hl_top, 0.5f, 255);
-			if (lit) face = mix(th->hl_top, 0xffffffff, 0.35f, 255);
-			C2D_DrawCircleSolid(cx, cy, 0.65f, r + 1.5f, mix(th->menu_bg, th->hl_top, 0.9f, 255));
-			C2D_DrawCircleSolid(cx, cy, 0.655f, r, face);
-			if (p->icon)
-				bar_icon(p->icon, cx, cy, 15, ink, face, p->on);
-			else if (p->key == KEY_B)   // back: an arrow
-				bar_icon(UI_ICON_LEFT, cx, cy, 15, ink, face, false);
-			else if (p->key == KEY_A) {   // the main action: a check mark
-				C2D_DrawLine(cx - 6, cy, ink, cx - 2, cy + 5, ink, 2.5f, 0.68f);
-				C2D_DrawLine(cx - 2, cy + 5, ink, cx + 7, cy - 6, ink, 2.5f, 0.68f);
-			} else if (p->label) {
-				char first[8];
-				ui_first_letter(first, p->label);
-				ui_text_ex(NULL, cx, cy - 10, 0.55f, ink, C2D_AlignCenter, first);
-			}
-			glyph(p->key, cx + r * 0.55f, cy + r * 0.55f, 5.5f, 0.68f);
-		}
-	}
 }
 
 void ui_bar_draw(const ui_button_t *b, int n)
 {
 	if (n > UI_BAR_MAX) n = UI_BAR_MAX;
-	if (ui_bar_style) {
-		bar_draw_alt(b, n);
-		return;
-	}
 	// everything under the text, which ui_text_ex draws at 0.7
 	const theme_t *th = theme();
-	C2D_DrawRectSolid(0, BAR_TOP, 0.64f, 320, 240 - BAR_TOP, ui_bar_color(UI_COL_BAR));
-	C2D_DrawRectSolid(0, BAR_TOP, 0.645f, 320, 1, ui_bar_color(UI_COL_RULE));
+	u32 strip = ui_bar_color(UI_COL_BAR);
+	C2D_DrawRectSolid(0, BAR_TOP, 0.64f, 320, 240 - BAR_TOP, strip);
 	int order[UI_BAR_MAX];
 	float xs[UI_BAR_MAX], ws[UI_BAR_MAX];
 	int m = bar_layout(b, n, order, xs, ws);
-	u32 face_top = mix(th->menu_bg, th->hl_top, 0.42f, 255), face_bottom = mix(th->menu_bg, th->hl_bottom, 0.38f, 255);
-	u32 border = mix(th->menu_bg, th->hl_top, 0.85f, 255), border_dim = mix(th->menu_bg, th->hl_top, 0.85f, 140);
-	u32 ink = theme_row(th, 0.6f, 255);   // the mock's barTokensFor(): btnInk
+	u32 main_face = mix(th->hl_bottom, th->hl_top, 0.2f, 255);   // the mock's btnMainBottom
+	u32 divider = theme_alpha(ui_bar_color(UI_COL_RULE), 110);
+	u32 ink = theme_row(th, 0.6f, 255), ink_main = theme_row(th, 1, 255);
 	if (flash_t > 0)
 		flash_t--;
 	for (int i = 0; i < m; i++) {
 		const ui_button_t *p = &b[order[i]];
-		float x = xs[i], w = ws[i], y = BAR_Y, h = BAR_H, mid = y + h / 2;
-		bool main = p->key == KEY_A;
-		u32 top = main ? mix(th->hl_top, 0xffffffff, 0.1f, 255) : face_top;
-		u32 bottom = main ? mix(th->hl_bottom, th->hl_top, 0.2f, 255) : face_bottom;
-		C2D_DrawRectangle(x, y, 0.65f, w, h, top, top, bottom, bottom);
-		if (flash_t > 0 && flash_key == p->key)
-			C2D_DrawRectSolid(x, y, 0.655f, w, h, mix(th->hl_top, 0xffffffff, 0.45f, 120 * flash_t / 9));
-		C2D_DrawRectSolid(x, y, 0.66f, w, 1, border);
-		C2D_DrawRectSolid(x, y + h - 1, 0.66f, w, 1, border_dim);
-		C2D_DrawRectSolid(x, y, 0.66f, 1, h, border);
-		C2D_DrawRectSolid(x + w - 1, y, 0.66f, 1, h, border_dim);
-		// content, centred
-		float chip = chip_w(p->key);
-		float room = w - 10 - (chip ? chip + 5 : 0) - (p->icon ? 14 : 0);
-		const char *label = p->label ? ui_fit(p->label, bar_text, room) : "";
-		float lw = label[0] ? text_width(bar_text, label) : 0;
-		float cx = x + (w - ((chip ? chip + 5 : 0) + (p->icon ? 14 : 0) + lw)) / 2;
-		if (chip) {
-			const char *t = chip_text(p->key);
-			C2D_DrawRectSolid(cx, mid - 6, 0.67f, chip, 12, chip_color(p->key));
-			ui_text_ex(NULL, cx + chip / 2, mid - (t[1] ? 6 : 7.5f), t[1] ? 0.3f : 0.36f,
-				p->key == KEY_B ? C2D_Color32(30, 24, 10, 255) : C2D_Color32(255, 255, 255, 255), C2D_AlignCenter, t);
-			cx += chip + 5;
-		}
-		u32 c = main ? theme_row(th, 1, 255) : ink;
-		if (p->icon) {
-			bar_icon(p->icon, cx + 6, mid, 12, c, bottom, p->on);
-			cx += 14;
-		}
-		if (label[0])
-			ui_text_ex(NULL, cx, mid - 20 * bar_text, bar_text, c, 0, label);
+		float x = xs[i], w = ws[i], cx = x + w / 2;
+		bool main = p->key == KEY_A, lit = flash_t > 0 && flash_key == p->key;
+		u32 face = main ? main_face : strip;
+		if (main)
+			C2D_DrawRectSolid(x, BAR_TOP, 0.65f, w, 240 - BAR_TOP, main_face);
+		else if (i)
+			C2D_DrawRectSolid(x, BAR_TOP + 4, 0.65f, 1, 240 - BAR_TOP - 8, divider);
+		if (lit)
+			C2D_DrawRectSolid(x, BAR_TOP, 0.655f, w, 240 - BAR_TOP, mix(th->hl_top, 0xffffffff, 0.45f, 110 * flash_t / 9));
+		u32 c = main || lit ? ink_main : ink;
+		bar_icon(bar_icon_of(p), cx, BAR_ICON_Y, 11, c, face, p->on);
+		// one short word; a long one first gets smaller, then shorter
+		const char *caption = bar_caption(p);
+		if (!caption[0])
+			continue;
+		float size = BAR_CAPTION, room = w - 6;
+		float tw = text_width(size, caption);
+		if (tw > room)
+			size = fmaxf(BAR_CAPTION_MIN, size * room / tw);
+		caption = ui_fit(caption, size, room);
+		ui_text_ex(NULL, cx, BAR_CAPTION_Y - 20 * size, size, c, C2D_AlignCenter, caption);
 	}
 }
 
@@ -878,7 +757,7 @@ u32 ui_bar_input(const ui_button_t *b, int n, u32 keys)
 	float xs[UI_BAR_MAX], ws[UI_BAR_MAX];
 	int m = bar_layout(b, n, order, xs, ws);
 	for (int i = 0; i < m; i++)
-		if (p.px >= xs[i] - 3 && p.px < xs[i] + ws[i] + 3) {
+		if (p.px >= xs[i] && p.px < xs[i] + ws[i]) {   // tabs touch: exactly one
 			keys |= b[order[i]].key;
 			flash_key = b[order[i]].key;
 			flash_t = 9;

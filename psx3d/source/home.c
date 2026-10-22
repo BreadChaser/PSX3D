@@ -848,7 +848,7 @@ static void empty_top(void *ud)
 }
 
 static const ui_button_t empty_bar[3] = {
-	{ KEY_B, "Menu", 0, false }, { KEY_Y, "Folders", UI_ICON_FOLDER, false }, { KEY_SELECT, "Look again", UI_ICON_RESCAN, false },
+	{ KEY_B, "Menu", 0, false }, { KEY_Y, "Folders", UI_ICON_FOLDER, false }, { KEY_SELECT, "Rescan", UI_ICON_RESCAN, false },
 };
 
 static void empty_bottom(void *ud)

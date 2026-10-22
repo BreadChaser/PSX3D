@@ -25,10 +25,6 @@ bool switches_set(const char *word)
 	    !strcmp(word, "wsscreen=4:3") || !strcmp(word, "wsscreen=stretch") || !strcmp(word, "wsscreen=wide")) {
 		debug_parse_switch(word); return true;
 	}
-	if (!strncmp(word, "barstyle=", 9) && word[9] >= '0' && word[9] <= '3' && !word[10]) {
-		ui_bar_style = word[9] - '0';   // touch button bar style A/B test (0 current, 1-3 proposals)
-		return true;
-	}
 	if (!strncmp(word, "rtfscap=", 8)) {
         char *end; long n = strtol(word+8, &end, 10);
         if (!word[8] || *end || n < 4 || n > 5) return false;

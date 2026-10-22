@@ -258,11 +258,11 @@ static int states_bar(const browser_t *b, ui_button_t *out)
 {
 	const slot_t *s = &b->slot[b->sel];
 	int n = 0;
-	out[n++] = (ui_button_t){KEY_B, b->confirm ? "Cancel" : "Back", 0, false};
+	out[n++] = (ui_button_t){KEY_B, b->confirm ? "Cancel" : "Back", b->confirm ? UI_ICON_CROSS : UI_ICON_BACK, false};
 	if (s->used)
-		out[n++] = (ui_button_t){KEY_X, "Delete", 0, false};
+		out[n++] = (ui_button_t){KEY_X, "Delete", UI_ICON_TRASH, false};
 	if (b->saving || s->used)
-		out[n++] = (ui_button_t){KEY_A, b->saving ? "Save" : "Load", 0, false};
+		out[n++] = (ui_button_t){KEY_A, b->saving ? "Save" : "Load", b->saving ? UI_ICON_SAVE : UI_ICON_LOAD, false};
 	return n;
 }
 
@@ -450,7 +450,7 @@ static void resume_top(void *ud)
 	ui_text_ex(NULL, 200 + dx, 215, 0.5f, C2D_Color32(240, 242, 255, 255), C2D_AlignCenter, line);
 }
 
-static const ui_button_t resume_bar[2] = { { KEY_B, "Start game", 0, false }, { KEY_A, "Continue", 0, false } };
+static const ui_button_t resume_bar[2] = { { KEY_B, "Restart", UI_ICON_RESET, false }, { KEY_A, "Continue", UI_ICON_PLAY, false } };
 
 static void resume_bottom(void *ud)
 {

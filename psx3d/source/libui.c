@@ -679,7 +679,8 @@ static int library_bar(ui_button_t *b)
 		b[n++] = (ui_button_t){ KEY_Y, NULL, UI_ICON_STAR, favourite(entry_game(sel)) };
 	b[n++] = (ui_button_t){ KEY_SELECT, NULL, UI_ICON_RESCAN, false };
 	if (nview)
-		b[n++] = (ui_button_t){ KEY_A, entry_series(sel) >= 0 ? "Open" : "Play", 0, false };
+		b[n++] = entry_series(sel) >= 0 ? (ui_button_t){ KEY_A, "Open", UI_ICON_OPEN, false }
+			: (ui_button_t){ KEY_A, "Play", UI_ICON_PLAY, false };
 	return n;
 }
 

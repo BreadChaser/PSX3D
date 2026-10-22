@@ -528,13 +528,13 @@ static const char *menu_value(int i, void *ud)
 static int menu_bar(const menu_t *m, ui_button_t *b)
 {
 	int n = 0;
-	b[n++] = (ui_button_t){KEY_B, "Resume", 0, false};
+	b[n++] = (ui_button_t){KEY_B, "Resume", UI_ICON_PLAY, false};
 	if (m->items[m->sel] == M_DISC) {
 		b[n++] = (ui_button_t){KEY_DLEFT, "Disc", UI_ICON_LEFT, false};
 		b[n++] = (ui_button_t){KEY_DRIGHT, "Disc", UI_ICON_RIGHT, false};
-		b[n++] = (ui_button_t){KEY_A, "Insert", 0, false};
+		b[n++] = (ui_button_t){KEY_A, "Insert", UI_ICON_DISC, false};
 	} else
-		b[n++] = (ui_button_t){KEY_A, "Select", 0, false};
+		b[n++] = (ui_button_t){KEY_A, "Select", UI_ICON_OPEN, false};
 	return n;
 }
 static void menu_draw_bottom(void *ud)
