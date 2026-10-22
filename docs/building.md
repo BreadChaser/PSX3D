@@ -246,3 +246,21 @@ second from `top_count`, choosing off or auto from the benchmark request.
 Host suites returning 77 are reported as SKIP and fail the aggregate run.
 For a deliberate local partial run only, set `HOST_TEST_ALLOW_SKIPS=1`; CI
 forces this to 0 and installs the ARM Linux cross compiler and qemu-user.
+
+### CIA title versions
+
+`tools/build/title-version.py` preserves the released mapping
+`(major * 16 + minor) * 1024 + patch + 3`. Builds reject minor >15, patch >12
+(the reserved +3 must fit the CIA micro field), or major/minor >63 combined.
+Bump the semantic minor rather than carrying out of the micro field.
+`VERSION=N` is a private uint16 title counter override; semantic version checks
+still run. A successful `make cia` also verifies the actual signed TMD version.
+
+The pinned makerom needs `tools/build/makerom-version-fix.patch`: upstream's
+version macros shadow its enum, dropping title-counter bits 4..9 (5136 becomes
+5120). Container provisioning applies the patch; external makerom installations
+must apply it too. A mismatched packed CIA fails the build with the requested
+and actual versions. `tests/title_version/check.py` checks field boundaries,
+all 832 permitted version mappings and signed-TMD offsets without any SDK.
+
+The complete developer switch audit is in [dev/dev-switches.md](dev/dev-switches.md).

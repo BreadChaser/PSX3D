@@ -5,7 +5,7 @@
 # The digest below must equal the `image` line of toolchain.lock (CI checks it).
 FROM devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5
 
-COPY toolchain.lock provision.sh /tmp/psx3d-build/
+COPY toolchain.lock provision.sh makerom-version-fix.patch /tmp/psx3d-build/
 RUN bash /tmp/psx3d-build/provision.sh /tmp/psx3d-build/toolchain.lock && rm -rf /tmp/psx3d-build
 
 ENV PSX3D_TOOLS=/opt/psx3d-tools \

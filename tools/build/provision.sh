@@ -27,6 +27,8 @@ tool() { # tool <name>: clone the repository at the locked commit
 }
 
 tool makerom
+# Pinned upstream has a macro/enum collision that corrupts title versions.
+patch -d "$src/makerom" -p0 < "$here/makerom-version-fix.patch"
 make -C "$src/makerom/makerom" deps -j"$(nproc)" >/dev/null
 make -C "$src/makerom/makerom" -j"$(nproc)" >/dev/null
 install -m 755 "$src/makerom/makerom/bin/makerom" "$prefix/bin/makerom"

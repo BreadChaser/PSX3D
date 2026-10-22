@@ -1,5 +1,5 @@
 # Builds the PCSX-ReARMed core as a static library, then the PSX3D app.
-.PHONY: all core app cia cxi clean sdk-check host-tests
+.PHONY: all core app cia cxi clean sdk-check host-tests title-version-check
 
 all: app
 
@@ -47,7 +47,7 @@ core:
 
 # Presets and defaults.ini (docs/settings.md section 6): a changed default stops
 # the build until every tested preset pins it or is retested.
-app: core
+app: title-version-check core
 	@python3 tools/presets/check.py
 	$(MAKE) -C psx3d
 
@@ -55,13 +55,13 @@ app: core
 # or MAKEROM=/path/to/makerom BANNERTOOL=/path/to/bannertool.
 MAKEROM    ?= makerom
 BANNERTOOL ?= bannertool
-# CIA title version from PSX3D_VERSION. The HOME Menu only refreshes a
-# cached icon when this number changes. makerom drops the minor field
-# (bits 4-9) of the title version, so major*16+minor goes in the major field
-# and patch in the micro field. Reserve micro 0..2 for the private pre-release
-# diagnostics (0.3.1/0.3.2). Keep the offset for monotonic public updates:
-# v0.3.0 = 3075, v0.3.1 = 3076, v0.4.0 = 4099, v0.4.1 = 4100, v0.5.0 = 5123.
-VERSION    ?= $(shell sed -n 's/.*PSX3D_VERSION *"\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\)".*/\1 \2 \3/p' psx3d/source/psx3d.h | awk '{print ($$1*16 + $$2)*1024 + $$3 + 3}')
+# Preserve released title versions; reject any semantic-field carry/alias.
+# VERSION=N is an explicit private test counter, still checked as uint16 and
+# verified against the packed TMD (stock makerom corrupts values such as 5136).
+VERSION ?= $(shell python3 tools/build/title-version.py encode psx3d/source/psx3d.h)
+
+title-version-check:
+	@python3 tools/build/title-version.py check psx3d/source/psx3d.h '$(VERSION)'
 
 cia: app
 	$(BANNERTOOL) makebanner -i psx3d/meta/banner.png -a psx3d/meta/banner.wav -o psx3d/build/banner.bnr
@@ -69,6 +69,7 @@ cia: app
 		-i psx3d/meta/icon.png -o psx3d/build/icon.icn
 	$(MAKEROM) -f cia -o psx3d/PSX3D.cia -elf psx3d/PSX3D.elf -rsf psx3d/meta/app.rsf \
 		-icon psx3d/build/icon.icn -banner psx3d/build/banner.bnr -target t -ver $(VERSION)
+	@python3 tools/build/title-version.py verify-cia psx3d/PSX3D.cia '$(VERSION)'
 
 # The executable container inside the CIA. The CIA carries a randomized ticket, so two
 # CIAs of one build differ; two CXIs of one commit are byte-identical (docs/building.md).

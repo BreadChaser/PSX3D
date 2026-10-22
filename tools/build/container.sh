@@ -29,7 +29,7 @@ export PSX3D_COMMIT=${PSX3D_COMMIT:-$(git -C "$root" rev-parse HEAD 2>/dev/null 
 
 case $engine in
 docker)
-	tag=psx3d-build:$(cat "$here/Dockerfile" "$here/provision.sh" "$here/toolchain.lock" | sha256sum | cut -c1-12)
+	tag=psx3d-build:$(cat "$here/Dockerfile" "$here/provision.sh" "$here/toolchain.lock" "$here/makerom-version-fix.patch" | sha256sum | cut -c1-12)
 	docker image inspect "$tag" >/dev/null 2>&1 || docker build -t "$tag" -f "$here/Dockerfile" "$here"
 	tty=(); [[ -t 0 && -t 1 ]] && tty=(-t)
 	exec docker run --rm -i "${tty[@]}" --user "$(id -u):$(id -g)" -e HOME=/tmp -e SOURCE_DATE_EPOCH \
@@ -47,7 +47,8 @@ bwrap)
 		python3 -I "$here/rootfs.py" "$image" "$rootfs"
 		touch "$rootfs/.unpacked"
 	fi
-	if [[ ! -e $rootfs/.provisioned ]]; then
+	provision_hash=$(cat "$here/provision.sh" "$here/toolchain.lock" "$here/makerom-version-fix.patch" | sha256sum | cut -d' ' -f1)
+	if [[ ! -e $rootfs/.provisioned || $(cat "$rootfs/.provisioned") != "$provision_hash" ]]; then
 		# A user namespace maps only one id, so the packages' chown calls to other ids fail.
 		# Nothing here needs them: ignore those errors while installing, then restore the tools.
 		"${sandbox[@]}" --ro-bind "$here" /mnt/build bash -c '
@@ -60,7 +61,7 @@ bwrap)
 			bash /mnt/build/provision.sh /mnt/build/toolchain.lock || status=$?
 			for t in chown chgrp; do mv "/usr/bin/$t.real" "/usr/bin/$t"; done
 			exit $status'
-		touch "$rootfs/.provisioned"
+		printf '%s\n' "$provision_hash" > "$rootfs/.provisioned"
 	fi
 	sandbox+=(--setenv SOURCE_DATE_EPOCH "$SOURCE_DATE_EPOCH" --setenv PSX3D_COMMIT "$PSX3D_COMMIT")
 	exec "${sandbox[@]}" --bind "$root" /work --chdir /work "$@"

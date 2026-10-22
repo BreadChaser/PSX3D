@@ -75,6 +75,7 @@ run save-names       bash psx3d/tests/saveid/run.sh
 run c3d-abi          bash tests/c3d_abi/run.sh
 run covers-worker    python3 psx3d/tests/covers/worker.py
 run core-microtests bash tests/core/run.sh
+run title-version   python3 tests/title_version/check.py
 # Core/renderer/video code extracted from the sources and run on the host.
 run video-scanout    python3 psx3d/tests/vout/check.py
 run video-teardown   python3 tools/frontend-overhead/library_check.py
