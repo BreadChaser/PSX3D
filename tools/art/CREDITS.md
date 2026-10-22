@@ -15,6 +15,16 @@
 libretro contributors. The files are unmodified; the license is included as
 `psx3d/romfs/cheats/LICENSE.txt`.
 
+## Box art names
+
+`psx3d/romfs/covers/` (`names.txt`, `serials.idx`) lists the pictures of the
+[libretro-thumbnails](https://github.com/libretro-thumbnails/libretro-thumbnails)
+"Sony - PlayStation" boxart set and maps disc serials to them, using the redump
+names and serials of the [libretro-database](https://github.com/libretro/libretro-database)
+"Sony - PlayStation" DAT (CC BY-SA 4.0, libretro contributors; licence in
+`psx3d/romfs/covers/LICENSE.txt`). No pictures are shipped; the app downloads
+them. `tools/boxart/` builds the table.
+
 ## Widescreen bundles and research
 
 - [DuckStation chtdb](https://github.com/duckstation/chtdb): widescreen, culling and HUD patch collection; original code rights remain with their authors (MIT covers its processing scripts).
