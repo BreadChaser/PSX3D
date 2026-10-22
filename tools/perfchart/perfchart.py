@@ -28,7 +28,7 @@ THEMES = {
                   off="#2a78d6", auto="#eb6834", auto_bar=0.38, tick="#0b0b0b"),
 }
 FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
-W = 900
+W = 1010
 
 def svg(d, c):
     out = []
@@ -47,6 +47,7 @@ def svg(d, c):
     LABEL_R = 190                     # right edge of game names
     P1, P2 = 210, 572                 # panel starts
     PW = 255                          # panel width
+    P3 = 890                          # change since the previous release
     y = 34
     t(24, y, d["title"], 20, weight="600"); y += 22
     for line in d["subtitle"].split("\n"):   # one text line each
@@ -64,6 +65,9 @@ def svg(d, c):
         t(24, y, title, 16, weight="600")
         t(P1, y, "Speed", 13, c["ink2"], weight="600")
         t(P2, y, "FPS", 13, c["ink2"], weight="600")
+        prev = d.get("prev_version")
+        if prev:
+            t(P3, y, f"Speed vs {prev}", 13, c["ink2"], weight="600")
         top = y + 14
         rh, ah, oh = 30, 20, 8            # row, outer (Auto) and inner (off) bar heights
         for i, g in enumerate(games):
@@ -85,6 +89,13 @@ def svg(d, c):
                         end = nx - P
                 pair(P + end + 7, ry + 18, r[f"off_{key}"] if key == "speed" else off,
                      r[f"auto_{key}"] if key == "speed" else auto, unit)
+            if prev and f"prev_off_speed" in r:
+                # relative speed change against the previous release, off · auto
+                d_off = (r["off_speed"] / r["prev_off_speed"] - 1) * 100
+                d_auto = (r["auto_speed"] / r["prev_auto_speed"] - 1) * 100
+                out.append(f'<text x="{P3:.1f}" y="{ry+18:.1f}" font-size="11.5" font-weight="600" xml:space="preserve">'
+                           f'<tspan fill="{c["off"]}">{d_off:+.1f}%</tspan><tspan fill="{c["muted"]}"> · </tspan>'
+                           f'<tspan fill="{c["auto"]}">{d_auto:+.1f}%</tspan></text>')
         bottom = top + len(games) * rh
         for v in (0, 50, 100):
             x = P1 + v / 100 * PW
@@ -105,6 +116,9 @@ def svg(d, c):
     t(24, y, "Dashed line = the game's own maximum FPS (30 for most PS1 3D games).", 12, c["ink2"])
     y += 17
     t(24, y, "Auto frameskip skips some frames to keep the game closer to full speed.", 12, c["ink2"])
+    if d.get("prev_note"):
+        y += 17
+        t(24, y, d["prev_note"], 12, c["ink2"])
     H = y + 18
     head = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" font-family="{FONT}" role="img" aria-label="{escape(d["title"], quote=True)}">',
             f'<title>{escape(d["title"])}</title>']

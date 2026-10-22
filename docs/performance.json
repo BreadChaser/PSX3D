@@ -10,7 +10,9 @@
         "off_speed": 88.3,
         "off_fps": 21.0,
         "auto_speed": 97.9,
-        "auto_fps": 16.0
+        "auto_fps": 16.0,
+        "prev_off_speed": 86.5,
+        "prev_auto_speed": 97.4
       }
     },
     {
@@ -20,7 +22,9 @@
         "off_speed": 76.0,
         "off_fps": 23.1,
         "auto_speed": 92.4,
-        "auto_fps": 16.3
+        "auto_fps": 16.3,
+        "prev_off_speed": 74.0,
+        "prev_auto_speed": 90.8
       }
     },
     {
@@ -30,7 +34,9 @@
         "off_speed": 78.8,
         "off_fps": 23.5,
         "auto_speed": 89.7,
-        "auto_fps": 15.2
+        "auto_fps": 15.2,
+        "prev_off_speed": 78.0,
+        "prev_auto_speed": 89.2
       }
     },
     {
@@ -40,7 +46,9 @@
         "off_speed": 53.8,
         "off_fps": 14.1,
         "auto_speed": 54.3,
-        "auto_fps": 12.7
+        "auto_fps": 12.7,
+        "prev_off_speed": 51.9,
+        "prev_auto_speed": 52.5
       }
     },
     {
@@ -50,7 +58,9 @@
         "off_speed": 82.5,
         "off_fps": 25.2,
         "auto_speed": 90.2,
-        "auto_fps": 18.2
+        "auto_fps": 18.2,
+        "prev_off_speed": 80.3,
+        "prev_auto_speed": 88.4
       }
     },
     {
@@ -60,7 +70,9 @@
         "off_speed": 35.8,
         "off_fps": 11.5,
         "auto_speed": 36.0,
-        "auto_fps": 10.7
+        "auto_fps": 10.7,
+        "prev_off_speed": 37.4,
+        "prev_auto_speed": 37.7
       }
     },
     {
@@ -70,7 +82,9 @@
         "off_speed": 66.8,
         "off_fps": 40.6,
         "auto_speed": 92.1,
-        "auto_fps": 15.2
+        "auto_fps": 15.2,
+        "prev_off_speed": 65.9,
+        "prev_auto_speed": 91.3
       }
     },
     {
@@ -80,7 +94,9 @@
         "off_speed": 100.4,
         "off_fps": 15.2,
         "auto_speed": 100.2,
-        "auto_fps": 15.3
+        "auto_fps": 15.3,
+        "prev_off_speed": 100.0,
+        "prev_auto_speed": 100.1
       }
     },
     {
@@ -90,7 +106,9 @@
         "off_speed": 88.3,
         "off_fps": 53.6,
         "auto_speed": 99.8,
-        "auto_fps": 15.1
+        "auto_fps": 15.1,
+        "prev_off_speed": 87.0,
+        "prev_auto_speed": 99.5
       }
     },
     {
@@ -100,7 +118,9 @@
         "off_speed": 74.0,
         "off_fps": 22.6,
         "auto_speed": 86.4,
-        "auto_fps": 15.2
+        "auto_fps": 15.2,
+        "prev_off_speed": 69.7,
+        "prev_auto_speed": 81.2
       }
     },
     {
@@ -110,7 +130,9 @@
         "off_speed": 73.2,
         "off_fps": 17.3,
         "auto_speed": 77.2,
-        "auto_fps": 15.2
+        "auto_fps": 15.2,
+        "prev_off_speed": 70.4,
+        "prev_auto_speed": 72.9
       }
     },
     {
@@ -120,9 +142,13 @@
         "off_speed": 98.6,
         "off_fps": 59.6,
         "auto_speed": 100.0,
-        "auto_fps": 53.0
+        "auto_fps": 53.0,
+        "prev_off_speed": 98.1,
+        "prev_auto_speed": 100.0
       }
     }
   ],
-  "new_note": "New 3DS: every game above runs at full speed with Auto frameskip (frameskip off: 94\u2013100%)."
+  "new_note": "New 3DS: every game above runs at full speed with Auto frameskip (frameskip off: 94\u2013100%).",
+  "prev_version": "v0.4.1",
+  "prev_note": "Speed vs v0.4.1: change in game speed, frameskip off \u00b7 Auto. Need for Speed is slower because the PlayStation's sound echo is now always on."
 }
