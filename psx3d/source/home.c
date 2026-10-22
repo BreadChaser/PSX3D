@@ -381,6 +381,7 @@ static void top_common(void)
 	ui_text_ex(NULL, 396, 226, 0.35f, TH_VERSION_INK, C2D_AlignRight, "v" PSX3D_VERSION);
 }
 
+static bool no_title;
 static void draw_top(void *ud)
 {
 	(void)ud;
@@ -404,7 +405,10 @@ static void draw_top(void *ud)
 		icon_play(cx, cy, size * 0.18f, C2D_Color32(255, 255, 255, 200), 0.52f);
 		char when[40];
 		states_when_text(when, sizeof(when), cont_saved);
-		snprintf(line, sizeof(line), "Left off %s", when);
+		if (cont_saved)
+			snprintf(line, sizeof(line), "Left off %s", when);
+		else
+			line[0] = 0;
 		title = cont_title();
 		break;
 	}
@@ -416,7 +420,8 @@ static void draw_top(void *ud)
 	case E_SHARE: draw_consoles(cx, cy + size * 0.1f, size / 95, 0.5f); break;
 	default: icon_settings(cx, cy, size * 0.36f, theme()->value, MENU_BG, 0.5f); break;
 	}
-	big_title(title, line, ease);
+	if (!no_title)
+		big_title(title, line, ease);
 	top_common();
 	if (fade > 0.001f)
 		C2D_DrawRectSolid(0, 0, 0.95f, 400, 240, C2D_Color32(0, 0, 0, (u8)(255 * fminf(fade, 1))));
@@ -475,6 +480,8 @@ static void draw_tile(const tile_t *t, bool lit, int i)
 			icon_play(x + 10 + tw / 2, y + 7 + tht / 2, 14, C2D_Color32(255, 255, 255, 210), 0.4f);
 			char when[40];
 			states_when_text(when, sizeof(when), cont_saved);
+			if (!cont_saved)
+				when[0] = 0;
 			ui_text_ex(libui_font(), x + 136, y + 10, 0.55f, ink, 0, "Continue");
 			ui_text_ex(NULL, x + 136, y + 40, 0.48f, ink, 0, ui_fit(cont_title(), 0.48f, 160));
 			ui_text_ex(NULL, x + 136, y + 62, 0.36f, subc, 0, when);
@@ -567,11 +574,14 @@ static int nav(int cur, u32 key)
 	return best;
 }
 
+// behind Settings: the picture without its title (Settings' help panel goes there)
 static void settings_top(void *ud)
 {
 	covers_pump();
 	title_t = 1;
+	no_title = true;
 	draw_top(ud);
+	no_title = false;
 }
 
 static void present(void)
