@@ -80,19 +80,45 @@ SECTIONS
 		   first, in RC4's order and at the page offsets (cache sets) it had in
 		   v0.5.0 RC4. Growth anywhere else in the frontend (menus, saves)
 		   then moves none of it; growth inside a block moves only the rest
-		   of that block. */
+		   of that block. Objects that grew since RC4 (audio, gpustereo,
+		   video) have the object after them pinned to its RC4 page offset
+		   too. */
 		audio.o(.text .text.*)
 		audio_resample.o(.text .text.*)
+		. = . + ((0x628 - .) & 0xfff);
 		audio_tsm.o(.text .text.*)
 		. = . + ((0x120 - .) & 0xfff);
 		__psx3d_frontend_hot_emu = .;
+		/* emu.o: its per-frame functions (the core's callbacks, the frame
+		   pacer's observer, the in-game screens, run_game) at their RC4 page
+		   offsets one by one; the rest of emu.o follows them. A name that
+		   no longer exists just lands with the rest. */
+		emu.o(.text.menu_label .text.menu_value .text.osd .text.state_head_ok)
+		. = . + ((0x20c - .) & 0xfff);
+		emu.o(.text.input_state_cb .text.input_poll_cb .text.video_cb .text.environment .text.core_log)
+		. = . + ((0xddc - .) & 0xfff);
+		emu.o(.text.audio_batch_cb .text.audio_sample_cb)
+		. = . + ((0x610 - .) & 0xfff);
+		emu.o(.text.psx3d_smart_observe.constprop.0)
+		. = . + ((0x6d4 - .) & 0xfff);
+		emu.o(.text.game_draw_top)
+		. = . + ((0x898 - .) & 0xfff);
+		emu.o(.text.game_draw_bottom)
+		. = . + ((0x780 - .) & 0xfff);
+		emu.o(.text.run_game)
+		. = . + ((0x218 - .) & 0xfff);
+		emu.o(.text.emu_audio_ticks .text.emu_frontend_stats)
+		. = . + ((0x360 - .) & 0xfff);
+		emu.o(.text.__wrap_fread)
 		emu.o(.text .text.*)
 		. = . + ((0x3bc - .) & 0xfff);
 		__psx3d_frontend_hot_gpu = .;
 		gamecfg.o(.text .text.*)
 		gpu_cache.o(.text .text.*)
 		gpustereo.o(.text .text.*)
+		. = . + ((0xa58 - .) & 0xfff);
 		gpustereo_core.o(.text .text.*)
+		. = . + ((0xc8 - .) & 0xfff);
 		input.o(.text .text.*)
 		. = . + ((0x210 - .) & 0xfff);
 		__psx3d_frontend_hot_queue = .;
@@ -103,8 +129,13 @@ SECTIONS
 		. = . + ((0xb90 - .) & 0xfff);
 		__psx3d_frontend_hot_video = .;
 		video.o(.text .text.*)
+		. = . + ((0xa98 - .) & 0xfff);
 		widescreen.o(.text .text.*)
 		picadirect.o(.text .text.*)
+		/* Per-frame objects newer than RC4: after RC4's block, so they move
+		   none of it. */
+		uploadskip.o(.text .text.*)
+		display.o(.text .text.*)
 		__psx3d_frontend_hot_end = .;
 		/* The rest of the frontend, in link order. */
 		*(.text)
@@ -297,6 +328,8 @@ SECTIONS
 		. = . + ((0xbf0 - .) & 0xfff);
 		video.o(.bss .bss.*)
 		widescreen.o(.bss .bss.*)
+		uploadskip.o(.bss .bss.*)
+		display.o(.bss .bss.*)
 		/* The rest of the frontend's variables, in link order. */
 		*(.dynbss)
 		*(.bss)
