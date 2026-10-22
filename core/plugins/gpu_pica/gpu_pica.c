@@ -722,7 +722,7 @@ static PICA_INLINE_HOT(mark_drawn) void mark_drawn(int x0, int y0, int x1, int y
 		gpu_readable=false;
 		if ((x0>>3)>=known_fx0 && (x1>>3)<=known_fx1 &&
 			(y0>>3)>=known_fy0 && (y1>>3)<=known_fy1) return;
-	} else if ((pica_debug & PICA_DEBUG_COARSE_BOUNDS) && x0 >= 0 && y0 >= 0 &&
+	} else if (x0 >= 0 && y0 >= 0 &&
 		x1 < VRAM_W && y1 < VRAM_H &&
 		(x0 >> 6) >= known_bx0 && (x1 >> 6) <= known_bx1 &&
 		(y0 >> 4) >= known_by0 && (y1 >> 4) <= known_by1) {
