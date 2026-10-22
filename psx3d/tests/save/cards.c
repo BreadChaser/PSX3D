@@ -8,7 +8,7 @@
 #include "clip.h"
 #include "history.h"
 #include <dirent.h>
-#include <utime.h>
+#include <time.h>
 #include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -103,13 +103,6 @@ static void history_clear(void)
 		if (d) closedir(d);
 		rmdir(groups[g]);
 	}
-}
-static void age(const char *path, long seconds)   // as if written that long ago
-{
-	struct stat st;
-	if (stat(path, &st)) return;
-	struct utimbuf t = { st.st_atime - seconds, st.st_mtime - seconds };
-	utime(path, &t);
 }
 static void put(const char *path, const void *d, size_t n)
 {
@@ -243,9 +236,9 @@ static void card1(void)
 		int n = history_list("game", true, e, 8);
 		CHECK(n == 2 && e[0].kind == HIST_CARD_SESSION && file_is(e[0].path, b));
 		CHECK(e[1].kind == HIST_CARD_DAY && file_is(e[1].path, a));   // today's first card
-		age(e[1].path, 86400 * 2);   // as if from two days ago
 	}
 	cards_end();
+	history_fake_now = time(NULL) + 2 * 86400;   // two days later
 	cards_begin("game.srm");
 	CHECK(count_kind("game", HIST_CARD_DAY) == 2 && count_kind("game", HIST_CARD_SESSION) == 1);
 	// formatted by the game: the SD card's version is pinned first
@@ -267,12 +260,64 @@ static void card1(void)
 		CHECK(!memcmp(ram, saves, CARD) && file_is("game.srm", saves) && count_kind("game", HIST_CARD_PIN) == 2);
 		CHECK(!cards_check());   // the card in memory is what the SD card holds
 	}
+	history_fake_now = 0;
 	// replay sessions make no copies
 	reset();
 	put("game.srm", a, CARD);
 	clip_replay_session = true;
 	cards_begin("game.srm");
 	CHECK(history_count("game", ".srm") == 0);
+
+	// cut-off card, good backup: the backup is loaded and put back
+	reset();
+	put("game.srm", a, CARD / 2);
+	put("game.srm.bak", b, CARD);
+	snprintf(ctx, sizeof(ctx), "backup");
+	cards_begin("game.srm");
+	CHECK(!memcmp(ram, b, CARD) && file_is("game.srm", b) && strstr(last_osd, "restored"));
+	CHECK(!cards_check());
+
+	// the repair fails: loaded, told so, and NOT taken as saved: the next
+	// check writes it again without any change
+	reset();
+	put("game.srm", a, 10);
+	put("game.srm.bak", b, CARD);
+	snprintf(ctx, sizeof(ctx), "failed repair");
+	write_fail = rename_fail_all = 1;
+	cards_begin("game.srm");
+	CHECK(!memcmp(ram, b, CARD) && strstr(last_osd, "could not fix"));
+	write_fail = rename_fail_all = 0;
+	CHECK(cards_check() && file_is("game.srm", b) && file_is("game.srm.bak", b));
+	CHECK(size_of("game.srm.bad") == 10);
+
+	// a failing write: reported, retried after the delay, at exit at once
+	reset();
+	snprintf(ctx, sizeof(ctx), "write fails");
+	cards_begin("game.srm");
+	memcpy(ram, a, CARD);
+	write_fail = 1;
+	CHECK(!cards_check() && strstr(last_osd, "Could not save") && size_of("game.srm") < 0);
+	write_fail = 0;
+	int shown = osd_count;
+	CHECK(!cards_check() && osd_count == shown);   // waits CARD_RETRY_MS
+	now_ms += 31 * 1000;
+	CHECK(cards_check() && file_is("game.srm", a));
+	memcpy(ram, b, CARD);
+	write_fail = 1;
+	CHECK(!cards_check());
+	write_fail = 0;
+	cards_save_now();               // leaving the game: tried at once
+	CHECK(file_is("game.srm", b));
+
+	// input-replay sessions never write the player's card
+	reset();
+	snprintf(ctx, sizeof(ctx), "replay");
+	clip_replay_session = true;
+	cards_begin("game.srm");
+	memcpy(ram, a, CARD);
+	CHECK(!cards_check());
+	cards_save_now();
+	CHECK(size_of("game.srm") < 0);
 }
 
 static void card2(void)

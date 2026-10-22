@@ -36,15 +36,17 @@ typedef struct {
 	unsigned disc_index, disc_count;
 	char disc[96];            // the disc's file name (no folder), "" unknown
 	unsigned reason;          // STATE_WHY_*: why it was taken (save backups' labels)
-	unsigned reserved[3];
+	unsigned saved;           // when (seconds, the 3DS clock: file times can't be read there)
+	unsigned id;              // tells two states apart (Undo finds its save again by it)
+	unsigned reserved[1];
 	unsigned crc;             // CRC-32 of [0, data_len) and the trailer before it
 } state_trailer_t;
 #define STATE_SEALED 1u
 enum { STATE_WHY_MANUAL, STATE_WHY_TIMER, STATE_WHY_EXIT };
 // emu.c: why the next serialize happens (written into its trailer)
 extern unsigned state_reason;
-// the reason in a state file's trailer (STATE_WHY_MANUAL without one)
-unsigned state_file_reason(const char *path);
+// a state file's trailer: reason, when and id; false without one
+bool state_file_info(const char *path, unsigned *reason, unsigned *saved, unsigned *id);
 
 // Before a state goes to the SD card: add the checksum (the writer thread
 // can do this; ~0.1 s for 4.3 MB on an Old 3DS). false: no trailer (no room).

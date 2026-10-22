@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "../../core/libpcsxcore/psxcommon.h"
 #include "../../core/libpcsxcore/r3000a.h"
 #include "../../core/libpcsxcore/gpu.h"
@@ -212,6 +213,9 @@ static void finish_own(struct stream *s)
 	t.data_len = (unsigned)s->pos;
 	t.tail = (unsigned)tail_expected();
 	t.reason = state_reason;
+	static unsigned count;
+	t.saved = (unsigned)time(NULL);
+	t.id = (++count * 2654435761u) ^ t.saved;   // unique within a run, the time across runs
 	if (state_disc_query)
 		state_disc_query(t.disc, sizeof(t.disc), &t.disc_index, &t.disc_count);
 	t.disc[sizeof(t.disc) - 1] = 0;
@@ -235,14 +239,18 @@ const state_trailer_t *state_trailer(const void *data, size_t size, bool *crc_ok
 	return &t;
 }
 
-unsigned state_file_reason(const char *path)
+bool state_file_info(const char *path, unsigned *reason, unsigned *saved, unsigned *id)
 {
 	state_trailer_t t;
 	FILE *f = fopen(path, "rb");
-	bool ok = f && !fseek(f, -(long)sizeof(t), SEEK_END) && fread(&t, sizeof(t), 1, f) == 1;
+	bool ok = f && !fseek(f, -(long)sizeof(t), SEEK_END) && fread(&t, sizeof(t), 1, f) == 1 &&
+		!memcmp(t.magic, TRAILER_MAGIC, sizeof(t.magic)) && t.version == 1;
 	if (f)
 		fclose(f);
-	return ok && !memcmp(t.magic, TRAILER_MAGIC, sizeof(t.magic)) ? t.reason : STATE_WHY_MANUAL;
+	*reason = ok ? t.reason : STATE_WHY_MANUAL;
+	*saved = ok ? t.saved : 0;
+	*id = ok ? t.id : 0;
+	return ok;
 }
 
 bool state_seal(void *data, size_t size)

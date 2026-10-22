@@ -649,21 +649,46 @@ static bool state_load_from(int slot)
 static void autosave_wait(void);
 static bool save_take(const char *who, void **state, size_t *state_size, u16 **thumb, u64 *thumb_ms);
 
-static bool entry_of(const char *path, hist_kind_t kind, hist_entry_t *e)
+// A state file and how to find it again: the 3DS can't read file times, so
+// a state is known by its trailer's time and id (0 for states made before)
+typedef struct { hist_entry_t e; unsigned id; } save_ref_t;
+
+static unsigned file_id(const char *path, unsigned *saved)
+{
+	unsigned reason, when, id;
+	state_file_info(path, &reason, &when, &id);
+	if (saved)
+		*saved = when;
+	return id;
+}
+
+static bool ref_of(const char *path, hist_kind_t kind, save_ref_t *r)
 {
 	struct stat st;
-	memset(e, 0, sizeof(*e));
-	if (stat(path, &st) || snprintf(e->path, sizeof(e->path), "%s", path) >= (int)sizeof(e->path))
+	unsigned saved;
+	memset(r, 0, sizeof(*r));
+	if (stat(path, &st) || snprintf(r->e.path, sizeof(r->e.path), "%s", path) >= (int)sizeof(r->e.path))
 		return false;   // a name too long for an Undo target: no Undo
-	e->kind = kind;
-	e->mtime = st.st_mtime;
-	e->size = (long)st.st_size;
+	r->e.kind = kind;
+	r->e.size = (long)st.st_size;
+	r->id = file_id(path, &saved);
+	r->e.when = saved;
 	return true;
 }
 
-static bool same_file(const hist_entry_t *a, const hist_entry_t *b)
+// a ring entry as a reference (moved there just now)
+static save_ref_t ref_entry(const hist_entry_t *e)
 {
-	return a && b && a->mtime == b->mtime && a->size == b->size;
+	save_ref_t r = { *e, file_id(e->path, NULL) };
+	return r;
+}
+
+// the time a state file was saved (0: unknown, the entry gets "now")
+static time_t saved_at(const char *path)
+{
+	unsigned saved = 0;
+	file_id(path, &saved);
+	return saved;
 }
 
 // The Continue point's version falling off its backup joins the ring
@@ -676,28 +701,29 @@ static void sta_retire(const char *bak, void *ctx)
 	if (len < 4 || continue_frozen)
 		return;
 	snprintf(thm, sizeof(thm), "%.*s.thm.bak", (int)(len - 4), bak);
-	hist_kind_t kind = state_file_reason(bak) == STATE_WHY_TIMER ? HIST_TIMER : HIST_EXIT;
-	history_adopt(game_name, kind, ".sta", bak, thm, NULL);
+	unsigned reason, saved, id;
+	state_file_info(bak, &reason, &saved, &id);
+	history_adopt(game_name, reason == STATE_WHY_TIMER ? HIST_TIMER : HIST_EXIT, ".sta", bak, thm, saved, NULL);
 }
 
 // The game as it is now, into the ring before a risky action. On Old 3DS a
 // Continue auto-save up to REUSE_SECONDS old is used instead of waiting
 // 2-3 s for a fresh one (owner's choice), unless it is not_this.
 #define REUSE_SECONDS (5 * 60)
-static bool safety_copy(hist_kind_t kind, const hist_entry_t *not_this, hist_entry_t *out)
+static bool safety_copy(hist_kind_t kind, const save_ref_t *not_this, save_ref_t *out)
 {
 	char path[PATH_LEN];
 	if (clip_replay_session || dev_remote_game())
 		return false;
 	autosave_wait();
 	if (!g_new3ds) {
-		hist_entry_t sta;
+		save_ref_t sta;
 		time_t now = time(NULL);
 		make_path(path, sizeof(path), PSX3D_STATE_DIR, ".sta");
-		if (entry_of(path, HIST_TIMER, &sta) && now >= sta.mtime && now - sta.mtime <= REUSE_SECONDS &&
-		    !same_file(&sta, not_this)) {
+		if (ref_of(path, HIST_TIMER, &sta) && sta.id && sta.e.when && now >= sta.e.when &&
+		    now - sta.e.when <= REUSE_SECONDS && !(not_this && not_this->id == sta.id)) {
 			log_printf("backups: %s uses the Continue auto-save from %ld s ago\n", history_kind_name(kind),
-				(long)(now - sta.mtime));
+				(long)(now - sta.e.when));
 			*out = sta;
 			return true;
 		}
@@ -708,7 +734,7 @@ static bool safety_copy(hist_kind_t kind, const hist_entry_t *not_this, hist_ent
 	u64 t0 = osGetTime();
 	if (!save_take("safety copy", &state, &size, &thumb, NULL))
 		return false;
-	bool ok = history_next(game_name, kind, ".sta", path, sizeof(out->path)) && write_file(path, state, size, false);
+	bool ok = history_next(game_name, kind, ".sta", 0, path, sizeof(out->e.path)) && write_file(path, state, size, false);
 	free(state);
 	if (ok && thumb) {
 		char thm[PATH_LEN + 8];
@@ -718,7 +744,7 @@ static bool safety_copy(hist_kind_t kind, const hist_entry_t *not_this, hist_ent
 	free(thumb);
 	if (ok) {
 		history_added(game_name, path);
-		ok = entry_of(path, kind, out);
+		ok = ref_of(path, kind, out);
 	}
 	log_printf("backups: safety copy (%s) %s in %llu ms\n", history_kind_name(kind), ok ? "written" : "FAILED",
 		osGetTime() - t0);
@@ -731,11 +757,11 @@ static struct {
 	undo_what_t what;
 	bool redo;             // the row offers "Redo ..."
 	int slot;              // save, delete: the slot
-	hist_entry_t target;   // what the row brings back
+	save_ref_t target;     // what the row brings back
 	u64 at;                // when the action happened
 } undo;
 
-static void undo_set(undo_what_t what, int slot, const hist_entry_t *target)
+static void undo_set(undo_what_t what, int slot, const save_ref_t *target)
 {
 	undo.what = what;
 	undo.redo = false;
@@ -745,19 +771,29 @@ static void undo_set(undo_what_t what, int slot, const hist_entry_t *target)
 }
 
 // where the target is now: the Continue point may have moved on since
-// (to its backup, then into the ring); found by when it was written
-static bool undo_resolve(hist_entry_t *e)
+// (to its backup, then into the ring); found by its trailer's id
+static bool undo_resolve(save_ref_t *r)
 {
-	struct stat st;
-	char bak[sizeof(e->path) + 8];
-	*e = undo.target;
-	if (!stat(e->path, &st) && st.st_mtime == e->mtime && st.st_size == e->size)
+	char bak[sizeof(r->e.path) + 8];
+	*r = undo.target;
+	if (!access(r->e.path, F_OK) && (!r->id || file_id(r->e.path, NULL) == r->id))
 		return true;
-	snprintf(bak, sizeof(bak), "%s.bak", e->path);
-	if (!stat(bak, &st) && st.st_mtime == e->mtime && st.st_size == e->size &&
-	    snprintf(e->path, sizeof(e->path), "%s", bak) < (int)sizeof(e->path))
+	if (!r->id)
+		return false;
+	snprintf(bak, sizeof(bak), "%s.bak", r->e.path);
+	if (!access(bak, F_OK) && file_id(bak, NULL) == r->id &&
+	    snprintf(r->e.path, sizeof(r->e.path), "%s", bak) < (int)sizeof(r->e.path))
 		return true;
-	return history_find(game_name, e->mtime, e->size, e);
+	hist_entry_t *list = malloc(HIST_RING * sizeof(*list));
+	int n = list ? history_list(game_name, false, list, HIST_RING) : 0;
+	bool found = false;
+	for (int i = 0; i < n && !found; i++)
+		if (file_id(list[i].path, NULL) == r->id) {
+			r->e = list[i];
+			found = true;
+		}
+	free(list);
+	return found;
 }
 
 static void slot_paths(int slot, char *path, char *thm, size_t len)
@@ -782,7 +818,8 @@ static void slot_leftovers(const char *path)
 // Undo (or Redo) the latest risky action; true when the game changed
 static bool undo_run(void)
 {
-	hist_entry_t target, now;
+	save_ref_t target, now;
+	hist_entry_t moved;
 	char path[PATH_LEN], thm[PATH_LEN + 8];
 	const char *what = undo_names[undo.what];
 	bool redo = undo.redo;
@@ -797,14 +834,16 @@ static bool undo_run(void)
 		bool slot_used = !access(path, F_OK);
 		// the slot's current file swaps places with the kept one
 		if (slot_used && !history_adopt(game_name, undo.what == UNDO_SAVE ? HIST_SAVE : HIST_DELETE,
-				strrchr(path, '.'), path, thm, &now)) {
+				strrchr(path, '.'), path, thm, saved_at(path), &moved)) {
 			osd("Can't %s %s: could not keep the slot's save", redo ? "redo" : "undo", what);
 			return false;
 		}
+		if (slot_used)
+			now = ref_entry(&moved);
 		bool back = !(undo.what == UNDO_DELETE && redo);   // redo delete: the slot stays empty
-		if (back && !history_take(&target, path)) {
+		if (back && !history_take(&target.e, path)) {
 			if (slot_used)
-				history_take(&now, path);
+				history_take(&moved, path);
 			osd("Can't %s %s", redo ? "redo" : "undo", what);
 			return false;
 		}
@@ -817,7 +856,7 @@ static bool undo_run(void)
 	bool have_now = safety_copy(HIST_RESTORE, &target, &now);
 	if (!have_now)
 		emu_osd_alert("Could not keep a copy of the game as it is now");
-	if (!state_load_file(target.path, NO_SLOT))
+	if (!state_load_file(target.e.path, NO_SLOT))
 		return false;
 	if (have_now)
 		undo.target = now;
@@ -831,7 +870,7 @@ static bool undo_run(void)
 // Load slot state_slot: the game as it is now goes into the ring first
 static void state_load(void)
 {
-	hist_entry_t copy;
+	save_ref_t copy;
 	bool kept = safety_copy(HIST_LOAD, NULL, &copy);
 	if (!state_load_from(state_slot))
 		return;
@@ -850,7 +889,7 @@ static void slot_save_over(void)
 	autosave_wait();
 	slot_paths(state_slot, path, thm, sizeof(path));
 	bool kept = !access(path, F_OK) && !clip_replay_session && !dev_remote_game() &&
-		history_adopt(game_name, HIST_SAVE, strrchr(path, '.'), path, thm, &old);
+		history_adopt(game_name, HIST_SAVE, strrchr(path, '.'), path, thm, saved_at(path), &old);
 	if (!state_save_to(state_slot)) {
 		if (kept)
 			history_take(&old, path);   // the old save back where it was
@@ -858,7 +897,8 @@ static void slot_save_over(void)
 		return;
 	}
 	if (kept) {
-		undo_set(UNDO_SAVE, state_slot, &old);
+		save_ref_t r = ref_entry(&old);
+		undo_set(UNDO_SAVE, state_slot, &r);
 		osd("Saved to slot %d. The old save is in the backups", state_slot);
 	} else
 		osd("Saved to slot %d", state_slot);
@@ -867,8 +907,8 @@ static void slot_save_over(void)
 // An automatic save from the ring: the game as it is now is kept first
 static void ring_restore(const hist_entry_t *e)
 {
-	hist_entry_t copy;
-	bool kept = safety_copy(HIST_RESTORE, e, &copy);
+	save_ref_t copy, target = ref_entry(e);
+	bool kept = safety_copy(HIST_RESTORE, &target, &copy);
 	if (!state_load_file(e->path, NO_SLOT))
 		return;
 	if (kept) {
@@ -881,7 +921,7 @@ static void ring_restore(const hist_entry_t *e)
 // the card); the card as it was is kept in the backups
 static void card_put_back(const hist_entry_t *e)
 {
-	hist_entry_t copy;
+	save_ref_t copy;
 	bool kept = safety_copy(HIST_RESET, NULL, &copy);
 	if (!cards_put_back(e)) {
 		emu_osd_alert("Could not put that memory card back");
@@ -900,6 +940,7 @@ static void continue_declined(void)
 {
 	char sta[PATH_LEN], thm[PATH_LEN + 8], bak[PATH_LEN + 8], bthm[PATH_LEN + 16], tmp[PATH_LEN + 8];
 	hist_entry_t e;
+	unsigned reason, saved, id;
 	if (clip_replay_session || dev_remote_game())
 		return;
 	make_path(sta, sizeof(sta), PSX3D_STATE_DIR, ".sta");
@@ -907,13 +948,15 @@ static void continue_declined(void)
 	snprintf(bak, sizeof(bak), "%s.bak", sta);
 	snprintf(bthm, sizeof(bthm), "%s.thm.bak", sta);
 	snprintf(tmp, sizeof(tmp), "%s.tmp", sta);
-	if (!access(bak, F_OK))   // older first: the declined point is the newest entry
-		history_adopt(game_name, state_file_reason(bak) == STATE_WHY_TIMER ? HIST_TIMER : HIST_EXIT,
-			".sta", bak, bthm, NULL);
-	bool kept = !access(sta, F_OK) ? history_adopt(game_name, HIST_START, ".sta", sta, thm, &e) :
-		!access(tmp, F_OK) && history_adopt(game_name, HIST_START, ".sta", tmp, NULL, &e);
+	if (!access(bak, F_OK)) {   // older first: the declined point is the newest entry
+		state_file_info(bak, &reason, &saved, &id);
+		history_adopt(game_name, reason == STATE_WHY_TIMER ? HIST_TIMER : HIST_EXIT, ".sta", bak, bthm, saved, NULL);
+	}
+	bool kept = !access(sta, F_OK) ? history_adopt(game_name, HIST_START, ".sta", sta, thm, saved_at(sta), &e) :
+		!access(tmp, F_OK) && history_adopt(game_name, HIST_START, ".sta", tmp, NULL, saved_at(tmp), &e);
 	if (kept) {
-		undo_set(UNDO_START, -1, &e);
+		save_ref_t r = ref_entry(&e);
+		undo_set(UNDO_START, -1, &r);
 		osd("Started fresh. Your old spot is kept: Undo in the menu");
 	} else if (!access(sta, F_OK) || !access(bak, F_OK)) {
 		continue_frozen = true;   // never written over: the old spot wins
@@ -1107,8 +1150,10 @@ static bool menu_run(int initial_screen)
 					states_pick_t pick = { .page = STATES_PAGE_SLOTS };
 					states_deleted.done = false;
 					int page = states_run(saving, prefix, game_title, &slot, &pick);
-					if (states_deleted.done)
-						undo_set(UNDO_DELETE, states_deleted.slot, &states_deleted.entry);
+					if (states_deleted.done) {
+						save_ref_t r = ref_entry(&states_deleted.entry);
+						undo_set(UNDO_DELETE, states_deleted.slot, &r);
+					}
 					if (page >= 0) {
 						state_slot = slot;
 						if (page == STATES_PAGE_SLOTS && saving)
@@ -1153,7 +1198,7 @@ static bool menu_run(int initial_screen)
 				if ((k & KEY_A) && ui_confirm_action("Reset game?",
 						"Restart the game from the beginning. The game as it is now is kept in the backups.",
 						"A  Reset game", true)) {
-					hist_entry_t copy;
+					save_ref_t copy;
 					bool kept = safety_copy(HIST_RESET, NULL, &copy);
 					retro_reset();
 					rewind_reset();

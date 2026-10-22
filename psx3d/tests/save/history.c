@@ -1,5 +1,6 @@
 // Host test for history.c, the save backups (run.sh: ASan/UBSan, small
-// HIST_BUDGET): entries are only ever renamed in or written crash-safe, the
+// HIST_BUDGET, a fake clock: on the 3DS file times can't be read, so an
+// entry's time is in its name): entries are only ever renamed in or written crash-safe, the
 // ring keeps a game's newest HIST_RING, card copies their own counts (one
 // session, one per day for HIST_CARD_DAYS days, pins), the budget drops
 // long-unplayed games' older entries first and never the newest, thumbnails
@@ -40,13 +41,6 @@ static int seed_of(const char *path)
 	return c;
 }
 static bool exists(const char *p) { return access(p, F_OK) == 0; }
-static void age(const char *path, long seconds)
-{
-	struct stat st;
-	if (stat(path, &st)) return;
-	struct utimbuf t = { st.st_atime - seconds, st.st_mtime - seconds };
-	utime(path, &t);
-}
 static int count(const char *group, bool cards, int kind)
 {
 	hist_entry_t e[64];
@@ -76,24 +70,25 @@ int main(void)
 	history_set_root("h");
 	hist_entry_t e[64], got;
 
+	const time_t T = 1792000000;   // the fake clock
+	history_fake_now = T;
 	snprintf(ctx, sizeof(ctx), "adopt");
 	put("Game.st3", 3, 1000);
 	put("Game.st3.thm", 4, 100);
-	CHECK(history_adopt("Game", HIST_SAVE, ".st3", "Game.st3", "Game.st3.thm", &got));
-	CHECK(!exists("Game.st3") && !exists("Game.st3.thm") && got.size == 1000 && !strcmp(got.path, "h/Game/00000001-save.st3"));
+	CHECK(history_adopt("Game", HIST_SAVE, ".st3", "Game.st3", "Game.st3.thm", T - 50, &got));
+	CHECK(!exists("Game.st3") && !exists("Game.st3.thm") && got.size == 1000 && got.when == T - 50);
+	CHECK(!strcmp(got.path, "h/Game/00000001-save-1791999950.st3"));
 	CHECK(history_list("Game", false, e, 64) == 1 && e[0].seq == 1 && e[0].kind == HIST_SAVE && !strcmp(e[0].ext, ".st3"));
-	CHECK(e[0].thumb && e[0].size == 1000 && seed_of(e[0].path) == 3);
-	CHECK(history_find("Game", got.mtime, got.size, &e[1]) && !strcmp(e[1].path, got.path));
-	CHECK(!history_find("Game", got.mtime, got.size + 1, &e[1]));
-	CHECK(!history_adopt("Game", HIST_SAVE, ".st3", "missing", NULL, NULL));
-	CHECK(!history_adopt("../x", HIST_SAVE, ".st3", "Game.st3", NULL, NULL) && !history_add("", HIST_TIMER, ".sta", "a", 1));
+	CHECK(e[0].thumb && e[0].size == 1000 && seed_of(e[0].path) == 3 && e[0].when == T - 50);
+	CHECK(!history_adopt("Game", HIST_SAVE, ".st3", "missing", NULL, 0, NULL));
+	CHECK(!history_adopt("../x", HIST_SAVE, ".st3", "Game.st3", NULL, 0, NULL) && !history_add("", HIST_TIMER, ".sta", "a", 1));
 
 	// taking an entry back (Undo delete / save): a rename, thumbnail too
 	snprintf(ctx, sizeof(ctx), "take");
 	CHECK(history_take(&got, "Game.st3") && seed_of("Game.st3") == 3 && seed_of("Game.st3.thm") == 4);
 	CHECK(count("Game", false, -1) == 0);
 	put("Game.st3", 9, 10);
-	CHECK(history_adopt("Game", HIST_DELETE, ".st3", "Game.st3", "Game.st3.thm", &got));
+	CHECK(history_adopt("Game", HIST_DELETE, ".st3", "Game.st3", "Game.st3.thm", 0, &got) && got.when == T);
 	put("Game.st3", 8, 10);
 	CHECK(!history_take(&got, "Game.st3") && exists(got.path));   // never over a file (FAT)
 
@@ -103,7 +98,7 @@ int main(void)
 	for (int i = 0; i < HIST_RING + 5; i++) {
 		put("x", 10 + i, 500);
 		put("x.thm", 1, 10);
-		CHECK(history_adopt("Game", (hist_kind_t)(i % (HIST_RESTORE + 1)), ".sta", "x", "x.thm", NULL));
+		CHECK(history_adopt("Game", (hist_kind_t)(i % (HIST_RESTORE + 1)), ".sta", "x", "x.thm", 0, NULL));
 	}
 	CHECK(history_add("Game", HIST_CARD_PIN, ".srm", "card", 4));
 	int n = history_list("Game", false, e, 64);
@@ -120,8 +115,9 @@ int main(void)
 
 	// strangers in the folder are never listed or counted
 	snprintf(ctx, sizeof(ctx), "parse");
-	const char *odd[] = { "h/Game/00000099-save.st1.tmp", "h/Game/99-save.st1", "h/Game/00000099-sav.st1",
-		"h/Game/00000099-pin", "h/Game/readme.txt", "h/Game/00000099xsave.st1", "h/Game/00000099-save." };
+	const char *odd[] = { "h/Game/00000099-save-5.st1.tmp", "h/Game/99-save-5.st1", "h/Game/00000099-sav-5.st1",
+		"h/Game/00000099-pin-5", "h/Game/readme.txt", "h/Game/00000099xsave-5.st1", "h/Game/00000099-save-5.",
+		"h/Game/00000099-save.st1", "h/Game/00000099-save-.st1", "h/Game/00000099-save-5x.st1" };
 	for (size_t i = 0; i < sizeof(odd) / sizeof(odd[0]); i++) put(odd[i], 1, 1);
 	CHECK(history_list("Game", false, e, 64) == HIST_RING && count("Game", true, -1) == 1);
 
@@ -130,12 +126,20 @@ int main(void)
 	for (int i = 0; i < 3; i++) CHECK(history_add("Card", HIST_CARD_SESSION, ".mcd", "abcd", 4));
 	CHECK(count("Card", true, HIST_CARD_SESSION) == 1);
 	CHECK(history_add("Card", HIST_CARD_DAY, ".mcd", "d0", 2) && history_add("Card", HIST_CARD_DAY, ".mcd", "d1", 2));
-	CHECK(count("Card", true, HIST_CARD_DAY) == 1);   // the same day: the newer one is not kept
-	for (int i = 0; i < HIST_CARD_DAYS + 3; i++) {
-		history_list("Card", true, e, 64);
-		for (int k = 0; k < count("Card", true, -1); k++) if (e[k].kind == HIST_CARD_DAY) age(e[k].path, 86400);
+	CHECK(count("Card", true, HIST_CARD_DAY) == 1);   // the same day: the first one stays
+	history_list("Card", true, e, 64);
+	for (int k = 0; k < 4; k++) if (e[k].kind == HIST_CARD_DAY) CHECK(seed_of(e[k].path) == 'd' && e[k].size == 2);
+	{
+		FILE *f = fopen(e[0].kind == HIST_CARD_DAY ? e[0].path : e[1].path, "rb");
+		char b[3] = { 0 };
+		CHECK(f && fread(b, 1, 2, f) == 2 && !strcmp(b, "d0"));
+		if (f) fclose(f);
+	}
+	for (int i = 1; i <= HIST_CARD_DAYS + 3; i++) {   // one a day
+		history_fake_now = T + i * 86400L;
 		CHECK(history_add("Card", HIST_CARD_DAY, ".mcd", "dd", 2));
 	}
+	history_fake_now = T + (HIST_CARD_DAYS + 3) * 86400L;
 	CHECK(count("Card", true, HIST_CARD_DAY) == HIST_CARD_DAYS);
 	CHECK(history_add("Card", HIST_CARD_DAY, ".srm", "dd", 2) && count("Card", true, HIST_CARD_DAY) == HIST_CARD_DAYS + 1);
 	for (int i = 0; i < HIST_CARD_PINS + 4; i++) CHECK(history_add("Card", HIST_CARD_PIN, ".mcd", "p", 1));
@@ -147,21 +151,19 @@ int main(void)
 	// is never dropped, cards never count
 	snprintf(ctx, sizeof(ctx), "budget");
 	CHECK(ring_total() <= HIST_BUDGET);
-	for (int i = 0; i < 6; i++) {
+	for (int i = 0; i < 6; i++) {   // a game last played 35 days ago
 		put("old", 60 + i, 400);
-		CHECK(history_adopt("Idle", HIST_EXIT, ".sta", "old", NULL, NULL));
+		CHECK(history_adopt("Idle", HIST_EXIT, ".sta", "old", NULL, T - 86400L * (HIST_IDLE_DAYS + 5) + i, NULL));
 	}
-	history_list("Idle", false, e, 64);
-	for (int i = 0; i < 6; i++) age(e[i].path, 86400L * (HIST_IDLE_DAYS + 5) + i);
 	long before_game = count("Game", false, -1);
 	put("big", 90, 5000);
-	CHECK(history_adopt("Third", HIST_LOAD, ".sta", "big", NULL, NULL));
+	CHECK(history_adopt("Third", HIST_LOAD, ".sta", "big", NULL, 0, NULL));
 	CHECK(ring_total() <= HIST_BUDGET);
-	CHECK(count("Third", false, -1) == 1 && seed_of(e[0].path) >= 0);
+	CHECK(count("Third", false, -1) == 1);
 	CHECK(count("Idle", false, -1) == 5 && count("Game", false, -1) == before_game);   // only as much as needed, idle game first
 	for (int i = 0; i < 8; i++) {
 		put("big", 100 + i, 5000);
-		CHECK(history_adopt("Third", HIST_LOAD, ".sta", "big", NULL, NULL));
+		CHECK(history_adopt("Third", HIST_LOAD, ".sta", "big", NULL, 0, NULL));
 		CHECK(ring_total() <= HIST_BUDGET || count("Third", false, -1) == 1);
 		if (count("Game", false, -1) < before_game) CHECK(count("Idle", false, -1) == 0);   // then the oldest
 	}
@@ -174,7 +176,13 @@ int main(void)
 	char data[300];
 	memset(data, 7, sizeof(data));
 	CHECK(history_add("Other", HIST_RESTORE, ".sta", data, sizeof(data)));
-	CHECK(history_list("Other", false, e, 64) == 1 && e[0].size == 300 && !exists("h/Other/00000001-restore.sta.tmp"));
+	CHECK(history_list("Other", false, e, 64) == 1 && e[0].size == 300 && e[0].when == history_fake_now);
+	DIR *od = opendir("h/Other");
+	struct dirent *ode;
+	int tmps = 0;
+	while (od && (ode = readdir(od))) tmps += strstr(ode->d_name, ".tmp") != NULL;
+	if (od) closedir(od);
+	CHECK(tmps == 0);
 
 	if (system("rm -rf h x x.thm big old Game.st3")) {}
 	if (chdir("/")) {}

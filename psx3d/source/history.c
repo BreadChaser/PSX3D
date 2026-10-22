@@ -16,6 +16,13 @@
 void log_printf(const char *fmt, ...);
 
 static char root[300] = HISTORY_ROOT;
+time_t history_fake_now;
+
+time_t history_now(void)
+{
+	return history_fake_now ? history_fake_now : time(NULL);
+}
+#define now history_now
 static const char *const kind_name[HIST_KINDS] = {
 	[HIST_TIMER] = "timer", [HIST_EXIT] = "exit", [HIST_LOAD] = "load", [HIST_SAVE] = "save",
 	[HIST_RESET] = "reset", [HIST_START] = "start", [HIST_DELETE] = "delete", [HIST_RESTORE] = "restore",
@@ -32,7 +39,7 @@ const char *history_kind_name(hist_kind_t kind)
 	return kind < HIST_KINDS ? kind_name[kind] : "?";
 }
 
-// "<seq>-<kind><ext>" -> entry; false for anything else (thumbnails, temp files)
+// "<seq>-<kind>-<time><ext>" -> entry; false for anything else (thumbnails, temp files)
 static bool parse(const char *name, hist_entry_t *e)
 {
 	char *end;
@@ -42,14 +49,20 @@ static bool parse(const char *name, hist_entry_t *e)
 	end++;
 	for (int k = 0; k < HIST_KINDS; k++) {
 		size_t n = strlen(kind_name[k]);
-		if (strncmp(end, kind_name[k], n) || end[n] != '.')
+		if (strncmp(end, kind_name[k], n) || end[n] != '-' || end[n + 1] < '0' || end[n + 1] > '9')
 			continue;
-		const char *ext = end + n;
+		// the time: digits (no library parser: it would move library code)
+		const char *ext = end + n + 1;
+		long long when = 0;
+		for (int d = 0; *ext >= '0' && *ext <= '9'; ext++)
+			if (++d <= 12)
+				when = when * 10 + (*ext - '0');
 		size_t len = strlen(ext);
-		if (len < 2 || len >= sizeof(e->ext) || strchr(ext + 1, '.'))   // .thm, .tmp, .bak...
+		if (ext[0] != '.' || len < 2 || len >= sizeof(e->ext) || strchr(ext + 1, '.'))   // .thm, .tmp, .bak...
 			return false;
 		e->seq = (unsigned)seq;
 		e->kind = (hist_kind_t)k;
+		e->when = (time_t)when;
 		memcpy(e->ext, ext, len + 1);
 		return true;
 	}
@@ -82,7 +95,6 @@ static hist_entry_t *scan(const char *group, int *n)
 			continue;
 		if (snprintf(e.path, sizeof(e.path), "%s/%s", dir, de->d_name) >= (int)sizeof(e.path) || stat(e.path, &st))
 			continue;
-		e.mtime = st.st_mtime;
 		e.size = (long)st.st_size;
 		char thm[620];
 		snprintf(thm, sizeof(thm), "%s.thm", e.path);
@@ -110,20 +122,6 @@ int history_list(const char *group, bool cards, hist_entry_t *out, int max)
 			out[k++] = all[i];
 	free(all);
 	return k;
-}
-
-bool history_find(const char *group, time_t mtime, long size, hist_entry_t *out)
-{
-	int n;
-	bool found = false;
-	hist_entry_t *all = scan(group, &n);
-	for (int i = 0; i < n && !found; i++)
-		if (!hist_is_card(all[i].kind) && all[i].mtime == mtime && all[i].size == size) {
-			*out = all[i];
-			found = true;
-		}
-	free(all);
-	return found;
 }
 
 static void drop(const hist_entry_t *e)
@@ -156,12 +154,13 @@ static void trim(const char *group)
 			continue;
 		}
 		int same = 0, limit = e->kind == HIST_CARD_SESSION ? 1 : e->kind == HIST_CARD_DAY ? HIST_CARD_DAYS : HIST_CARD_PINS;
-		bool twin_day = false;
-		for (int j = 0; j < i; j++)
-			if (all[j].path[0] && all[j].kind == e->kind && !strcmp(all[j].ext, e->ext)) {
-				same++;
-				twin_day |= e->kind == HIST_CARD_DAY && day_of(all[j].mtime) == day_of(e->mtime);
-			}
+		bool twin_day = false;   // a day keeps its first card: a later copy of that day goes
+		for (int j = 0; j < n; j++) {
+			if (j == i || !all[j].path[0] || all[j].kind != e->kind || strcmp(all[j].ext, e->ext))
+				continue;
+			same += j < i;
+			twin_day |= e->kind == HIST_CARD_DAY && j > i && day_of(all[j].when) == day_of(e->when);
+		}
 		if (same >= limit || twin_day) {
 			drop(e);
 			e->path[0] = 0;
@@ -183,7 +182,7 @@ static void enforce_budget(const char *keep)
 	budget_t *all = NULL;
 	int n = 0, cap = 0, groups = 0;
 	unsigned long long total = 0;
-	time_t now = time(NULL);
+	time_t t = now();
 	struct dirent *de;
 	while ((de = readdir(d))) {
 		int m, rank = 0;
@@ -192,8 +191,8 @@ static void enforce_budget(const char *keep)
 		hist_entry_t *g = scan(de->d_name, &m);
 		time_t newest = 0;
 		for (int i = 0; i < m; i++)
-			if (!hist_is_card(g[i].kind) && g[i].mtime > newest)
-				newest = g[i].mtime;
+			if (!hist_is_card(g[i].kind) && g[i].when > newest)
+				newest = g[i].when;
 		for (int i = 0; i < m; i++) {
 			if (hist_is_card(g[i].kind))
 				continue;
@@ -217,10 +216,10 @@ static void enforce_budget(const char *keep)
 				budget_t *b = &all[i];
 				if (!b->e.path[0] || (keep && !strcmp(b->e.path, keep)))
 					continue;
-				if (phase == 0 && (b->rank < HIST_IDLE_KEEP || now - b->group_newest < HIST_IDLE_DAYS * 86400L))
+				if (phase == 0 && (b->rank < HIST_IDLE_KEEP || t - b->group_newest < HIST_IDLE_DAYS * 86400L))
 					continue;
-				if (victim < 0 || b->e.mtime < all[victim].e.mtime ||
-				    (b->e.mtime == all[victim].e.mtime && b->group == all[victim].group && b->e.seq < all[victim].e.seq))
+				if (victim < 0 || b->e.when < all[victim].e.when ||
+				    (b->e.when == all[victim].e.when && b->group == all[victim].group && b->e.seq < all[victim].e.seq))
 					victim = i;
 			}
 			if (victim < 0)
@@ -232,7 +231,7 @@ static void enforce_budget(const char *keep)
 	free(all);
 }
 
-bool history_next(const char *group, hist_kind_t kind, const char *ext, char *out, size_t len)
+bool history_next(const char *group, hist_kind_t kind, const char *ext, time_t when, char *out, size_t len)
 {
 	char dir[600];
 	int n;
@@ -248,7 +247,7 @@ bool history_next(const char *group, hist_kind_t kind, const char *ext, char *ou
 	hist_entry_t *all = scan(group, &n);
 	unsigned seq = n ? all[0].seq + 1 : 1;
 	free(all);
-	int w = snprintf(out, len, "%s/%08u-%s%s", dir, seq, kind_name[kind], ext);
+	int w = snprintf(out, len, "%s/%08u-%s-%lld%s", dir, seq, kind_name[kind], (long long)(when ? when : now()), ext);
 	return w > 0 && (size_t)w < len;
 }
 
@@ -259,14 +258,16 @@ void history_added(const char *group, const char *path)
 }
 
 bool history_adopt(const char *group, hist_kind_t kind, const char *ext, const char *file, const char *thm,
-	hist_entry_t *out)
+	time_t when, hist_entry_t *out)
 {
 	char to[600], to_thm[620];
 	struct stat st;
 	if (!file || stat(file, &st))
 		return false;
 	// entries are named so that hist_entry_t holds their path
-	if (!history_next(group, kind, ext, to, sizeof(((hist_entry_t *)0)->path)) || rename(file, to)) {
+	if (!when)
+		when = now();
+	if (!history_next(group, kind, ext, when, to, sizeof(((hist_entry_t *)0)->path)) || rename(file, to)) {
 		log_printf("backups: could not keep %s\n", file);
 		return false;
 	}
@@ -279,11 +280,10 @@ bool history_adopt(const char *group, hist_kind_t kind, const char *ext, const c
 		memset(out, 0, sizeof(*out));
 		memcpy(out->path, to, strlen(to) + 1);   // fits: history_next checked it
 		out->kind = kind;
+		out->when = when;
 		snprintf(out->ext, sizeof(out->ext), "%s", ext);
-		if (stat(to, &st) == 0) {
-			out->mtime = st.st_mtime;
+		if (stat(to, &st) == 0)
 			out->size = (long)st.st_size;
-		}
 	}
 	history_added(group, to);
 	return true;
@@ -293,7 +293,7 @@ bool history_add(const char *group, hist_kind_t kind, const char *ext, const voi
 {
 	char to[600];
 	safe_format_t fmt = { size, 0, NULL, NULL, NULL, NULL };
-	if (!history_next(group, kind, ext, to, sizeof(((hist_entry_t *)0)->path)) || !safe_write(to, &fmt, data, false))
+	if (!history_next(group, kind, ext, 0, to, sizeof(((hist_entry_t *)0)->path)) || !safe_write(to, &fmt, data, false))
 		return false;
 	history_added(group, to);
 	return true;

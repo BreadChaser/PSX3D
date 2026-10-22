@@ -85,12 +85,12 @@ static void card_session_copy(const card_hist_t *h, const void *data, size_t siz
 		return;
 	hist_entry_t *list = malloc(MAX * sizeof(*list));
 	history_add(h->group, HIST_CARD_SESSION, h->ext, data, size);
-	long today_n = (long)(time(NULL) / 86400);   // the 3DS clock is local time
+	long today_n = (long)(history_now() / 86400);   // the 3DS clock is local time
 	bool today = false;
 	int n = list ? history_list(h->group, true, list, MAX) : 0;
 	for (int i = 0; i < n; i++)
 		if (list[i].kind == HIST_CARD_DAY && !strcmp(list[i].ext, h->ext)) {
-			today = (long)(list[i].mtime / 86400) == today_n;
+			today = (long)(list[i].when / 86400) == today_n;
 			break;   // the newest day copy decides
 		}
 	free(list);

@@ -27,24 +27,34 @@ card_muts={
  'damaged plays on': ('	srm_locked = srm_trouble != CARD_TROUBLE_NONE;\n	srm_dirty = r == CARD_UNSAVED;   // never', '	srm_locked = srm_trouble == CARD_TROUBLE_MEMORY;\n	srm_dirty = r == CARD_UNSAVED;   // never'),
  'no pin before format': ('	if (history_add(h->group, HIST_CARD_PIN, h->ext, old, size))', '	if (0)'),
  'no session copy': ('	history_add(h->group, HIST_CARD_SESSION, h->ext, data, size);', '	(void)0;'),
+ 'later day copy kept': ('			twin_day |= e->kind == HIST_CARD_DAY && j > i && day_of(all[j].when) == day_of(e->when);', '			twin_day |= e->kind == HIST_CARD_DAY && j < i && day_of(all[j].when) == day_of(e->when);'),
+ 'ring unbounded': ('			if (++ring > HIST_RING)', '			if (0)'),
+ 'budget drops the newest': ('				if (!b->e.path[0] || (keep && !strcmp(b->e.path, keep)))', '				if (!b->e.path[0])'),
+ 'file time in name ignored': ('		e->when = (time_t)when;', '		e->when = 0;'),
  'put back keeps nothing': ('	history_add(t.h->group, HIST_CARD_PIN, t.h->ext, t.mem, t.size);   // the card as it is now', '	(void)0;'),
 }
 tmp = tempfile.mkdtemp()
 missed = 0
-def run(name, safefile, cards_src):
+hist=open('psx3d/source/history.c').read()
+def run(name, safefile, cards_src, hist_src=None):
     global missed
     open(tmp+'/safefile.c','w').write(safefile)
     open(tmp+'/cards.c','w').write(cards_src)
+    open(tmp+'/history.c','w').write(hist_src or hist)
     shutil.copy('psx3d/source/safefile.h', tmp+'/safefile.h')
-    flags=['cc','-std=gnu11','-w','-g','-DSAFEFILE_TEST','-include','psx3d/tests/save/host.h','-I'+tmp,'-Ipsx3d/tests/host','-Ipsx3d/source','-Icore/deps/libretro-common/include']
+    flags=['cc','-std=gnu11','-w','-g','-DSAFEFILE_TEST','-DHIST_BUDGET=12000','-include','psx3d/tests/save/host.h','-I'+tmp,'-Ipsx3d/tests/host','-Ipsx3d/source','-Icore/deps/libretro-common/include']
     caught = False
-    for test, extra in (('check', []), ('cards', [tmp+'/cards.c', 'psx3d/source/history.c'])):
+    for test, extra in (('check', []), ('cards', [tmp+'/cards.c', tmp+'/history.c']),
+                        ('history', [tmp+'/history.c'])):
         r=subprocess.run(flags+['psx3d/tests/save/'+test+'.c',tmp+'/safefile.c',*extra,'-o',tmp+'/t'],capture_output=True,text=True)
         if r.returncode: print(name,'BUILD FAIL',r.stderr[:300]); missed += 1; return
         caught |= subprocess.run([tmp+'/t'],capture_output=True,text=True).returncode != 0
     print(f"{name:24s} {'caught' if caught else 'MISSED'}")
     missed += not caught
 for name,(a,b) in card_muts.items():
+    if a in hist:   # the backups (history.c)
+        run(name, src, cards, hist.replace(a,b))
+        continue
     assert a in cards, name
     run(name, src, cards.replace(a,b))
 for name,(a,b) in muts.items():

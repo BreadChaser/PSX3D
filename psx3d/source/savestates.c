@@ -14,6 +14,7 @@
 #include "devtools.h"
 #include "safefile.h"
 #include "history.h"
+#include "statefile.h"
 #include <unistd.h>
 
 #define SLOTS 10
@@ -221,7 +222,7 @@ static void scan(browser_t *b, const char *prefix)
 			slot_t *s = &b->ring[i];
 			char thm[620];
 			s->used = true;
-			s->saved = (u32)b->ring_e[i].mtime;
+			s->saved = (u32)b->ring_e[i].when;
 			snprintf(thm, sizeof(thm), "%s.thm", b->ring_e[i].path);
 			u8 *file = px && b->ring_e[i].thumb ? safe_load(thm, &thm_fmt, 0, NULL) : NULL;
 			if (file) {
@@ -342,7 +343,10 @@ static bool slot_delete(const char *prefix, int slot)
 	// the slot's file, or its backup if that is all there is
 	bool cur = access(path, F_OK) == 0, old = !cur && access(bak, F_OK) == 0;
 	hist_entry_t e;
-	if ((cur || old) && !history_adopt(game, HIST_DELETE, ext, cur ? path : bak, cur ? thm : tbak, &e)) {
+	unsigned reason, saved = 0, id;
+	if (cur || old)
+		state_file_info(cur ? path : bak, &reason, &saved, &id);
+	if ((cur || old) && !history_adopt(game, HIST_DELETE, ext, cur ? path : bak, cur ? thm : tbak, saved, &e)) {
 		emu_osd_alert("Could not delete: the save could not be moved to the backups");
 		return false;
 	}
@@ -414,7 +418,7 @@ static void draw_top(void *ud)
 			return;
 		}
 		card_copy_t *c = &b->cards[b->card_sel];
-		age_text(when, sizeof(when), (u32)c->e.mtime);
+		age_text(when, sizeof(when), (u32)c->e.when);
 		ui_text_ex(font, 200 + dx, 50, 0.7f, white, C2D_AlignCenter, c->label);
 		snprintf(line, sizeof(line), "%s  -  %s", card_kind(c->e.kind), when);
 		ui_text_ex(NULL, 200 + dx, 90, 0.55f, white, C2D_AlignCenter, line);
@@ -520,8 +524,8 @@ static void draw_bottom(void *ud)
 			float y = 40 + r * 22;
 			if (i == b->card_sel)
 				C2D_DrawRectSolid(6, y - 2, 0.2f, 308, 20, C2D_Color32(30, 40, 90, 255));
-			age_text(when, sizeof(when), (u32)c->e.mtime);
-			snprintf(line, sizeof(line), "%s  %s", c->label + 12 /* "Memory card " */, card_kind(c->e.kind));
+			age_text(when, sizeof(when), (u32)c->e.when);
+			snprintf(line, sizeof(line), "Card %s  -  %s", c->label + 12 /* "Memory card N" */, card_kind(c->e.kind));
 			ui_text_ex(NULL, 12, y, 0.45f, i == b->card_sel ? white : dim, 0, line);
 			ui_text_ex(NULL, 308, y, 0.45f, i == b->card_sel ? white : dim, C2D_AlignRight, when);
 		}

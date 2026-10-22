@@ -6,8 +6,10 @@
 // started, the first card of each day, a pinned copy before the game
 // formats or empties it).
 //
-// <root>/<group>/<seq>-<kind><ext>   e.g. backups/Crash Bandicoot/00000012-start.sta
-// plus <entry>.thm for a state's thumbnail. <group> is the game's save name,
+// <root>/<group>/<seq>-<kind>-<time><ext>   e.g. backups/Crash Bandicoot/00000012-start-1792345678.sta
+// plus <entry>.thm for a state's thumbnail. <time> is when that version was
+// written (seconds, the 3DS clock): the SD card's file times can't be read
+// on the 3DS, so the name carries it. <group> is the game's save name,
 // or a shared card file's name. Entries are self-describing (one file each,
 // put in place by one rename or a crash-safe write), so there is no index
 // that could go stale. States carry their own checksum (statefile.h), cards
@@ -48,10 +50,10 @@ typedef struct {
 	unsigned seq;
 	hist_kind_t kind;
 	char ext[16];             // ".sta", ".st3", ".srm", ".mcd"...
-	time_t mtime;             // when that version was written
+	time_t when;              // when that version was written (from the name)
 	long size;
 	bool thumb;               // <path>.thm exists
-	char path[320];           // <root>/<game>/<seq>-<kind><ext>
+	char path[320];           // <root>/<game>/<seq>-<kind>-<time><ext>
 } hist_entry_t;
 
 static inline bool hist_is_card(hist_kind_t k) { return k >= HIST_CARD_SESSION && k < HIST_KINDS; }
@@ -59,22 +61,23 @@ static inline bool hist_is_card(hist_kind_t k) { return k >= HIST_CARD_SESSION &
 // Where the backups live (default PSX3D_DIR "/backups"; tests set another)
 void history_set_root(const char *root);
 // Move an existing file (and its thumbnail thm, may be NULL) into the
-// backups as the group's newest entry. Never copies. false: nothing moved.
-// *out (may be NULL): the entry.
+// backups as the group's newest entry, written at when (0: now). Never
+// copies. false: nothing moved. *out (may be NULL): the entry.
 bool history_adopt(const char *group, hist_kind_t kind, const char *ext, const char *file, const char *thm,
-	hist_entry_t *out);
+	time_t when, hist_entry_t *out);
 // The file name the next entry gets (the folder is created); write it
 // crash-safe (safe_write), then call history_added().
-bool history_next(const char *group, hist_kind_t kind, const char *ext, char *path, size_t len);
+bool history_next(const char *group, hist_kind_t kind, const char *ext, time_t when, char *path, size_t len);
 void history_added(const char *group, const char *path);
 // Write data as a new entry (crash-safe, no thumbnail)
 bool history_add(const char *group, hist_kind_t kind, const char *ext, const void *data, size_t size);
 // The group's entries, newest first (at most max); returns the count.
 // cards: true for memory card copies, false for the ring.
 int history_list(const char *group, bool cards, hist_entry_t *out, int max);
-// The entry written at that moment (an Undo target), or false
-bool history_find(const char *group, time_t mtime, long size, hist_entry_t *out);
 // Put an entry back as <file> (its thumbnail as <file>.thm): a rename
 bool history_take(const hist_entry_t *e, const char *file);
 const char *history_kind_name(hist_kind_t kind);
+// "now" for the names and limits (tests set history_fake_now; 0: the clock)
+extern time_t history_fake_now;
+time_t history_now(void);
 #endif

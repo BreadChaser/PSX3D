@@ -386,6 +386,27 @@ static void trailer(void)
 	CHECK(t && crc_ok && !(t->flags & STATE_SEALED) && t->tail == STATE_TAIL &&
 	      t->data_len == pad_at + PADS * PAD_SIZE && !strcmp(t->disc, "Game (Disc 2).cue") && t->disc_index == 1);
 	CHECK(state_crc32("123456789", 9, 0) == 0xcbf43926u);   // the CRC-32 check value
+	// every own save: its time and an id that tells it apart (Undo finds it by them)
+	CHECK(t->saved && (time_t)t->saved <= time(NULL) && time(NULL) - (time_t)t->saved < 600 && t->id);
+	{
+		unsigned first = t->id;
+		unsigned char *again = malloc(STATE_SIZE);
+		CHECK(__wrap_retro_serialize(again, STATE_SIZE));
+		const state_trailer_t *t2 = state_trailer(again, STATE_SIZE, NULL);
+		CHECK(t2 && t2->id != first);
+		FILE *f = fopen("/tmp/psx3d-states-info.bin", "wb");
+		fwrite(again, 1, STATE_SIZE, f);
+		fclose(f);
+		unsigned reason, saved, id;
+		CHECK(state_file_info("/tmp/psx3d-states-info.bin", &reason, &saved, &id) && id == t2->id && saved == t2->saved);
+		f = fopen("/tmp/psx3d-states-info.bin", "wb");
+		fwrite(good, 1, 1000, f);   // no trailer
+		fclose(f);
+		CHECK(!state_file_info("/tmp/psx3d-states-info.bin", &reason, &saved, &id) && !id && !saved);
+		remove("/tmp/psx3d-states-info.bin");
+		free(again);
+		t = state_trailer(good, STATE_SIZE, &crc_ok);
+	}
 	unsigned char *s = malloc(STATE_SIZE);
 	memcpy(s, good, STATE_SIZE);
 	CHECK(state_seal(s, STATE_SIZE));
