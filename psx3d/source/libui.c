@@ -252,13 +252,13 @@ static void clip_line(float x0, float y0, u32 c0, float x1, float y1, u32 c1, fl
 	C2D_DrawLine(x0 + dx * t0, y0 + dy * t0, c0, x0 + dx * t1, y0 + dy * t1, c1, w, 0.16f);
 }
 
-static void draw_grid(void)
+static void draw_grid(float t)
 {
 	static float px[MESH_ROWS + 1][MESH_COLS], py[MESH_ROWS + 1][MESH_COLS];
 	static float hgt[MESH_ROWS + 1][MESH_COLS];
 	static float rz[MESH_ROWS + 1];
 	const float cx = 200, f = 225;
-	float zoff = clock_s * 0.45f;                      // world units scrolled (slow drift)
+	float zoff = t * 0.45f;                      // world units scrolled (slow drift)
 	float phase = fmodf(zoff, MESH_DZ);
 
 	for (int j = 0; j <= MESH_ROWS; j++) {
@@ -318,7 +318,7 @@ static void draw_top(void *ud)
 	const theme_t *th = theme();
 	if (bg_ok)
 		C2D_DrawImageAt(bg_img, ui_depth(3.0f), 0, 0.1f, NULL, 1.0f, 1.0f);   // sky: far back
-	draw_grid();
+	draw_grid(clock_s);
 
 	// carousel: neighbours first so the selection sits on top
 	float spacing = 116.0f;
@@ -402,6 +402,16 @@ static void draw_top(void *ud)
 		C2D_DrawRectSolid(0, 0, 0.9f, 400, 240, C2D_Color32(0, 0, 0, (u8)(255 * (f > 1 ? 1 : f))));
 }
 
+// The same backdrop for the main menu and its screens; the grid rolls on the
+// system clock there.
+void libui_draw_backdrop(void)
+{
+	if (bg_ok)
+		C2D_DrawImageAt(bg_img, ui_depth(3.0f), 0, 0.1f, NULL, 1.0f, 1.0f);
+	double t = svcGetSystemTick() / (double)SYSCLOCK_ARM11;
+	draw_grid((float)(t - 3600.0 * (u32)(t / 3600.0)));
+}
+
 static flist_t lst;
 static flist_t top_lst;   // the top-level list as it was when a series was opened
 
@@ -451,9 +461,9 @@ static void draw_bottom(void *ud)
 		ui_text_ex(NULL, 8, 222, omitted ? 0.36f : 0.4f, th->message, 0, msg);
 	} else
 		ui_text_ex(NULL, 8, 223, 0.36f, th->hint_lib, 0,
-			open_series >= 0 ? "A play   B back   X settings   SELECT rescan   START quit" :
-			entry_series(sel) >= 0 ? "A open   X settings   Y folders   SELECT rescan   START quit" :
-			"A play   X settings   Y folders   SELECT rescan   START quit");
+			open_series >= 0 ? "A play   B back   X settings   SELECT rescan" :
+			entry_series(sel) >= 0 ? "A open   B menu   X settings   Y folders   SELECT rescan" :
+			"A play   B menu   X settings   Y folders   SELECT rescan");
 }
 
 static bool repeat(u32 down, u32 held, u32 key, int *c)
@@ -543,7 +553,7 @@ static void enter_view(int series_idx, int new_sel)
 }
 
 // Returns 1 with path filled to play a game, 2 to open the folder browser,
-// 0 to quit.
+// 4 back to the main menu, 0 to quit.
 // the game picked last time libui_run returned 1
 const game_t *libui_picked(void)
 {
@@ -613,6 +623,13 @@ int libui_run(char *out_path, size_t len)
 			sfx_play(SFX_SELECT);
 			ui_wants_3d = false;
 			return 2;
+		}
+		if ((k & KEY_B) && open_series < 0) {
+			// the main menu (an open series closes first, below)
+			aptSetHomeAllowed(true);
+			sfx_play(SFX_BACK);
+			ui_wants_3d = false;
+			return 4;
 		}
 		if (k & KEY_SELECT) {
 			covers_reset();

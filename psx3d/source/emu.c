@@ -1076,6 +1076,8 @@ static void game_apt(APT_HookType hook, void *param)
 	}
 }
 
+bool emu_continue_now;
+
 static bool run_game(const char *path, const char *save_name, const char *title)
 {
 	struct retro_game_info info = { .path = path };
@@ -1167,8 +1169,13 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		make_path(prefix, sizeof(prefix), PSX3D_STATE_DIR, "");
 		// Remote-started games skip continue and the save on exit, so test runs
 		// never touch the player's place. Local play always offers continue.
-		if (clip_requested<0 && !dev_remote_game() && sw_state < 0 && states_resume_prompt(prefix) && state_load_from(STATE_AUTO))
+		// The main menu's Continue is the answer already: no prompt.
+		bool now = emu_continue_now;
+		emu_continue_now = false;
+		if (clip_requested<0 && !dev_remote_game() && sw_state < 0 && (now || states_resume_prompt(prefix)) && state_load_from(STATE_AUTO))
 			osd("Continuing where you left off");
+		if (clip_requested < 0 && !clip_replay_session && !dev_remote_game())
+			home_note_game(path, save_name, title, game_name);   // the main menu's Continue
 	}
 	if (clip_requested<0 && game_capabilities().rewind && config_rewind_on())
 		rewind_start();

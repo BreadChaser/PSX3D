@@ -402,11 +402,13 @@ int main(int argc, char **argv)
 	emu_init();
 	dev_init();
 
-	// Home screen: the game library (needs a games folder); Y switches to
-	// the folder browser, which also is where a games folder gets picked.
+	// PSX3D opens to the main menu (home.c). Its Library is the game library
+	// (needs a games folder); Y there switches to the folder browser, which
+	// also is where a games folder gets picked.
 	bool use_library = g_cfg.games_dir[0] && library_load(g_cfg.games_dir, false);
 	if (use_library && g_cfg.last_title[0])
 		libui_select_title(g_cfg.last_title);
+	bool at_home = true;
 	for (;;) {
 		dev_tick(false);
 		if (dev_exiting())
@@ -446,9 +448,29 @@ int main(int argc, char **argv)
 				log_printf("test: no game matches %s\n", want);
 			picked = NULL;
 		}
+		if (at_home) {
+			home_launch_t hl;
+			int h = home_run(use_library, path, sizeof(path), &hl);
+			if (h == HOME_QUIT)
+				break;
+			if (h == HOME_AGAIN)
+				continue;
+			at_home = false;   // after a game: the library
+			if (h == HOME_LIBRARY)
+				continue;
+			dev_local_game();
+			emu_continue_now = hl.resume;
+			if (!emu_run_game(path, hl.save[0] ? hl.save : NULL, hl.title[0] ? hl.title : NULL))
+				show_error("Could not load that game.\nCheck sdmc:/3ds/PSX3D/log.txt");
+			emu_continue_now = false;
+			if (aptShouldClose())
+				break;
+			continue;
+		}
 		if (use_library) {
 			int r = libui_run(path, sizeof(path));
 			if (r == 3) continue;
+			if (r == 4) { at_home = true; continue; }
 			if (r == 0)
 				break;
 			if (r == 2) {
@@ -464,14 +486,20 @@ int main(int argc, char **argv)
 				picked = libui_picked();
 			}
 		} else {
+			// no games yet: how to add them (B main menu, Y folder browser)
+			int e = home_empty_library_run();
+			if (e == 0)
+				break;
+			if (e == 1) { at_home = true; continue; }
+			if (e == 3) {
+				use_library = g_cfg.games_dir[0] && library_load(g_cfg.games_dir, false);
+				continue;
+			}
 			play = browser_run(path, sizeof(path));
 			if (dev_transition()) continue;
 			if (!play) {
-				if (g_cfg.games_dir[0] && library_load(g_cfg.games_dir, false)) {
-					use_library = true;
-					continue;
-				}
-				break;
+				use_library = g_cfg.games_dir[0] && library_load(g_cfg.games_dir, false);
+				continue;
 			}
 		}
 		// library games save under disc 1's name, same as starting that

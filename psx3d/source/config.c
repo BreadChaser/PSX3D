@@ -195,6 +195,14 @@ void config_load(void)
 			snprintf(g_cfg.last_title, sizeof(g_cfg.last_title), "%s", v);
 		else if (strcmp(k, "games_dir") == 0)
 			snprintf(g_cfg.games_dir, sizeof(g_cfg.games_dir), "%s", v);
+		else if (strcmp(k, "last_game") == 0)
+			snprintf(g_cfg.last_game, sizeof(g_cfg.last_game), "%s", v);
+		else if (strcmp(k, "last_game_save") == 0)
+			snprintf(g_cfg.last_game_save, sizeof(g_cfg.last_game_save), "%s", v);
+		else if (strcmp(k, "last_game_state") == 0)
+			snprintf(g_cfg.last_game_state, sizeof(g_cfg.last_game_state), "%s", v);
+		else if (strcmp(k, "last_game_path") == 0)
+			snprintf(g_cfg.last_game_path, sizeof(g_cfg.last_game_path), "%s", v);
 		else if (strcmp(k, "stretch") == 0)
 			g_cfg.stretch = atoi(v) != 0;
 		else if (strcmp(k, "bottom_off") == 0)
@@ -242,6 +250,9 @@ void config_save(void)
 		fprintf(f, "games_dir=%s\n", g_cfg.games_dir);
 	if (g_cfg.last_title[0])
 		fprintf(f, "last_title=%s\n", g_cfg.last_title);
+	if (g_cfg.last_game_state[0])
+		fprintf(f, "last_game=%s\nlast_game_save=%s\nlast_game_state=%s\nlast_game_path=%s\n",
+			g_cfg.last_game, g_cfg.last_game_save, g_cfg.last_game_state, g_cfg.last_game_path);
 	int screen = in_game ? default_screen : config_screen_mode();
 #define SAVE_INT(key, value, factory) do { int v_ = (value); if (user_has(key) || v_ != (factory)) fprintf(f, key "=%d\n", v_); } while (0)
 	SAVE_INT("smooth", g_cfg.smooth, factory("smooth"));
@@ -320,6 +331,10 @@ void config_reset_defaults(void)
 	strcpy(g_cfg.last_dir, old.last_dir);
 	strcpy(g_cfg.games_dir, old.games_dir);
 	strcpy(g_cfg.last_title, old.last_title);
+	strcpy(g_cfg.last_game, old.last_game);
+	strcpy(g_cfg.last_game_save, old.last_game_save);
+	strcpy(g_cfg.last_game_state, old.last_game_state);
+	strcpy(g_cfg.last_game_path, old.last_game_path);
 	config_set_screen_mode(0);
 	config_sync_stereo();
 	options_mark_updated();

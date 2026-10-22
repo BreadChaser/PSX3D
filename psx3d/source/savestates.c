@@ -482,3 +482,38 @@ bool states_resume_prompt(const char *prefix)
 		C3D_TexDelete(&r.tex);
 	return resume;
 }
+
+// ---------------------------------------------------------------- main menu
+
+// The main menu's Continue tile: is there an auto-save, when was it made and
+// its picture (tex is made only when *tex_ok comes back true).
+bool states_auto_peek(const char *prefix, u32 *saved, C3D_Tex *tex, bool *tex_ok)
+{
+	char path[PATH_LEN], bak[PATH_LEN + 8];
+	struct stat st;
+	*tex_ok = false;
+	*saved = 0;
+	slot_path(path, sizeof(path), prefix, STATE_AUTO, false);
+	snprintf(bak, sizeof(bak), "%s.bak", path);
+	if (stat(path, &st) && stat(bak, &st))
+		return false;
+	*saved = (u32)st.st_mtime;
+	u16 *px = malloc(TW * TH * 2);
+	thm_hdr_t h;
+	if (px && thumb_read(prefix, STATE_AUTO, px, &h, false)) {
+		*tex_ok = make_tex(tex, px);
+		*saved = h.saved;
+	}
+	free(px);
+	return true;
+}
+
+void states_thumb_draw(C3D_Tex *t, float x, float y, float w, float h, float z)
+{
+	draw_tex(t, x, y, w, h, z);
+}
+
+void states_when_text(char *out, size_t len, u32 saved)
+{
+	when_text(out, len, saved);
+}

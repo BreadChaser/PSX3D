@@ -47,6 +47,11 @@ typedef struct {
 	int  touch_stick;  // Old 3DS virtual right stick
 	int  touch_click_left; // global New 3DS bottom-screen layout: 0 right, 1 left
 	int  controller;   // all-games Controller: 0 digital, 1 analog (DualShock at start)
+	// main menu Continue: the last game played here (home.c)
+	char last_game[256];        // its title ("" = name from the path)
+	char last_game_save[256];   // save name it was started with ("" = from the path)
+	char last_game_state[256];  // save name it ended up with (states/<this>.sta)
+	char last_game_path[PATH_LEN];
 } psx3d_config;
 
 extern psx3d_config g_cfg;
@@ -264,6 +269,9 @@ bool state_thumb_save(const char *prefix, int slot, const u16 *px);
 void state_thumb_restore(const char *prefix, int slot);
 bool states_resume_prompt(const char *prefix);
 int states_run(bool saving, const char *prefix, const char *title, int *slot);
+bool states_auto_peek(const char *prefix, u32 *saved, C3D_Tex *tex, bool *tex_ok);
+void states_thumb_draw(C3D_Tex *t, float x, float y, float w, float h, float z);
+void states_when_text(char *out, size_t len, u32 saved);
 
 // stereo.c - real 3D from the core's depth map
 bool stereo_init(void);
@@ -484,10 +492,31 @@ C2D_Font libui_font(void);
 void libui_exit(void);
 // Settings > About: version and a QR code to share PSX3D (share.c)
 void share_about_run(bool game);
+// mp_ui.c - Play together and Share PSX3D screens, opened from the main menu
+void mp_hub_run(void);
+// after mp_hub_run: a game to start (Host a game), path filled
+bool mp_launch_request(char *path, size_t len);
+void share_run(void);
 bool share_about_visible(void);
+// Returns 1 to play (path filled), 2 folder browser, 3 remote, 4 back to the
+// main menu, 0 quit.
 int libui_run(char *out_path, size_t len);
+// the library's top-screen backdrop: sky picture and rolling wire grid
+void libui_draw_backdrop(void);
 void libui_select_title(const char *title);
 const game_t *libui_picked(void);
+
+// home.c - the main menu PSX3D opens to
+typedef struct {
+	char save[256];    // save name for emu_run_game ("" = NULL)
+	char title[256];   // title for emu_run_game ("" = NULL)
+	bool resume;       // load the Continue auto-save without asking
+} home_launch_t;
+enum { HOME_QUIT, HOME_AGAIN, HOME_LIBRARY, HOME_PLAY };
+int home_run(bool have_games, char *path, size_t len, home_launch_t *out);
+// Library with no games: 0 quit, 1 main menu, 2 folder browser, 3 look again
+int home_empty_library_run(void);
+void home_note_game(const char *path, const char *save_name, const char *title, const char *state_name);
 
 // browser.c - returns true and fills path when a game is chosen
 bool browser_run(char *out_path, size_t out_len);
@@ -496,6 +525,7 @@ bool browser_run(char *out_path, size_t out_len);
 bool emu_init(void);
 void emu_deinit(void);
 bool emu_run_game(const char *path, const char *save_name, const char *title);
+extern bool emu_continue_now;   // next game: load its Continue auto-save, no prompt
 
 extern int __ctr_svchax;
 // Why fast mode (the dynarec) is off; SLOW_NONE when it is on.
