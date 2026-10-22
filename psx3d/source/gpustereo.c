@@ -181,6 +181,7 @@ static inline bool in_canonical(const void *p)
 // Draws go on to the direct command path (picadirect.c), which falls back
 // to citro3d itself for anything it does not write.
 void picadirect_draw_arrays(GPU_Primitive_t primitive, int first, int size);
+void cmdroom_draw_pair(GPU_Primitive_t primitive, int first, int size);   // cmdroom.c: left eye
 Result __real_GX_TextureCopy(u32 *src, u32 sdim, u32 *dst, u32 ddim, u32 size, u32 flags);
 
 // The right eye starts as a copy of PS1 VRAM; queued after everything
@@ -206,7 +207,7 @@ static noinline void mirror_draw(GPU_Primitive_t primitive, int first, int size)
 	canonical = fb->colorBuf;
 	if (need_seed)
 		seed();
-	picadirect_draw_arrays(primitive, first, size);
+	cmdroom_draw_pair(primitive, first, size);
 
 	C3D_BufInfo *bi = &ctx->bufInfo;
 	C3D_BufCfg *buf = &bi->buffers[0];

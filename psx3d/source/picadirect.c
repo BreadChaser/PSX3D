@@ -19,7 +19,7 @@
 #include <string.h>
 
 #define BLOCKS (C3DiF_Viewport | C3DiF_Scissor | C3DiF_Effect | C3DiF_TexAll | C3DiF_TexStatus | C3DiF_TexEnvAll)
-#define ROOM 192   // words the largest direct draw can need
+#define ROOM VIDEO_CMD_ROOM   // below it, citro3d's path makes room (cmdroom.c)
 
 static const u16 tex_base[3] = { GPUREG_TEXUNIT0_BORDER_COLOR, GPUREG_TEXUNIT1_BORDER_COLOR, GPUREG_TEXUNIT2_BORDER_COLOR };
 static const u16 tex_type[3] = { GPUREG_TEXUNIT0_TYPE, GPUREG_TEXUNIT1_TYPE, GPUREG_TEXUNIT2_TYPE };
@@ -93,7 +93,7 @@ static const u32 draw_template[22] = {
 	1, GPUCMD_HEADER(0, 0xF, GPUREG_VTX_FUNC),
 };
 
-void __real_C3D_DrawArrays(GPU_Primitive_t primitive, int first, int size);
+void cmdroom_draw_arrays(GPU_Primitive_t primitive, int first, int size);
 // Called by the real 3D wrapper (gpustereo.c), which owns --wrap=C3D_DrawArrays.
 void picadirect_draw_arrays(GPU_Primitive_t primitive, int first, int size)
 {
@@ -102,13 +102,13 @@ void picadirect_draw_arrays(GPU_Primitive_t primitive, int first, int size)
 	// Anything beyond the renderer's own state changes goes through citro3d.
 	if ((flags & ~(BLOCKS | C3DiF_Active | C3DiF_DrawUsed)) || ctx->lightEnv || ctx->fixedAttribDirty ||
 		(ctx->texEnvBuf & 7) == GPU_GAS || !gpuCmdBuf || gpuCmdBufSize - gpuCmdBufOffset < ROOM) {
-		__real_C3D_DrawArrays(primitive, first, size);
+		cmdroom_draw_arrays(primitive, first, size);
 		return;
 	}
 	if (flags & C3DiF_TexAll)
 		for (int i = 0; i < 3; i++)
 			if ((flags & C3DiF_Tex(i)) && ctx->tex[i] && !C3Di_TexIs2D(ctx->tex[i])) {
-				__real_C3D_DrawArrays(primitive, first, size);
+				cmdroom_draw_arrays(primitive, first, size);
 				return;
 			}
 
