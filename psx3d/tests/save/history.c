@@ -170,6 +170,11 @@ int main(void)
 	history_list("Third", false, e, 64);
 	CHECK(seed_of(e[0].path) == 107);   // the newest survives
 	CHECK(count("Card", true, HIST_CARD_PIN) == HIST_CARD_PINS);   // cards untouched
+	// an entry that is the oldest by time but was just added (an old Continue
+	// point renamed in at Start game) is never the one the budget drops
+	put("big", 77, 5000);
+	CHECK(history_adopt("Fourth", HIST_START, ".sta", "big", NULL, T - 86400L * 400, NULL));
+	CHECK(count("Fourth", false, -1) == 1 && ring_total() <= HIST_BUDGET);
 
 	// history_add writes crash-safe: no .tmp left, exact size
 	snprintf(ctx, sizeof(ctx), "add");
