@@ -631,6 +631,12 @@ void video_present_screens(bool show_game, bool repaint_top, void (*draw_top)(vo
 			top_set_plain(top_r, GFX_RIGHT, plain);
 			plain_now = plain;
 		}
+		// whole target pixels: a picture moved by part of a pixel is
+		// resampled (blurred) differently in each eye
+		if (depth != 0) {
+			float px = top_aa && !plain_now ? 0.5f : 1.0f;
+			depth = roundf(depth / px) * px;
+		}
 		C3D_RenderTarget *tl = top, *tr = top_r;
 		C2D_TargetClear(tl, C2D_Color32(0, 0, 0, 255));
 		top_begin(tl);
