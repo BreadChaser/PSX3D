@@ -848,7 +848,11 @@ static bool undo_run(void)
 			return false;
 		}
 		slot_leftovers(path);
-		undo.target = slot_used ? now : target;
+		// what Redo brings back: the slot's previous file (now in the ring),
+		// or the file that just came back into the empty slot
+		if (!slot_used && !ref_of(path, undo.what == UNDO_SAVE ? HIST_SAVE : HIST_DELETE, &now))
+			now = target;
+		undo.target = now;
 		undo.redo = !redo;
 		osd("%s %s of slot %d", redo ? "Redid" : "Undid", what, undo.slot);
 		return false;
