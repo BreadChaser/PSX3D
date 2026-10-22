@@ -528,6 +528,9 @@ void covers_reset(void);
 void covers_focus(int game);
 void covers_pump(void);
 void covers_stats_reset(void);   // developer diagnostics
+int covers_test_tick(void);
+void covers_note_select(void);
+void covers_note_draw(bool selected, bool near);
 bool covers_busy(void);
 bool covers_stop(void);
 void covers_stop_wait(void);

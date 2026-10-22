@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stdarg.h>
 #include <time.h>
 #include <sys/stat.h>
@@ -73,6 +74,7 @@ CURLMcode __real_curl_multi_poll(CURLM*,struct curl_waitfd*,unsigned,int,int*);
 CURLMcode __wrap_curl_multi_poll(CURLM *m,struct curl_waitfd *f,unsigned n,int ms,int *num)
 {assert(ms==0);return __real_curl_multi_poll(m,f,n,ms,num);}
 #include "../../source/covers.c"
+static bool fresh;
 static void svcSleepThread(long long ns) { if(cancel_after && ++sleeps>=cancel_after) paused=true;usleep(ns/1000); }
 int main(void)
 {
@@ -80,7 +82,7 @@ int main(void)
 	// Transient network backoff must return immediately instead of sleeping 15s.
 	net_retry_at=osGetTime()+15000;bool retry=true;
 	cover_t c={0};
-	u64 start=osGetTime();assert(!load_cover(&game,&retry,false,&c));assert(osGetTime()-start<100 && retry);
+	u64 start=osGetTime();assert(!load_cover(&game,&retry,false,&c,&fresh));assert(osGetTime()-start<100 && retry);
 	net_retry_at=0;
 	LightLock_Lock(&net_lock);
 	int w,h;
@@ -103,7 +105,7 @@ int main(void)
 		free(old);
 		paused=false;
 		retry=true;cover_t lc={0};
-		assert(load_cover(&game,&retry,false,&lc) && lc.lowres && lc.w==128 && lc.h==128);
+		assert(load_cover(&game,&retry,false,&lc,&fresh) && lc.lowres && lc.w==128 && lc.h==128);
 		free(lc.data);
 		struct stat st;
 		assert(stat("covers/cover.cv2",&st) && !stat("covers/cover.bin",&st)); // not cached yet: still the old file only
@@ -112,7 +114,7 @@ int main(void)
 		free(up.data);
 		assert(!stat("covers/cover.cv2",&st) && st.st_size==CV2_BYTES && stat("covers/cover.bin",&st));
 		cover_t hit={0};
-		assert(load_cover(&game,&retry,false,&hit) && !hit.lowres && hit.w==1 && hit.h==1);free(hit.data);
+		assert(load_cover(&game,&retry,false,&hit,&fresh) && !hit.lowres && hit.w==1 && hit.h==1);free(hit.data);
 		// the database has no such picture: the old one becomes final
 		strcpy(game.cover_key,"missing");
 		cover_t fin={0};
@@ -162,22 +164,22 @@ int main(void)
 		cover_t a={0};
 		strcpy(game.cover_key,"cover");
 		remove("covers/cover.png");
-		assert(load_cover(&game,&r,false,&a) && a.w==1);free(a.data);              // cache from the download
+		assert(load_cover(&game,&r,false,&a,&fresh) && a.w==1);free(a.data);              // cache from the download
 		before=attempts;
 		assert(rename("user.png","covers/cover.png")==0);
-		a=(cover_t){0};assert(load_cover(&game,&r,false,&a) && a.w==2 && a.h==2);free(a.data);
-		a=(cover_t){0};assert(load_cover(&game,&r,false,&a) && a.w==2);free(a.data); // from the cache, marked
+		a=(cover_t){0};assert(load_cover(&game,&r,false,&a,&fresh) && a.w==2 && a.h==2);free(a.data);
+		a=(cover_t){0};assert(load_cover(&game,&r,false,&a,&fresh) && a.w==2);free(a.data); // from the cache, marked
 		assert(attempts==before);
 		FILE *pf=fopen("covers/cover.png","ab");assert(pf);fputc(0,pf);fclose(pf);      // changed file
 		long sz,mt;assert(boxart_user_get("cover",&sz,&mt));
-		a=(cover_t){0};assert(load_cover(&game,&r,false,&a) && a.w==2);free(a.data);
+		a=(cover_t){0};assert(load_cover(&game,&r,false,&a,&fresh) && a.w==2);free(a.data);
 		long sz2,mt2;assert(boxart_user_get("cover",&sz2,&mt2) && sz2==sz+1);
 		remove("covers/cover.png");                                                   // PNG removed: download again
-		a=(cover_t){0};assert(load_cover(&game,&r,false,&a) && a.w==1);free(a.data);
+		a=(cover_t){0};assert(load_cover(&game,&r,false,&a,&fresh) && a.w==1);free(a.data);
 		assert(attempts==before+1 && !boxart_user_get("cover",&sz,&mt));
 		// a PNG that cannot be read does not hide the cover
 		pf=fopen("covers/cover.png","wb");assert(pf);fputs("not a png",pf);fclose(pf);
-		a=(cover_t){0};assert(load_cover(&game,&r,false,&a) && a.w==1);free(a.data);
+		a=(cover_t){0};assert(load_cover(&game,&r,false,&a,&fresh) && a.w==1);free(a.data);
 		remove("covers/cover.png");
 		for(int i=0;i<SLOTS;i++) slots[i].last_used=0;   // the rescan above emptied the slots: slot 0 is the oldest again
 		covers_get(0,NULL);
@@ -192,6 +194,36 @@ int main(void)
 	slots[0].pixels=malloc(COVER_PACK_BYTES);slots[0].state=3;slots[0].lowres=true;
 	covers_release_gpu();assert(!slots[0].pixels && slots[0].state==1 && !slots[0].lowres);
 	assert(!covers_refresh(-1) && !covers_refresh(1));
+	// Small covers: made from a cover, saved, read back the same; a damaged
+	// file gives what was whole and is written again; a player's PNG is found
+	// by the folder listing (no lookup for the others).
+	{
+		paused=false;
+		thumbs_free();thumbs_loaded=true;
+		cover_t one={malloc(COVER_PACK_BYTES),200,180,false};
+		memset(one.data,0x5a,COVER_PACK_BYTES);
+		thumb_make(game.cover_key,&one,false);assert(nthumbs==1 && thumbs_dirty);
+		u8 first[COVER_THUMB_BYTES];memcpy(first,thumbs[0]->px,sizeof(first));
+		assert(thumbs[0]->w==200 && thumbs[0]->h==180);
+		memset(one.data,0x11,COVER_PACK_BYTES);
+		thumb_make(game.cover_key,&one,false);assert(!memcmp(first,thumbs[0]->px,sizeof(first)));   // kept
+		thumb_make("other",&one,true);assert(nthumbs==2);
+		thumbs_save();assert(!thumbs_dirty);
+		thumbs_free();assert(!nthumbs);
+		assert(thumbs_load() && nthumbs==2 && !thumbs_dirty);
+		int k=thumb_find(name_hash(game.cover_key));assert(k>=0 && !memcmp(first,thumbs[k]->px,sizeof(first)));
+		// cut the file in the middle of the second record
+		FILE *f=fopen(THUMB_FILE,"r+b");assert(f);assert(!ftruncate(fileno(f),sizeof(thumb_head_t)+sizeof(thumb_t)+100));fclose(f);
+		thumbs_free();assert(thumbs_load() && nthumbs==1 && thumbs_dirty);
+		thumbs_save();thumbs_free();assert(thumbs_load() && nthumbs==1 && !thumbs_dirty);
+		// a pause stops the reading: nothing half-read stays
+		thumbs_free();paused=true;assert(!thumbs_load() && !nthumbs && !thumbs_loaded);paused=false;
+		free(one.data);
+		f=fopen(COVER_DIR "/cover.png","wb");fputs("x",f);fclose(f);
+		own_pngs_scan();assert(own_pngs_ok && nown_pngs==1 && own_png_maybe("cover") && !own_png_maybe("other"));
+		remove(COVER_DIR "/cover.png");own_pngs_scan();assert(!own_png_maybe("cover"));
+		remove(THUMB_FILE);
+	}
 	covers_exit();
-	puts("PASS remote covers, core0 priority, backoff, HTTPS driver cancellation, HTTP retries, nested APT gameplay pause");
+	puts("PASS small covers, remote covers, core0 priority, backoff, HTTPS driver cancellation, HTTP retries, nested APT gameplay pause");
 }

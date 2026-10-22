@@ -12,12 +12,19 @@
 // once and are replaced by a full size download in the background.
 // The UI asks for the covers around the selection; ready ones get uploaded
 // to textures on the main thread.
+// Every cached cover also has a 64x64 copy; all of them live in one file
+// (covers/thumbs.pk) that is read once when the library opens. A cover that is
+// not loaded yet shows its small copy at once, so scrolling fast or jumping
+// to a letter never shows empty cards while the full size ones come from the
+// SD card.
 #include <ctype.h>
 #include <malloc.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <dirent.h>
+#include <strings.h>
 #include <curl/curl.h>
 #include "covers_png.h"
 #include "covers_pack.h"
@@ -61,6 +68,29 @@ typedef struct {
 } slot_t;
 
 static slot_t slots[SLOTS];
+
+#define THUMB_FILE COVER_DIR "/thumbs.pk"
+#define THUMB_MAGIC 0x31485450u   // "PTH1"
+#define TSLOTS 40                 // small cover textures (8 KiB each)
+typedef struct { u32 magic, count, bytes, zero; } thumb_head_t;
+typedef struct { u64 key; u16 w, h; u32 zero; u8 px[COVER_THUMB_BYTES]; } thumb_t;   // also the file record
+static thumb_t **thumbs;          // sorted by key (under lock)
+static int nthumbs, thumbs_cap;
+static volatile bool thumbs_loaded, thumbs_loading;
+static bool thumbs_dirty;
+static u64 thumbs_dirty_at;
+static u8 *thumb_tried;           // per game: the background fill has looked at it
+static int thumb_tried_n;
+static u64 *own_pngs;             // the player's PNGs in the covers folder (name hashes, sorted)
+static int nown_pngs;
+static bool own_pngs_ok;          // the folder was listed
+static int focus_game = -1;
+typedef struct { int game; u32 used; u16 w, h, tw, th; C3D_Tex tex; bool tex_ok; } tslot_t;
+static tslot_t tslots[TSLOTS];
+static u32 pump_frame;            // frames the covers were drawn in
+static int thumb_uploads_left;    // this frame's budget
+static unsigned thumb_made, thumb_filled, thumb_load_ms, thumb_save_ms;
+
 #define WORKERS 2
 static Thread workers[WORKERS];
 static LightLock lock;
@@ -78,6 +108,14 @@ static unsigned uploads, upload_max_us, upload_total_us;   // main thread: textu
 static u64 frame_last;
 static unsigned frames, frames_over_25ms, frames_over_40ms, frame_max_us;
 static u64 frame_total_us;
+// how fast covers appear while scrolling (developer diagnostics, "covers scroll=")
+static int test_kind, test_steps, test_period, test_count;   // 1 hold, 2 letter jump; dir in sign
+static int last_tier;              // what the latest covers_get returned: 0 none, 1 small, 2 full
+static u64 sel_tick;               // when the selection last changed
+static bool sel_any, sel_full;     // it showed a picture / its full size picture since
+static unsigned sel_changes, sel_any_n, sel_full_n, sel_any_max_ms, sel_full_max_ms;
+static u64 sel_any_total_ms, sel_full_total_ms;
+static unsigned near_draws, near_blank, near_small;
 static int last_curl;
 static long last_http;
 static unsigned stop_ms, max_stop_ms;
@@ -169,6 +207,218 @@ static void cache_path(const char *key, const char *ext, char *out, size_t len)
 	char name[256];
 	thumb_name(key, name, sizeof(name));
 	snprintf(out, len, COVER_DIR "/%s%s", name, ext);
+}
+
+static u64 name_hash(const char *s)
+{
+	u64 h = 1469598103934665603ull;   // FNV-1a
+	for (; *s; s++)
+		h = (h ^ (u8)*s) * 1099511628211ull;
+	return h;
+}
+
+// ---------------------------------------------------------------- small covers
+
+// caller holds lock: the index of key, or where it would go (-1 - index)
+static int thumb_find(u64 key)
+{
+	int lo = 0, hi = nthumbs;
+	while (lo < hi) {
+		int m = (lo + hi) / 2;
+		if (thumbs[m]->key == key) return m;
+		if (thumbs[m]->key < key) lo = m + 1;
+		else hi = m;
+	}
+	return -1 - lo;
+}
+
+// caller holds lock; t is then owned by the list
+static bool thumb_insert(thumb_t *t)
+{
+	int i = thumb_find(t->key);
+	if (i >= 0) {
+		free(thumbs[i]);
+		thumbs[i] = t;
+		return true;
+	}
+	i = -1 - i;
+	if (nthumbs == thumbs_cap) {
+		int cap = thumbs_cap ? thumbs_cap * 2 : 256;
+		thumb_t **n = realloc(thumbs, cap * sizeof(*n));
+		if (!n) return false;
+		thumbs = n;
+		thumbs_cap = cap;
+	}
+	memmove(thumbs + i + 1, thumbs + i, (nthumbs - i) * sizeof(*thumbs));
+	thumbs[i] = t;
+	nthumbs++;
+	return true;
+}
+
+// A cover's small copy, made from the finished cover. replace: the cover
+// changed (a download, the player's PNG); else only if there is none yet.
+static void thumb_make(const char *key, const cover_t *c, bool replace)
+{
+	u64 k = name_hash(key);
+	LightLock_Lock(&lock);
+	bool have = thumb_find(k) >= 0;
+	LightLock_Unlock(&lock);
+	if (have && !replace)
+		return;
+	thumb_t *t = malloc(sizeof(*t));
+	if (!t)
+		return;
+	int tw, th;
+	covers_thumb(c->data, c->w, c->h, t->px, &tw, &th);
+	t->key = k;
+	t->w = c->w;
+	t->h = c->h;
+	t->zero = 0;
+	LightLock_Lock(&lock);
+	if (thumb_insert(t)) {
+		if (!thumbs_dirty) thumbs_dirty_at = osGetTime();
+		thumbs_dirty = true;
+		for (int i = 0; i < TSLOTS; i++)   // a shown older copy: upload again
+			if (tslots[i].game >= 0 && library_get(tslots[i].game) &&
+			    name_hash(library_get(tslots[i].game)->cover_key) == k)
+				tslots[i].game = -1;
+	} else free(t);
+	LightLock_Unlock(&lock);
+	__atomic_add_fetch(&thumb_made, 1, __ATOMIC_RELAXED);
+}
+
+static void thumbs_free(void)
+{
+	LightLock_Lock(&lock);
+	for (int i = 0; i < nthumbs; i++)
+		free(thumbs[i]);
+	free(thumbs);
+	thumbs = NULL;
+	nthumbs = thumbs_cap = 0;
+	thumbs_loaded = false;
+	thumbs_dirty = false;
+	LightLock_Unlock(&lock);
+}
+
+static int cmp_u64(const void *a, const void *b)
+{
+	u64 x = *(const u64 *)a, y = *(const u64 *)b;
+	return x < y ? -1 : x > y;
+}
+
+// Which games have a PNG of the player's own: one look at the folder instead
+// of a failed lookup in it for every cover (a SELECT rescan looks again).
+static void own_pngs_scan(void)
+{
+	u64 *list = NULL;
+	int n = 0, cap = 0;
+	DIR *d = opendir(COVER_DIR);
+	struct dirent *e;
+	while (d && (e = readdir(d))) {
+		size_t len = strlen(e->d_name);
+		if (len < 5 || strcasecmp(e->d_name + len - 4, ".png"))
+			continue;
+		if (n == cap) {
+			u64 *m = realloc(list, (cap = cap ? cap * 2 : 32) * sizeof(*m));
+			if (!m) break;
+			list = m;
+		}
+		char name[256];
+		snprintf(name, sizeof(name), "%.*s", (int)(len - 4), e->d_name);
+		list[n++] = name_hash(name);
+	}
+	if (d) closedir(d);
+	if (n)
+		qsort(list, n, sizeof(*list), cmp_u64);
+	LightLock_Lock(&lock);
+	free(own_pngs);
+	own_pngs = list;
+	nown_pngs = n;
+	own_pngs_ok = d != NULL;
+	LightLock_Unlock(&lock);
+}
+
+// false: the player has no PNG for this game (true: there may be one)
+static bool own_png_maybe(const char *key)
+{
+	char name[256];
+	thumb_name(key, name, sizeof(name));
+	u64 h = name_hash(name);
+	LightLock_Lock(&lock);
+	bool maybe = !own_pngs_ok || (own_pngs && bsearch(&h, own_pngs, nown_pngs, sizeof(*own_pngs), cmp_u64));
+	LightLock_Unlock(&lock);
+	return maybe;
+}
+
+// Read covers/thumbs.pk (worker). false: stopped by a pause, try again later.
+static bool thumbs_load(void)
+{
+	u64 t0 = osGetTime();
+	safe_recover(THUMB_FILE);
+	FILE *f = fopen(THUMB_FILE, "rb");
+	thumb_head_t head;
+	bool ok = f && fread(&head, sizeof(head), 1, f) == 1 && head.magic == THUMB_MAGIC &&
+	          head.bytes == COVER_THUMB_BYTES && head.count <= 8192;
+	int count = ok ? (int)head.count : 0;
+	for (int i = 0; i < count; i++) {
+		if (quit || paused) {
+			fclose(f);
+			thumbs_free();
+			return false;
+		}
+		thumb_t *t = malloc(sizeof(*t));
+		if (!t || fread(t, sizeof(*t), 1, f) != 1 || !t->w || t->w > COVER_TEX || !t->h || t->h > COVER_TEX) {
+			free(t);
+			log_printf("covers: %s damaged at %d of %d, made again\n", THUMB_FILE, i, count);
+			break;
+		}
+		LightLock_Lock(&lock);
+		if (!thumb_insert(t)) free(t);
+		LightLock_Unlock(&lock);
+	}
+	if (f) fclose(f);
+	LightLock_Lock(&lock);
+	thumbs_loaded = true;
+	thumbs_dirty = nthumbs != count;   // damaged or missing: write it again
+	thumbs_dirty_at = 0;
+	LightLock_Unlock(&lock);
+	thumb_load_ms = (unsigned)(osGetTime() - t0);
+	log_printf("covers: %d small covers in %ums\n", nthumbs, thumb_load_ms);
+	return true;
+}
+
+// Write covers/thumbs.pk next to the old one, then put it in place (worker).
+// A pause throws the new file away; it is written again later.
+static void thumbs_save(void)
+{
+	u64 t0 = osGetTime();
+	LightLock_Lock(&lock);
+	int count = nthumbs;
+	thumbs_dirty = false;
+	LightLock_Unlock(&lock);
+	FILE *f = safe_begin(THUMB_FILE);
+	thumb_head_t head = { THUMB_MAGIC, count, COVER_THUMB_BYTES, 0 };
+	bool ok = f && fwrite(&head, sizeof(head), 1, f) == 1;
+	for (int i = 0; ok && i < count; i++) {
+		if (quit || paused) {
+			ok = false;
+			break;
+		}
+		// records only ever get added or replaced, never removed, while the
+		// library is open: index i is still a whole record
+		LightLock_Lock(&lock);
+		thumb_t rec = *thumbs[i < nthumbs ? i : nthumbs - 1];
+		LightLock_Unlock(&lock);
+		ok = fwrite(&rec, sizeof(rec), 1, f) == 1;
+	}
+	if (f) safe_finish(f, THUMB_FILE, ok);
+	if (!ok) {
+		LightLock_Lock(&lock);
+		thumbs_dirty = true;
+		LightLock_Unlock(&lock);
+	}
+	thumb_save_ms = (unsigned)(osGetTime() - t0);
+	log_printf("covers: %d small covers %s in %ums\n", count, ok ? "saved" : "not saved", thumb_save_ms);
 }
 
 // ---------------------------------------------------------------- decode
@@ -479,11 +729,11 @@ static bool fetch_cover(const game_t *g, bool *retry, cover_t *c)
 // The cover cache holds the picture for this game's file name; a PNG of the
 // player's own beats it. Marks the cache with the PNG's size and time, so a
 // changed PNG is picked up and a removed one gives the game back to the download.
-static bool load_user_cover(const char *key, const char *own, const char *path, cover_t *c)
+static bool load_user_cover(const char *key, const char *own, const char *path, cover_t *c, bool *fresh)
 {
 	struct stat ps, cs;
 	long size = 0, mtime = 0;
-	bool png = !stat(own, &ps) && S_ISREG(ps.st_mode);
+	bool png = own_png_maybe(key) && !stat(own, &ps) && S_ISREG(ps.st_mode);
 	bool marked = boxart_user_get(key, &size, &mtime);
 	if (!png) {
 		if (marked) {   // the PNG is gone: the cover made from it goes too
@@ -508,6 +758,7 @@ static bool load_user_cover(const char *key, const char *own, const char *path, 
 	bool ok = pack_cover(px, w, h, c);
 	free(px);
 	if (ok) {
+		*fresh = true;
 		write_cv2(path, c);
 		LightLock_Lock(&state_lock);
 		boxart_user_set(key, (long)ps.st_size, (long)ps.st_mtime);
@@ -517,14 +768,15 @@ static bool load_user_cover(const char *key, const char *own, const char *path, 
 	return ok;
 }
 
-static bool load_cover(const game_t *g, bool *retry, bool refresh, cover_t *c)
+// *fresh: the cover is new (not the cached one): its small copy is made again
+static bool load_cover(const game_t *g, bool *retry, bool refresh, cover_t *c, bool *fresh)
 {
 	char path[PATH_LEN], legacy[PATH_LEN], own[PATH_LEN];
 	cache_path(g->cover_key, ".cv2", path, sizeof(path));
 	cache_path(g->cover_key, ".png", own, sizeof(own));
 
 	// 1. the player's own PNG, then our cache (a finished texture)
-	if (!refresh && load_user_cover(g->cover_key, own, path, c))
+	if (!refresh && load_user_cover(g->cover_key, own, path, c, fresh))
 		return true;
 	if (!refresh && read_cv2(path, c)) {
 		__atomic_add_fetch(&cache_hits, 1, __ATOMIC_RELAXED);
@@ -540,6 +792,7 @@ static bool load_cover(const game_t *g, bool *retry, bool refresh, cover_t *c)
 	// 3. download
 	if (!fetch_cover(g, retry, c))
 		return false;
+	*fresh = true;
 	write_cv2(path, c);
 	remove(legacy);
 	LightLock_Lock(&state_lock);
@@ -568,6 +821,67 @@ static bool upgrade_cover(const game_t *g, bool *retry, cover_t *c)
 	return ok;
 }
 
+// Nothing to load for the screen: make small copies of cached covers that
+// have none yet (nearest to the selection first), and save the small cover
+// file a few seconds after the last change. true: did something.
+static bool thumbs_idle_work(void)
+{
+	if (!thumbs_loaded || quit || paused)
+		return false;
+	int n = library_count(), game = -1;
+	bool save = false;
+	LightLock_Lock(&lock);
+	if (thumb_tried_n != n) {
+		free(thumb_tried);
+		thumb_tried = calloc(n ? n : 1, 1);
+		thumb_tried_n = thumb_tried ? n : 0;
+	}
+	if (paused) {
+		LightLock_Unlock(&lock);
+		return false;
+	}
+	for (int d = 0; thumb_tried && d < n && game < 0; d++)
+		for (int side = 0; side < 2 && game < 0; side++) {
+			int i = (focus_game < 0 ? 0 : focus_game) + (side ? -d : d);
+			if (i < 0 || i >= n || thumb_tried[i])
+				continue;
+			thumb_tried[i] = 1;
+			const game_t *g = library_get(i);
+			if (g && thumb_find(name_hash(g->cover_key)) < 0)
+				game = i;
+		}
+	if (game < 0 && thumbs_dirty && osGetTime() - thumbs_dirty_at > 3000)
+		save = true;
+	if (game >= 0 || save)
+		__atomic_add_fetch(&busy, 1, __ATOMIC_SEQ_CST);
+	LightLock_Unlock(&lock);
+	if (save)
+		thumbs_save();
+	else if (game >= 0) {
+		const game_t *g = library_get(game);
+		char path[PATH_LEN];
+		cover_t c = { 0 };
+		if (g) {
+			cache_path(g->cover_key, ".cv2", path, sizeof(path));
+			bool ok = read_cv2(path, &c);
+			if (!ok) {
+				cache_path(g->cover_key, ".bin", path, sizeof(path));
+				ok = read_legacy(path, &c);
+			}
+			if (ok) {
+				thumb_make(g->cover_key, &c, false);
+				__atomic_add_fetch(&thumb_filled, 1, __ATOMIC_RELAXED);
+			}
+			free(c.data);
+		}
+		// leave the UI core some room on Old 3DS (the worker shares core 0 there)
+		svcSleepThread(g_new3ds ? 1000000LL : 8000000LL);
+	}
+	if (game >= 0 || save)
+		__atomic_sub_fetch(&busy, 1, __ATOMIC_SEQ_CST);
+	return game >= 0 || save;
+}
+
 static void worker_main(void *arg)
 {
 	(void)arg;
@@ -579,6 +893,23 @@ static void worker_main(void *arg)
 		for (;;) {
 			while (paused && !quit)
 				svcSleepThread(100000000LL);
+			// the small covers first: they show while the rest loads
+			if ((!thumbs_loaded || !own_pngs_ok) && !quit) {
+				LightLock_Lock(&lock);
+				bool mine = (!thumbs_loaded || !own_pngs_ok) && !thumbs_loading && !paused;
+				if (mine) {
+					thumbs_loading = true;
+					__atomic_add_fetch(&busy, 1, __ATOMIC_SEQ_CST);
+				}
+				LightLock_Unlock(&lock);
+				if (mine) {
+					if (!own_pngs_ok) own_pngs_scan();
+					if (!thumbs_loaded) thumbs_load();
+					thumbs_loading = false;
+					__atomic_sub_fetch(&busy, 1, __ATOMIC_SEQ_CST);
+					continue;
+				}
+			}
 			int pick = -1, game = -1, best = 1 << 30;
 			bool refresh = false, upgrade = false;
 			LightLock_Lock(&lock);
@@ -638,14 +969,20 @@ static void worker_main(void *arg)
 				LightLock_Unlock(&lock);
 				__atomic_sub_fetch(&busy, 1, __ATOMIC_SEQ_CST);
 			}
-			if (pick < 0)
+			if (pick < 0) {
+				if (thumbs_idle_work())
+					continue;
 				break;
+			}
 			const game_t *g = library_get(game);
 			u64 t0 = osGetTime();
 			log_printf("covers: start #%d\n", game);
 			bool retry = true;
 			cover_t c = { 0 };
-			bool ok = g && (upgrade ? upgrade_cover(g, &retry, &c) : load_cover(g, &retry, refresh, &c));
+			bool fresh = false;
+			bool ok = g && (upgrade ? upgrade_cover(g, &retry, &c) : load_cover(g, &retry, refresh, &c, &fresh));
+			if (ok && thumbs_loaded)
+				thumb_make(g->cover_key, &c, fresh || upgrade);
 			log_printf("covers: #%d %s -> %s%s in %llums\n", game, g ? g->cover_key : "?",
 				ok ? "ok" : "none", ok && c.lowres ? " (small)" : "", osGetTime() - t0);
 			LightLock_Lock(&lock);
@@ -687,6 +1024,8 @@ void covers_init(void)
 	paused = true; // library entry explicitly resumes after SOC/control init
 	for (int i = 0; i < SLOTS; i++)
 		slots[i].game = -1;
+	for (int i = 0; i < TSLOTS; i++)
+		tslots[i].game = -1;
 	LightLock_Init(&lock);
 	LightLock_Init(&state_lock);
 	boxart_misses_load(COVER_STATE, PSX3D_VERSION);
@@ -746,6 +1085,14 @@ void covers_exit(void)
 		if (slots[i].tex_ok)
 			C3D_TexDelete(&slots[i].tex);
 	}
+	for (int i = 0; i < TSLOTS; i++)
+		if (tslots[i].tex_ok)
+			C3D_TexDelete(&tslots[i].tex);
+	thumbs_free();
+	free(own_pngs);
+	own_pngs = NULL;
+	free(thumb_tried);
+	thumb_tried = NULL;
 	net_close();
 	state_flush();
 	boxart_misses_free();
@@ -764,7 +1111,56 @@ void covers_exit(void)
 	}
 }
 
-// Texture for game i if it's ready; otherwise queue it and return NULL.
+// The small copy of a game's cover, while drawing (caller holds lock). Its
+// subtexture has the full cover's size, so it shows exactly where and as large
+// as the full one will. Textures are reused least recently drawn first; one
+// drawn earlier in this frame is never rewritten (the frame began after the
+// GPU finished the previous ones, see video_present_screens).
+static C3D_Tex *thumb_get(int game, Tex3DS_SubTexture *sub)
+{
+	if (!thumbs_loaded || !nthumbs)
+		return NULL;
+	tslot_t *t = NULL, *lru = NULL;
+	for (int i = 0; i < TSLOTS; i++) {
+		if (tslots[i].game == game) {
+			t = &tslots[i];
+			break;
+		}
+		if (tslots[i].used != pump_frame && (!lru || tslots[i].used < lru->used))
+			lru = &tslots[i];
+	}
+	if (!t) {
+		const game_t *g = library_get(game);
+		int k = g && lru && thumb_uploads_left > 0 ? thumb_find(name_hash(g->cover_key)) : -1;
+		if (k < 0)
+			return NULL;
+		t = lru;
+		if (!t->tex_ok) {
+			t->tex_ok = C3D_TexInit(&t->tex, COVER_THUMB, COVER_THUMB, GPU_RGB565);
+			if (!t->tex_ok)
+				return NULL;
+			C3D_TexSetFilter(&t->tex, GPU_LINEAR, GPU_LINEAR);
+			C3D_TexSetWrap(&t->tex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
+		}
+		const thumb_t *src = thumbs[k];
+		memcpy(t->tex.data, src->px, COVER_THUMB_BYTES);
+		GSPGPU_FlushDataCache(t->tex.data, COVER_THUMB_BYTES);
+		t->game = game;
+		t->w = src->w;
+		t->h = src->h;
+		t->tw = (src->w + 3) / 4;
+		t->th = (src->h + 3) / 4;
+		thumb_uploads_left--;
+	}
+	t->used = pump_frame;
+	float u = (float)t->tw / COVER_THUMB, v = 1.0f - (float)t->th / COVER_THUMB;
+	*sub = (Tex3DS_SubTexture){ t->w, t->h, 0.0f, 1.0f, u, v };
+	last_tier = 1;
+	return &t->tex;
+}
+
+// Texture for game i if it's ready (or its small copy while drawing);
+// otherwise queue it and return NULL.
 C3D_Tex *covers_get(int game, Tex3DS_SubTexture *sub)
 {
 	if (sw_nocovers)
@@ -804,13 +1200,15 @@ C3D_Tex *covers_get(int game, Tex3DS_SubTexture *sub)
 		s->last_used = use_clock;
 	}
 	bool shown = s && s->shown && s->tex_ok;
+	last_tier = shown ? 2 : 0;
 	if (shown && sub) {
 		// the picture is the top left w x h of the texture; top = 1 is its first row
 		float u = (float)s->w / COVER_TEX, v = 1.0f - (float)s->h / COVER_TEX;
 		*sub = (Tex3DS_SubTexture){ s->w, s->h, 0.0f, 1.0f, u, v };
 	}
+	C3D_Tex *tex = shown ? &s->tex : sub ? thumb_get(game, sub) : NULL;
 	LightLock_Unlock(&lock);
-	return shown ? &s->tex : NULL;
+	return tex;
 }
 
 // Upload decoded covers to textures. Called inside the frame (from
@@ -834,6 +1232,8 @@ static void covers_pump_in_frame(void)
 		}
 	}
 	frame_last = now;
+	pump_frame++;
+	thumb_uploads_left = 12;
 	int done = 0;
 	for (int i = 0; i < SLOTS && done < 2; i++) {
 		slot_t *s = &slots[i];
@@ -884,6 +1284,68 @@ void covers_stats_reset(void)
 	frames = frames_over_25ms = frames_over_40ms = frame_max_us = 0;
 	frame_total_us = 0;
 	uploads = upload_max_us = upload_total_us = 0;
+	sel_changes = sel_any_n = sel_full_n = sel_any_max_ms = sel_full_max_ms = 0;
+	sel_any_total_ms = sel_full_total_ms = 0;
+	near_draws = near_blank = near_small = 0;
+}
+
+// Developer scroll test: the library moves by itself, as if a direction
+// (kind 1) or L/R (kind 2) were held: one step every period frames.
+void covers_test_start(int kind, int steps, int period)
+{
+	covers_stats_reset();
+	test_count = 0;
+	test_period = period < 1 ? 1 : period;
+	test_steps = steps;
+	test_kind = kind;
+}
+
+// the library's move this frame: 0, or +-1 (one game), +-2 (one letter)
+int covers_test_tick(void)
+{
+	if (!test_kind)
+		return 0;
+	if (test_steps <= 0) {
+		test_kind = 0;
+		return 0;
+	}
+	if (test_count++ % test_period)
+		return 0;
+	test_steps--;
+	int k = test_kind < 0 ? -test_kind : test_kind;
+	return test_kind < 0 ? -k : k;
+}
+
+// The selection changed (libui), and what a cover drawn this frame showed.
+void covers_note_select(void)
+{
+	sel_tick = svcGetSystemTick();
+	sel_any = sel_full = false;
+	sel_changes++;
+}
+
+void covers_note_draw(bool selected, bool near)
+{
+	if (near) {
+		near_draws++;
+		near_blank += !last_tier;
+		near_small += last_tier == 1;
+	}
+	if (!selected || !sel_tick)
+		return;
+	unsigned ms = (unsigned)((svcGetSystemTick() - sel_tick) * 1000 / SYSCLOCK_ARM11);
+	if (last_tier && !sel_any) {
+		sel_any = true;
+		sel_any_n++;
+		sel_any_total_ms += ms;
+		if (ms > sel_any_max_ms) sel_any_max_ms = ms;
+	}
+	if (last_tier == 2 && !sel_full) {
+		sel_full = true;
+		sel_full_n++;
+		sel_full_total_ms += ms;
+		if (ms > sel_full_max_ms) sel_full_max_ms = ms;
+	}
 }
 
 // Developer-only refresh of a library cover, without deleting any SD files.
@@ -957,9 +1419,9 @@ void covers_resume(void)
 // a new UI frame: covers_get calls from now on rank from the selection out
 void covers_focus(int game)
 {
-	(void)game;
 	if (sw_nocovers)
 		return;
+	focus_game = game;
 	frame_base = use_clock + 1;
 	LightEvent_Signal(&wake);
 	LightEvent_Signal(&wake);
@@ -992,7 +1454,24 @@ void covers_release_gpu(void)
 		if (s->state == 3)
 			s->state = 1;
 	}
+	for (int i = 0; i < TSLOTS; i++) {
+		if (tslots[i].tex_ok)
+			C3D_TexDelete(&tslots[i].tex);
+		tslots[i].tex_ok = false;
+		tslots[i].game = -1;
+	}
 	LightLock_Unlock(&lock);
+	// Old 3DS: the small covers' memory (8 KiB a game) goes to the game too;
+	// they are read again in the library. Unsaved new ones are lost, and made
+	// again from the cache by the background fill.
+	if (!g_new3ds) {
+		thumbs_free();
+		LightLock_Lock(&lock);
+		free(thumb_tried);
+		thumb_tried = NULL;
+		thumb_tried_n = 0;
+		LightLock_Unlock(&lock);
+	}
 }
 
 // forget everything (after a rescan the game indexes change). A rescan the
@@ -1015,6 +1494,12 @@ void covers_reset(void)
 		free(slots[i].pixels);
 		slots[i].pixels = NULL;
 	}
+	for (int i = 0; i < TSLOTS; i++)
+		tslots[i].game = -1;
+	free(thumb_tried);
+	thumb_tried = NULL;
+	thumb_tried_n = 0;
+	own_pngs_ok = false;   // the worker looks at the folder again
 	LightLock_Unlock(&lock);
 }
 
@@ -1050,10 +1535,17 @@ void covers_debug(char *out, size_t len)
 	         "\"failures\":%u,\"curl\":%d,\"http\":%ld,\"stop_ms\":%u,\"max_stop_ms\":%u,"
 	         "\"ready\":%d,\"wanted\":%d,\"cached\":%d,\"missing\":%d,\"invalid_cache\":%d,"
 	         "\"legacy\":%d,\"upgraded\":%u,\"miss_skips\":%u,\"other_names\":%u,\"uploads\":%u,\"upload_avg_us\":%u,\"upload_max_us\":%u,"
-	         "\"frames\":%u,\"frame_avg_us\":%u,\"frame_max_us\":%u,\"frames_over_25ms\":%u,\"frames_over_40ms\":%u}",
+	         "\"frames\":%u,\"frame_avg_us\":%u,\"frame_max_us\":%u,\"frames_over_25ms\":%u,\"frames_over_40ms\":%u,"
+	         "\"test_active\":%s,\"sel_changes\":%u,\"sel_any\":%u,\"sel_any_avg_ms\":%u,\"sel_any_max_ms\":%u,"
+	         "\"sel_full\":%u,\"sel_full_avg_ms\":%u,\"sel_full_max_ms\":%u,\"near_draws\":%u,\"near_blank\":%u,\"near_small\":%u,"
+	         "\"thumbs\":%d,\"thumbs_loaded\":%s,\"thumb_made\":%u,\"thumb_filled\":%u,\"thumb_load_ms\":%u,\"thumb_save_ms\":%u,\"own_pngs\":%d}",
 	         paused ? "true" : "false", busy, net_open ? "true" : "false", attempts,
 	         downloaded, cache_hits, aborted_count, failures, last_curl, last_http,
 	         stop_ms, max_stop_ms, ready, wanted, cached, missing, invalid,
 	         legacy, upgraded, miss_skips, other_names, uploads, uploads ? upload_total_us / uploads : 0, upload_max_us,
-	         frames, frames ? (unsigned)(frame_total_us / frames) : 0, frame_max_us, frames_over_25ms, frames_over_40ms);
+	         frames, frames ? (unsigned)(frame_total_us / frames) : 0, frame_max_us, frames_over_25ms, frames_over_40ms,
+	         test_kind ? "true" : "false", sel_changes, sel_any_n, sel_any_n ? (unsigned)(sel_any_total_ms / sel_any_n) : 0,
+	         sel_any_max_ms, sel_full_n, sel_full_n ? (unsigned)(sel_full_total_ms / sel_full_n) : 0, sel_full_max_ms,
+	         near_draws, near_blank, near_small, nthumbs, thumbs_loaded ? "true" : "false", thumb_made, thumb_filled,
+	         thumb_load_ms, thumb_save_ms, nown_pngs);
 }

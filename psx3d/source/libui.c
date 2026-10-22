@@ -366,6 +366,7 @@ static void draw_cover(int e, float cx, float cy, float size, float dim, float z
 	}
 	Tex3DS_SubTexture st;
 	C3D_Tex *t = covers_get(i, &st);
+	covers_note_draw(e == sel, dim < 0.6f);
 	// a cover keeps its own aspect: the longer side is `size`, centred in the square
 	float sc = t ? size / (st.width > st.height ? st.width : st.height) : 1.0f;
 	float cw = t ? st.width * sc : size, ch = t ? st.height * sc : size;
@@ -1094,6 +1095,13 @@ int libui_run(char *out_path, size_t len)
 			sfx_play(SFX_SELECT);
 		}
 		if (n) {
+			int t = covers_test_tick();   // developer scroll test
+			if (t == 1 || t == -1)
+				sel = sel + t < 0 ? 0 : sel + t >= n ? n - 1 : sel + t;
+			if ((t == 2 || t == -2) && az_start >= 0 && open_series < 0) {
+				sel = letter_jump(t / 2);
+				jump_frames = 48;
+			}
 			if (repeat(k, h, KEY_DRIGHT | KEY_CPAD_RIGHT, &rep_r) || repeat(k, h, KEY_DDOWN | KEY_CPAD_DOWN, &rep_d))
 				sel = sel + 1 < n ? sel + 1 : sel;
 			if (repeat(k, h, KEY_DLEFT | KEY_CPAD_LEFT, &rep_l) || repeat(k, h, KEY_DUP | KEY_CPAD_UP, &rep_u))
@@ -1190,6 +1198,7 @@ int libui_run(char *out_path, size_t len)
 		}
 		if (title_for != sel) {
 			title_for = sel;
+			covers_note_select();
 			title_t = 0;
 			pop = 0.88f;
 			pop_v = 0;
@@ -1202,12 +1211,14 @@ int libui_run(char *out_path, size_t len)
 		if (jump_frames > 0 && !scrubbing) jump_frames--;
 		// a downloaded preset pack: checked and swapped in here, used from the next game
 		if (presets_update_poll()) say("Game settings updated");
-		// the selection first, then outward: what's on screen loads first
+		// the selection first, then the way the carousel is moving (a few
+		// more that way), then behind it: what comes on screen loads first
 		covers_focus(entry_game(sel));
-		for (int d = 0; d <= 4; d++) {
-			if (sel + d < n) covers_get(entry_game(sel + d), NULL);
-			if (d && sel - d >= 0) covers_get(entry_game(sel - d), NULL);
-		}
+		int ahead = anim_v < -0.5f ? -1 : 1;
+		for (int d = 0; d <= 6; d++)
+			if (sel + ahead * d >= 0 && sel + ahead * d < n) covers_get(entry_game(sel + ahead * d), NULL);
+		for (int d = 1; d <= 3; d++)
+			if (sel - ahead * d >= 0 && sel - ahead * d < n) covers_get(entry_game(sel - ahead * d), NULL);
 
 		covers_pump();
 		C2D_TextBufClear(tbuf);

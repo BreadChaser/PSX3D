@@ -15,6 +15,7 @@ extern int dev_ui_slot;
 bool dev_covers_blocked(void);
 bool covers_refresh(int game);
 void covers_debug(char *out, size_t len);
+void covers_test_start(int kind, int steps, int period);   // kind +-1 hold, +-2 letter jump
 void dev_init(void);
 void dev_shutdown(void);
 bool dev_tick(bool playing); /* main thread, after pica_thread_sync */

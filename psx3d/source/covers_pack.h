@@ -14,6 +14,9 @@
 #define COVER_LEVELS   1
 #define COVER_PACK_BYTES (COVER_TEX * COVER_TEX * 2)
 #define COVER_LEGACY_SIZE 128     // the old cache: 128x128 RGBA8 square
+// the small copy every cover gets (one quarter of the size, same layout)
+#define COVER_THUMB    64
+#define COVER_THUMB_BYTES (COVER_THUMB * COVER_THUMB * 2)
 
 // what transparent pixels turn into: the library's card colour
 #define COVER_BG_R 20
@@ -32,4 +35,9 @@ void covers_fit(int w, int h, int max, int *ow, int *oh);
 // rgba: w*h pixels, R in the top byte (the decoder's order), w,h <= COVER_TEX.
 // out: COVER_PACK_BYTES. Transparent pixels must already be flattened.
 void covers_pack(const uint32_t *rgba, int w, int h, uint8_t *out);
+
+// A packed cover (w x h picture) -> its COVER_THUMB copy (4x4 texels
+// averaged in linear light): COVER_THUMB_BYTES, the picture (*tw x *th) in
+// its top left like the full one.
+void covers_thumb(const uint8_t *packed, int w, int h, uint8_t *out, int *tw, int *th);
 #endif

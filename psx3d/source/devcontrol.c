@@ -454,11 +454,19 @@ bool dev_tick(bool playing)
 		} else if (clip_command(command,args,playing)) {
 		} else if (!strcmp(command, "covers")) {
 			if (!*args) {
-				char info[1536];
+				char info[2048];
 				covers_debug(info, sizeof(info));
 				dev_reply(info);
 			} else if (!strcmp(args, "stats-reset")) {
 				covers_stats_reset();
+				dev_reply("{\"ok\":true}");
+			} else if (!strncmp(args, "scroll=", 7) || !strncmp(args, "jump=", 5)) {
+				// "scroll=<+-steps>,<frames per step>": the library moves as if held
+				bool jump = args[0] == 'j';
+				int steps = 0, period = 4;
+				sscanf(args + (jump ? 5 : 7), "%d,%d", &steps, &period);
+				int kind = (jump ? 2 : 1) * (steps < 0 ? -1 : 1);
+				covers_test_start(kind, steps < 0 ? -steps : steps, period);
 				dev_reply("{\"ok\":true}");
 			} else {
 				int game = -1;

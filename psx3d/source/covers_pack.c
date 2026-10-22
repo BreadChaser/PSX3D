@@ -87,3 +87,41 @@ void covers_pack(const uint32_t *rgba, int w, int h, uint8_t *out)
 	img_t pic = { rgba, w, h };
 	emit(&pic, COVER_TEX, out);
 }
+
+// the texel at (x, y) of a packed COVER_TEX cover
+static inline uint16_t packed_texel(const uint16_t *p, int x, int y)
+{
+	unsigned tx = x & 7, ty = y & 7;
+	unsigned z = (tx & 1) | (ty & 1) << 1 | (tx & 2) << 1 | (ty & 2) << 2 | (tx & 4) << 2 | (ty & 4) << 3;
+	return p[((y >> 3) * (COVER_TEX / 8) + (x >> 3)) * 64 + z];
+}
+
+void covers_thumb(const uint8_t *packed, int w, int h, uint8_t *out, int *tw, int *th)
+{
+	enum { F = COVER_TEX / COVER_THUMB };
+	static const uint8_t five[32] = {   // 5 and 6 bit channels -> 8 bit
+		0, 8, 16, 25, 33, 41, 49, 58, 66, 74, 82, 90, 99, 107, 115, 123,
+		132, 140, 148, 156, 165, 173, 181, 189, 197, 206, 214, 222, 230, 239, 247, 255 };
+	covers_gamma_init();
+	const uint16_t *p = (const uint16_t *)packed;
+	uint32_t px[COVER_THUMB * COVER_THUMB];
+	for (int y = 0; y < COVER_THUMB; y++)
+		for (int x = 0; x < COVER_THUMB; x++) {
+			unsigned r = 0, g = 0, b = 0;
+			for (int yy = 0; yy < F; yy++)
+				for (int xx = 0; xx < F; xx++) {
+					uint16_t c = packed_texel(p, x * F + xx, y * F + yy);
+					unsigned g6 = c >> 5 & 63;
+					r += covers_lin[five[c >> 11]];
+					g += covers_lin[(g6 << 2) | (g6 >> 4)];
+					b += covers_lin[five[c & 31]];
+				}
+			r /= F * F; g /= F * F; b /= F * F;
+			px[y * COVER_THUMB + x] = (uint32_t)covers_srgb[r] << 24 | (uint32_t)covers_srgb[g] << 16 |
+			                          (uint32_t)covers_srgb[b] << 8 | 255;
+		}
+	*tw = (w + F - 1) / F;
+	*th = (h + F - 1) / F;
+	img_t pic = { px, COVER_THUMB, COVER_THUMB };
+	emit(&pic, COVER_THUMB, out);
+}

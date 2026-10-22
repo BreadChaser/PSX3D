@@ -34,6 +34,34 @@ static void unpack(const uint8_t *pack, int lv, int x, int y, int rgb[3])
 static double lin(int c) { double v = c / 255.0; return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4); }
 static int srgb(double l) { double v = l <= 0.0031308 ? l * 12.92 : 1.055 * pow(l, 1 / 2.4) - 0.055; return (int)(v * 255 + 0.5); }
 
+// the small copy: each texel the linear-light average of its 4x4 texels of
+// the packed cover (5/6 bit rounding and dithering on top)
+static void check_thumb(const uint8_t *pack, int w, int h, const char *name)
+{
+	static uint8_t thumb[COVER_THUMB_BYTES];
+	int tw, th, worst = 0;
+	covers_thumb(pack, w, h, thumb, &tw, &th);
+	assert(tw == (w + 3) / 4 && th == (h + 3) / 4);
+	for (int y = 0; y < COVER_THUMB; y++)
+		for (int x = 0; x < COVER_THUMB; x++) {
+			double sum[3] = { 0 };
+			int rgb[3], t[3];
+			for (int yy = 0; yy < 4; yy++)
+				for (int xx = 0; xx < 4; xx++) {
+					unpack(pack, 0, x * 4 + xx, y * 4 + yy, rgb);
+					for (int c = 0; c < 3; c++) sum[c] += lin(rgb[c]);
+				}
+			unpack(thumb, 2, x, y, t);
+			for (int c = 0; c < 3; c++) {
+				int d = abs(t[c] - srgb(sum[c] / 16));
+				if (d > worst) worst = d;
+			}
+		}
+	printf("%s thumb %dx%d worst %d\n", worst <= 12 ? "PASS" : "FAIL", tw, th, worst);
+	(void)name;
+	assert(worst <= 12);
+}
+
 static void check(const uint32_t *src, int w, int h, const char *dump, const char *name)
 {
 	uint8_t *pack = malloc(COVER_PACK_BYTES);
@@ -79,6 +107,7 @@ static void check(const uint32_t *src, int w, int h, const char *dump, const cha
 			free(rgb);
 		}
 	}
+	check_thumb(pack, w, h, name);
 	free(pack);
 	printf("PASS pack %s %dx%d\n", name, w, h);
 }
