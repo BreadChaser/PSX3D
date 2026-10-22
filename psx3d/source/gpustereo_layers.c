@@ -208,6 +208,8 @@ GS_COLD static void lay_remap(lslot *s)
 static bool ldrew;   // a primitive since the last picture shown
 GS_COLD void gs_core_shown(int x, int y, int w, int h)
 {
+	if (w > 0 && h > 0)
+		gs_core_pass_shown(x, y, w, h);
 	if (!lcell || w <= 0 || h <= 0)
 		return;
 	lslot *s = NULL, *old = NULL;

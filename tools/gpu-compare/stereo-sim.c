@@ -115,15 +115,20 @@ void stereo_sim_draw(int primitive, int first, int n)
     C3D_RenderTarget back = { canon };
     C3D_FrameDrawOn(right_rt);
     if (moved) { sim_buf_set(shifted - first); moved_draws++; }
-    if (dump) {
+    // STEREO_DUMP_ALL: also sprites, rectangles, lines, uploads (kind S, last column);
+    // STEREO_DUMP_FIRST / _LAST: only those frames
+    if (dump && (!getenv("STEREO_DUMP_FIRST") || dump_frame >= atoi(getenv("STEREO_DUMP_FIRST"))) &&
+        (!getenv("STEREO_DUMP_LAST") || dump_frame <= atoi(getenv("STEREO_DUMP_LAST")))) {
         const gs_vtx *src = (const gs_vtx *)data + first;
+        int all = getenv("STEREO_DUMP_ALL") != NULL;
         for (int i = 0; i + 3 <= n; i += 3) {
             int poly = 1;
             for (int k = 0; k < 3; k++) poly &= (src[i + k].x & 15) == 8 && (src[i + k].y & 15) == 7;
-            if (!poly) continue;
+            if (!poly && !all) continue;
             fprintf(dump, "%d %llu", dump_frame, draws);
             for (int k = 0; k < 3; k++)
                 fprintf(dump, " %d %d %d", src[i + k].x, src[i + k].y, shifted[i + k].x - src[i + k].x);
+            if (all) fprintf(dump, " %c %d %d %u", poly ? 'P' : 'S', src[i].u, src[i].v, (unsigned)(src[i].rgba >> 24));
             fputc('\n', dump);
         }
     }
@@ -184,8 +189,10 @@ void stereo_sim_frame(const char *dir, const int *info)
     }
     unsigned lookups, found, shifted, rejected;
     gs_core_counts(&lookups, &found, &shifted, &rejected);
-    fprintf(stderr, "stereo %d blend %.2f focus %.1f corners %u found %u shifted %u rejected %u draws %llu mirrored %llu moved %llu\n",
-        frame, gs_layer_blend(), gs_focus(), lookups, found, shifted, rejected, draws, mirrored, moved_draws);
+    extern unsigned gs_missed;
+    fprintf(stderr, "stereo %d blend %.2f focus %.1f corners %u found %u shifted %u rejected %u missed %u draws %llu mirrored %llu moved %llu\n",
+        frame, gs_layer_blend(), gs_focus(), lookups, found, shifted, rejected, gs_missed, draws, mirrored, moved_draws);
+    gs_missed = 0;
     draws = mirrored = moved_draws = 0;
     if (getenv("GPU_HASH_VRAM")) {
         unsigned long long hash = 1469598103934665603ull;
