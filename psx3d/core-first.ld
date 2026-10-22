@@ -146,7 +146,11 @@ SECTIONS
 		*(.gnu.warning)
 		*(.gnu.linkonce.t*)
 		/* Optional renderer feedback path: its growth must not move the
-		   existing core or library code. This is live code, not padding. */
+		   existing core or library code. This is live code, not padding.
+		   Native sprites run per draw in render-to-texture games: it
+		   starts at its RC4 page offset, so frontend growth before it
+		   leaves its cache sets alone. */
+		. = . + ((0x44c - .) & 0xfff);
 		*(.pica_rtt.text)
 		/* Save/menu/message code marked PSX3D_COLD (psx3d.h). */
 		*(.psx3d_cold.text)
