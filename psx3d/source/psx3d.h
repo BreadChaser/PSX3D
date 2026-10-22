@@ -453,13 +453,15 @@ int library_omitted(void);                  // files and folders the last scan l
 const char *library_launch_path(const game_t *g, char *buf, size_t len);
 
 // covers.c - box art
-#define COVER_SIZE 128
 void covers_init(void);
 void covers_exit(void);
-C3D_Tex *covers_get(int game);
+// The cover's texture, or NULL while it loads. *sub is the part of it that
+// holds the picture (its own aspect), in citro2d's flipped convention.
+C3D_Tex *covers_get(int game, Tex3DS_SubTexture *sub);
 void covers_reset(void);
 void covers_focus(int game);
 void covers_pump(void);
+void covers_stats_reset(void);   // developer diagnostics
 bool covers_busy(void);
 bool covers_stop(void);
 void covers_stop_wait(void);

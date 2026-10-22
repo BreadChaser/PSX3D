@@ -161,15 +161,16 @@ static void draw_cover(int e, float cx, float cy, float size, float dim, float z
 		// (plain cards until their art has loaded)
 		for (int k = 2; k >= 1; k--) {
 			float o = k * size * 0.06f, bx = x + o + ui_depth(0.3f * k), bz = z - 0.004f * k;
-			C3D_Tex *t = k < library_series_size(s) && dim < 0.6f ? covers_get(library_series_game(s, k)) : NULL;
+			Tex3DS_SubTexture st;
+			C3D_Tex *t = k < library_series_size(s) && dim < 0.6f ? covers_get(library_series_game(s, k), &st) : NULL;
 			if (t) {
 				// fanned up and right, a little smaller, so each cover reads
 				float bs = size * (1 - 0.07f * k), f = k * size * 0.11f;
-				Tex3DS_SubTexture st = { COVER_SIZE, COVER_SIZE, 0.0f, 1.0f, 1.0f, 0.0f };
+				float sc = bs / (st.width > st.height ? st.width : st.height);
 				C2D_ImageTint tint;
 				C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim + 0.15f * k);
-				C2D_DrawImageAt((C2D_Image){ t, &st }, x + size - bs + f + ui_depth(0.3f * k), y - f, bz, &tint,
-					bs / COVER_SIZE, bs / COVER_SIZE);
+				C2D_DrawImageAt((C2D_Image){ t, &st }, x + size - bs + f + ui_depth(0.3f * k) + (bs - st.width * sc) / 2,
+					y - f + (bs - st.height * sc) / 2, bz, &tint, sc, sc);
 				continue;
 			}
 			u8 c = (u8)(40 - k * 8);
@@ -179,15 +180,19 @@ static void draw_cover(int e, float cx, float cy, float size, float dim, float z
 				(*accent(e + k) & 0x00ffffff) | ((u32)(200 * (1 - dim)) << 24));
 		}
 	}
+	Tex3DS_SubTexture st;
+	C3D_Tex *t = covers_get(i, &st);
+	// a cover keeps its own aspect: the longer side is `size`, centred in the square
+	float sc = t ? size / (st.width > st.height ? st.width : st.height) : 1.0f;
+	float cw = t ? st.width * sc : size, ch = t ? st.height * sc : size;
 	// drop shadow on the "floor", a little behind the cover
-	C2D_DrawRectSolid(x + 4 + ui_depth(1.5f), y + 6, z - 0.01f, size, size, C2D_Color32(0, 0, 0, 110));
-	C3D_Tex *t = covers_get(i);
+	C2D_DrawRectSolid(x + (size - cw) / 2 + 4 + ui_depth(1.5f), y + (size - ch) / 2 + 6, z - 0.01f, cw, ch,
+		C2D_Color32(0, 0, 0, 110));
 	if (t) {
-		Tex3DS_SubTexture st = { COVER_SIZE, COVER_SIZE, 0.0f, 1.0f, 1.0f, 0.0f };
 		C2D_Image img = { t, &st };
 		C2D_ImageTint tint;
 		C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim);
-		C2D_DrawImageAt(img, x, y, z, dim > 0 ? &tint : NULL, size / COVER_SIZE, size / COVER_SIZE);
+		C2D_DrawImageAt(img, x + (size - cw) / 2, y + (size - ch) / 2, z, dim > 0 ? &tint : NULL, sc, sc);
 	} else {
 		u32 c = *accent(e);
 		C2D_DrawRectangle(x, y, z, size, size, C2D_Color32(20, 26, 60, 255), C2D_Color32(20, 26, 60, 255),
@@ -719,8 +724,8 @@ int libui_run(char *out_path, size_t len)
 		// the selection first, then outward: what's on screen loads first
 		covers_focus(entry_game(sel));
 		for (int d = 0; d <= 4; d++) {
-			if (sel + d < n) covers_get(entry_game(sel + d));
-			if (d && sel - d >= 0) covers_get(entry_game(sel - d));
+			if (sel + d < n) covers_get(entry_game(sel + d), NULL);
+			if (d && sel - d >= 0) covers_get(entry_game(sel - d), NULL);
 		}
 
 		covers_pump();

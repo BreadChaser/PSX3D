@@ -124,7 +124,7 @@ host:
 | `statsview`, `audio-resampler`, `frameskip` | the stats formatter, audio resampler and frameskip controller |
 | `input-replay` | the clip codec, input, analog and checkpoint handling |
 | `dev-server` (`psx3d/tests/dev`) | developer server lifecycle, a loopback TCP transport and the updater guards (including the tracked Python control client and benchmark driver) |
-| `covers`, `covers-worker` | the cover PNG decoder on generated images and the download worker against a loopback HTTP server |
+| `covers`, `covers-worker` | the cover PNG decoder and the texture packer (layout read back by an independent unswizzler) on generated images, and the download worker, old-cache upgrade included, against a loopback HTTP server |
 | `library`, `save-safety`, `save-names` | library scanner, crash-safe save/state/card files with backups, save-name ownership (`psx3d/tests/{library,save,saveid}`) |
 | `core-microtests` | real ARMv6 dynarec vs interpreter, load-delay/memory/SMC/GTE programs and HLE determinism; qemu-arm, no ROM/BIOS (`tests/core/README.md`) |
 | `c3d-abi` | the private citro3d structure layout PSX3D relies on |

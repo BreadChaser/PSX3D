@@ -108,9 +108,12 @@ continue servicing the mailbox; capture before confirming or cancel with `b`.
 when settings closes. It does not enable core debug output.
 
 The token-gated `covers` command reports worker, transfer, retry and cache counts,
-last curl/HTTP result, and last/maximum stop latency in milliseconds. Cache counts
-inspect only expected cover `.bin` files (valid files are exactly 65,536 bytes),
-without arbitrary SD access. `covers refresh=<exact_title_or_library_index>`
+last curl/HTTP result, last/maximum stop latency in milliseconds, and the main
+thread's texture-copy time (`uploads`, `upload_avg_us`, `upload_max_us`). Cache
+counts inspect only expected cover files, without arbitrary SD access: `.cv2`
+(finished 256x256 textures, valid files are exactly 174,736 bytes) count as
+`cached`; covers still only in the old 128x128 `.bin` format (exactly 65,536
+bytes) count as `legacy` and are upgraded in the background (`upgraded`). `covers refresh=<exact_title_or_library_index>`
 queues a fresh HTTPS fetch in the idle library, bypassing its cached image for
 that attempt. It preserves the on-disk cache unless a replacement decodes
 successfully. It is a developer diagnostic, not a user setting.

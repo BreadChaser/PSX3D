@@ -1,7 +1,11 @@
 // Box art. A low-priority worker thread fetches covers from the free
 // libretro-thumbnails database (by No-Intro name), decodes them, shrinks them
-// to 128x128 and caches that on the SD card in GPU-ready form, so each cover
-// is downloaded and decoded once. A user's own PNG in covers/ wins.
+// to fit 256x256 (keeping their aspect) and caches that on the SD card as a
+// finished GPU texture (RGB565, tiled, with mip levels; see covers_pack.c),
+// so each cover is downloaded and decoded once and the UI only copies it.
+// A user's own PNG in covers/ wins. Covers cached by older versions (128x128
+// RGBA8 .bin) show at once and are replaced by a full size download in the
+// background.
 // The UI asks for the covers around the selection; ready ones get uploaded
 // to textures on the main thread.
 #include <ctype.h>
@@ -12,6 +16,7 @@
 #include <sys/stat.h>
 #include <curl/curl.h>
 #include "covers_png.h"
+#include "covers_pack.h"
 #include "psx3d.h"
 #include "devtools.h"
 #include "presetupdate.h"
@@ -22,14 +27,24 @@
 #endif
 #define SLOTS 24
 
+// cache file: a header, then covers_pack's COVER_PACK_BYTES
+#define CV2_MAGIC 0x32564350u   // "PCV2"
+#define CV2_BYTES (16 + COVER_PACK_BYTES)
+typedef struct { u32 magic; u16 w, h; u32 levels, bytes; } cv2_head_t;
+
+typedef struct { u8 *data; u16 w, h; bool lowres; } cover_t;
+
 typedef struct {
 	int game;            // library index, -1 = free
 	volatile int state;  // 0 empty, 1 wanted, 2 pixels ready, 3 uploaded, 4 failed, 5 loading
-	u32 *pixels;         // COVER_SIZE^2, texture byte order
+	u8 *pixels;          // COVER_PACK_BYTES until uploaded (then freed)
+	u16 w, h;            // the picture's size inside the texture
 	C3D_Tex tex;
 	bool tex_ok;
+	bool shown;          // the texture holds this game's cover (it can be drawn)
+	bool lowres;         // it is the old 128x128 cover: fetch the full size one
+	bool upgrading;      // a worker is on it (state stays 3: the old picture stays up)
 	bool refresh;        // developer-requested HTTPS refresh; keep disk cache until success
-	u32 *staging;        // linear copy the GPU reads from (kept for reuse)
 	u32 last_used;
 	u64 retry_at;        // transient failures retry without scrolling away
 	u32 rank;            // order the UI asked for it in its latest frame (0 = selected)
@@ -44,7 +59,12 @@ static volatile bool quit;
 static u64 net_retry_at;   // after a network failure, wait before trying again
 static bool apt_was_paused;
 static unsigned apt_suspended;
-static unsigned attempts, downloaded, cache_hits, aborted_count, failures;
+static unsigned attempts, downloaded, cache_hits, aborted_count, failures, upgraded;
+static unsigned uploads, upload_max_us, upload_total_us;   // main thread: texture copies
+// library frame intervals (a developer diagnostic: is the carousel smooth?)
+static u64 frame_last;
+static unsigned frames, frames_over_25ms, frames_over_40ms, frame_max_us;
+static u64 frame_total_us;
 static int last_curl;
 static long last_http;
 static unsigned stop_ms, max_stop_ms;
@@ -140,9 +160,80 @@ static void cache_path(const char *key, const char *ext, char *out, size_t len)
 
 // ---------------------------------------------------------------- decode
 
-static u32 *decode_png(const void *data, size_t size, const char *file)
+static u32 *decode_png(const void *data, size_t size, const char *file, int *w, int *h)
 {
-	return covers_png_decode(data, size, file, COVER_SIZE);
+	return covers_png_decode(data, size, file, COVER_TEX, w, h);
+}
+
+// RGBA8 picture -> a finished cover (consumes nothing; the caller frees px)
+static bool pack_cover(const u32 *px, int w, int h, cover_t *c)
+{
+	c->data = malloc(COVER_PACK_BYTES);
+	if (c->data && covers_pack(px, w, h, c->data)) {
+		c->w = w;
+		c->h = h;
+		c->lowres = false;
+		return true;
+	}
+	free(c->data);
+	c->data = NULL;
+	return false;
+}
+
+static bool read_cv2(const char *path, cover_t *c)
+{
+	FILE *f = fopen(path, "rb");
+	if (!f) return false;
+	cv2_head_t head;
+	bool ok = fread(&head, sizeof(head), 1, f) == 1 && head.magic == CV2_MAGIC && head.w >= 1 &&
+	          head.w <= COVER_TEX && head.h >= 1 && head.h <= COVER_TEX && head.levels == COVER_LEVELS &&
+	          head.bytes == COVER_PACK_BYTES;
+	c->data = ok ? malloc(COVER_PACK_BYTES) : NULL;
+	ok = c->data && fread(c->data, 1, COVER_PACK_BYTES, f) == COVER_PACK_BYTES;
+	fclose(f);
+	if (!ok) {
+		free(c->data);
+		c->data = NULL;
+		return false;
+	}
+	c->w = head.w;
+	c->h = head.h;
+	c->lowres = false;
+	return true;
+}
+
+static void write_cv2(const char *path, const cover_t *c)
+{
+	FILE *f = fopen(path, "wb");
+	if (!f) return;
+	cv2_head_t head = { CV2_MAGIC, c->w, c->h, COVER_LEVELS, COVER_PACK_BYTES };
+	bool ok = fwrite(&head, sizeof(head), 1, f) == 1 && fwrite(c->data, 1, COVER_PACK_BYTES, f) == COVER_PACK_BYTES;
+	if (fclose(f) || !ok)
+		remove(path);   // never leave a short file that looks like a cache
+}
+
+// The 128x128 RGBA8 cache of versions before this one (.bin, 64 KiB).
+static bool read_legacy(const char *path, cover_t *c)
+{
+	const int n = COVER_LEGACY_SIZE * COVER_LEGACY_SIZE;
+	FILE *f = fopen(path, "rb");
+	if (!f) return false;
+	u32 *px = malloc(n * 4);
+	bool ok = px && fread(px, 4, n, f) == (size_t)n;
+	fclose(f);
+	if (ok) {
+		for (int i = 0; i < n; i++) {   // flatten like the decoder does
+			u32 a = px[i] & 255;
+			if (a == 255) continue;
+			u32 r = ((px[i] >> 24) * a + COVER_BG_R * (255 - a) + 127) / 255;
+			u32 g = ((px[i] >> 16 & 255) * a + COVER_BG_G * (255 - a) + 127) / 255;
+			u32 b = ((px[i] >> 8 & 255) * a + COVER_BG_B * (255 - a) + 127) / 255;
+			px[i] = r << 24 | g << 16 | b << 8 | 255;
+		}
+		ok = pack_cover(px, COVER_LEGACY_SIZE, COVER_LEGACY_SIZE, c);
+	}
+	free(px);
+	return ok;
 }
 
 // ---------------------------------------------------------------- download
@@ -256,7 +347,7 @@ static bool network_error(CURLcode rc)
 	return rc == CURLE_COULDNT_CONNECT || rc == CURLE_COULDNT_RESOLVE_HOST || rc == CURLE_OPERATION_TIMEDOUT;
 }
 
-static u32 *download(const char *key, bool *retry)
+static u32 *download(const char *key, bool *retry, int *pw, int *ph)
 {
 	char name[256], esc[768], url[1024];
 	thumb_name(key, name, sizeof(name));
@@ -271,7 +362,7 @@ static u32 *download(const char *key, bool *retry)
 
 	u32 *px = NULL;
 	if (rc == CURLE_OK && code == 200) {
-		px = decode_png(NULL, 0, COVER_DIR "/download.tmp");
+		px = decode_png(NULL, 0, COVER_DIR "/download.tmp", pw, ph);
 		log_printf("covers: decode %llums\n", osGetTime() - td);
 	}
 	else if (network_error(rc)) {
@@ -302,43 +393,78 @@ static bool presets_stop(void) { return quit || paused; }
 
 // ---------------------------------------------------------------- worker
 
-static u32 *load_cover(const game_t *g, bool *retry, bool refresh)
+// A cover that has to come from the network (nothing cached): a finished
+// cover, or false. *retry false: the database has no such picture.
+static bool fetch_cover(const game_t *g, bool *retry, cover_t *c)
 {
-	char path[PATH_LEN];
+	bool ok = false;
+	if (!quit && !sw_nonet) {
+		LightLock_Lock(&net_lock);
+		if (!quit && !paused && osGetTime() >= net_retry_at) {
+			int w = 0, h = 0;
+			u32 *px = download(g->cover_key, retry, &w, &h);
+			ok = px && pack_cover(px, w, h, c);
+			free(px);
+		}
+		LightLock_Unlock(&net_lock);
+	}
+	return ok;
+}
+
+static bool load_cover(const game_t *g, bool *retry, bool refresh, cover_t *c)
+{
+	char path[PATH_LEN], legacy[PATH_LEN];
+	int w, h;
 	u32 *px;
 
-	// 1. our cache (already shrunk, texture byte order)
-	cache_path(g->cover_key, ".bin", path, sizeof(path));
-	FILE *f = refresh ? NULL : fopen(path, "rb");
-	if (f) {
-		px = malloc(COVER_SIZE * COVER_SIZE * 4);
-		if (px && fread(px, 4, COVER_SIZE * COVER_SIZE, f) == COVER_SIZE * COVER_SIZE) {
-			fclose(f);
-			__atomic_add_fetch(&cache_hits, 1, __ATOMIC_RELAXED);
-			return px;
-		}
-		free(px);
-		fclose(f);
+	// 1. our cache (a finished texture)
+	cache_path(g->cover_key, ".cv2", path, sizeof(path));
+	if (!refresh && read_cv2(path, c)) {
+		__atomic_add_fetch(&cache_hits, 1, __ATOMIC_RELAXED);
+		return true;
 	}
-	// 2. the user's own PNG, 3. download
-	cache_path(g->cover_key, ".png", path, sizeof(path));
-	px = refresh ? NULL : decode_png(NULL, 0, path);
-	if (!px) {
-		if (!quit && !sw_nonet) {
-			LightLock_Lock(&net_lock);
-			if (!quit && !paused && osGetTime() >= net_retry_at)
-				px = download(g->cover_key, retry);
-			LightLock_Unlock(&net_lock);
-		}
-	}
+	// 2. the user's own PNG
+	char own[PATH_LEN];
+	cache_path(g->cover_key, ".png", own, sizeof(own));
+	px = refresh ? NULL : decode_png(NULL, 0, own, &w, &h);
 	if (px) {
-		cache_path(g->cover_key, ".bin", path, sizeof(path));
-		if ((f = fopen(path, "wb"))) {
-			fwrite(px, 4, COVER_SIZE * COVER_SIZE, f);
-			fclose(f);
-		}
+		bool ok = pack_cover(px, w, h, c);
+		free(px);
+		if (ok) write_cv2(path, c);
+		return ok;
 	}
-	return px;
+	// 3. the old small cache: show it now, the full size one comes later
+	cache_path(g->cover_key, ".bin", legacy, sizeof(legacy));
+	if (!refresh && read_legacy(legacy, c)) {
+		c->lowres = !sw_nonet;
+		__atomic_add_fetch(&cache_hits, 1, __ATOMIC_RELAXED);
+		return true;
+	}
+	// 4. download
+	if (!fetch_cover(g, retry, c))
+		return false;
+	write_cv2(path, c);
+	remove(legacy);
+	return true;
+}
+
+// Replace an old small cover with the full size one. A picture the database
+// does not have (404) makes the small one final.
+static bool upgrade_cover(const game_t *g, bool *retry, cover_t *c)
+{
+	char path[PATH_LEN], legacy[PATH_LEN];
+	cache_path(g->cover_key, ".cv2", path, sizeof(path));
+	cache_path(g->cover_key, ".bin", legacy, sizeof(legacy));
+	*retry = true;
+	bool ok = fetch_cover(g, retry, c);
+	if (!ok && !*retry)
+		ok = read_legacy(legacy, c);
+	if (ok) {
+		write_cv2(path, c);
+		remove(legacy);
+		__atomic_add_fetch(&upgraded, 1, __ATOMIC_RELAXED);
+	}
+	return ok;
 }
 
 static void worker_main(void *arg)
@@ -353,7 +479,7 @@ static void worker_main(void *arg)
 			while (paused && !quit)
 				svcSleepThread(100000000LL);
 			int pick = -1, game = -1, best = 1 << 30;
-			bool refresh = false;
+			bool refresh = false, upgrade = false;
 			LightLock_Lock(&lock);
 			for (int i = 0; i < SLOTS; i++) {
 				if (slots[i].state != 1 || osGetTime() < slots[i].retry_at)
@@ -371,10 +497,28 @@ static void worker_main(void *arg)
 					game = slots[i].game;
 				}
 			}
+			// Nothing new to load: swap a shown old small cover for the full size one.
+			if (pick < 0 && !quit && !paused && !sw_nonet) {
+				best = 1 << 30;
+				for (int i = 0; i < SLOTS; i++) {
+					if (slots[i].state != 3 || !slots[i].lowres || slots[i].upgrading ||
+					    osGetTime() < slots[i].retry_at || slots[i].last_used + 40 < use_clock)
+						continue;
+					if ((int)slots[i].rank < best) {
+						best = slots[i].rank;
+						pick = i;
+						game = slots[i].game;
+						upgrade = true;
+					}
+				}
+			}
 			if (pick >= 0 && !quit && !paused) {
 				__atomic_add_fetch(&busy, 1, __ATOMIC_SEQ_CST);
 				refresh = slots[pick].refresh;
-				slots[pick].state = 5;   // ours: the other worker skips it
+				if (upgrade)
+					slots[pick].upgrading = true;   // stays shown meanwhile
+				else
+					slots[pick].state = 5;   // ours: the other worker skips it
 			} else pick = -1;
 			// Nothing to fetch for the library: the daily preset check.
 			bool presets = pick < 0 && !quit && !paused && !presets_claimed && !sw_nonet && presets_update_due();
@@ -399,19 +543,34 @@ static void worker_main(void *arg)
 			u64 t0 = osGetTime();
 			log_printf("covers: start #%d\n", game);
 			bool retry = true;
-			u32 *px = g ? load_cover(g, &retry, refresh) : NULL;
-			log_printf("covers: #%d %s -> %s in %llums\n", game, g ? g->cover_key : "?",
-				px ? "ok" : "none", osGetTime() - t0);
+			cover_t c = { 0 };
+			bool ok = g && (upgrade ? upgrade_cover(g, &retry, &c) : load_cover(g, &retry, refresh, &c));
+			log_printf("covers: #%d %s -> %s%s in %llums\n", game, g ? g->cover_key : "?",
+				ok ? "ok" : "none", ok && c.lowres ? " (small)" : "", osGetTime() - t0);
 			LightLock_Lock(&lock);
-			if (slots[pick].game == game && slots[pick].state == 5) {
-				slots[pick].pixels = px;
-				if (px) slots[pick].refresh = false;
+			if (slots[pick].game == game && (upgrade ? slots[pick].upgrading : slots[pick].state == 5)) {
+				if (ok) {
+					free(slots[pick].pixels);
+					slots[pick].pixels = c.data;
+					slots[pick].w = c.w;
+					slots[pick].h = c.h;
+					slots[pick].lowres = c.lowres;
+					slots[pick].refresh = false;
+					c.data = NULL;
+				}
 				// interrupted by HOME/sleep: try again later, not "no cover"
 				slots[pick].retry_at = paused ? 0 : osGetTime() + 15000;
-				slots[pick].state = px ? 2 : (retry ? 1 : 4);
-			} else {
-				free(px);
+				if (upgrade) {
+					slots[pick].upgrading = false;
+					if (ok)
+						slots[pick].state = 2;   // the shown picture is replaced
+					else if (!retry)
+						slots[pick].lowres = false;
+				} else {
+					slots[pick].state = ok ? 2 : (retry ? 1 : 4);
+				}
 			}
+			free(c.data);
 			LightLock_Unlock(&lock);
 			__atomic_sub_fetch(&busy, 1, __ATOMIC_SEQ_CST);
 		}
@@ -482,8 +641,6 @@ void covers_exit(void)
 		free(slots[i].pixels);
 		if (slots[i].tex_ok)
 			C3D_TexDelete(&slots[i].tex);
-		if (slots[i].staging)
-			linearFree(slots[i].staging);
 	}
 	net_close();
 	if (easy)
@@ -502,7 +659,7 @@ void covers_exit(void)
 }
 
 // Texture for game i if it's ready; otherwise queue it and return NULL.
-C3D_Tex *covers_get(int game)
+C3D_Tex *covers_get(int game, Tex3DS_SubTexture *sub)
 {
 	if (sw_nocovers)
 		return NULL;
@@ -527,6 +684,9 @@ C3D_Tex *covers_get(int game)
 			s->state = 1;
 			s->retry_at = 0;
 			s->refresh = false;
+			s->shown = false;   // the texture still holds the previous game's cover
+			s->lowres = false;
+			s->upgrading = false;
 			LightEvent_Signal(&wake);
 		}
 	}
@@ -537,51 +697,70 @@ C3D_Tex *covers_get(int game)
 			s->rank = r;
 		s->last_used = use_clock;
 	}
-	int state = s ? s->state : 0;
+	bool shown = s && s->shown && s->tex_ok;
+	if (shown && sub) {
+		// the picture is the top left w x h of the texture; top = 1 is its first row
+		float u = (float)s->w / COVER_TEX, v = 1.0f - (float)s->h / COVER_TEX;
+		*sub = (Tex3DS_SubTexture){ s->w, s->h, 0.0f, 1.0f, u, v };
+	}
 	LightLock_Unlock(&lock);
-	if (!s)
-		return NULL;
-
-	(void)state;
-	return s->state == 3 ? &s->tex : NULL;
+	return shown ? &s->tex : NULL;
 }
 
 // Upload decoded covers to textures. Called inside the frame (from
-// video_present, after C3D_FrameBegin): the copy is queued on the GPU
-// ahead of the draw, like the game picture, and nothing waits for it.
-// (A blocking transfer, inside or outside the frame, raced citro3d's own
-// GPU queue and could hang the app.)
+// video_present, after C3D_FrameBegin). The cache holds the texture exactly
+// as the GPU wants it, so this is one copy and a cache flush: no GX transfer
+// (an old blocking one raced citro3d's own GPU queue and could hang the app)
+// and no staging buffer. A cover that replaces a shown one (small -> full
+// size) is the same picture, so a frame still in flight showing a mix is
+// invisible.
 static void covers_pump_in_frame(void)
 {
+	u64 now = svcGetSystemTick();
+	if (frame_last) {
+		u32 us = (u32)((now - frame_last) * 1000000 / SYSCLOCK_ARM11);
+		if (us < 1000000) {   // longer gaps are screen changes, not frames
+			frames++;
+			frame_total_us += us;
+			frames_over_25ms += us > 25000;
+			frames_over_40ms += us > 40000;
+			if (us > frame_max_us) frame_max_us = us;
+		}
+	}
+	frame_last = now;
 	int done = 0;
 	for (int i = 0; i < SLOTS && done < 2; i++) {
 		slot_t *s = &slots[i];
 		if (s->state != 2)
 			continue;
+		if (!s->tex_ok) {
+			s->tex_ok = C3D_TexInitMipmap(&s->tex, COVER_TEX, COVER_TEX, GPU_RGB565);
+			if (s->tex_ok) {
+				C3D_TexSetFilter(&s->tex, GPU_LINEAR, GPU_LINEAR);
+				C3D_TexSetFilterMipmap(&s->tex, GPU_LINEAR);
+				C3D_TexSetWrap(&s->tex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
+			}
+		}
 		if (!s->tex_ok)
-			s->tex_ok = C3D_TexInit(&s->tex, COVER_SIZE, COVER_SIZE, GPU_RGBA8);
-		if (!s->staging)
-			s->staging = linearAlloc(COVER_SIZE * COVER_SIZE * 4);
-		if (!s->tex_ok || !s->staging)
 			return;
+		u64 t0 = svcGetSystemTick();
 		LightLock_Lock(&lock);
 		bool still = s->state == 2 && s->pixels;
-		if (still)
-			memcpy(s->staging, s->pixels, COVER_SIZE * COVER_SIZE * 4);
+		if (still) {
+			memcpy(s->tex.data, s->pixels, COVER_PACK_BYTES);
+			free(s->pixels);
+			s->pixels = NULL;
+			s->shown = true;
+			s->state = 3;
+		}
 		LightLock_Unlock(&lock);
 		if (!still)
 			continue;
-		GSPGPU_FlushDataCache(s->staging, COVER_SIZE * COVER_SIZE * 4);
-		GX_DisplayTransfer(s->staging, GX_BUFFER_DIM(COVER_SIZE, COVER_SIZE), (u32 *)s->tex.data,
-			GX_BUFFER_DIM(COVER_SIZE, COVER_SIZE),
-			GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_RAW_COPY(0) |
-			GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8) |
-			GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
-		C3D_TexSetFilter(&s->tex, GPU_LINEAR, GPU_LINEAR);
-		LightLock_Lock(&lock);
-		if (s->state == 2)
-			s->state = 3;
-		LightLock_Unlock(&lock);
+		GSPGPU_FlushDataCache(s->tex.data, COVER_PACK_BYTES);
+		u32 us = (u32)((svcGetSystemTick() - t0) * 1000000 / SYSCLOCK_ARM11);
+		uploads++;
+		upload_total_us += us;
+		if (us > upload_max_us) upload_max_us = us;
 		done++;
 	}
 }
@@ -593,16 +772,26 @@ void covers_pump(void)
 	video_pre_draw = covers_pump_in_frame;   // runs at the next frame start
 }
 
+// Developer diagnostics: start the frame and upload counters over.
+void covers_stats_reset(void)
+{
+	frame_last = 0;
+	frames = frames_over_25ms = frames_over_40ms = frame_max_us = 0;
+	frame_total_us = 0;
+	uploads = upload_max_us = upload_total_us = 0;
+}
+
 // Developer-only refresh of a library cover, without deleting any SD files.
 bool covers_refresh(int game)
 {
 	if (sw_nocovers || sw_nonet || game < 0 || game >= library_count()) return false;
-	covers_get(game);
+	covers_get(game, NULL);
 	bool ok = false;
 	LightLock_Lock(&lock);
-	for (int i = 0; i < SLOTS; i++) if (slots[i].game == game && slots[i].state != 5) {
+	for (int i = 0; i < SLOTS; i++) if (slots[i].game == game && slots[i].state != 5 && !slots[i].upgrading) {
 		free(slots[i].pixels);
 		slots[i].pixels = NULL;
+		slots[i].lowres = false;
 		slots[i].refresh = true;
 		slots[i].retry_at = 0;
 		slots[i].state = 1;
@@ -671,9 +860,10 @@ void covers_focus(int game)
 	LightEvent_Signal(&wake);
 }
 
-// A game needs the GPU memory: drop the cover textures (about 3 MB). The
-// New 3DS keeps decoded pixels for return to the library. Old 3DS needs
-// that heap for emulation too; its small GPU-ready SD files reload on return.
+// A game needs the GPU memory: drop the cover textures (about 4 MB). Covers
+// come back from their cache files on return to the library. The New 3DS
+// keeps pixels that were decoded but not uploaded yet; the Old 3DS needs
+// that heap for emulation too.
 // Call with no GPU frame using them in flight.
 void covers_release_gpu(void)
 {
@@ -685,9 +875,9 @@ void covers_release_gpu(void)
 		if (s->tex_ok)
 			C3D_TexDelete(&s->tex);
 		s->tex_ok = false;
-		if (s->staging)
-			linearFree(s->staging);
-		s->staging = NULL;
+		s->shown = false;
+		s->upgrading = false;
+		s->lowres = false;   // the reload finds that out again
 		if (!g_new3ds) {
 			free(s->pixels);
 			s->pixels = NULL;
@@ -695,7 +885,7 @@ void covers_release_gpu(void)
 			s->state = s->game >= 0 ? 1 : 0;
 		}
 		if (s->state == 3)
-			s->state = s->pixels ? 2 : 0;
+			s->state = 1;
 	}
 	LightLock_Unlock(&lock);
 }
@@ -709,6 +899,9 @@ void covers_reset(void)
 	for (int i = 0; i < SLOTS; i++) {
 		slots[i].game = -1;
 		slots[i].state = 0;
+		slots[i].shown = false;
+		slots[i].lowres = false;
+		slots[i].upgrading = false;
 		free(slots[i].pixels);
 		slots[i].pixels = NULL;
 	}
@@ -719,13 +912,19 @@ void covers_reset(void)
 // subsystem's cache files and bounded slot/counter snapshots.
 void covers_debug(char *out, size_t len)
 {
-	int ready = 0, wanted = 0, missing = 0, cached = 0, invalid = 0;
+	int ready = 0, wanted = 0, missing = 0, cached = 0, invalid = 0, legacy = 0;
 	for (int i = 0; i < library_count(); i++) {
 		char path[PATH_LEN];
 		struct stat st;
+		cache_path(library_get(i)->cover_key, ".cv2", path, sizeof(path));
+		if (!stat(path, &st)) {
+			if (st.st_size == CV2_BYTES) cached++;
+			else invalid++;
+			continue;
+		}
 		cache_path(library_get(i)->cover_key, ".bin", path, sizeof(path));
 		if (stat(path, &st)) missing++;
-		else if (st.st_size == COVER_SIZE * COVER_SIZE * 4) cached++;
+		else if (st.st_size == COVER_LEGACY_SIZE * COVER_LEGACY_SIZE * 4) legacy++;
 		else invalid++;
 	}
 	if (!sw_nocovers) {
@@ -739,8 +938,12 @@ void covers_debug(char *out, size_t len)
 	snprintf(out, len, "{\"ok\":true,\"paused\":%s,\"busy\":%d,\"net_open\":%s,"
 	         "\"attempts\":%u,\"downloaded\":%u,\"cache_hits\":%u,\"aborted\":%u,"
 	         "\"failures\":%u,\"curl\":%d,\"http\":%ld,\"stop_ms\":%u,\"max_stop_ms\":%u,"
-	         "\"ready\":%d,\"wanted\":%d,\"cached\":%d,\"missing\":%d,\"invalid_cache\":%d}",
+	         "\"ready\":%d,\"wanted\":%d,\"cached\":%d,\"missing\":%d,\"invalid_cache\":%d,"
+	         "\"legacy\":%d,\"upgraded\":%u,\"uploads\":%u,\"upload_avg_us\":%u,\"upload_max_us\":%u,"
+	         "\"frames\":%u,\"frame_avg_us\":%u,\"frame_max_us\":%u,\"frames_over_25ms\":%u,\"frames_over_40ms\":%u}",
 	         paused ? "true" : "false", busy, net_open ? "true" : "false", attempts,
 	         downloaded, cache_hits, aborted_count, failures, last_curl, last_http,
-	         stop_ms, max_stop_ms, ready, wanted, cached, missing, invalid);
+	         stop_ms, max_stop_ms, ready, wanted, cached, missing, invalid,
+	         legacy, upgraded, uploads, uploads ? upload_total_us / uploads : 0, upload_max_us,
+	         frames, frames ? (unsigned)(frame_total_us / frames) : 0, frame_max_us, frames_over_25ms, frames_over_40ms);
 }

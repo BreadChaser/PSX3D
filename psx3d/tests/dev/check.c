@@ -108,6 +108,7 @@ void debug_parse_switch(const char *word)
 void covers_stop_wait(void) {}
 void covers_resume(void) {}
 bool covers_refresh(int game) { return game >= 0; }
+void covers_stats_reset(void) {}
 void covers_debug(char *out, size_t len) { snprintf(out, len, "{\"ok\":true}"); }
 void libui_select_title(const char *title) { (void)title; }
 #include "../../source/clip.h"

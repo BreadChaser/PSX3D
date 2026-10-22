@@ -17,6 +17,6 @@ png=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',1,1,8,6,0,0,0))+ch
 with http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler) as server,tempfile.TemporaryDirectory() as tmp:
  thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
  libs=subprocess.check_output(['pkg-config','--cflags','--libs','libpng','libcurl'],text=True).split()
- subprocess.run(['cc','-std=gnu11','-Wall','-Wextra','-Wno-deprecated-declarations','-g','-fsanitize=address,undefined',f'-DTHUMB_URL="http://127.0.0.1:{server.server_port}/"',str(root/'psx3d/tests/covers/worker.c'),str(root/'psx3d/source/covers_png.c'),'-Wl,--wrap=curl_multi_poll',*libs,'-o',tmp+'/check'],check=True)
+ subprocess.run(['cc','-std=gnu11','-Wall','-Wextra','-Wno-deprecated-declarations','-g','-fsanitize=address,undefined',f'-DTHUMB_URL="http://127.0.0.1:{server.server_port}/"',str(root/'psx3d/tests/covers/worker.c'),str(root/'psx3d/source/covers_png.c'),str(root/'psx3d/source/covers_pack.c'),'-lm','-Wl,--wrap=curl_multi_poll',*libs,'-o',tmp+'/check'],check=True)
  subprocess.run([tmp+'/check'],cwd=tmp,check=True)
  server.shutdown();thread.join()

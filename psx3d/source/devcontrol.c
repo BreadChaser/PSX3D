@@ -454,9 +454,12 @@ bool dev_tick(bool playing)
 		} else if (clip_command(command,args,playing)) {
 		} else if (!strcmp(command, "covers")) {
 			if (!*args) {
-				char info[1024];
+				char info[1536];
 				covers_debug(info, sizeof(info));
 				dev_reply(info);
+			} else if (!strcmp(args, "stats-reset")) {
+				covers_stats_reset();
+				dev_reply("{\"ok\":true}");
 			} else {
 				int game = -1;
 				if (!playing && !batch_active && !strncmp(args, "refresh=", 8)) {
