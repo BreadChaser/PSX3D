@@ -3,6 +3,23 @@
 What changed in each release, newest first. One line per point.
 Speed figures are for specific saved scenes; see [Performance](README.md#performance) and [compatibility](docs/compatibility.md).
 
+## v0.5.1
+
+- New: a main menu with Continue, Library, Share PSX3D and Settings.
+- New: the library shows recently played games first; sort by name, recent or most played; mark favourites with Y; L/R jumps by letter.
+- New: five colour themes in Settings → Display → Theme.
+- New: touch buttons at the bottom of every menu.
+- New: save backups: the last ten automatic saves and dated memory card copies per game; Undo and Redo in the pause menu.
+- New: sharper box art, found by disc serial for files with any name.
+- New: PSX3D finds your games on first start; only PlayStation discs are listed.
+- New: clear messages when a game can't start (missing file, wrong disc, not enough memory).
+- New: European and Japanese discs of the tested games get their settings too.
+- New: Real 3D falls back to screen depth for menus, movies and 2D scenes.
+- Faster: Old 3DS: OLD_GATE_SUMMARY.
+- Fixed: the picture sits where a TV shows it, including borders, 480i and PAL movies.
+- Fixed: memory cards are checked before a backup is replaced; damaged cards ask what to do.
+- Known: Play together comes in a later version.
+
 ## v0.5.0 (2026-10-21)
 
 - New: Real 3D on New 3DS (experimental). Raise the 3D slider in a game.

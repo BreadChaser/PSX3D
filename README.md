@@ -45,8 +45,11 @@ no BIOS file.
 - GPU rendering on Old and New 3DS, with smart frameskip
 - Tested settings for each game and each console, applied automatically
 - Real widescreen for games with a tested widescreen fix
-- Box art, clean titles and multi-disc grouping
+- A main menu with Continue, a box-art library with recently played games,
+  favourites, sorting and a letter jump, and five colour themes
+- Sharp box art, clean titles and multi-disc grouping
 - Save states with previews, memory cards with backups, cheats and disc swapping
+- Save backups: the last ten automatic saves and dated memory card copies per game, and Undo in the pause menu
 - "Continue where I left off": your place is saved when you quit, on sleep and every few minutes
 - Remappable buttons and touch controls, fast forward in every game
 - Built-in BIOS: no BIOS file needed
@@ -115,8 +118,8 @@ In **FBI → Remote Install → Scan QR Code**, scan:
 Or install [**PSX3D.cia**](https://github.com/BreadChaser/PSX3D/releases/latest/download/PSX3D.cia)
 with FBI (a 3DSX for Homebrew Launcher is also on the release page).
 
-Put games (`.cue/.bin`, `.chd`, `.pbp`, `.iso`, `.m3u`) in `sdmc:/roms/psx/`, or
-press **Y** in the library to pick a folder. Box art downloads automatically, even for
+Put games (`.cue/.bin`, `.chd`, `.pbp`, `.iso`, `.m3u`) in `sdmc:/roms/psx/`; PSX3D also
+finds them in other usual folders, or pick one in **Settings → Games folder**. Box art downloads automatically, even for
 files with other names; your own picture goes in `sdmc:/3ds/PSX3D/covers/`
 ([how](docs/box-art.md)).
 
@@ -127,7 +130,9 @@ Got a real BIOS? Copy it to `sdmc:/3ds/PSX3D/bios/` and PSX3D uses it by itself
 
 | Where | Input | Action |
 |---|---|---|
-| Library | A / Y / X | Play / choose folder / settings |
+| Main menu | A / X | Open / settings |
+| Library | A / X / Y | Play / sort / favourite |
+| Library | L / R | Jump to the previous / next letter |
 | In game | A / B / X / Y | Circle / Cross / Triangle / Square |
 | In game | L / R / ZL / ZR | L1 / R1 / L2 / R2 |
 | In game | Circle Pad / C-Stick | D-pad or left stick / right stick |
@@ -140,16 +145,15 @@ touch screen.
 
 ## Saves and logs
 
-Everything lives in `sdmc:/3ds/PSX3D/`: `saves/` (memory cards), `states/` (save states and Continue), `config.ini` and `games/` (settings).
+Everything lives in `sdmc:/3ds/PSX3D/`: `saves/` (memory cards), `states/` (save states and Continue), `backups/` (save backups), `config.ini` and `games/` (settings).
 
 If something breaks, `log.txt` there says what happened (older sessions are `log.1.txt` to `log.4.txt`). Attach it to your issue.
 
 ## Known issues
 
 - Some games show drawing glitches, flicker or thin cracks at polygon edges.
-- Interlaced video and display centering aren't implemented yet.
 - Games with LibCrypt protection (some PAL discs) need a `.sbi` file next to the disc image.
-- `.ccd` images show up in the library but can't be played; use `.cue/.bin` or `.chd`.
+- `.ccd` images can't be played; use `.cue/.bin` or `.chd`.
 - Gran Turismo 1 hangs and Mega Man Legends 2 goes black after the intro with the built-in BIOS; a real BIOS fixes the first one.
 
 ## Building
