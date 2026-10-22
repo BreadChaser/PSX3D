@@ -139,8 +139,8 @@ endif
 # picadirect.o, presetupdate.o, uploadskip.o, display.o and boxart.o link after
 # every other frontend object, so they move no existing frontend code
 # (docs/dev/pica-direct.md); presetupdate.o and boxart.o run only in the idle
-# library, display.o once per picture.
-LATE_OFILES := picadirect.o presetupdate.o uploadskip.o display.o boxart.o
+# library, display.o once per picture. The save code links last.
+LATE_OFILES := picadirect.o presetupdate.o uploadskip.o display.o boxart.o history.o safefile.o saveid.o savestates.o statefile.o
 export OFILES_SOURCES 	:=	$(CPPFILES:.cpp=.o) $(filter-out $(LATE_OFILES),$(CFILES:.c=.o)) $(SFILES:.s=.o) $(LATE_OFILES)
 
 export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES)) \

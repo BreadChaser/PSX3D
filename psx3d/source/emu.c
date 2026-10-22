@@ -130,7 +130,7 @@ static void core_log(enum retro_log_level level, const char *fmt, ...)
 	log_printf("%s", buf);
 }
 
-static void osd_push(const char *text, bool alert)
+PSX3D_COLD static void osd_push(const char *text, bool alert)
 {
 	if (osd_n && !strcmp(osd_q[osd_n - 1].text, text))
 		return;   // the same message again: once is enough
@@ -178,13 +178,13 @@ void emu_osd(const char *text)
 	osd_push(text, false);
 }
 
-void emu_osd_alert(const char *text)
+PSX3D_COLD void emu_osd_alert(const char *text)
 {
 	osd_push(text, true);
 }
 
 // the clip countdown replaces its own previous line instead of queueing
-static void clip_osd(const char *text)
+PSX3D_COLD static void clip_osd(const char *text)
 {
     if (osd_n && osd_q[osd_n-1].clip) {
         snprintf(osd_q[osd_n-1].text,sizeof(osd_q[0].text),"%s",text);
@@ -354,7 +354,7 @@ static int speed_icon;     // 1 fast-forward, -1 rewind, 0 normal: shown top rig
 static bool osd_alert_up(void) { return osd_n && osd_q[0].alert; }
 
 // An alert about the player's data: a band across the top of the game
-static void alert_draw_top(void)
+PSX3D_COLD static void alert_draw_top(void)
 {
 	float dx = ui_depth(-0.7f);
 	C2D_DrawRectSolid(0, 0, 0.9f, 400, 30, C2D_Color32(20, 8, 4, 225));
@@ -442,13 +442,13 @@ safe_format_t emu_state_format(void)
 static char disc_names[DISC_NAMES][128];
 static unsigned disc_names_n;
 
-static const char *base_name(const char *path)
+PSX3D_COLD static const char *base_name(const char *path)
 {
 	const char *b = strrchr(path, '/');
 	return b ? b + 1 : path;
 }
 
-static void disc_names_init(const char *path)
+PSX3D_COLD static void disc_names_init(const char *path)
 {
 	disc_names_n = 0;
 	size_t len = strlen(path);
@@ -472,12 +472,12 @@ static void disc_names_init(const char *path)
 		fclose(f);
 }
 
-static unsigned disc_count(void)
+PSX3D_COLD static unsigned disc_count(void)
 {
 	return have_disk && disk.get_num_images ? disk.get_num_images() : 1;
 }
 
-static void disc_query(char *name, size_t len, unsigned *index, unsigned *count)
+PSX3D_COLD static void disc_query(char *name, size_t len, unsigned *index, unsigned *count)
 {
 	unsigned i = have_disk && disk.get_image_index ? disk.get_image_index() : 0;
 	*index = i;
@@ -486,7 +486,7 @@ static void disc_query(char *name, size_t len, unsigned *index, unsigned *count)
 }
 
 // -1: the state's disc is not in this launch; -2: can't tell (use its index)
-static int disc_map(const char *name, unsigned index, unsigned count)
+PSX3D_COLD static int disc_map(const char *name, unsigned index, unsigned count)
 {
 	(void)index; (void)count;
 	if (!disc_names_n || disc_names_n != disc_count())
@@ -504,7 +504,7 @@ static void sta_retire(const char *bak, void *ctx);
 // States: written crash-safe, the previous version kept as .bak, with the
 // checksum sealed into the trailer first (statefile.h). The Continue
 // point's older versions go into the save backups (history.h).
-static bool write_file(const char *path, void *data, size_t size, bool continue_point)
+PSX3D_COLD static bool write_file(const char *path, void *data, size_t size, bool continue_point)
 {
 	safe_format_t fmt = emu_state_format();
 	if (continue_point)
@@ -567,7 +567,7 @@ static bool state_save_to(int slot)
 
 // Load the state file path (or its backup, or an unfinished copy); slot:
 // whose thumbnail to bring back with a repaired backup (NO_SLOT: none)
-static bool state_load_file(const char *path, int slot)
+PSX3D_COLD static bool state_load_file(const char *path, int slot)
 {
 	safe_format_t fmt = emu_state_format();
 	safe_info_t info;
@@ -653,7 +653,7 @@ static bool save_take(const char *who, void **state, size_t *state_size, u16 **t
 // a state is known by its trailer's time and id (0 for states made before)
 typedef struct { hist_entry_t e; unsigned id; } save_ref_t;
 
-static unsigned file_id(const char *path, unsigned *saved)
+PSX3D_COLD static unsigned file_id(const char *path, unsigned *saved)
 {
 	unsigned reason, when, id;
 	state_file_info(path, &reason, &when, &id);
@@ -662,7 +662,7 @@ static unsigned file_id(const char *path, unsigned *saved)
 	return id;
 }
 
-static bool ref_of(const char *path, hist_kind_t kind, save_ref_t *r)
+PSX3D_COLD static bool ref_of(const char *path, hist_kind_t kind, save_ref_t *r)
 {
 	struct stat st;
 	unsigned saved;
@@ -677,14 +677,14 @@ static bool ref_of(const char *path, hist_kind_t kind, save_ref_t *r)
 }
 
 // a ring entry as a reference (moved there just now)
-static save_ref_t ref_entry(const hist_entry_t *e)
+PSX3D_COLD static save_ref_t ref_entry(const hist_entry_t *e)
 {
 	save_ref_t r = { *e, file_id(e->path, NULL) };
 	return r;
 }
 
 // the time a state file was saved (0: unknown, the entry gets "now")
-static time_t saved_at(const char *path)
+PSX3D_COLD static time_t saved_at(const char *path)
 {
 	unsigned saved = 0;
 	file_id(path, &saved);
@@ -693,7 +693,7 @@ static time_t saved_at(const char *path)
 
 // The Continue point's version falling off its backup joins the ring
 // ("timer" or "exit" from its trailer), with its thumbnail.
-static void sta_retire(const char *bak, void *ctx)
+PSX3D_COLD static void sta_retire(const char *bak, void *ctx)
 {
 	(void)ctx;
 	char thm[PATH_LEN + 16];
@@ -710,7 +710,7 @@ static void sta_retire(const char *bak, void *ctx)
 // Continue auto-save up to REUSE_SECONDS old is used instead of waiting
 // 2-3 s for a fresh one (owner's choice), unless it is not_this.
 #define REUSE_SECONDS (5 * 60)
-static bool safety_copy(hist_kind_t kind, const save_ref_t *not_this, save_ref_t *out)
+PSX3D_COLD static bool safety_copy(hist_kind_t kind, const save_ref_t *not_this, save_ref_t *out)
 {
 	char path[PATH_LEN];
 	if (clip_replay_session || dev_remote_game())
@@ -761,7 +761,7 @@ static struct {
 	u64 at;                // when the action happened
 } undo;
 
-static void undo_set(undo_what_t what, int slot, const save_ref_t *target)
+PSX3D_COLD static void undo_set(undo_what_t what, int slot, const save_ref_t *target)
 {
 	undo.what = what;
 	undo.redo = false;
@@ -772,7 +772,7 @@ static void undo_set(undo_what_t what, int slot, const save_ref_t *target)
 
 // where the target is now: the Continue point may have moved on since
 // (to its backup, then into the ring); found by its trailer's id
-static bool undo_resolve(save_ref_t *r)
+PSX3D_COLD static bool undo_resolve(save_ref_t *r)
 {
 	char bak[sizeof(r->e.path) + 8];
 	*r = undo.target;
@@ -796,7 +796,7 @@ static bool undo_resolve(save_ref_t *r)
 	return found;
 }
 
-static void slot_paths(int slot, char *path, char *thm, size_t len)
+PSX3D_COLD static void slot_paths(int slot, char *path, char *thm, size_t len)
 {
 	char ext[16];
 	state_ext(ext, sizeof(ext), slot);
@@ -805,7 +805,7 @@ static void slot_paths(int slot, char *path, char *thm, size_t len)
 }
 
 // a slot's own backup and temp files: an older version would show through
-static void slot_leftovers(const char *path)
+PSX3D_COLD static void slot_leftovers(const char *path)
 {
 	static const char *const ext[] = { ".bak", ".tmp", ".rep", ".thm.bak", ".thm.tmp" };
 	char other[PATH_LEN + 16];
@@ -816,7 +816,7 @@ static void slot_leftovers(const char *path)
 }
 
 // Undo (or Redo) the latest risky action; true when the game changed
-static bool undo_run(void)
+PSX3D_COLD static bool undo_run(void)
 {
 	save_ref_t target, now;
 	hist_entry_t moved;
@@ -872,7 +872,7 @@ static bool undo_run(void)
 }
 
 // Load slot state_slot: the game as it is now goes into the ring first
-static void state_load(void)
+PSX3D_COLD static void state_load(void)
 {
 	save_ref_t copy;
 	bool kept = safety_copy(HIST_LOAD, NULL, &copy);
@@ -886,7 +886,7 @@ static void state_load(void)
 }
 
 // Save to slot state_slot: a save already there goes into the ring first
-static void slot_save_over(void)
+PSX3D_COLD static void slot_save_over(void)
 {
 	char path[PATH_LEN], thm[PATH_LEN + 8];
 	hist_entry_t old;
@@ -909,7 +909,7 @@ static void slot_save_over(void)
 }
 
 // An automatic save from the ring: the game as it is now is kept first
-static void ring_restore(const hist_entry_t *e)
+PSX3D_COLD static void ring_restore(const hist_entry_t *e)
 {
 	save_ref_t copy, target = ref_entry(e);
 	bool kept = safety_copy(HIST_RESTORE, &target, &copy);
@@ -923,7 +923,7 @@ static void ring_restore(const hist_entry_t *e)
 
 // A memory card copy back in: the game restarts (it keeps its own view of
 // the card); the card as it was is kept in the backups
-static void card_put_back(const hist_entry_t *e)
+PSX3D_COLD static void card_put_back(const hist_entry_t *e)
 {
 	save_ref_t copy;
 	bool kept = safety_copy(HIST_RESET, NULL, &copy);
@@ -940,7 +940,7 @@ static void card_put_back(const hist_entry_t *e)
 
 // Start game at "Continue?": the Continue point (and its backup) go into
 // the ring, so a misclick is undone from the pause menu
-static void continue_declined(void)
+PSX3D_COLD static void continue_declined(void)
 {
 	char sta[PATH_LEN], thm[PATH_LEN + 8], bak[PATH_LEN + 8], bthm[PATH_LEN + 16], tmp[PATH_LEN + 8];
 	hist_entry_t e;
@@ -1034,7 +1034,7 @@ static bool autosave_is_due(void);
 static void autosave_start(const char *why);
 
 // the rows (the Undo row shows the latest risky action and its age)
-static void menu_build(menu_t *m)
+PSX3D_COLD static void menu_build(menu_t *m)
 {
 	m->nitems = 0;
 	for (int i = 0; i < M_COUNT; i++) {
@@ -1624,7 +1624,7 @@ static void game_apt(APT_HookType hook, void *param)
 
 // "Continue?": A loads the Continue point; Y opens the save backups (an
 // older one); B starts the game and keeps the Continue point in the ring.
-static void continue_prompt(const char *prefix)
+PSX3D_COLD static void continue_prompt(const char *prefix)
 {
 	for (;;) {
 		int r = states_resume_prompt(prefix);
@@ -1650,7 +1650,7 @@ static void continue_prompt(const char *prefix)
 
 // A memory card that could not be read: ask before the game runs on an
 // empty stand-in. false: the player quits.
-static bool card_trouble_dialog(void)
+PSX3D_COLD static bool card_trouble_dialog(void)
 {
 	char label[PATH_LEN], msg[400];
 	card_trouble_t t;

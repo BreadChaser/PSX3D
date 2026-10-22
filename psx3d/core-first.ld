@@ -75,6 +75,38 @@ SECTIONS
 		/* Frontend: may grow freely. */
 		. = . + ((0xae8 - .) & 0xfff);
 		__psx3d_frontend_text_start = .;
+		/* The frontend's per-frame code (sound, the game loop, GPU cache
+		   wraps, 3D, input, render queue, FPS counter, picture output) comes
+		   first, in RC4's order and at the page offsets (cache sets) it had in
+		   v0.5.0 RC4. Growth anywhere else in the frontend (menus, saves)
+		   then moves none of it; growth inside a block moves only the rest
+		   of that block. */
+		audio.o(.text .text.*)
+		audio_resample.o(.text .text.*)
+		audio_tsm.o(.text .text.*)
+		. = . + ((0x120 - .) & 0xfff);
+		__psx3d_frontend_hot_emu = .;
+		emu.o(.text .text.*)
+		. = . + ((0x3bc - .) & 0xfff);
+		__psx3d_frontend_hot_gpu = .;
+		gamecfg.o(.text .text.*)
+		gpu_cache.o(.text .text.*)
+		gpustereo.o(.text .text.*)
+		gpustereo_core.o(.text .text.*)
+		input.o(.text .text.*)
+		. = . + ((0x210 - .) & 0xfff);
+		__psx3d_frontend_hot_queue = .;
+		renderqueue.o(.text .text.*)
+		. = . + ((0x24c - .) & 0xfff);
+		__psx3d_frontend_hot_stats = .;
+		statsview.o(.text .text.*)
+		. = . + ((0xb90 - .) & 0xfff);
+		__psx3d_frontend_hot_video = .;
+		video.o(.text .text.*)
+		widescreen.o(.text .text.*)
+		picadirect.o(.text .text.*)
+		__psx3d_frontend_hot_end = .;
+		/* The rest of the frontend, in link order. */
 		*(.text)
 		*(.text.*)
 		*(.glue_7)
@@ -85,6 +117,8 @@ SECTIONS
 		/* Optional renderer feedback path: its growth must not move the
 		   existing core or library code. This is live code, not padding. */
 		*(.pica_rtt.text)
+		/* Save/menu/message code marked PSX3D_COLD (psx3d.h). */
+		*(.psx3d_cold.text)
 		. = ALIGN(4);
 		__psx3d_frontend_text_end = .;
 
@@ -244,6 +278,26 @@ SECTIONS
 		*.a:(.bss.*)
 		. = . + ((0x658 - .) & 0xfff);
 		__psx3d_frontend_bss_start = .;
+		/* The per-frame frontend's variables, at their RC4 page offsets
+		   (as for its code above). */
+		audio.o(.bss .bss.*)
+		audio_resample.o(.bss .bss.*)
+		. = . + ((0xa18 - .) & 0xfff);
+		emu.o(.bss .bss.*)
+		. = . + ((0xb2c - .) & 0xfff);
+		gamecfg.o(.bss .bss.*)
+		gpu_cache.o(.bss .bss.*)
+		gpustereo.o(.bss .bss.*)
+		gpustereo_core.o(.bss .bss.*)
+		input.o(.bss .bss.*)
+		. = . + ((0x9f8 - .) & 0xfff);
+		renderqueue.o(.bss .bss.*)
+		. = . + ((0x490 - .) & 0xfff);
+		statsview.o(.bss .bss.*)
+		. = . + ((0xbf0 - .) & 0xfff);
+		video.o(.bss .bss.*)
+		widescreen.o(.bss .bss.*)
+		/* The rest of the frontend's variables, in link order. */
 		*(.dynbss)
 		*(.bss)
 		*(.bss.*)

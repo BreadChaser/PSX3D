@@ -25,6 +25,10 @@
 
 #define PATH_LEN 512
 
+// Code that runs only for saves, menus and messages: linked after all other
+// frontend code (core-first.ld), so it never moves the per-frame code.
+#define PSX3D_COLD __attribute__((noinline, section(".psx3d_cold.text")))
+
 // log.c
 void log_init(void);
 bool log_linked(void);
