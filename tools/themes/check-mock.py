@@ -13,6 +13,12 @@ js = mock.read_text()
 i, j = js.index('const THEMES = {'), js.index('const BASE_THEME')
 node = subprocess.run(['node', '-e', js[i:j] + '\nconsole.log(JSON.stringify(THEMES))'], capture_output=True, text=True, check=True)
 mock_themes = json.loads(node.stdout)
+# icon colours: the mock's js/icon-tokens.js, hand-picked per palette
+icons_js = (mock.parent / 'icon-tokens.js').read_text()
+i, j = icons_js.index('const ICON_TOKENS = {'), icons_js.index('function iconTokensFor')
+node = subprocess.run(['node', '-e', icons_js[i:j] + '\nconsole.log(JSON.stringify(ICON_TOKENS))'], capture_output=True, text=True, check=True)
+for name, toks in json.loads(node.stdout).items():
+    if name in mock_themes: mock_themes[name].update(toks)
 
 # theme.c field -> mock token
 SCALAR = {'menu_bg': 'menuBg', 'header_title': 'headerTitle', 'header_right': 'headerRight', 'hl_glow': 'hlGlow',
@@ -21,7 +27,7 @@ SCALAR = {'menu_bg': 'menuBg', 'header_title': 'headerTitle', 'header_right': 'h
     'error': 'error', 'scrollbar': 'scrollbar', 'help_bg': 'helpBg', 'help_bar': 'helpBar', 'help_title': 'helpTitle',
     'help_impact': 'helpImpact', 'help_text': 'helpText', 'slow_bg': 'slowBg', 'slow_text': 'slowText',
     'game_title': 'gameTitle', 'game_sub': 'gameSub', 'pause_veil': 'pauseVeil', 'touch_face': 'touchFace',
-    'touch_border': 'touchBorder'}
+    'touch_border': 'touchBorder', 'icon_a': 'iconA', 'icon_b': 'iconB', 'icon_glow': 'iconGlow'}
 work = pathlib.Path(tempfile.mkdtemp())
 dump = ['#include <stdio.h>', '#include "psx3d.h"', '#include "theme.c"', 'psx3d_config g_cfg;',
     'static void c(const char *k, u32 v) { printf("\\"%s\\":[%u,%u,%u,%u],", k, v & 255, (v >> 8) & 255, (v >> 16) & 255, v >> 24); }',

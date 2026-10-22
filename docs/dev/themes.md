@@ -14,8 +14,9 @@ palette's colour matrix and the wire floor uses its grid colours.
 - The Settings row changes `g_cfg.theme` and every menu reads `theme()` each frame, so the
   new colours show at once.
 - `tools/themes/check-mock.py` compares the table with the mock-up's theme code
-  (`devtools/ui-mock/js/theme.js`): names, order and all 34 values per palette. The mock may
-  list more palettes (proposals) after the five shipped ones; those are not checked.
+  (`devtools/ui-mock/js/theme.js`, and `js/icon-tokens.js` for the icon colours): names, order
+  and all 37 values per palette. The mock may list more palettes (proposals) after the five
+  shipped ones; those are not checked.
 
 ## API
 
@@ -49,6 +50,7 @@ ones a new screen is likely to need (`TH_CARD_TOP`, `TH_COVER_SHADOW`, ...).
 | `slow_bg`, `slow_text` | "fast mode is off" banner in the library |
 | `game_title`, `game_sub` | library title and second line; pause menu game name; Continue prompt lines |
 | `pause_veil` | veil over the paused game |
+| `icon_a`, `icon_b`, `icon_glow` (iconA, iconB, iconGlow) | menu icons (docs/dev/icons.md): the selected picture's gradient, top-left to bottom-right, and its glow (alpha = strength; High contrast 0, no glow). Unselected icons: `theme_icon_dim()` = `row_dim` 15 % toward `menu_bg` |
 | `touch_face`, `touch_border` | kept for the mock-up; the in-game touch panel (input.c) keeps its v0.5.0 colours in every theme, so its per-frame code stays where it was |
 
 Console-only fields (not in the mock's palettes):
