@@ -7,6 +7,7 @@
 #define RESET_ONESHOT 0
 #define R_SUCCEEDED(x) ((x)>=0)
 #define GPU_RGB565 0
+#define GPU_RGBA8 1
 #define GPU_LINEAR 0
 #define GPU_CLAMP_TO_EDGE 0
 #define SYSCLOCK_ARM11 268111856ULL
@@ -75,6 +76,7 @@ CURLMcode __wrap_curl_multi_poll(CURLM *m,struct curl_waitfd *f,unsigned n,int m
 {assert(ms==0);return __real_curl_multi_poll(m,f,n,ms,num);}
 #include "../../source/covers.c"
 static bool fresh;
+bool discart_make(const char *jpg, const char *wordmark, disc_head_t *head, uint8_t *out) {(void)jpg;(void)wordmark;(void)head;(void)out;return false;}
 static void svcSleepThread(long long ns) { if(cancel_after && ++sleeps>=cancel_after) paused=true;usleep(ns/1000); }
 int main(void)
 {

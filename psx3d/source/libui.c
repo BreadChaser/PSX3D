@@ -370,26 +370,17 @@ static void draw_cover(int e, float cx, float cy, float size, float dim, float z
 	// a cover keeps its own aspect: the longer side is `size`, centred in the square
 	float sc = t ? size / (st.width > st.height ? st.width : st.height) : 1.0f;
 	float cw = t ? st.width * sc : size, ch = t ? st.height * sc : size;
-	// drop shadow on the "floor", a little behind the cover
-	C2D_DrawRectSolid(x + (size - cw) / 2 + 4 + ui_depth(1.5f), y + (size - ch) / 2 + 6, z - 0.01f, cw, ch,
-		TH_COVER_SHADOW);
+	// drop shadow on the "floor", a little behind the cover (the disc has its own)
+	if (t)
+		C2D_DrawRectSolid(x + (size - cw) / 2 + 4 + ui_depth(1.5f), y + (size - ch) / 2 + 6, z - 0.01f, cw, ch,
+			TH_COVER_SHADOW);
 	if (t) {
 		C2D_Image img = { t, &st };
 		C2D_ImageTint tint;
 		C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim);   // fixed: dimmed toward black
 		C2D_DrawImageAt(img, x + (size - cw) / 2, y + (size - ch) / 2, z, dim > 0 ? &tint : NULL, sc, sc);
-	} else {
-		u32 c = *accent(e);
-		const theme_t *th = theme();
-		C2D_DrawRectangle(x, y, z, size, size, th->card_top, th->card_top, th->card_bottom, th->card_bottom);
-		C2D_DrawRectSolid(x, y + size - 6, z, size, 6, c);
-		char initial[8];
-		ui_first_letter(initial, g->title);
-		float s = size / 60.0f;
-		text(title_font, cx, cy - 14 * s, s, th->card_ink, C2D_AlignCenter, initial);
-		if (dim > 0)   // fixed: dimmed toward black
-			C2D_DrawRectSolid(x, y, z + 0.005f, size, size, C2D_Color32(0, 0, 0, (u8)(dim * 255)));
-	}
+	} else
+		cover_placeholder(cx, cy, size, dim, z, entry_title(e), *accent(e));
 	if (s < 0 && favourite(i)) {   // a favourite: a star on the corner
 		float r = size * 0.09f;
 		C2D_DrawCircleSolid(x + size - r * 1.6f, y + r * 1.6f, z + 0.006f, r * 1.35f, theme_alpha(theme()->menu_bg, (u8)(200 * (1 - dim))));

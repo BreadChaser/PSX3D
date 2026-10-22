@@ -524,6 +524,9 @@ void covers_exit(void);
 // The cover's texture, or NULL while it loads. *sub is the part of it that
 // holds the picture (its own aspect), in citro2d's flipped convention.
 C3D_Tex *covers_get(int game, Tex3DS_SubTexture *sub);
+u32 covers_frame(void);
+// a cover's stand-in: the downloaded disc picture (discart.h) or one drawn in code
+void cover_placeholder(float cx, float cy, float size, float dim, float z, const char *title, u32 accent);
 void covers_reset(void);
 void covers_focus(int game);
 void covers_pump(void);

@@ -326,17 +326,8 @@ static void cover_card(int game, float cx, float cy, float size, float angle, fl
 		C2D_DrawImageAtRotated((C2D_Image){ t, &st }, cx, cy, z, angle, dim > 0 ? &tint : NULL, sc, sc);
 		return;
 	}
-	float x = cx - size / 2, y = cy - size / 2;
-	u8 d = (u8)(255 * (1 - dim));
-	const theme_t *th = theme();
-	C2D_DrawRectangle(x, y, z, size, size, th->card_top, th->card_top, th->card_bottom, th->card_bottom);
-	C2D_DrawRectSolid(x, y + size - 6, z + 0.001f, size, 6, accent(game, 255));
-	char initial[8];
-	ui_first_letter(initial, g->title);
-	float s = size / 60.0f;
-	ui_text_ex(libui_font(), cx, cy - 14 * s, s, theme_alpha(th->card_ink, d), C2D_AlignCenter, initial);
-	if (dim > 0)   // fixed: dimmed toward black
-		C2D_DrawRectSolid(x, y, z + 0.002f, size, size, C2D_Color32(0, 0, 0, (u8)(dim * 255)));
+	(void)angle;
+	cover_placeholder(cx, cy, size, dim, z, g->title, accent(game, 255));
 }
 
 // Five covers fanned out, the middle one in front.
