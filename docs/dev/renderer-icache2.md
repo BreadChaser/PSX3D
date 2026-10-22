@@ -51,7 +51,7 @@ per-format specialization and link ordering were not repeated.
 
 ## Correctness and hardware procedure
 
-Private evidence lives in `devtools/renderer-icache2/`; `offline-gate.json` is
+All offline gates PASS. Private evidence lives in `devtools/renderer-icache2/`; `offline-gate.json` is
 written only after every required comparison and exact-reference-CIA smoke
 test finishes. It requires all of:
 
@@ -67,7 +67,9 @@ comparing an immutable baseline direct runner with an immutable candidate
 direct runner. Both execute the same real citro3d and frontend wrapper code.
 
 The Old session is queued after UI, requeued multiplayer, dynarec-split and
-code-quality. It runs compactclip A1 → candidate → compactclip A2, each with
+code-quality. The waiter is `psx3d-renderer-icache2-old.service`; it makes no
+console contact before those completions and the complete offline gate.
+It runs compactclip A1 → candidate → compactclip A2, each with
 all thirteen heavy Off, Auto and renderer PMU runs. It then restores exact
 rc4. A successful `DONE renderer-icache2` requires the final library status,
 defaults=1/preset_pack=3, unchanged config, a final screenshot and complete
