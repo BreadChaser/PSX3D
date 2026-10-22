@@ -42,12 +42,16 @@ typedef struct {
 	// + row[3]); the Original's is the identity, so it is drawn as it is stored.
 	s16 sky[3][4];
 	u32 grid_near, grid_side, grid_far;   // wire floor: middle near the viewer, sides, toward the horizon
+	// The scene behind the wire floor: 0 = the sunset picture (recoloured by sky), 1 = a drawn
+	// sky (sky_top at the top to sky_low at the horizon, a glow over the horizon), 2 = the same
+	// with stars.
+	u8 scene;
+	u32 sky_top, sky_low, sky_glow;
+	// Icons (icons.c, the UI mock's js/icon-tokens.js): the selected picture's
+	// gradient from top-left to bottom-right, and its glow (alpha = strength,
+	// 0 = none). Unselected icons use theme_icon_dim().
+	u32 icon_a, icon_b, icon_glow;
 } theme_t;
-
-// v0.5.1 ships the Original look only (owner): the Theme row is hidden and
-// theme() is the Original whatever config.ini says (the saved value is kept
-// and written back unchanged). 1 brings the five palettes back.
-#define THEMES_SHOWN 0
 
 int theme_count(void);
 const theme_t *theme_get(int i);
@@ -58,3 +62,5 @@ int theme_from_id(const char *id);   // -1 when unknown
 u32 theme_alpha(u32 c, int a);
 // row text colour for lift 0..1 and opacity a
 u32 theme_row(const theme_t *t, float lift, int a);
+// unselected icons: the dim row colour a little toward the background
+u32 theme_icon_dim(const theme_t *t, int a);

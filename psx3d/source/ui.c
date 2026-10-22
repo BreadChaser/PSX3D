@@ -511,7 +511,9 @@ bool ui_confirm_choice(const char *title, const char *message, const char *actio
 #define BAR_CAPTION 0.36f    // caption size; shrinks to BAR_CAPTION_MIN before shortening
 #define BAR_CAPTION_MIN 0.31f
 
-static float text_width(float size, const char *s)
+static float text_width(float size, const char *s) { return ui_text_width(NULL, size, s); }
+
+float ui_text_width(C2D_Font font, float size, const char *s)
 {
 	static C2D_TextBuf wbuf;
 	if (!wbuf && !(wbuf = C2D_TextBufNew(256)))
@@ -524,7 +526,7 @@ static float text_width(float size, const char *s)
 	float w = 0;
 	if (wbuf)
 		C2D_TextBufClear(wbuf);
-	if (C2D_TextParse(&t, wbuf, s))
+	if (C2D_TextFontParse(&t, font, wbuf, s))
 		C2D_TextGetDimensions(&t, size, size, &w, NULL);
 	return w;
 }
@@ -596,6 +598,12 @@ static void bar_vertical_arrow(float cx, float cy, float s, u32 ink, int dir, fl
 static void bar_icon(int icon, float cx, float cy, float s, u32 ink, u32 bg, bool on)
 {
 	const float z = 0.68f, w = fmaxf(1.5f, s * 0.15f);
+	// the Dreamstale glyph (icons.c); a favourite is a gold star on a soft fill
+	u32 gold = ui_bar_color(UI_COL_STAR);
+	if (icon == UI_ICON_STAR && on)
+		ui_star(cx, cy + 0.5f, s * 0.42f, theme_alpha(gold, 150), 0, z - 0.001f);
+	if (icons_glyph(icon, cx, cy, icon == UI_ICON_STAR && on ? gold : ink, z))
+		return;
 	switch (icon) {
 	case UI_ICON_STAR:
 		ui_star(cx, cy, s * 0.62f, on ? ui_bar_color(UI_COL_STAR) : ink, on ? 0 : bg, z);

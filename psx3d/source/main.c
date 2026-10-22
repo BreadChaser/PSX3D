@@ -293,6 +293,13 @@ float slider_get(void)
 	return sw_slider >= 0 ? sw_slider : osGet3DSliderState();
 }
 
+// A game starts: the menus' pictures give their memory to it first.
+static bool start_game(const char *path, const char *save_name, const char *title)
+{
+	icons_release();
+	return emu_run_game(path, save_name, title);
+}
+
 int main(int argc, char **argv)
 {
 	char path[PATH_LEN];
@@ -410,7 +417,7 @@ int main(int argc, char **argv)
 			break;
 		char remote_save[PATH_LEN], remote_title[PATH_LEN];
 		if (dev_next_game(path, remote_save, remote_title)) {
-			emu_run_game(path, remote_save[0] ? remote_save : NULL, remote_title);
+			start_game(path, remote_save[0] ? remote_save : NULL, remote_title);
 			dev_local_game();   // the library is local again (a batch reapplies its own)
 			if (aptShouldClose())
 				break;
@@ -431,7 +438,7 @@ int main(int argc, char **argv)
 			if (picked && library_launch_path(picked, path, sizeof(path))) {
 				log_printf("test: starting %s\n", picked->title);
 				dev_local_game();
-				if (!emu_run_game(path, picked->cover_key, picked->title))
+				if (!start_game(path, picked->cover_key, picked->title))
 					show_error(emu_load_error());
 				if (aptShouldClose())
 					break;
@@ -458,7 +465,7 @@ int main(int argc, char **argv)
 					continue;
 				at_home = false;
 				dev_local_game();
-				if (!emu_run_game(path, NULL, NULL))
+				if (!start_game(path, NULL, NULL))
 					show_error(emu_load_error());
 				if (aptShouldClose())
 					break;
@@ -469,7 +476,7 @@ int main(int argc, char **argv)
 				continue;
 			dev_local_game();
 			emu_continue_now = hl.resume;
-			if (!emu_run_game(path, hl.save[0] ? hl.save : NULL, hl.title[0] ? hl.title : NULL))
+			if (!start_game(path, hl.save[0] ? hl.save : NULL, hl.title[0] ? hl.title : NULL))
 				show_error(emu_load_error());
 			emu_continue_now = false;
 			if (aptShouldClose())
@@ -515,7 +522,7 @@ int main(int argc, char **argv)
 		// library games save under disc 1's name, same as starting that
 		// disc from the folder browser
 		dev_local_game();
-		if (!emu_run_game(path, picked ? picked->cover_key : NULL, picked ? picked->title : NULL))
+		if (!start_game(path, picked ? picked->cover_key : NULL, picked ? picked->title : NULL))
 			show_error(emu_load_error());
 		if (aptShouldClose())
 			break;

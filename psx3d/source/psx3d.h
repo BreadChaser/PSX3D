@@ -11,6 +11,7 @@
 #include "safefile.h"
 #include "history.h"
 #include "theme.h"
+#include "icons.h"
 
 #define PSX3D_VERSION  "0.5.1"
 // Optional private test identity; the release reports its human version.
@@ -445,6 +446,8 @@ void ui_rect(float x, float y, float w, float h, u32 color);
 void ui_begin(void);
 bool ui_confirm(const char *title, const char *message, bool show_game);
 const char *ui_fit(const char *s, float size, float width);
+// width of s in font (NULL: the system font) at size
+float ui_text_width(C2D_Font font, float size, const char *s);
 bool ui_confirm_action(const char *title, const char *message, const char *action, bool show_game);
 bool ui_confirm_choice(const char *title, const char *message, const char *action, const char *back, bool show_game);
 void ui_text_ex(C2D_Font font, float x, float y, float size, u32 color, u32 flags, const char *s);

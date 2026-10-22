@@ -29,7 +29,8 @@
 	.logo = CA(245, 240, 255, 200), .logo_3d = CA(255, 90, 190, 200), \
 	.folder = C(170, 185, 220), \
 	.sky = { { 256, 0, 0, 0 }, { 0, 256, 0, 0 }, { 0, 0, 256, 0 } }, \
-	.grid_near = C(150, 60, 255), .grid_side = C(40, 90, 255), .grid_far = C(255, 70, 200)
+	.grid_near = C(150, 60, 255), .grid_side = C(40, 90, 255), .grid_far = C(255, 70, 200), \
+	.icon_a = C(90, 215, 255), .icon_b = C(255, 80, 200), .icon_glow = CA(255, 90, 210, 150)
 
 // later designators override the Original's
 #pragma GCC diagnostic ignored "-Woverride-init"
@@ -46,7 +47,9 @@ static const theme_t themes[] = {
 		.card_stack = C(30, 64, 74), .folder = C(150, 215, 220),
 		.version_ink = CA(120, 170, 180, 160), .logo_3d = CA(90, 220, 220, 200),
 		.sky = { { 26, 38, 13, 0 }, { 90, 115, 38, 0 }, { 77, 102, 90, 0 } },
-		.grid_near = C(60, 200, 210), .grid_side = C(40, 110, 200), .grid_far = C(140, 240, 230) },
+		.grid_near = C(60, 200, 210), .grid_side = C(40, 110, 200), .grid_far = C(140, 240, 230),
+		.scene = 2, .sky_top = C(1, 6, 14), .sky_low = C(10, 52, 66), .sky_glow = CA(90, 230, 230, 110),
+		.icon_a = C(150, 250, 230), .icon_b = C(60, 140, 235), .icon_glow = CA(90, 220, 230, 130) },
 	{ ORIGINAL, .id = "ps1-grey", .name = "PS1 grey",
 		.menu_bg = C(28, 28, 32), .hl_top = CA(90, 90, 100, 235), .hl_bottom = CA(60, 60, 70, 235),
 		.hl_glow = CA(200, 200, 210, 30), .value = C(200, 200, 215), .muted = C(150, 150, 160),
@@ -58,7 +61,9 @@ static const theme_t themes[] = {
 		.card_stack = C(78, 78, 88), .folder = C(200, 200, 210),
 		.version_ink = CA(160, 160, 170, 160), .logo_3d = CA(200, 205, 220, 200),
 		.sky = { { 110, 100, 40, 6 }, { 110, 100, 40, 6 }, { 115, 105, 45, 12 } },
-		.grid_near = C(175, 178, 195), .grid_side = C(115, 120, 140), .grid_far = C(225, 228, 240) },
+		.grid_near = C(175, 178, 195), .grid_side = C(115, 120, 140), .grid_far = C(225, 228, 240),
+		.scene = 1, .sky_top = C(44, 46, 54), .sky_low = C(128, 132, 142), .sky_glow = CA(235, 236, 245, 90),
+		.icon_a = C(245, 246, 252), .icon_b = C(135, 145, 180), .icon_glow = CA(210, 215, 235, 90) },
 	{ ORIGINAL, .id = "sunset-magenta", .name = "Sunset magenta",
 		.menu_bg = C(16, 4, 26), .hl_top = CA(120, 30, 120, 235), .hl_bottom = CA(60, 14, 74, 235),
 		.hl_glow = CA(255, 80, 200, 40), .value = C(255, 140, 210), .muted = C(190, 130, 190),
@@ -70,7 +75,8 @@ static const theme_t themes[] = {
 		.card_stack = C(74, 32, 82), .folder = C(235, 170, 220),
 		.version_ink = CA(190, 140, 190, 160), .logo_3d = CA(255, 150, 205, 200),
 		.sky = { { 218, 0, 38, 0 }, { 0, 154, 0, 0 }, { 141, 0, 115, 0 } },
-		.grid_near = C(255, 90, 190), .grid_side = C(170, 60, 210), .grid_far = C(255, 190, 230) },
+		.grid_near = C(255, 90, 190), .grid_side = C(170, 60, 210), .grid_far = C(255, 190, 230),
+		.icon_a = C(255, 205, 140), .icon_b = C(255, 70, 170), .icon_glow = CA(255, 110, 190, 150) },
 	{ ORIGINAL, .id = "high-contrast", .name = "High contrast",
 		.menu_bg = C(0, 0, 0), .hl_top = CA(30, 70, 200, 255), .hl_bottom = CA(20, 50, 160, 255),
 		.hl_glow = CA(0, 0, 0, 0), .row_dim = { 215, 215, 225 }, .value = C(170, 210, 255),
@@ -82,13 +88,15 @@ static const theme_t themes[] = {
 		.version_ink = CA(190, 200, 220, 220),
 		.logo = CA(255, 255, 255, 235), .logo_3d = CA(120, 190, 255, 235),
 		.sky = { { 190, 114, -95, -67 }, { 218, 131, -109, -77 }, { 256, 154, -128, -60 } },
-		.grid_near = C(200, 225, 255), .grid_side = C(90, 140, 240), .grid_far = C(255, 255, 255) },
+		.grid_near = C(200, 225, 255), .grid_side = C(90, 140, 240), .grid_far = C(255, 255, 255),
+		.scene = 1, .sky_top = C(0, 0, 0), .sky_low = C(8, 12, 34), .sky_glow = CA(160, 200, 255, 120),
+		.icon_a = C(255, 255, 255), .icon_b = C(255, 255, 255), .icon_glow = CA(120, 170, 255, 0) },
 };
 #define NTHEMES ((int)(sizeof(themes) / sizeof(themes[0])))
 
 int theme_count(void) { return NTHEMES; }
 const theme_t *theme_get(int i) { return &themes[i >= 0 && i < NTHEMES ? i : 0]; }
-const theme_t *theme(void) { return theme_get(THEMES_SHOWN ? g_cfg.theme : 0); }
+const theme_t *theme(void) { return theme_get(g_cfg.theme); }
 
 int theme_from_id(const char *id)
 {
@@ -111,4 +119,12 @@ u32 theme_row(const theme_t *t, float lift, int a)
 		v[i] = v[i] < 0 ? 0 : v[i] > 255 ? 255 : v[i];
 	}
 	return TH_RGBA(v[0], v[1], v[2], a);
+}
+
+u32 theme_icon_dim(const theme_t *t, int a)
+{
+	int v[3];
+	for (int i = 0; i < 3; i++)
+		v[i] = t->row_dim[i] + ((int)((t->menu_bg >> (8 * i)) & 255) - t->row_dim[i]) * 15 / 100;
+	return TH_RGBA(v[0], v[1], v[2], a < 0 ? 0 : a > 255 ? 255 : a);
 }

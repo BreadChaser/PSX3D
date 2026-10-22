@@ -75,6 +75,10 @@ static bool confirm_accept;
 
 void log_printf(const char *fmt, ...) { (void)fmt; }
 C2D_Font libui_font(void) { return (C2D_Font)1; }
+void libui_draw_backdrop(void) {}
+bool icons_draw(int slot, int id, float cx, float cy, float size, bool lit, float alpha, float z)
+{ (void)slot; (void)id; (void)cx; (void)cy; (void)size; (void)lit; (void)alpha; (void)z; return false; }
+bool icons_glyph(int ui_icon, float cx, float cy, u32 ink, float z) { (void)ui_icon; (void)cx; (void)cy; (void)ink; (void)z; return false; }
 void hidScanInput(void) {}
 u32 hidKeysHeld(void) { return fake_held; }
 u32 hidKeysDown(void) { return fake_down; }

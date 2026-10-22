@@ -563,14 +563,53 @@ static void change(settings_ui_t *s, int item, int dir)
 		break;
 	}
 }
+// The Settings list of the main menu and library: the selected category's
+// picture, name and tip over the backdrop (not in a game: its pictures stay
+// unloaded there). -1: none.
+static int category_picture(settings_ui_t *s, int item)
+{
+	if (s->game || s->page != CAT_HOME)
+		return -1;
+	if (item == F_FOLDER)
+		return ICON_FOLDER;
+	switch (item - CATEGORY_ROW) {
+	case CAT_DISPLAY: return ICON_DISPLAY;
+	case CAT_CONTROLS: return ICON_CONTROLS;
+	case CAT_SAVES: return ICON_SAVES;
+	case CAT_ADVANCED: return ICON_ADVANCED;
+	case CAT_RESET: return ICON_RESET;
+	}
+	return -1;
+}
+static void draw_category(int pic, int item)
+{
+	const theme_t *th = theme();
+	libui_draw_backdrop();
+	C2D_DrawRectSolid(0, 0, .3f, 400, 240, theme_alpha(th->menu_bg, 70));
+	icons_draw(ICON_SLOT_TOP, pic, 200, 88, 116, true, 1, .5f);
+	const char *name = item == F_FOLDER ? labels[F_FOLDER] : categories[item - CATEGORY_ROW];
+	const char *tip = item == F_FOLDER ? tips[F_FOLDER] : category_tips[item - CATEGORY_ROW];
+	float size = .8f, w = ui_text_width(libui_font(), size, name);
+	if (w > 380)
+		size *= 380 / w;
+	ui_text_ex(libui_font(), 201, 173, size, theme_alpha(TH_TITLE_SHADOW, 160), C2D_AlignCenter, name);
+	ui_text_ex(libui_font(), 200, 172, size, th->game_title, C2D_AlignCenter, name);
+	if (tip)
+		ui_text_ex(NULL, 200, 206, .45f, th->game_sub, C2D_AlignCenter, ui_fit(tip, .45f, 384));
+}
 // Top screen: the library or game picture, with the selected row's help.
 static void (*draw_behind)(void *);
 static void draw_help(void *ud)
 {
 	settings_ui_t *s = ud;
+	int item = s->count ? s->items[s->selected[s->page]] : -1;
+	int pic = category_picture(s, item);
+	if (pic >= 0) {
+		draw_category(pic, item);
+		return;
+	}
 	if (draw_behind)
 		draw_behind(NULL);
-	int item = s->count ? s->items[s->selected[s->page]] : -1;
 	if (item >= CATEGORY_ROW || item < 0 || item >= CHEAT_ROW)
 		return;
 	bool preset = preset_row(s, item);

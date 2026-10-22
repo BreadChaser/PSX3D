@@ -230,69 +230,16 @@ static void icon_library(float cx, float cy, float r, u32 c, float z)
 	}
 }
 
-static void icon_together(float cx, float cy, float r, u32 c, float z)
+// the Dreamstale picture of a tile (icons.c), -1 for tiles with real pictures
+static int picture(int id)
 {
-	float w = r * 0.8f, h = r * 0.55f;
-	for (int sx = -1; sx <= 1; sx += 2) {
-		float x = cx + sx * r * 0.55f - w / 2;
-		C2D_DrawRectSolid(x, cy - h, z, w, h, c);
-		C2D_DrawRectSolid(x + 2, cy - h + 2, z + 0.001f, w - 4, h - 4, theme()->value);
-		C2D_DrawRectSolid(x, cy + 1, z, w, h * 0.9f, c);
+	switch (id) {
+	case E_HOST: return ICON_HOST;
+	case E_JOIN: return ICON_JOIN;
+	case E_SHARE: return ICON_SHARE;
+	case E_SETTINGS: return ICON_SETTINGS;
 	}
-	float p = fmodf(clock_s * 0.8f, 1);
-	C2D_DrawCircleSolid(cx - r * 0.25f + r * 0.5f * p, cy - h - sinf(p * M_PI) * r * 0.35f, z + 0.002f,
-		fmaxf(1.5f, r * 0.11f), accent((int)(clock_s * 0.8f), 255));
-}
-
-static void icon_share(float cx, float cy, float r, u32 c, float z)
-{
-	float px[3] = { cx + r * 0.55f, cx - r * 0.6f, cx + r * 0.55f }, py[3] = { cy - r * 0.6f, cy, cy + r * 0.6f };
-	float w = fmaxf(1.5f, r / 9);
-	C2D_DrawLine(px[0], py[0], c, px[1], py[1], c, w, z);
-	C2D_DrawLine(px[2], py[2], c, px[1], py[1], c, w, z);
-	for (int i = 0; i < 3; i++)
-		C2D_DrawCircleSolid(px[i], py[i], z + 0.001f, r * 0.26f, i == 1 ? c : accent(i + 1, 255));
-}
-
-static void icon_settings(float cx, float cy, float r, u32 c, u32 hole, float z)
-{
-	float base = clock_s * 0.4f;
-	for (int i = 0; i < 8; i++) {
-		float a = base + (i + 1) * M_PI / 4, ca = cosf(a), sa = sinf(a);
-		// a tooth: the rectangle (-0.16r, -0.95r)..(0.16r, -0.55r), turned by a
-		float qx[4] = { -0.16f * r, 0.16f * r, 0.16f * r, -0.16f * r };
-		float qy[4] = { -0.95f * r, -0.95f * r, -0.55f * r, -0.55f * r };
-		float X[4], Y[4];
-		for (int k = 0; k < 4; k++) {
-			X[k] = cx + qx[k] * ca - qy[k] * sa;
-			Y[k] = cy + qx[k] * sa + qy[k] * ca;
-		}
-		tri(X[0], Y[0], X[1], Y[1], X[2], Y[2], c, z);
-		tri(X[0], Y[0], X[2], Y[2], X[3], Y[3], c, z);
-	}
-	C2D_DrawCircleSolid(cx, cy, z, r * 0.68f, c);
-	C2D_DrawCircleSolid(cx, cy, z + 0.002f, r * 0.3f, hole);
-}
-
-// The Play together picture: two consoles and a link between them.
-static void draw_consoles(float cx, float cy, float s, float z)
-{
-	const theme_t *th = theme();
-	u32 body = theme_alpha(th->hl_top, 255), lit = th->value;
-	for (int k = -1; k <= 1; k += 2) {
-		float x = cx + k * 40 * s;
-		C2D_DrawRectSolid(x - 22 * s, cy - 30 * s, z, 44 * s, 27 * s, body);
-		C2D_DrawRectSolid(x - 18 * s, cy - 27 * s, z + 0.001f, 36 * s, 21 * s, lit);
-		C2D_DrawRectSolid(x - 20 * s, cy - 2 * s, z, 40 * s, 25 * s, body);
-		C2D_DrawRectSolid(x - 12 * s, cy + 1 * s, z + 0.001f, 24 * s, 18 * s, th->card_bottom);
-		C2D_DrawCircleSolid(x - 16 * s, cy + 6 * s, z + 0.001f, 2 * s, th->muted);
-		C2D_DrawCircleSolid(x + 16 * s, cy + 6 * s, z + 0.001f, 2 * s, th->muted);
-	}
-	for (int i = 0; i < 5; i++) {
-		float p = fmodf(clock_s * 0.8f + i / 5.0f, 1), x = cx - 16 * s + 32 * s * p;
-		float y = cy - 22 * s - sinf(p * M_PI) * 12 * s;
-		C2D_DrawCircleSolid(x, y, z + 0.002f, 1.6f * s, accent(i, (u8)(255 * sinf(p * M_PI))));
-	}
+	return -1;
 }
 
 // "No games yet": a dashed card with a question mark.
@@ -428,7 +375,9 @@ static void draw_top(void *ud)
 	case E_LIBRARY:
 		if (have_games) cover_fan(cx, cy, size * 0.8f, 0.5f);
 		break;
-	default:   // owner: no drawn pictures up here until there are better ones
+	default:   // the tile's picture; behind Settings nothing (its help panel would cover it)
+		if (!no_title)
+			icons_draw(ICON_SLOT_TOP, picture(id), cx, cy - 2, size * 0.86f, true, 1, 0.5f);
 		break;
 	}
 	if (!no_title)
@@ -440,7 +389,7 @@ static void draw_top(void *ud)
 
 // ---------------------------------------------------------------- bottom screen
 
-static void tile_icon(int id, float cx, float cy, float r, u32 ink, u32 bg, float z)
+static void tile_icon(int id, float cx, float cy, float r, u32 ink, bool lit, float z)
 {
 	switch (id) {
 	case E_CONTINUE: icon_play(cx, cy, r, ink, z); break;
@@ -448,12 +397,9 @@ static void tile_icon(int id, float cx, float cy, float r, u32 ink, u32 bg, floa
 		if (have_games) icon_library(cx, cy, r, ink, z);
 		else empty_card(cx, cy, r * 1.4f, z);
 		break;
-	case E_HOST: case E_JOIN:
-		if (r >= 28) draw_consoles(cx, cy + r * 0.1f, r / 52, z);
-		else icon_together(cx, cy, r, ink, z);
+	default:   // the selected tile's picture draws itself on, the others stay dim
+		icons_draw(lit ? ICON_SLOT_TILE : ICON_STILL, picture(id), cx, cy, r * 2.1f, lit, 1, z);
 		break;
-	case E_SHARE: icon_share(cx, cy, r, ink, z); break;
-	default: icon_settings(cx, cy, r, ink, bg, z); break;
 	}
 }
 
@@ -479,7 +425,6 @@ static void draw_tile(const tile_t *t, bool lit, int i)
 	C2D_DrawRectSolid(x, y, 0.3f, 3, h, lit ? accent(i, 255) : th->section_rule);
 	u32 ink = theme_row(th, lit ? 1 : 0, 255);
 	u32 subc = lit ? th->value : th->muted;
-	u32 hole = th->card_bottom;
 	if (t->kind == K_HERO) {
 		if (t->id == E_CONTINUE) {
 			const float tw = 112, tht = 84;
@@ -497,7 +442,7 @@ static void draw_tile(const tile_t *t, bool lit, int i)
 			ui_text_ex(NULL, x + 136, y + 40, 0.48f, ink, 0, ui_fit(cont_title(), 0.48f, 160));
 			ui_text_ex(NULL, x + 136, y + 62, 0.36f, subc, 0, when);
 		} else {
-			tile_icon(t->id, x + 58, y + h / 2, 30, ink, hole, 0.4f);
+			tile_icon(t->id, x + 58, y + h / 2, 30, ink, lit, 0.4f);
 			ui_text_ex(libui_font(), x + 116, y + 18, 0.6f, ink, 0, label(t->id));
 			ui_text_ex(NULL, x + 116, y + 52, 0.42f, subc, 0, sub(t->id, !have_games));
 		}
@@ -506,11 +451,11 @@ static void draw_tile(const tile_t *t, bool lit, int i)
 		ui_text_ex(NULL, x + 76, y + 18, 0.5f, ink, 0, label(t->id));
 		ui_text_ex(NULL, x + 76, y + 40, 0.34f, subc, 0, ui_fit(sub(t->id, true), 0.34f, w - 80));
 	} else if (t->kind == K_MID) {
-		tile_icon(t->id, x + 32, y + h / 2, 20, ink, hole, 0.4f);
+		tile_icon(t->id, x + 32, y + h / 2, 20, ink, lit, 0.4f);
 		ui_text_ex(NULL, x + 62, y + 15, 0.5f, ink, 0, ui_fit(label(t->id), 0.5f, w - 66));
 		ui_text_ex(NULL, x + 62, y + 38, 0.34f, subc, 0, ui_fit(sub(t->id, true), 0.34f, w - 66));
 	} else {
-		tile_icon(t->id, x + 20, y + h / 2, 10, ink, hole, 0.4f);
+		tile_icon(t->id, x + 20, y + h / 2, 10, ink, lit, 0.4f);
 		ui_text_ex(NULL, x + 38, y + (h - 15) / 2, 0.45f, ink, 0, label(t->id));
 	}
 }
@@ -523,7 +468,7 @@ static void draw_group(bool lit)
 	C2D_DrawRectangle(x, y, 0.22f, w, h, th->card_top, th->card_top, th->card_bottom, th->card_bottom);
 	C2D_DrawRectSolid(x, y, 0.3f, 3, h, lit ? accent(1, 255) : th->section_rule);
 	u32 ink = theme_row(th, lit ? 1 : 0, 255);
-	icon_together(x + 20, y + 15, 11, ink, 0.3f);
+	icons_draw(lit ? ICON_SLOT_GROUP : ICON_STILL, ICON_TOGETHER, x + 20, y + 15, 22, lit, 1, 0.3f);
 	ui_text_ex(NULL, x + 36, y + 6, 0.48f, ink, 0, ui_fit("Play together", 0.48f, w - 44));
 }
 
@@ -537,8 +482,11 @@ static void draw_sub(const tile_t *t, bool lit)
 	} else
 		C2D_DrawRectangle(x, y, 0.33f, w, h, th->menu_bg, th->menu_bg, th->card_bottom, th->card_bottom);
 	C2D_DrawRectSolid(x, y, 0.34f, w, 1, th->scrollbar);
-	ui_text_ex(NULL, x + w / 2, y + h / 2 - 9, 0.5f, theme_row(th, lit ? 1 : 0.4f, 255), C2D_AlignCenter,
-		t->id == E_HOST ? "Host" : "Join");
+	// a small picture before the word, the pair centred
+	const char *word = t->id == E_HOST ? "Host" : "Join";
+	float x0 = x + (w - text_w(NULL, 0.5f, word) - 22) / 2;
+	icons_draw(lit ? ICON_SLOT_TILE : ICON_STILL, picture(t->id), x0 + 8, y + h / 2, 17, lit, 1, 0.35f);
+	ui_text_ex(NULL, x0 + 22, y + h / 2 - 9, 0.5f, theme_row(th, lit ? 1 : 0.4f, 255), 0, word);
 }
 
 static void draw_bottom(void *ud)
@@ -652,7 +600,7 @@ static void soon_top(void *ud)
 	(void)ud;
 	libui_draw_backdrop();
 	C2D_DrawRectSolid(0, 0, 0.3f, 400, 240, theme_alpha(theme()->menu_bg, 70));
-	draw_consoles(200 + ui_depth(-1.0f), 92, 1.3f, 0.5f);
+	icons_draw(ICON_SLOT_TOP, ICON_TOGETHER, 200 + ui_depth(-1.0f), 90, 120, true, 1, 0.5f);
 	big_title("Play together", "Coming soon", 1);
 	top_common();
 }

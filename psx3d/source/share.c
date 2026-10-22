@@ -243,6 +243,7 @@ static void draw_top(void *ud)
 	C2D_DrawRectSolid(0, 0, .1f, 400, 240, th->menu_bg);
 	ui_text(20, 14, .7f, white, "PSX3D %s", PSX3D_VERSION);
 	ui_text(20, 42, .45f, dim, "PS1 emulator for 3DS. Free software (GPL).");
+	ui_text(20, 194, .38f, dim, "Icons by Dreamstale from Flaticon");
 	ui_text(20, 70, .5f, white, "Share PSX3D with a friend:");
 	ui_text(20, 92, .45f, dim, "On their 3DS open FBI > Remote Install >");
 	ui_text(20, 110, .45f, dim, "Scan QR Code, and scan the code below.");
