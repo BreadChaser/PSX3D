@@ -640,24 +640,35 @@ static void glyph(u32 key, float x, float cy, float r, float z)
 		key == KEY_B ? C2D_Color32(30, 24, 10, 255) : C2D_Color32(255, 255, 255, 255), C2D_AlignCenter, t);
 }
 
+static bool bar_icon_only;   // the last alt layout dropped the words of icon buttons
+
 // Styles 1-3 lay out their own way: B at the left edge, A at the right, the
 // others centred between them; each button's tap area is its slot of the strip.
 static int bar_layout_alt(const ui_button_t *b, int m, const int *order, float *x, float *w)
 {
 	float nat[UI_BAR_MAX] = { 0 }, total = 0;
-	bar_text = 0.42f;
-	for (int i = 0; i < m; i++) {
-		const ui_button_t *p = &b[order[i]];
-		if (ui_bar_style == 3)
-			nat[i] = 36;
-		else {
-			float g = ui_bar_style == 1 ? glyph_w(p->key, 8) : glyph_w(p->key, 7);
-			float lw = p->label ? text_width(bar_text, p->label) : 0;
-			nat[i] = g + (p->icon ? 15 : 0) + (lw ? lw + 5 : 0) + (ui_bar_style == 2 ? 20 : 8);
-		}
-		total += nat[i];
-	}
 	float gap = ui_bar_style == 3 ? 10 : 6, avail = 320 - 12;
+	// crowded: smaller words first, then the arrow buttons (L/R) lose theirs
+	bar_icon_only = false;
+	for (int pass = 0; pass < 3; pass++) {
+		bar_text = pass ? 0.36f : 0.42f;
+		bar_icon_only = pass == 2;
+		total = 0;
+		for (int i = 0; i < m; i++) {
+			const ui_button_t *p = &b[order[i]];
+			if (ui_bar_style == 3)
+				nat[i] = 36;
+			else {
+				float g = ui_bar_style == 1 ? glyph_w(p->key, 8) : glyph_w(p->key, 7);
+				bool words = p->label && !(bar_icon_only && p->icon);
+				float lw = words ? text_width(bar_text, p->label) : 0;
+				nat[i] = g + (p->icon ? 15 : 0) + (lw ? lw + 5 : 0) + (ui_bar_style == 2 ? 20 : 8);
+			}
+			total += nat[i];
+		}
+		if (ui_bar_style == 3 || total + gap * (m - 1) <= avail)
+			break;
+	}
 	if (total + gap * (m - 1) > avail)
 		gap = m > 1 ? fmaxf(2, (avail - total) / (m - 1)) : 0;
 	// B left, A right, the rest centred
@@ -755,19 +766,20 @@ static void bar_draw_alt(const ui_button_t *b, int n)
 			glyph(p->key, x, mid, 8, 0.67f);
 			float cx = x + g + 5;
 			if (p->icon) { bar_icon(p->icon, cx + 6, mid, 12, ink, th->menu_bg, p->on); cx += 15; }
-			if (p->label)
-				ui_text_ex(NULL, cx, mid - 8.5f, bar_text, ink, 0, p->label);
+			if (p->label && !(bar_icon_only && p->icon))
+				ui_text_ex(NULL, cx, mid - 8.5f * bar_text / 0.42f, bar_text, ink, 0, p->label);
 		} else if (ui_bar_style == 2) {
 			u32 face = main ? theme_alpha(th->hl_top, 255) : mix(th->menu_bg, th->hl_top, 0.45f, 255);
 			if (lit) face = mix(th->hl_top, 0xffffffff, 0.35f, 255);
 			pill(x, mid - 12, w, 24, face, 0.65f);
-			float g = glyph_w(p->key, 7), cw = g + (p->icon ? 15 : 0) + (p->label ? text_width(bar_text, p->label) + 5 : 0);
+			bool words = p->label && !(bar_icon_only && p->icon);
+			float g = glyph_w(p->key, 7), cw = g + (p->icon ? 15 : 0) + (words ? text_width(bar_text, p->label) + 5 : 0);
 			float cx = x + (w - cw) / 2;
 			glyph(p->key, cx, mid, 7, 0.67f);
 			cx += g + 5;
 			if (p->icon) { bar_icon(p->icon, cx + 6, mid, 12, ink, face, p->on); cx += 15; }
-			if (p->label)
-				ui_text_ex(NULL, cx, mid - 8.5f, bar_text, ink, 0, p->label);
+			if (words)
+				ui_text_ex(NULL, cx, mid - 8.5f * bar_text / 0.42f, bar_text, ink, 0, p->label);
 		} else {
 			// round: a disc with the icon (or the action's first letter), the button letter on its rim
 			float cx = x + w / 2, cy = 220, r = 15;
@@ -779,7 +791,10 @@ static void bar_draw_alt(const ui_button_t *b, int n)
 				bar_icon(p->icon, cx, cy, 15, ink, face, p->on);
 			else if (p->key == KEY_B)   // back: an arrow
 				bar_icon(UI_ICON_LEFT, cx, cy, 15, ink, face, false);
-			else if (p->label) {
+			else if (p->key == KEY_A) {   // the main action: a check mark
+				C2D_DrawLine(cx - 6, cy, ink, cx - 2, cy + 5, ink, 2.5f, 0.68f);
+				C2D_DrawLine(cx - 2, cy + 5, ink, cx + 7, cy - 6, ink, 2.5f, 0.68f);
+			} else if (p->label) {
 				char first[8];
 				ui_first_letter(first, p->label);
 				ui_text_ex(NULL, cx, cy - 10, 0.55f, ink, C2D_AlignCenter, first);
