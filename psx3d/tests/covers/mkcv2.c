@@ -13,7 +13,8 @@ int main(int argc, char **argv)
 	int w, h;
 	uint32_t *px = covers_png_decode(NULL, 0, argv[1], COVER_TEX, &w, &h);
 	uint8_t *data = malloc(COVER_PACK_BYTES);
-	if (!px || !data || !covers_pack(px, w, h, data)) return 1;
+	if (!px || !data) return 1;
+	covers_pack(px, w, h, data);
 	struct { uint32_t magic; uint16_t w, h; uint32_t levels, bytes; } head = { 0x32564350u, w, h, COVER_LEVELS, COVER_PACK_BYTES };
 	FILE *f = fopen(argv[2], "wb");
 	if (!f || fwrite(&head, sizeof(head), 1, f) != 1 || fwrite(data, 1, COVER_PACK_BYTES, f) != COVER_PACK_BYTES) return 1;
