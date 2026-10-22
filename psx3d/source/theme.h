@@ -23,7 +23,6 @@
 #define TH_SLOT_DIM      TH_RGBA(6, 9, 24, 90)    // ... unselected thumbnail veil
 #define TH_SLOT_WHITE    TH_RGB(235, 238, 255)    // ... selected text
 #define TH_SLOT_DIM_INK  TH_RGB(110, 120, 160)    // ... other text
-#define TH_SKY_FALLBACK  TH_RGB(16, 2, 44)        // library sky when its texture is missing
 
 typedef struct {
 	const char *id, *name;       // config.ini value, name shown in Settings (the mock's palette name)
@@ -42,6 +41,11 @@ typedef struct {
 	u32 game_title, game_sub;    // library title and its second line; pause menu game name
 	u32 pause_veil;              // over the paused game
 	u32 touch_face, touch_border;     // touch button panel
+	// Console-only (not in the mock's palettes): the backdrop. The sunset picture goes
+	// through this colour matrix (out = row . (r, g, b) / 256 + row[3]); the Original's is
+	// the identity, so it is drawn as it is stored.
+	s16 sky[3][4];
+	u32 grid_near, grid_side, grid_far;   // wire floor: middle near the viewer, sides, toward the horizon
 } theme_t;
 
 int theme_count(void);

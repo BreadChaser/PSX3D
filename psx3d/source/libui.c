@@ -211,10 +211,9 @@ static const u32 *accent(int i)
 	return &theme()->accent[i & 3];
 }
 
-void libui_init(void)
+// The backdrop picture (sunset, sun and palms), RGB565.
+static void bg_load(void)
 {
-	title_font = C2D_FontLoad("romfs:/font/title.bcfnt");
-	tbuf = C2D_TextBufNew(4096);
 	FILE *f = fopen("romfs:/gfx/library_bg.t3x", "rb");
 	if (f) {
 		bg_t3x = Tex3DS_TextureImportStdio(f, &bg_tex, NULL, false);
@@ -225,16 +224,83 @@ void libui_init(void)
 			bg_ok = true;
 		}
 	}
+}
+
+static void bg_free(void)
+{
+	if (bg_ok) {
+		Tex3DS_TextureFree(bg_t3x);
+		C3D_TexDelete(&bg_tex);
+		bg_ok = false;
+	}
+}
+
+// One colour through the theme's backdrop matrix (theme.h, sky).
+static int sky_channel(const s16 *m, int r, int g, int b)
+{
+	int v = (m[0] * r + m[1] * g + m[2] * b) / 256 + m[3];
+	return v < 0 ? 0 : v > 255 ? 255 : v;
+}
+
+static u32 sky_colour(const theme_t *th, int r, int g, int b)
+{
+	return TH_RGB(sky_channel(th->sky[0], r, g, b), sky_channel(th->sky[1], r, g, b), sky_channel(th->sky[2], r, g, b));
+}
+
+static bool sky_identity(const theme_t *th)
+{
+	for (int i = 0; i < 3; i++)
+		for (int j = 0; j < 4; j++)
+			if (th->sky[i][j] != (i == j ? 256 : 0))
+				return false;
+	return true;
+}
+
+// The backdrop in the active theme's colours. The picture is recoloured in place
+// when the theme changes (a few milliseconds, once), and loaded again first when
+// it holds another theme's colours; the Original draws it as stored. Runs before
+// the first draw of a menu frame: menu frames begin after the previous one has
+// finished on the GPU, and nothing in this frame reads the texture yet.
+static const theme_t *bg_for;      // the theme the picture is coloured for; NULL = as stored
+
+static void sky_sync(void)
+{
+	const theme_t *th = theme(), *want = sky_identity(th) ? NULL : th;
+	if (want == bg_for)
+		return;
+	if (bg_for) {
+		bg_free();
+		bg_load();
+	}
+	bg_for = NULL;
+	if (!want || !bg_ok || bg_tex.fmt != GPU_RGB565)
+		return;
+	u16 *px = bg_tex.data;
+	for (u32 i = 0, n = bg_tex.size / 2; i < n; i++) {
+		u32 v = px[i];
+		int r = (v >> 11) & 31, g = (v >> 5) & 63, b = v & 31;
+		r = r << 3 | r >> 2;
+		g = g << 2 | g >> 4;
+		b = b << 3 | b >> 2;
+		px[i] = (u16)((sky_channel(want->sky[0], r, g, b) >> 3) << 11 |
+		              (sky_channel(want->sky[1], r, g, b) >> 2) << 5 | sky_channel(want->sky[2], r, g, b) >> 3);
+	}
+	GSPGPU_FlushDataCache(bg_tex.data, bg_tex.size);
+	bg_for = want;
+}
+
+void libui_init(void)
+{
+	title_font = C2D_FontLoad("romfs:/font/title.bcfnt");
+	tbuf = C2D_TextBufNew(4096);
+	bg_load();
 	if (!title_font)
 		log_printf("libui: title font missing, using system font\n");
 }
 
 void libui_exit(void)
 {
-	if (bg_ok) {
-		Tex3DS_TextureFree(bg_t3x);
-		C3D_TexDelete(&bg_tex);
-	}
+	bg_free();
 	if (title_font)
 		C2D_FontFree(title_font);
 	C2D_TextBufDelete(tbuf);
@@ -347,16 +413,29 @@ static float mesh_height(float x, float z_world, float z)
 	return rise * n * (0.35f + 0.65f * near);
 }
 
-static u32 mesh_colour(float x, float z, u8 alpha)
+// The theme's grid colours (near middle, sides, far), as numbers for mesh_colour.
+typedef struct { int n[3], s[3], f[3]; } mesh_ink_t;
+
+static void mesh_ink(mesh_ink_t *k, const theme_t *th)
+{
+	for (int i = 0; i < 3; i++) {
+		k->n[i] = (th->grid_near >> (8 * i)) & 255;
+		k->s[i] = (th->grid_side >> (8 * i)) & 255;
+		k->f[i] = (th->grid_far >> (8 * i)) & 255;
+	}
+}
+
+static u32 mesh_colour(const mesh_ink_t *k, float x, float z, u8 alpha)
 {
 	float side = fabsf(x) / 9.0f, depth = (z - 1.0f) / 25.0f;
 	if (side > 1) side = 1;
 	if (depth > 1) depth = 1;
 	if (depth < 0) depth = 0;
 	float t = powf(side, 0.8f);
-	float r = 150 + (40 - 150) * t, g = 60 + (90 - 60) * t, b = 255;
+	float r = k->n[0] + (k->s[0] - k->n[0]) * t, g = k->n[1] + (k->s[1] - k->n[1]) * t,
+	      b = k->n[2] + (k->s[2] - k->n[2]) * t;
 	float p = powf(depth, 0.7f) * (1 - side) * 0.85f;
-	r += (255 - r) * p; g += (70 - g) * p; b += (200 - b) * p;
+	r += (k->f[0] - r) * p; g += (k->f[1] - g) * p; b += (k->f[2] - b) * p;
 	return C2D_Color32((u8)r, (u8)g, (u8)b, alpha);
 }
 
@@ -409,7 +488,11 @@ static void draw_grid(float t)
 			py[j][i] = HORIZON + (1.0f - h) / z * f * 0.45f;
 		}
 	}
-	u32 fillc = C2D_Color32(16, 2, 44, 255);
+	// hills hide the lines behind them in the floor's colour (the picture's, through the theme)
+	const theme_t *th = theme();
+	u32 fillc = sky_colour(th, 16, 2, 44);
+	mesh_ink_t ink;
+	mesh_ink(&ink, th);
 	// back to front: hill cells hide the lines behind them
 	for (int j = MESH_ROWS - 1; j >= 0; j--) {
 		for (int i = 0; i < MESH_COLS - 1; i++) {
@@ -428,15 +511,15 @@ static void draw_grid(float t)
 		float zf = rz[j + 1];
 		u8 fade = zf > 32 ? (u8)(255 * (40 - zf) / 8) : 255;   // fade in at the horizon
 		for (int i = 0; i < MESH_COLS - 1; i++)
-			clip_line(px[j + 1][i], py[j + 1][i], mesh_colour(i - 18.0f, zf, fade),
-				px[j + 1][i + 1], py[j + 1][i + 1], mesh_colour(i - 17.0f, zf, fade), 1.2f);
+			clip_line(px[j + 1][i], py[j + 1][i], mesh_colour(&ink, i - 18.0f, zf, fade),
+				px[j + 1][i + 1], py[j + 1][i + 1], mesh_colour(&ink, i - 17.0f, zf, fade), 1.2f);
 		for (int i = 0; i < MESH_COLS; i++)
-			clip_line(px[j + 1][i], py[j + 1][i], mesh_colour(i - 18.0f, zf, fade),
-				px[j][i], py[j][i], mesh_colour(i - 18.0f, rz[j], 255), 1.2f);
+			clip_line(px[j + 1][i], py[j + 1][i], mesh_colour(&ink, i - 18.0f, zf, fade),
+				px[j][i], py[j][i], mesh_colour(&ink, i - 18.0f, rz[j], 255), 1.2f);
 	}
 	for (int i = 0; i < MESH_COLS - 1; i++)
-		clip_line(px[0][i], py[0][i], mesh_colour(i - 18.0f, rz[0], 255),
-			px[0][i + 1], py[0][i + 1], mesh_colour(i - 17.0f, rz[0], 255), 1.4f);
+		clip_line(px[0][i], py[0][i], mesh_colour(&ink, i - 18.0f, rz[0], 255),
+			px[0][i + 1], py[0][i + 1], mesh_colour(&ink, i - 17.0f, rz[0], 255), 1.4f);
 }
 
 // under the title: series and disc counts, and in the sort views when it was played
@@ -506,6 +589,7 @@ static void draw_top(void *ud)
 	(void)ud;
 	int n = nview;
 	const theme_t *th = theme();
+	sky_sync();
 	if (bg_ok)
 		C2D_DrawImageAt(bg_img, ui_depth(3.0f), 0, 0.1f, NULL, 1.0f, 1.0f);   // sky: far back
 	draw_grid(clock_s);
@@ -608,6 +692,7 @@ static void draw_top(void *ud)
 // system clock there.
 void libui_draw_backdrop(void)
 {
+	sky_sync();
 	if (bg_ok)
 		C2D_DrawImageAt(bg_img, ui_depth(3.0f), 0, 0.1f, NULL, 1.0f, 1.0f);
 	double t = svcGetSystemTick() / (double)SYSCLOCK_ARM11;
