@@ -1609,17 +1609,15 @@ void covers_release_gpu(void)
 		disc_state = 0;   // read from its cache again in the library
 	own_pngs_ok = false;  // and the player's PNGs looked for again
 	LightLock_Unlock(&lock);
-	// Old 3DS: the small covers' memory (8 KiB a game) goes to the game too;
-	// they are read again in the library. Unsaved new ones are lost, and made
-	// again from the cache by the background fill.
-	if (!g_new3ds) {
-		thumbs_free();
-		LightLock_Lock(&lock);
-		free(thumb_tried);
-		thumb_tried = NULL;
-		thumb_tried_n = 0;
-		LightLock_Unlock(&lock);
-	}
+	// The small covers' memory (8 KiB a game, 1.6 MB for 200) goes to the game
+	// too; they are read again in the library (one file). Unsaved new ones
+	// are made again from the cache by the background fill.
+	thumbs_free();
+	LightLock_Lock(&lock);
+	free(thumb_tried);
+	thumb_tried = NULL;
+	thumb_tried_n = 0;
+	LightLock_Unlock(&lock);
 }
 
 // forget everything (after a rescan the game indexes change). A rescan the
