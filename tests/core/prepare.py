@@ -36,7 +36,7 @@ f = dst / 'core/libpcsxcore/psxmem.c'
 s = f.read_text().replace('ptr = psxMap(0x80000000, 0x00210000, 1, MAP_TAG_RAM);', 'ptr = MAP_FAILED; /* Exercise 3DS relocated RAM. */')
 s = s.replace('psxMap(0x77000000,', 'psxMap(0x13000000,').replace('psxMap(0x1f800000, 0x10000,', 'psxMap(0x13400000, 0x10000,')
 f.write_text(s)
-# Minimal PS-X EXE, entirely synthetic: jump to self, nop. No ROM or BIOS data.
+# Synthetic PS-X EXE: increment r8, store the counter, loop. No ROM/BIOS data.
 import struct
 header = bytearray(2048)
 header[:8] = b'PS-X EXE'

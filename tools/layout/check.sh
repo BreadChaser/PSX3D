@@ -8,7 +8,7 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 [ -f "$ROOT/core/pcsx_rearmed_libretro_ctr.a" ] || { echo "build the core first (make)"; exit 2; }
-WORK=${1:-$(mktemp -d /tmp/psx3d-layout.XXXXXX)}
+WORK=${1:-$(mktemp -d "${TMPDIR:-/tmp}/psx3d-layout.XXXXXX")}
 mkdir -p "$WORK"
 
 build() { # build <name> [extra C source]
