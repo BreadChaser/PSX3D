@@ -19,6 +19,7 @@
 
 #define SRM_CHECK_FRAMES 180
 #define DISPLAY_HZ 59.831        // 3DS LCD refresh rate   // look for memory card writes every ~3 seconds
+#define PACE_DEBT 3ULL            // frames of lateness the pacer keeps when far behind
 
 static char game_name[PATH_LEN];   // save/state file name (disc 1's name)
 static char game_title[PATH_LEN];  // what the menu shows
@@ -1252,7 +1253,11 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		else if (now_t > next_deadline + catch_up * frame_ticks) {
 			stall_ticks += now_t - next_deadline;
 			stalls++;
-			next_deadline = now_t;   // far behind (loading, menu): don't race to catch up
+			// Far behind (loading, menu): don't race to catch up, but keep a
+			// few frames of lateness. Scenes that alternate heavy and light
+			// frames below full speed then run the light ones on instead of
+			// sleeping while the game is still behind (at most 50 ms catch-up).
+			next_deadline = now_t - PACE_DEBT * frame_ticks;
 		}
 		next_deadline += frame_ticks;
 
