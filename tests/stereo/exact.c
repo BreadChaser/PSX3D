@@ -102,6 +102,15 @@ int main(void)
 	shift(150, 100, 164, 100, 150, 140, d, 1);   // from scene(): (150,100),(164,100),(150,140)
 	assert(c[0] == d[1]);
 
+	// T-junction: a vertex in the middle of a neighbour's edge moves with
+	// that edge (disparity linear in 1/z, as the GPU interpolates on screen)
+	tri(100, 180, 200, 180, 100, 230, 400, 1600, 400);
+	tri(150, 180, 160, 150, 140, 150, 640, 640, 640);   // 1/640: halfway between 1/400 and 1/1600
+	int te[3], tm[3];
+	shift(100, 180, 200, 180, 100, 230, te, 1);
+	shift(150, 180, 160, 150, 140, 150, tm, 1);
+	assert(abs(tm[0] - (te[0] + te[1]) / 2) <= 1);
+
 	// a corner with another object's depth (near 100 among far 3000s) is
 	// vetoed: none of the polygons on that pixel keep it
 	tri(250, 20, 270, 20, 250, 40, 100, 3000, 3000);

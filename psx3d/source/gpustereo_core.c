@@ -22,11 +22,22 @@
 #define GS_SIZE (1u << GS_BITS)
 #define GS_WAYS 4
 static uint64_t *table;
+// The right eye's vertices (GPU thread): one shift per mono vertex position
+// and frame. The first triangle drawn at a position decides it; every later
+// triangle on that pixel moves the vertex alike, so polygons that share it
+// (and clip points cut from a shared edge) stay sealed, whatever small
+// differences their depths have. Only a vertex whose own shift differs by
+// more than SNAP (another object on the same pixel) keeps its own, except
+// on a backdrop's vertex: what is drawn later on its pixels hangs on to it
+// (a sky dome partly found to be the backdrop stays one sheet).
+#define VS_BITS 15
+#define VS_WAYS 4
+#define SNAP (2 * 16)
+static uint64_t *vshift;   // key 0-23, generation 24-31, shift 32-47 (1/16 px, signed), valid 48, backdrop 49
 static uint16_t gen;                 // main thread frame counter
 static float strength, scale;        // published to the GPU thread
-static float near_z, far_z;          // the scene's depth range (smoothed); 0: unknown
-static float aim_n, aim_f;
-static float log_near, gain;         // log2(near), 1 / log2(far / near)
+static float near_z;                 // the scene's near depth (smoothed); 0: unknown
+static float aim_n;
 // depth samples of this frame: a histogram of log2(z) in 1/16 octaves
 #define HBINS 256
 static uint32_t hist[HBINS];
@@ -45,26 +56,26 @@ static uint8_t *seq;
 static unsigned nseq, bd_count, bd_bin, bd_hold, bd_found;
 
 // The right eye's disparity, in PS1 pixels of a 320-wide picture, with the
-// slider fully up: the scene's nearest depths (5% of its vertices nearer)
-// sit on the screen, its far depths (5% further) MAX_BEHIND pixels behind
-// it, with depth in between spread evenly by ratio (log z). A stereo
-// camera's 1/z would bunch most of the scene up near the back, flat; log z
-// gives every scene, indoors or out, the same visible layering. Anything
-// nearer than the near depth comes out of the screen, at most MAX_FRONT of
-// the range (popping out further is uncomfortable).
+// slider fully up: 1 - near / z of MAX_BEHIND. The scene's nearest depths
+// (5% of its vertices nearer) sit on the screen, infinity MAX_BEHIND pixels
+// behind it, depth in between as a stereo camera sees it. Only a function
+// of 1/z is linear across a polygon on the screen, as the GPU interpolates
+// the shifted corners, and only without a clamp at the back: then a vertex
+// in the middle of a neighbour's edge (T-junction) moves exactly with that
+// edge and big polygons stay flat (log z with a far clamp, used before,
+// opened gap lines there). Anything nearer than the near depth comes out
+// of the screen, at most MAX_FRONT of the range (popping out further is
+// uncomfortable).
 #define MAX_BEHIND 10.0f
 #define MAX_FRONT  0.25f   // as a fraction of MAX_BEHIND
-// The scene's far depths stop short of the back: 2D backdrops (painted
-// skies and scenery drawn before the 3D scene, as sprites or polygons
-// without depth) go all the way back, behind everything drawn over them.
-#define SCENE_BACK 0.9f
+// 2D backdrops (painted skies and scenery drawn before the 3D scene, as
+// sprites or polygons without depth) go all the way back, to infinity.
 // The disparity of a triangle's corners may change by at most this many
 // pixels per pixel along its edges (plus SLACK): see gs_capture.
 #ifndef MAX_GRADIENT
 #define MAX_GRADIENT 0.15f
 #endif
 #define SLACK 1.0f
-#define MIN_OCTAVES 1.5f   // far / near at least 2.8: a shallow scene isn't stretched more
 // Screen depth fallback: a frame whose polygons carry next to no depth
 // (logos, movies, menus, 2D games, pre-rendered backgrounds) has nothing to
 // give real 3D, so after FLAT_AFTER such shown frames in a row the whole
@@ -85,15 +96,9 @@ static float flat = 1;                                       // eased flat_step 
 static struct pass { int x, y, w, h; unsigned shown, start, depth; bool live, had; } pass[PASS_SLOTS + 1];
 static unsigned pass_gen = 1;
 
-// log2, within 0.005
-static inline float fast_log2(float z)
-{
-	union { float f; uint32_t u; } b = { .f = z };
-	float e = (float)((int)(b.u >> 23) - 127);
-	b.u = (b.u & 0x7fffff) | 0x3f800000;
-	float m = b.f - 1;
-	return e + m * (1.3466f - 0.3466f * m);
-}
+// disparity of depth z with the slider fully up, in units of MAX_BEHIND
+// (before clamping)
+static inline float disp(float z, float zn) { return 1 - zn / z; }
 
 // once per frame or per game: optimised for size (the frontend's code sits
 // before the core's aligned start, which must not move)
@@ -130,23 +135,29 @@ GS_COLD bool gs_core_alloc(void)
 		table = calloc(GS_SIZE, sizeof(*table));
 	if (!seq)
 		seq = malloc(MAXSEQ);
-	return table && seq;
+	if (!vshift)
+		vshift = calloc(1u << VS_BITS, sizeof(*vshift));
+	return table && seq && vshift;
 }
 
 GS_COLD void gs_core_free(void)
 {
 	free(table);
 	free(seq);
+	free(vshift);
 	table = NULL;
 	seq = NULL;
-	strength = near_z = far_z = 0;
+	vshift = NULL;
+	strength = near_z = 0;
 }
 
 GS_COLD void gs_core_clear(void)
 {
 	if (table)
 		memset(table, 0, GS_SIZE * sizeof(*table));
-	near_z = far_z = aim_n = aim_f = 0;
+	if (vshift)
+		memset(vshift, 0, (1u << VS_BITS) * sizeof(*vshift));
+	near_z = aim_n = 0;
 	memset(hist, 0, sizeof(hist));
 	samples = nseq = bd_count = bd_hold = 0;
 	flat_run = FLAT_AFTER;
@@ -237,7 +248,7 @@ static float depth_at(int x, int y)
 }
 
 // gpu_pica's clip_area, positions only (its rounding: lrintf), and its fan
-static void clip_put(const pt *t, int x0, int y0, int x1, int y1, bool flat)
+static void clip_put(const pt *t, int x0, int y0, int x1, int y1, bool twod)
 {
 	pt a[9], b[9];
 	int n = 3, m;
@@ -267,7 +278,7 @@ static void clip_put(const pt *t, int x0, int y0, int x1, int y1, bool flat)
 	float z[9];
 	uint64_t edge[9];
 	for (int i = 0; i < n; i++) {
-		bool corner_unknown = flat;
+		bool corner_unknown = twod;
 		for (int k = 0; k < 3; k++)
 			corner_unknown |= !tri_known[k] && a[i].x == t[k].x && a[i].y == t[k].y;
 		z[i] = corner_unknown ? 0 : depth_at(a[i].x, a[i].y);
@@ -309,49 +320,72 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 		minx = v[k].x < minx ? v[k].x : minx; maxx = v[k].x > maxx ? v[k].x : maxx;
 		miny = v[k].y < miny ? v[k].y : miny; maxy = v[k].y > maxy ? v[k].y : maxy;
 	}
+	n_lookups += n;
+	for (int k = 0; k < n; k++)
+		n_found += zk[k] != 0;
+	// What this frame recorded at the corners' pixels (3D polygons drawn
+	// before): a vetoed GTE depth (another object's, see below) is no
+	// corner's here; a backdrop's vertex keeps the corner at the back with
+	// it; a vertex depth (known or estimated) is what a corner without one
+	// of its own is interpolated with (clip points), alike in every polygon.
+	uint16_t vz[4] = { 0 };
+	int avail = 0;
+	for (int k = 0; k < n; k++) {
+		uint64_t e = get(v[k].x, v[k].y, 0, gen);
+		if (!e || age(e, gen) != 0)
+			continue;
+		if (e & E_VETO)
+			zk[k] = 0;
+		if ((e & E_FAR) && !(e & E_EST))
+			far[k] = E_FAR;
+		joined |= !(e & (E_FAR | E_EST));
+		vz[k] = E_Z(e);
+	}
+	for (int k = 0; k < n; k++)
+		avail += zk[k] || vz[k];
 	// Two known corners at least: a 2D polygon can share one position
 	// with a projected point by chance. 2D polygons are entered too (no
-	// depth): the GPU thread then knows them for what they are.
+	// depth): the GPU thread then knows them for what they are. A polygon
+	// the GTE record missed (fewer than two depths) whose corners, two at
+	// least, are 3D vertices of this frame is part of that mesh: it takes
+	// their depths.
+	for (int k = 0; k < n; k++)
+		found += zk[k] != 0;
+	if (found < 2 && avail >= 2)
+		for (int k = 0; k < n; k++)
+			if (!zk[k] && vz[k]) {
+				zk[k] = vz[k];
+				found++;
+			}
+	bool twod = found < 2;
 	float inv = 0;
 	for (int k = 0; k < n; k++)
-		if (zk[k]) { inv += 1.0f / zk[k]; found++; }
-	n_lookups += n; n_found += found;
-	bool flat = found < 2;
-	inv = flat ? 1 : inv / found;
+		if (zk[k])
+			inv += 1.0f / zk[k];
+	inv = twod ? 1 : inv / found;
 	// The GTE depths come by screen position: a corner can get the depth of
 	// another object projected to the same pixel. A corner whose disparity
 	// jumps against both other corners of a triangle (more than the eyes
 	// could fuse along that edge) has no depth of its own here, and as the
 	// same wrong depth reaches every polygon on that pixel, none has it
 	// this frame (a veto); they all get the vertex's depth from elsewhere.
-	// A corner on a backdrop's vertex (drawn earlier this frame) is at the
-	// back with it: a polygon next to the backdrop doesn't tear from it.
-	for (int k = 0; !flat && k < n; k++) {
-		uint64_t e = get(v[k].x, v[k].y, 0, gen);
-		if ((e & E_VETO) && age(e, gen) == 0)
-			zk[k] = 0;
-		if ((e & E_FAR) && !(e & E_EST) && age(e, gen) == 0)
-			far[k] = E_FAR;
-		joined |= e && !(e & (E_FAR | E_EST)) && age(e, gen) == 0;
-	}
-	for (int t = 0; !flat && gain > 0 && t < n - 2; t++)
+	for (int t = 0; !twod && near_z > 0 && t < n - 2; t++)
 		for (int c = 0; c < 3; c++) {
 			const int *q = idx[t];
 			int a = q[c], b = q[(c + 1) % 3], o = q[(c + 2) % 3];
 			if (!zk[a] || !zk[b] || !zk[o])
 				continue;
-			float la = fast_log2(zk[a]), lb = fast_log2(zk[b]), lo = fast_log2(zk[o]);
-			float k = gain * SCENE_BACK * scale;
-			bool ab = fabsf(la - lb) * k > MAX_GRADIENT * (abs(v[a].x - v[b].x) + abs(v[a].y - v[b].y)) + SLACK;
-			bool ao = fabsf(la - lo) * k > MAX_GRADIENT * (abs(v[a].x - v[o].x) + abs(v[a].y - v[o].y)) + SLACK;
-			bool bo = fabsf(lb - lo) * k > MAX_GRADIENT * (abs(v[b].x - v[o].x) + abs(v[b].y - v[o].y)) + SLACK;
+			float la = disp(zk[a], near_z), lb = disp(zk[b], near_z), lo = disp(zk[o], near_z);
+			bool ab = fabsf(la - lb) * scale > MAX_GRADIENT * (abs(v[a].x - v[b].x) + abs(v[a].y - v[b].y)) + SLACK;
+			bool ao = fabsf(la - lo) * scale > MAX_GRADIENT * (abs(v[a].x - v[o].x) + abs(v[a].y - v[o].y)) + SLACK;
+			bool bo = fabsf(lb - lo) * scale > MAX_GRADIENT * (abs(v[b].x - v[o].x) + abs(v[b].y - v[o].y)) + SLACK;
 			if (ab && ao && !bo) {
 				put(v[a].x, v[a].y, 0, 2 / (1.0f / zk[b] + 1.0f / zk[o]), E_EST | E_VETO, false);
 				zk[a] = 0;
 				n_rejected++;
 			}
 		}
-	if (!flat) {   // the mean of what is left (the vertex estimate's base)
+	if (!twod) {   // the mean of what is left (the vertex estimate's base)
 		float left = 0;
 		int nl = 0;
 		for (int k = 0; k < n; k++)
@@ -359,16 +393,16 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 		if (nl)
 			inv = left / nl;
 	}
-	put_est = flat ? 0 : 1 / inv;
+	put_est = twod ? 0 : 1 / inv;
 	for (int k = 0; k < n; k++)
-		iz[k] = zk[k] ? 1.0f / zk[k] : inv;
+		iz[k] = zk[k] ? 1.0f / zk[k] : vz[k] ? 1.0f / vz[k] : inv;
 	int x0 = e3 & 0x3ff, y0 = (e3 >> 10) & 0x1ff;
 	int x1 = (e4 & 0x3ff) + 1, y1 = ((e4 >> 10) & 0x1ff) + 1;
 	put_flags = 0;
 	// The scene's depth range and the draw order count only what is drawn:
 	// geometry outside the drawing area (behind or beside the camera) would
 	// pull the near depth in and push the visible scene back.
-	if (!flat && maxx > x0 && minx < x1 && maxy > y0 && miny < y1) {
+	if (!twod && maxx > x0 && minx < x1 && maxy > y0 && miny < y1) {
 		union { float f; uint32_t u; } bits = { .f = 1 / inv };
 		unsigned b = (bits.u - 0x3f800000) >> 19;
 		b = b < HBINS ? b : HBINS - 1;
@@ -385,6 +419,13 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 			seq[nseq] = b;
 		nseq++;
 	}
+	// the vertex depth of corners just outside the drawing area too: a
+	// neighbour clipped along the same edge interpolates the same point
+	// (far outside, huge polygons' corners pile up on few pixels)
+	for (int k = 0; !twod && k < n; k++)
+		if ((v[k].x < x0 || v[k].x > x1 || v[k].y < y0 || v[k].y > y1) &&
+		    v[k].x > x0 - 64 && v[k].x < x1 + 64 && v[k].y > y0 - 64 && v[k].y < y1 + 64)
+			put(v[k].x, v[k].y, 0, 1 / iz[k], E_EST, true);   // an estimate: no backdrop or joining by it
 	for (int t = 0; t < n - 2; t++) {
 		pt tri[3];
 		for (int k = 0; k < 3; k++)
@@ -401,7 +442,7 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 		for (int k = 0; k < 3; k++) {
 			tri[k].x += dx; tri[k].y += dy;
 			tri_a[k][0] = tri[k].x; tri_a[k][1] = tri[k].y; tri_a[k][2] = iz[idx[t][k]];
-			tri_known[k] = !flat && zk[idx[t][k]] != 0;
+			tri_known[k] = !twod && zk[idx[t][k]] != 0;
 			tri_far[k] = far[idx[t][k]];
 		}
 		lx += dx; hx += dx; ly += dy; hy += dy;
@@ -418,7 +459,7 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 			}
 			put_tri(c, tz, te);
 		} else
-			clip_put(tri, x0, y0, x1, y1, flat);
+			clip_put(tri, x0, y0, x1, y1, twod);
 	}
 }
 
@@ -494,10 +535,6 @@ GS_COLD void gs_core_frame(float s, int hres)
 	flat = f * f * (3 - 2 * f);
 	if (samples >= 6) {
 		follow(&near_z, &aim_n, percentile(5));
-		follow(&far_z, &aim_f, percentile(95));
-		float octaves = fast_log2(far_z / near_z);
-		log_near = fast_log2(near_z);
-		gain = 1 / (octaves > MIN_OCTAVES ? octaves : MIN_OCTAVES);
 	}
 	memset(hist, 0, sizeof(hist));
 	samples = 0;
@@ -559,6 +596,27 @@ static struct pass *pass_at(int x, int y)
 	return best;
 }
 
+// the shift of the vertex at VRAM pixel (x, y) this frame: the one already
+// decided there if within SNAP of want or a backdrop's, else want (decided
+// now if first)
+static int vertex_shift(int x, int y, int want, bool far, uint16_t now)
+{
+	uint32_t key = key_of(x, y);
+	unsigned s = ((key * 2654435761u) >> (32 - VS_BITS)) & ~(VS_WAYS - 1u), victim = s, oldest = 0;
+	for (unsigned w = 0; w < VS_WAYS; w++) {
+		uint64_t e = vshift[s + w];
+		unsigned a = e >> 48 ? (uint8_t)(now - (uint8_t)(e >> 24)) : 0x100;
+		if (a <= 1 && (uint32_t)(e & 0xffffff) == key) {
+			int have = (int16_t)(e >> 32);
+			return abs(have - want) <= SNAP || (e >> 49 & 1) ? have : want;
+		}
+		if (a > oldest)
+			oldest = a, victim = s + w;
+	}
+	vshift[victim] = (uint64_t)far << 49 | 1ull << 48 | (uint64_t)(uint16_t)want << 32 | (uint64_t)(uint8_t)now << 24 | key;
+	return want;
+}
+
 // Polygon vertices sit at pixel * 16 + (8, 7) (POLY_SHIFT_X/Y in gpu_pica);
 // sprites, rectangles, lines and uploads don't. A triangle of a polygon
 // with depth moves by its corners' depths; 2D primitives move as a whole,
@@ -566,7 +624,7 @@ static struct pass *pass_at(int x, int y)
 // of a pass with depth, else not at all (on the screen, as HUD and text).
 int gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 {
-	float zn = near_z, ln = log_near, g = gain, k = 16 * scale * strength;
+	float zn = near_z, k = 16 * scale * strength;
 	uint16_t now = __atomic_load_n(&gen, __ATOMIC_RELAXED);
 	int moved = 0;
 	memcpy(dst, src, n * sizeof(*dst));
@@ -576,7 +634,7 @@ int gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 		const gs_vtx *v = &src[t];
 		float d[3];
 		uint64_t edge[3];
-		bool known[3];
+		bool known[3], far[3] = { false };
 		int found = 0, entries = 0;
 		bool poly = true;
 		int px[3], py[3];
@@ -608,9 +666,10 @@ int gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 				e = vert[i] | (e & (E_LEFT | E_RIGHT));
 			edge[i] = e & (E_LEFT | E_RIGHT);
 			known[i] = E_Z(e) != 0;
+			far[i] = known[i] && (e & E_FAR);
 			// disparity with the slider fully up, in units of MAX_BEHIND
-			d[i] = !known[i] ? 0 : e & E_FAR ? 1 : SCENE_BACK * (fast_log2((float)E_Z(e)) - ln) * g;
-			d[i] = d[i] < -MAX_FRONT ? -MAX_FRONT : d[i] > SCENE_BACK && !(e & E_FAR) ? SCENE_BACK : d[i];
+			d[i] = !known[i] ? 0 : e & E_FAR ? 1 : disp((float)E_Z(e), zn);
+			d[i] = d[i] < -MAX_FRONT ? -MAX_FRONT : d[i];
 			found += known[i];
 		}
 #ifdef PSX3D_SIM
@@ -618,7 +677,8 @@ int gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 #else
 		(void)entries;
 #endif
-		struct pass *ps = pass_at(px[0], py[0]);
+		// (by its centre: a corner can sit on the buffer's edge)
+		struct pass *ps = pass_at(((v[0].x + v[1].x + v[2].x) / 3) >> 4, ((v[0].y + v[1].y + v[2].y) / 3) >> 4);
 		if (found) {
 			float mean = 0;
 			for (int i = 0; i < 3; i++)
@@ -628,7 +688,7 @@ int gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 				float dd = known[i] ? d[i] : mean;
 				if ((edge[i] & E_LEFT && dd > 0) || (edge[i] & E_RIGHT && dd < 0))
 					dd = 0;
-				int x = dst[t + i].x + (int)lrintf(k * dd);
+				int x = dst[t + i].x + vertex_shift(px[i], py[i], (int)lrintf(k * dd), far[i], now);
 				dst[t + i].x = x < 0 ? 0 : x > 1024 * 16 - 1 ? 1024 * 16 - 1 : x;
 				moved++;
 			}
