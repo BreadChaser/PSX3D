@@ -221,6 +221,7 @@ static void put_tri(const int (*c)[2], const float *z, const uint64_t *edge)
 typedef struct { int x, y; } pt;
 static float tri_a[3][3];   // triangle corners: x, y, 1/z
 static bool tri_known[3];   // the corner's own depth is known (not the polygon's mean)
+static uint64_t tri_far[3]; // E_FAR: the corner is on a backdrop's vertex
 
 // perspective-correct depth at p on the triangle being clipped
 static float depth_at(int x, int y)
@@ -271,6 +272,9 @@ static void clip_put(const pt *t, int x0, int y0, int x1, int y1, bool flat)
 			corner_unknown |= !tri_known[k] && a[i].x == t[k].x && a[i].y == t[k].y;
 		z[i] = corner_unknown ? 0 : depth_at(a[i].x, a[i].y);
 		edge[i] = a[i].x == x0 ? E_LEFT : a[i].x == x1 ? E_RIGHT : 0;
+		for (int k = 0; k < 3; k++)
+			if (a[i].x == t[k].x && a[i].y == t[k].y)
+				edge[i] |= tri_far[k];
 	}
 	for (int i = 1; i + 1 < n; i++) {
 		int c[3][2] = { { a[0].x, a[0].y }, { a[i].x, a[i].y }, { a[i + 1].x, a[i + 1].y } };
@@ -290,6 +294,8 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 	pt v[4];
 	float iz[4];
 	uint16_t zk[4];
+	uint64_t far[4] = { 0 };
+	bool joined = false;   // a corner is a vertex of 3D geometry drawn before (not a backdrop's)
 	int i = 1, minx = 9999, maxx = -9999, miny = 9999, maxy = -9999;
 	for (int k = 0; k < n; k++) {
 		if (k && (cmd & 0x10))
@@ -318,10 +324,15 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 	// could fuse along that edge) has no depth of its own here, and as the
 	// same wrong depth reaches every polygon on that pixel, none has it
 	// this frame (a veto); they all get the vertex's depth from elsewhere.
+	// A corner on a backdrop's vertex (drawn earlier this frame) is at the
+	// back with it: a polygon next to the backdrop doesn't tear from it.
 	for (int k = 0; !flat && k < n; k++) {
 		uint64_t e = get(v[k].x, v[k].y, 0, gen);
 		if ((e & E_VETO) && age(e, gen) == 0)
 			zk[k] = 0;
+		if ((e & E_FAR) && !(e & E_EST) && age(e, gen) == 0)
+			far[k] = E_FAR;
+		joined |= e && !(e & (E_FAR | E_EST)) && age(e, gen) == 0;
 	}
 	for (int t = 0; !flat && gain > 0 && t < n - 2; t++)
 		for (int c = 0; c < 3; c++) {
@@ -361,7 +372,9 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 		union { float f; uint32_t u; } bits = { .f = 1 / inv };
 		unsigned b = (bits.u - 0x3f800000) >> 19;
 		b = b < HBINS ? b : HBINS - 1;
-		if (bd_count && nseq < bd_count && b < bd_bin) {
+		// (the count runs a little past the backdrop: geometry joined to
+		// what was drawn before it isn't the backdrop)
+		if (bd_count && nseq < bd_count && b < bd_bin && !joined) {
 			put_flags = E_FAR;
 			bd_found++;
 		} else {
@@ -389,6 +402,7 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 			tri[k].x += dx; tri[k].y += dy;
 			tri_a[k][0] = tri[k].x; tri_a[k][1] = tri[k].y; tri_a[k][2] = iz[idx[t][k]];
 			tri_known[k] = !flat && zk[idx[t][k]] != 0;
+			tri_far[k] = far[idx[t][k]];
 		}
 		lx += dx; hx += dx; ly += dy; hy += dy;
 		if (hx <= x0 || lx >= x1 || hy <= y0 || ly >= y1)
@@ -400,7 +414,7 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 			for (int k = 0; k < 3; k++) {
 				c[k][0] = tri[k].x; c[k][1] = tri[k].y;
 				tz[k] = tri_known[k] ? 1 / tri_a[k][2] : 0;
-				te[k] = tri[k].x == x0 ? E_LEFT : tri[k].x == x1 ? E_RIGHT : 0;
+				te[k] = (tri[k].x == x0 ? E_LEFT : tri[k].x == x1 ? E_RIGHT : 0) | tri_far[k];
 			}
 			put_tri(c, tz, te);
 		} else
@@ -571,14 +585,27 @@ int gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 			px[i] = v[i].x >> 4;
 			py[i] = v[i].y >> 4;
 		}
+		// each corner's own entry; without a depth of its own, the vertex's
+		// (another triangle's, by position). A 2D polygon's corners (E_EST)
+		// borrow only when two at least are 3D polygons' vertices of this
+		// frame (known or estimated depth): then
+		// it is part of a 3D mesh whose GTE record missed it; a 2D logo over
+		// the scene shares a pixel with a 3D vertex at most by chance.
+		uint64_t own[3] = { 0 }, vert[3] = { 0 };
+		int mesh = 0;
 		for (int i = 0; poly && i < 3; i++) {
 			int a = (i + 1) % 3, b = (i + 2) % 3;
-			uint64_t e = get(px[i], py[i], tag_of(px[a], py[a], px[b], py[b]), now);
-			entries += e != 0;
-			// no depth of its own: the vertex's, from another triangle
-			// (not for a 2D polygon's corners)
-			if (e && !E_Z(e) && !(e & E_EST))
-				e = get(px[i], py[i], 0, now) | (e & (E_LEFT | E_RIGHT));
+			own[i] = get(px[i], py[i], tag_of(px[a], py[a], px[b], py[b]), now);
+			entries += own[i] != 0;
+			if (own[i] && !E_Z(own[i])) {
+				vert[i] = get(px[i], py[i], 0, now);
+				mesh += vert[i] != 0;   // 3D polygons' vertices (estimates too) only
+			}
+		}
+		for (int i = 0; poly && i < 3; i++) {
+			uint64_t e = own[i];
+			if (e && !E_Z(e) && (!(e & E_EST) || mesh >= 2))
+				e = vert[i] | (e & (E_LEFT | E_RIGHT));
 			edge[i] = e & (E_LEFT | E_RIGHT);
 			known[i] = E_Z(e) != 0;
 			// disparity with the slider fully up, in units of MAX_BEHIND

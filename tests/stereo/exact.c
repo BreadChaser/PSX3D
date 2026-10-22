@@ -78,12 +78,18 @@ int main(void)
 	assert(a[1] == b[0] && a[1] != 0);
 	assert(a[2] == b[2]);
 
-	// a 2D polygon (no depth) with a corner on the 3D vertex (150,100) and
-	// one on (164,140): stays on the screen, whole and unmoved
-	tri(150, 100, 200, 60, 164, 140, 0, 0, 0);
+	// a 2D polygon (no depth) with one corner on the 3D vertex (150,100),
+	// as a logo over the scene: stays on the screen, whole and unmoved
+	tri(150, 100, 200, 60, 230, 90, 0, 0, 0);
 	int t2d[3];
-	shift(150, 100, 200, 60, 164, 140, t2d, 1);
+	shift(150, 100, 200, 60, 230, 90, t2d, 1);
 	assert(t2d[0] == 0 && t2d[1] == 0 && t2d[2] == 0);
+	// a polygon whose GTE depths the record missed, on 3D vertices of the
+	// mesh: moves with the mesh (no crack)
+	tri(150, 100, 164, 100, 150, 140, 0, 0, 0);
+	int m3[3];
+	shift(150, 100, 164, 100, 150, 140, m3, 1);
+	assert(m3[0] == a[1] && m3[2] == b[1] && m3[0] != 0);
 	// ... and the 3D triangles still move
 	shift(136, 100, 150, 100, 136, 140, b, 1);
 	assert(b[1] == a[1]);
