@@ -24,28 +24,41 @@ layers. Evidence (simulator eyes, triangle dumps, metrics, gallery) is in the ig
 
 ## What changed
 
-- `gpustereo_core.c`: every corner of every triangle gpu_pica will draw (clipped fans too) has
-  an entry tagged with its triangle's other two corners; the GPU thread finds exactly its own
-  triangle. A second, untagged entry per position holds the vertex's depth (or an estimate) for
-  corners without one, recorded once per frame, so every triangle sharing a vertex moves it
-  alike. 2D polygons are entered without depth and stay flat, unless two corners at least are
-  3D polygons' vertices (a mesh the GTE record missed). A corner whose GTE depth belongs to
-  another object projected to the same pixel is vetoed for every polygon on that pixel this
-  frame (capture time, 0.15 px per px). Table: 128K entries (1 MB, heap, while 3D is on).
-- Passes (GPU thread): 2D primitives drawn in a pass before its first 3D polygon are the
-  backdrop and move to the back as a whole, by whole pixels; the 3D scene ends at 90% of the
-  depth range in front of them. 2D drawn after the first 3D polygon stays on the screen (HUD,
-  text). The draw-order backdrop count no longer takes in geometry joined to what was drawn
-  before it.
+- `gpustereo_core.c`, capture (main thread): every corner of every triangle gpu_pica will draw
+  (clipped fans too) has an entry tagged with its triangle's other two corners; a second,
+  untagged entry per position holds the vertex's depth (or an estimate). 2D polygons are entered
+  without depth and stay flat, unless two corners at least are 3D polygons' vertices of this
+  frame (a mesh the GTE record missed). A corner whose GTE depth belongs to another object
+  projected to the same pixel is vetoed for every polygon on that pixel this frame (0.15 px per
+  px). Table: 128K entries (1 MB, heap, while 3D is on).
+- GPU thread: **one shift per mono vertex position and frame** (a second, 256 KB table): the
+  first triangle drawn at a pixel decides the vertex's shift, later triangles there use it unless
+  their own depth differs by more than 2 px (another object); a backdrop's vertex holds everything
+  drawn later on its pixel. Shared edges and clip points from shared edges stay sealed.
+- **Disparity = 1 − near/z** of the 10 px range: the scene's near depth on the screen, infinity at
+  the back, no far clamp. Only a function linear in 1/z is linear across a polygon as the GPU
+  interpolates the shifted corners: T-junction vertices move with the edge they sit on, large
+  polygons stay flat. (Log z with a far clamp, used before, opened gaps there.)
+- Passes (GPU thread): 2D primitives drawn in a pass before its first 3D polygon are the backdrop
+  and move to the back (infinity) as a whole, by whole pixels; 2D drawn after the first 3D polygon
+  stays on the screen (HUD, text). The draw-order backdrop count no longer takes in geometry joined
+  to what was drawn before it.
 - `video.c`: screen depth moves the picture by whole pixels.
 - `gpustereo_layers.c`: deeper layers for 2D games (14 px instead of 8 at the back, spacing 60%
   by rank).
 
+## What is left
+
+- Disocclusion: where a nearer object's silhouette meets distant scenery that the game never drew
+  behind it (Crash culls hidden polygons), the right eye shows a sliver of what lies behind (the
+  backdrop), 1–1.5 px in Crash's distant tree line. Filling it needs geometry the game didn't draw.
+
 ## Checks
 
 - Host tests `stereo-flat`, `stereo-exact` (ASan/UBSan).
-- Simulator, 14 scenes: left eye (PS1 VRAM) identical before/after in every frame; crack and
-  jump metrics in `devtools/stereo-blur/REPORT.md`.
+- Simulator, 14 scenes: left eye (PS1 VRAM) identical before/after in every frame. Per-frame
+  right-eye hole pixels against the left eye (`STEREO_HOLES` in tools/gpu-compare) and seam/jump
+  metrics in `devtools/stereo-blur/REPORT.md`.
 - `tools/layout/compare.py` against v0.5.0 rc4 and `tools/layout/check.sh`: PASS (core and
   library code at the same addresses). Frontend code after `gpustereo_core.c` moves: Old 3DS
   A/B/A at integration (nothing new runs there).
