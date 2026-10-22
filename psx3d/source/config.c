@@ -9,6 +9,7 @@
 #include "safefile.h"
 #include "widescreen.h"
 #include "audio_resample.h"
+#include "theme.h"
 
 #define MAX_OVERRIDES 128
 
@@ -86,6 +87,7 @@ static int factory(const char *key)
 		{ "smooth", "off|on" }, { "show_fps", "off|fps|detailed" }, { "stereo", "off|screen|real" },
 		{ "sounds", "off|on" }, { "music", "off|on" }, { "touch_click_left", "right|left" },
 		{ "screen", "original|stretch|widescreen" }, { "controller", "digital|analog" }, { "rewind", "off|on" },
+		{ "theme", "synthwave|grey|black|light|playstation|teal" },
 	};
 	for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++)
 		if (!strcmp(words[i][0], key))
@@ -121,6 +123,7 @@ static void set_defaults(void)
 	memset(&g_cfg, 0, sizeof(g_cfg));
 	strcpy(g_cfg.last_dir, "sdmc:/");
 	g_cfg.smooth = factory("smooth");
+	g_cfg.theme = factory("theme");
 	g_cfg.show_fps = factory("show_fps");
 	g_cfg.stereo = factory("stereo");
 	g_cfg.sounds = factory("sounds");
@@ -204,6 +207,11 @@ void config_load(void)
 			g_cfg.smooth = atoi(v) != 0;
 		else if (strcmp(k, "show_fps") == 0)
 			g_cfg.show_fps = atoi(v) >= 0 && atoi(v) <= 2 ? atoi(v) : 0;
+		else if (strcmp(k, "theme") == 0) {
+			int t = theme_from_id(v);   // by name, so the list can grow
+			if (t >= 0)
+				g_cfg.theme = t;
+		}
 
 	}
 	fclose(f);
@@ -238,6 +246,8 @@ void config_save(void)
 #define SAVE_INT(key, value, factory) do { int v_ = (value); if (user_has(key) || v_ != (factory)) fprintf(f, key "=%d\n", v_); } while (0)
 	SAVE_INT("smooth", g_cfg.smooth, factory("smooth"));
 	SAVE_INT("show_fps", g_cfg.show_fps, factory("show_fps"));
+	if (user_has("theme") || g_cfg.theme != factory("theme"))
+		fprintf(f, "theme=%s\n", theme_get(g_cfg.theme)->id);
 	SAVE_INT("stretch", screen == 1, factory("screen") == 1);
 	SAVE_INT("touch_stick", in_game ? default_touch_stick : g_cfg.touch_stick, -1);
 	SAVE_INT("touch_click_left", g_cfg.touch_click_left, factory("touch_click_left"));

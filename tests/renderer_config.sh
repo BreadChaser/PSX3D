@@ -22,7 +22,7 @@ ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-format-truncation \
   "$repo/tests/renderer_config.c" "$repo/psx3d/source/config.c" \
   "$repo/psx3d/source/options.c" "$repo/psx3d/source/gamecfg.c" "$repo/psx3d/source/presets.c" \
   -DPSX3D_DEFAULTS="\"$repo/psx3d/romfs/presets/defaults.ini\"" \
-  "$repo/psx3d/source/clip.c" "$repo/psx3d/source/safefile.c" "$repo/tools/input-replay/mock-core.c" -lz -o "$work/test"
+  "$repo/psx3d/source/clip.c" "$repo/psx3d/source/theme.c" "$repo/psx3d/source/safefile.c" "$repo/tools/input-replay/mock-core.c" -lz -o "$work/test"
 mkdir -p "$work/sdmc:/3ds/PSX3D/games"
 cd "$work"
 ./test

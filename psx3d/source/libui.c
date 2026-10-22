@@ -88,15 +88,10 @@ static const char *entry_title(int e)
 	return g ? g->title : "";
 }
 
-// PS-era accent colours, one per game in turn
+// the theme's accent colours, one per game in turn
 static const u32 *accent(int i)
 {
-	static u32 c[4];
-	c[0] = C2D_Color32(230, 30, 50, 255);
-	c[1] = C2D_Color32(250, 205, 20, 255);
-	c[2] = C2D_Color32(30, 190, 120, 255);
-	c[3] = C2D_Color32(40, 110, 230, 255);
-	return &c[i & 3];
+	return &theme()->accent[i & 3];
 }
 
 void libui_init(void)
@@ -172,15 +167,20 @@ static void draw_cover(int e, float cx, float cy, float size, float dim, float z
 					bs / COVER_SIZE, bs / COVER_SIZE);
 				continue;
 			}
-			u8 c = (u8)(40 - k * 8);
+			const theme_t *th = theme();
+			int sc[3];
+			for (int j = 0; j < 3; j++) {
+				sc[j] = th->stack[j] + k * th->stack_step;
+				sc[j] = sc[j] < 0 ? 0 : sc[j] > 255 ? 255 : sc[j];
+			}
 			C2D_DrawRectSolid(bx, y - o, bz, size, size,
-				C2D_Color32(c, c + 6, c + 30, (u8)(255 * (1 - dim * 0.6f))));
+				C2D_Color32(sc[0], sc[1], sc[2], (u8)(255 * (1 - dim * 0.6f))));
 			C2D_DrawRectSolid(bx, y - o, bz + 0.001f, size, 2,
 				(*accent(e + k) & 0x00ffffff) | ((u32)(200 * (1 - dim)) << 24));
 		}
 	}
 	// drop shadow on the "floor", a little behind the cover
-	C2D_DrawRectSolid(x + 4 + ui_depth(1.5f), y + 6, z - 0.01f, size, size, C2D_Color32(0, 0, 0, 110));
+	C2D_DrawRectSolid(x + 4 + ui_depth(1.5f), y + 6, z - 0.01f, size, size, theme()->shadow);
 	C3D_Tex *t = covers_get(i);
 	if (t) {
 		Tex3DS_SubTexture st = { COVER_SIZE, COVER_SIZE, 0.0f, 1.0f, 1.0f, 0.0f };
@@ -190,12 +190,12 @@ static void draw_cover(int e, float cx, float cy, float size, float dim, float z
 		C2D_DrawImageAt(img, x, y, z, dim > 0 ? &tint : NULL, size / COVER_SIZE, size / COVER_SIZE);
 	} else {
 		u32 c = *accent(e);
-		C2D_DrawRectangle(x, y, z, size, size, C2D_Color32(20, 26, 60, 255), C2D_Color32(20, 26, 60, 255),
-			C2D_Color32(8, 10, 28, 255), C2D_Color32(8, 10, 28, 255));
+		const theme_t *th = theme();
+		C2D_DrawRectangle(x, y, z, size, size, th->card_top, th->card_top, th->card_bottom, th->card_bottom);
 		C2D_DrawRectSolid(x, y + size - 6, z, size, 6, c);
 		char initial[2] = { g->title[0], 0 };
 		float s = size / 60.0f;
-		text(title_font, cx, cy - 14 * s, s, C2D_Color32(220, 225, 245, 255), C2D_AlignCenter, initial);
+		text(title_font, cx, cy - 14 * s, s, th->card_ink, C2D_AlignCenter, initial);
 		if (dim > 0)
 			C2D_DrawRectSolid(x, y, z + 0.005f, size, size, C2D_Color32(0, 0, 0, (u8)(dim * 255)));
 	}
@@ -320,9 +320,13 @@ static void draw_top(void *ud)
 {
 	(void)ud;
 	int n = nview;
-	if (bg_ok)
-		C2D_DrawImageAt(bg_img, ui_depth(3.0f), 0, 0.1f, NULL, 1.0f, 1.0f);   // sky: far back
-	draw_grid();
+	const theme_t *th = theme();
+	if (th->scene) {
+		if (bg_ok)
+			C2D_DrawImageAt(bg_img, ui_depth(3.0f), 0, 0.1f, NULL, 1.0f, 1.0f);   // sky: far back
+		draw_grid();
+	} else
+		C2D_DrawRectangle(0, 0, 0.1f, 400, 240, th->sky_top, th->sky_top, th->sky_bottom, th->sky_bottom);
 
 	// carousel: neighbours first so the selection sits on top
 	float spacing = 116.0f;
@@ -369,15 +373,15 @@ static void draw_top(void *ud)
 		if (w > 380)
 			size *= 380 / w;
 		float tx = 200 + ui_depth(-0.8f);   // floats just in front of the screen
-		text(f, tx + 1, ty + 1, size, C2D_Color32(0, 0, 0, a * 5 / 8), C2D_AlignCenter, title);
-		text(f, tx, ty, size, C2D_Color32(255, 255, 255, a), C2D_AlignCenter, title);
+		text(f, tx + 1, ty + 1, size, theme_fade(th->game_title_shadow, a * 5 / 8), C2D_AlignCenter, title);
+		text(f, tx, ty, size, theme_alpha(th->game_title, a), C2D_AlignCenter, title);
 		if (ser >= 0 || g->ndiscs > 1) {
 			char dd[32];
 			if (ser >= 0)
 				snprintf(dd, sizeof(dd), "%d games", library_series_size(ser));
 			else
 				snprintf(dd, sizeof(dd), "%d discs", g->ndiscs);
-			text(NULL, tx, ty + 36, 0.45f, C2D_Color32(170, 185, 230, a), C2D_AlignCenter, dd);
+			text(NULL, tx, ty + 36, 0.45f, theme_alpha(th->game_sub, a), C2D_AlignCenter, dd);
 		}
 	}
 
@@ -396,7 +400,7 @@ static void draw_top(void *ud)
 	}
 
 	// which build this is, small in the corner
-	text(NULL, 396, 226, 0.35f, C2D_Color32(150, 160, 200, 160), C2D_AlignRight, "v" PSX3D_VERSION);
+	text(NULL, 396, 226, 0.35f, th->corner, C2D_AlignRight, "v" PSX3D_VERSION);
 
 	// fade from/to black (open, launch)
 	float f = fade;
@@ -431,18 +435,19 @@ static void draw_bottom(void *ud)
 {
 	(void)ud;
 	int n = nview;
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
+	const theme_t *th = theme();
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->bg);
 	flist_draw(&lst, n, sel, 0, 4, 314, ROW_H, ROWS, game_label, game_value, NULL, *accent(sel));
 	// scroll indicator
 	if (n > ROWS) {
 		float h = 216.0f * ROWS / n, y = 4 + 216.0f * lst.scroll / n;
-		C2D_DrawRectSolid(315, y, 0.3f, 3, h, C2D_Color32(60, 80, 140, 255));
+		C2D_DrawRectSolid(315, y, 0.3f, 3, h, th->scrollbar);
 	}
 	if (launch_fail_frames > 0) {
-		ui_text_ex(NULL, 8, 222, 0.4f, C2D_Color32(255, 130, 130, 255), 0,
+		ui_text_ex(NULL, 8, 222, 0.4f, th->error, 0,
 			"Could not write the disc list. Is the SD card full?");
 	} else if (presets_frames > 0 && rescan_frames <= 0) {
-		ui_text_ex(NULL, 8, 222, 0.4f, C2D_Color32(255, 210, 120, 255), 0, "Game settings updated");
+		ui_text_ex(NULL, 8, 222, 0.4f, th->message, 0, "Game settings updated");
 	} else if (rescan_frames > 0) {
 		char msg[80];
 		int omitted = library_omitted();
@@ -451,9 +456,9 @@ static void draw_bottom(void *ud)
 				library_count(), omitted, omitted == 1 ? "item" : "items");
 		else
 			snprintf(msg, sizeof(msg), "Library updated: %d games", library_count());
-		ui_text_ex(NULL, 8, 222, omitted ? 0.36f : 0.4f, C2D_Color32(255, 210, 120, 255), 0, msg);
+		ui_text_ex(NULL, 8, 222, omitted ? 0.36f : 0.4f, th->message, 0, msg);
 	} else
-		ui_text_ex(NULL, 8, 223, 0.36f, C2D_Color32(90, 100, 135, 255), 0,
+		ui_text_ex(NULL, 8, 223, 0.36f, th->hint, 0,
 			open_series >= 0 ? "A play   B back   X settings   SELECT rescan   START quit" :
 			entry_series(sel) >= 0 ? "A open   X settings   Y folders   SELECT rescan   START quit" :
 			"A play   X settings   Y folders   SELECT rescan   START quit");

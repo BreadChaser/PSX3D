@@ -44,12 +44,13 @@ static const char *const categories[] = {"Settings",
 										 "Button mappings",
 										 "Debug"};
 enum { F_SCREEN, F_SMOOTH, F_FPS, F_CONTROLLER, F_SIDE,
-       F_REWIND, F_HEADING, F_RECOMMENDED, F_RECORD, F_TONE, F_COUNT };
+       F_REWIND, F_HEADING, F_RECOMMENDED, F_RECORD, F_TONE, F_THEME, F_COUNT };
 static const char *const labels[] = {
  [F_SCREEN]="Screen", [F_SMOOTH]="Smoothing", [F_FPS]="FPS counter",
  [F_CONTROLLER]="Controller",
  [F_SIDE]="Bottom-screen buttons", [F_REWIND]="Rewind", [F_HEADING]="Compatibility",
- [F_RECOMMENDED]="Reset to recommended", [F_RECORD]="Record audio", [F_TONE]="Test tone"
+ [F_RECOMMENDED]="Reset to recommended", [F_RECORD]="Record audio", [F_TONE]="Test tone",
+ [F_THEME]="Theme"
 };
 static const char *const tips[] = {
  [F_SCREEN]="Widescreen only in games with a widescreen fix.",
@@ -60,6 +61,7 @@ static const char *const tips[] = {
  [F_REWIND]="Hold the rewind shortcut to go back.",
  [F_RECOMMENDED]="Remove this game's Advanced changes.",
  [F_RECORD]="Capture 30 seconds for troubleshooting.", [F_TONE]="Play a tone to check audio output.",
+ [F_THEME]="Change the colours of the menus.",
 };
 // Longer help, shown on the top screen while the row is selected.
 static const char *const helps[] = {
@@ -72,9 +74,10 @@ static const char *const helps[] = {
  [F_RECOMMENDED]="Remove this game's changes to the Advanced options, so its tested settings apply again. Display, Controls and Saves are kept.",
  [F_RECORD]="Record 30 seconds of game audio for troubleshooting.",
  [F_TONE]="Play a steady tone to check audio output.",
+ [F_THEME]="Choose the colours of the menus and the library backdrop. Synthwave is the original look; the others are calmer. Game pictures and cover art are not changed.",
 };
 static const char *const category_tips[] = {
- [CAT_DISPLAY]="Picture shape, smoothing and the FPS counter.",
+ [CAT_DISPLAY]="Picture shape, smoothing, FPS counter and theme.",
  [CAT_CONTROLS]="Buttons, touch buttons and the controller.",
  [CAT_CHEATS]="Turn this game's cheat codes on or off.",
  [CAT_SAVES]="Memory cards and rewind.",
@@ -116,6 +119,8 @@ static bool frontend_visible(settings_ui_t *s, int i)
 	// Only physical limits hide a row (docs/settings.md section 1).
 	if (i == F_SIDE && !g_new3ds)
 		return false;
+	if (i == F_THEME && s->game)   // one look for the whole app
+		return false;
 	if (i == F_REWIND && (!s->game || !g_new3ds))
 		return false;
 	if (i == F_RECOMMENDED && (!s->game || !game_preset_tested()))
@@ -156,6 +161,7 @@ static void build_page(settings_ui_t *s, int page)
 		break;
 	case CAT_DISPLAY:
 		add_frontend(s, F_SCREEN); add_frontend(s, F_SMOOTH); add_frontend(s, F_FPS);
+		add_frontend(s, F_THEME);
 		break;
 	case CAT_CONTROLS:
 		add(s, CATEGORY_ROW + CAT_BINDINGS);
@@ -210,7 +216,8 @@ static const char *override_key(int item)
 {
 	static const char *const keys[] = {
 	 [F_SCREEN]="screen", [F_SMOOTH]="smooth", [F_FPS]="show_fps",
-	 [F_SIDE]="touch_click_left", [F_CONTROLLER]="controller", [F_REWIND]="rewind"};
+	 [F_SIDE]="touch_click_left", [F_CONTROLLER]="controller", [F_REWIND]="rewind",
+	 [F_THEME]="theme"};
 	if (item >= CORE_ROW && item < CONTROL_ROW)
 		return options_game_key(options_key(item - CORE_ROW));
 	return item >= 0 && item < F_COUNT && item < (int)(sizeof(keys) / sizeof(keys[0])) ? keys[item] : NULL;
@@ -315,6 +322,8 @@ static const char *row_value(int i, void *ud)
 		return g_cfg.smooth ? "On" : "Off";
 	case F_FPS:
 		return (const char *const[]){"Off", "FPS", "Detailed"}[g_cfg.show_fps];
+	case F_THEME:
+		return theme()->name;
 	case F_SIDE:
 		return g_cfg.touch_click_left ? "Left side" : "Right side";
 	case F_REWIND:
@@ -362,16 +371,17 @@ static void draw_settings(void *ud)
 {
 	settings_ui_t *s = ud;
 	int sel = s->selected[s->page];
-	u32 muted = C2D_Color32(130, 150, 190, 255), white = C2D_Color32(230, 235, 255, 255);
-	C2D_DrawRectSolid(0, 0, .1f, 320, 240, C2D_Color32(6, 9, 24, 255));
+	const theme_t *th = theme();
+	u32 muted = th->muted;
+	C2D_DrawRectSolid(0, 0, .1f, 320, 240, th->bg);
 	ui_menu_header(categories[s->page], s->game ? ui_fit(emu_game_title(), .42f, 150) : "All games");
 	const char *header = advanced_header(s);
 	if (header)
-		ui_text_wrap(12, 32, .39f, header == advanced_tested ? C2D_Color32(250, 205, 20, 255) : muted, 296.0f, header);
+		ui_text_wrap(12, 32, .39f, header == advanced_tested ? th->help_impact : muted, 296.0f, header);
 	int rows = list_rows(s);
 	flist_draw_sections(&s->list, s->count, sel, 0, list_top(s), 320, row_height(s), rows, row_label,
 			   s->page == CAT_BINDINGS ? input_control_value : row_value, s,
-			   (const u32[]){0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28}[sel & 3], heading);
+			   th->accent[sel & 3], heading);
 	if (s->count > rows) {
 		float h = rows * 23.0f;
 		C2D_DrawRectSolid(317, list_top(s) + h * s->list.scroll / s->count, .3f, 2, h * rows / s->count, muted);
@@ -395,12 +405,12 @@ static void draw_settings(void *ud)
 	else if (item >= 0 && item < F_COUNT)
 		tip = tips[item];
 	if (message_frames > 0)
-		ui_text_ex(NULL, 12, 183, .39f, C2D_Color32(255, 210, 120, 255), 0, message);
+		ui_text_ex(NULL, 12, 183, .39f, th->message, 0, message);
 	else if (tip && s->page != CAT_HOME)
 		ui_text_ex(NULL, 12, 183, .39f, muted, 0, tip);
 	// In a game every value belongs to that game; unchanged ones follow all games.
 	if (s->game && item >= 0 && item < CONTROL_ROW && item != F_REWIND && (item >= CORE_ROW || override_key(item)))
-		ui_text_ex(NULL, 12, 199, .4f, white, 0,
+		ui_text_ex(NULL, 12, 199, .4f, th->text, 0,
 				   overridden(s, item) ? "* Changed for this game    X inherit" : preset_row(s, item) ? "P Tested setting for this game" : "Same as all games");
 	// Category rows open with A; Left/Right only changes values.
 	ui_text_ex(NULL, 160, 222, .39f, muted, C2D_AlignCenter,
@@ -471,6 +481,11 @@ static void change(settings_ui_t *s, int item, int dir)
 		}
 		else
 			g_cfg.show_fps = (g_cfg.show_fps + dir + 3) % 3;
+		break;
+	case F_THEME:
+		// the menus redraw in the new colours at once
+		config_user_changed("theme");
+		g_cfg.theme = (g_cfg.theme + dir + theme_count()) % theme_count();
 		break;
 	case F_SIDE:
 		g_cfg.touch_click_left ^= 1;

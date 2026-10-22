@@ -195,17 +195,18 @@ static bool single_game(char *out, size_t len)
 static void draw_top(void *ud)
 {
 	(void)ud;
-	C2D_DrawRectSolid(0, 0, 0.1f, 400, 240, C2D_Color32(6, 9, 24, 255));
-	ui_text_ex(libui_font(), 16, 14, 0.8f, C2D_Color32(235, 238, 255, 255), 0, "PSX3D");
+	const theme_t *th = theme();
+	C2D_DrawRectSolid(0, 0, 0.1f, 400, 240, th->bg);
+	ui_text_ex(libui_font(), 16, 14, 0.8f, th->title, 0, "PSX3D");
 	char version[64];
 	snprintf(version, sizeof(version), "Version " PSX3D_VERSION " (game presets %d), based on PCSX-ReARMed (GPL v2)",
 		game_presets_pack());
-	ui_text_ex(NULL, 16, 46, 0.42f, C2D_Color32(130, 150, 190, 255), 0, version);
-	ui_text_ex(NULL, 16, 70, 0.39f, C2D_Color32(110, 120, 160, 255), 0, "Games folder");
-	ui_text_ex(NULL, 16, 84, 0.42f, C2D_Color32(170, 185, 220, 255), 0,
+	ui_text_ex(NULL, 16, 46, 0.42f, th->muted, 0, version);
+	ui_text_ex(NULL, 16, 70, 0.39f, th->right, 0, "Games folder");
+	ui_text_ex(NULL, 16, 84, 0.42f, th->help_text, 0,
 		g_cfg.games_dir[0] ? ui_fit(g_cfg.games_dir, .42f, 368) : "None chosen yet");
 	if (slow_mode_notice(false))
-		ui_text_ex(NULL, 16, 108, 0.42f, C2D_Color32(255, 160, 120, 255), 0,
+		ui_text_ex(NULL, 16, 108, 0.42f, th->message, 0,
 			ui_fit(slow_mode_notice(true), .42f, 368));
 	ui_help_panel(150, "This folder", truncated ? "Over 4096 entries; the list is cut off" : NULL, cwd);
 }
@@ -229,19 +230,20 @@ static const char *row_value(int i, void *ud)
 static void draw_bottom(void *ud)
 {
 	(void)ud;
-	u32 muted = C2D_Color32(130, 150, 190, 255);
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
+	const theme_t *th = theme();
+	u32 muted = th->muted;
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->bg);
 	const char *name = strrchr(cwd, '/');
 	ui_menu_header("Folders", ui_fit(name && name[1] ? name + 1 : cwd, .42f, 170));
 	flist_draw(&lst, nentries + 1, sel, 0, 40, 320, ROW_H, ROWS, row_label, row_value, NULL,
-		(const u32[]){0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28}[sel & 3]);
+		th->accent[sel & 3]);
 	if (nentries + 1 > ROWS) {
 		float h = ROWS * (float)ROW_H;
 		C2D_DrawRectSolid(317, 40 + h * lst.scroll / (nentries + 1), .3f, 2, h * ROWS / (nentries + 1), muted);
 	}
 	if (msg_frames > 0) {
 		msg_frames--;
-		ui_text_ex(NULL, 12, 204, .4f, C2D_Color32(255, 210, 120, 255), 0, msg);
+		ui_text_ex(NULL, 12, 204, .4f, th->message, 0, msg);
 	} else if (!nentries)
 		ui_text_ex(NULL, 12, 204, .4f, muted, 0, "No games or folders here");
 	ui_text_ex(NULL, 160, 222, .39f, muted, C2D_AlignCenter,

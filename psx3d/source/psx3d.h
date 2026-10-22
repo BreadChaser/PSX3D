@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include "libretro.h"
 #include "safefile.h"
+#include "theme.h"
 
 #define PSX3D_VERSION  "0.5.0"
 #define PSX3D_DIR      "sdmc:/3ds/PSX3D"
@@ -34,6 +35,7 @@ typedef struct {
 	char games_dir[PATH_LEN];   // Y in the browser jumps here
 	char last_title[256];       // library: game to select on start
 	int  smooth;       // bilinear filtering
+	int  theme;        // menu colours (theme.c), index into the theme table
 	int  show_fps;
 	int  stereo;       // 3D slider: 0 off, 1 screen depth, 2 real (per-object)
 	int  debug;        // show debug tools in the menu

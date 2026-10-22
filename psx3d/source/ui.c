@@ -112,13 +112,12 @@ u32 ui_header_back(u32 keys)
 // The same title font, colours and rule for Controls, Settings and the game menu.
 void ui_menu_header(const char *title, const char *right)
 {
-	ui_text_ex(libui_font(), 10, 6, 0.5f, C2D_Color32(235,238,255,255), 0, title);
+	const theme_t *th = theme();
+	ui_text_ex(libui_font(), 10, 6, 0.5f, th->title, 0, title);
 	if (right)
-		ui_text_ex(NULL, 310, 9, 0.42f, C2D_Color32(110,120,160,255), C2D_AlignRight, right);
-	const unsigned colors[] = { 0xe61e3c, 0xfacd14, 0x1ebe78, 0x286ee6 };
+		ui_text_ex(NULL, 310, 9, 0.42f, th->right, C2D_AlignRight, right);
 	for (int i=0; i<4; i++)
-		C2D_DrawRectSolid(10+i*18, 26, 0.2f, 16, 2,
-			C2D_Color32(colors[i]>>16, colors[i]>>8, colors[i], 255));
+		C2D_DrawRectSolid(10+i*18, 26, 0.2f, 16, 2, th->accent[i]);
 }
 
 // Pixel-sized ASCII labels with explicit baseline/tracking. A positive width
@@ -341,6 +340,7 @@ int flist_row_at(const flist_t *f, float y0, float row_h, float py)
 void flist_draw_sections(const flist_t *f, int n, int sel, float x, float y0, float w, float row_h, int rows,
 	const char *(*label)(int, void *), const char *(*value)(int, void *), void *ud, u32 accent, bool (*header)(int, void *))
 {
+	const theme_t *th = theme();
 	if (value == input_control_value) accent = input_control_color(sel);
 	// highlight: soft glow, gradient bar, accent edge
 	float hy = y0 + (f->hl - f->scroll) * row_h;
@@ -348,10 +348,8 @@ void flist_draw_sections(const flist_t *f, int n, int sel, float x, float y0, fl
 	if (hy > y0 - row_h && hy < y0 + rows * row_h &&
 	    !(header && highlight_row >= 0 && highlight_row < n && header(highlight_row, ud))) {
 		float bob = sinf(f->t * 2.0f) * 0.8f;
-		C2D_DrawRectSolid(x - 2, hy - 2 + bob, 0.2f, w + 4, row_h + 4, C2D_Color32(60, 90, 200, 40));
-		C2D_DrawRectangle(x, hy + bob, 0.21f, w, row_h,
-			C2D_Color32(40, 58, 130, 235), C2D_Color32(24, 34, 84, 235),
-			C2D_Color32(40, 58, 130, 235), C2D_Color32(24, 34, 84, 235));
+		C2D_DrawRectSolid(x - 2, hy - 2 + bob, 0.2f, w + 4, row_h + 4, th->hl_glow);
+		C2D_DrawRectangle(x, hy + bob, 0.21f, w, row_h, th->hl_top, th->hl_bottom, th->hl_top, th->hl_bottom);
 		C2D_DrawRectSolid(x, hy + bob, 0.22f, 3, row_h, accent);
 	}
 	int first = (int)floorf(f->scroll) - 1;
@@ -365,20 +363,16 @@ void flist_draw_sections(const flist_t *f, int n, int sel, float x, float y0, fl
 			continue;
 		if (header && header(i, ud)) {
 			u8 alpha = (u8)(255 * edge);
-			ui_text_ex(NULL, x + 12, ry + 4, 0.33f,
-				C2D_Color32(125, 145, 190, alpha), 0, label(i, ud));
-			const u32 colors[] = { 0xff3c1ee6, 0xff14cdfa, 0xff78be1e, 0xffe66e28 };
+			ui_text_ex(NULL, x + 12, ry + 4, 0.33f, theme_alpha(th->section, alpha), 0, label(i, ud));
 			for (int j = 0; j < 4; j++)
-				C2D_DrawRectSolid(x + 12 + j * 10, ry + 19, 0.3f, 8, 1,
-					(colors[j] & 0xffffff) | ((u32)alpha << 24));
-			C2D_DrawRectSolid(x + 56, ry + 19, 0.3f, w - 68, 1,
-				C2D_Color32(30, 42, 72, alpha));
+				C2D_DrawRectSolid(x + 12 + j * 10, ry + 19, 0.3f, 8, 1, theme_alpha(th->accent[j], alpha));
+			C2D_DrawRectSolid(x + 56, ry + 19, 0.3f, w - 68, 1, theme_alpha(th->rule, alpha));
 			continue;
 		}
 		float lift = i < FLIST_MAX ? f->lift[i] : (i == sel);
 		float bob = sinf(f->t * 1.6f + i * 0.9f) * (0.6f + 0.8f * lift);
-		u8 c = (u8)(150 + 105 * lift), a = (u8)(255 * edge);
-		u32 col = C2D_Color32(c, c, c + 30 > 255 ? 255 : c + 30, a);
+		u8 a = (u8)(255 * edge);
+		u32 col = theme_row(th, lift, a);
 		float tx = x + 12 + 8 * lift;
 		const char *s = label(i, ud);
 		ui_text_ex(NULL, tx, ry + (row_h - 15) / 2 + bob, 0.5f, col, 0, s);
@@ -392,11 +386,11 @@ void flist_draw_sections(const flist_t *f, int n, int sel, float x, float y0, fl
 				C2D_TextFontParse(&measure, NULL, textbuf, v);
 				C2D_TextGetDimensions(&measure, 0.45f, 0.45f, &vw, NULL);
 				ui_input_symbol(id, x+w-8-vw-14, ry+row_h/2+bob, 12,
-					C2D_Color32(130, 160, 230, a));
+					theme_alpha(th->value, a));
 			}
 			if (v && v[0])
 				ui_text_ex(NULL, x + w - 8, ry + (row_h - 15) / 2 + bob, 0.45f,
-					C2D_Color32(130, 160, 230, a), C2D_AlignRight, v);
+					theme_alpha(th->value, a), C2D_AlignRight, v);
 		}
 	}
 }
@@ -415,15 +409,16 @@ void ui_help_panel(float y0, const char *title, const char *impact, const char *
 	if ((!text || !text[0]) && !impact)
 		return;
 	float dx = ui_depth(-0.4f);
-	C2D_DrawRectSolid(12 + dx, y0, 0.66f, 376, 236 - y0, C2D_Color32(6, 9, 24, 225));
-	C2D_DrawRectSolid(12 + dx, y0, 0.67f, 3, 236 - y0, C2D_Color32(40, 110, 230, 255));
+	const theme_t *th = theme();
+	C2D_DrawRectSolid(12 + dx, y0, 0.66f, 376, 236 - y0, th->help_bg);
+	C2D_DrawRectSolid(12 + dx, y0, 0.67f, 3, 236 - y0, th->help_bar);
 	float y = y0 + 6;
 	if (title) {
-		ui_text_ex(NULL, 24 + dx, y, 0.5f, C2D_Color32(235, 238, 255, 255), 0, title);
+		ui_text_ex(NULL, 24 + dx, y, 0.5f, th->help_title, 0, title);
 		y += 18;
 	}
 	if (impact) {
-		ui_text_ex(NULL, 24 + dx, y, 0.42f, C2D_Color32(250, 205, 20, 255), 0, impact);
+		ui_text_ex(NULL, 24 + dx, y, 0.42f, th->help_impact, 0, impact);
 		y += 15;
 	}
 	if (text && text[0]) {
@@ -431,7 +426,7 @@ void ui_help_panel(float y0, const char *title, const char *impact, const char *
 		if (C2D_TextParse(&t, textbuf, text)) {
 			C2D_TextOptimize(&t);
 			C2D_DrawText(&t, C2D_WithColor | C2D_WordWrap, 24 + dx, y, 0.82f, 0.4f, 0.4f,
-				C2D_Color32(170, 180, 215, 255), 352.0f);
+				th->help_text, 352.0f);
 		}
 	}
 }
@@ -442,14 +437,15 @@ static void confirm_draw(void *ud)
 {
 	confirm_t *c = ud;
 	// Behind the header's colour rule, like the other menus.
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, C2D_Color32(6, 9, 24, 255));
+	const theme_t *th = theme();
+	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->bg);
 	ui_menu_header(c->title, config_in_game() ? ui_fit(emu_game_title(), .42f, 150) : "All games");
 	C2D_Text t;
 	if (C2D_TextParse(&t, textbuf, c->message))
 		C2D_DrawText(&t, C2D_WithColor | C2D_WordWrap, 16.0f, 62.0f, 0.7f, 0.5f, 0.5f,
-			C2D_Color32(170, 185, 220, 255), 288.0f);
-	ui_text_ex(NULL, 160, 183, 0.5f, C2D_Color32(235, 238, 255, 255), C2D_AlignCenter, c->action);
-	ui_text_ex(NULL, 160, 213, 0.45f, C2D_Color32(130, 150, 190, 255), C2D_AlignCenter, "B  Cancel");
+			th->help_text, 288.0f);
+	ui_text_ex(NULL, 160, 183, 0.5f, th->title, C2D_AlignCenter, c->action);
+	ui_text_ex(NULL, 160, 213, 0.45f, th->muted, C2D_AlignCenter, "B  Cancel");
 }
 
 bool ui_confirm(const char *title, const char *message, bool show_game)

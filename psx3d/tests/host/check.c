@@ -24,6 +24,7 @@ const char *emu_game_title(void) { return "Crash Bandicoot"; }
 #ifndef PSX3D_TEST_PRESETS
 #error "build with -DPSX3D_TEST_PRESETS=\"<repo>/psx3d/romfs/presets\""
 #endif
+#include "../../source/theme.c"
 #include "../../source/presets.c"
 #include "../../source/input.c"
 #include "../../source/config.c"
