@@ -820,7 +820,7 @@ bool states_auto_peek(const char *prefix, u32 *saved, C3D_Tex *tex, bool *tex_ok
 	snprintf(bak, sizeof(bak), "%s.bak", path);
 	if (stat(path, &st) && stat(bak, &st))
 		return false;
-	*saved = (u32)st.st_mtime;
+	// the time comes from the thumbnail only: the 3DS gives SD files no times
 	u16 *px = malloc(TW * TH * 2);
 	thm_hdr_t h;
 	if (px && thumb_read(prefix, STATE_AUTO, px, &h, false)) {
