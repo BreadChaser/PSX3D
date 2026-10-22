@@ -1068,7 +1068,11 @@ static void do_samples_(unsigned int cycles_to, int force_no_thread)
 
  silentch = ~(spu.dwChannelsAudible | spu.dwNewChannel) & 0xffffff;
 
- force_no_thread |= (silentch == 0xffffff);
+ // PSX3D: with every voice silent only the reverb tail is left to mix. Let
+ // the thread do that too (it is most of the work), unless CD audio feeds
+ // the reverb: the thread adds CD after the reverb, so that must stay here.
+ if (silentch == 0xffffff && (spu.spuCtrl & (0x80 | CTRL_CDREVERB)) != 0x80)
+  force_no_thread = 1;
 #ifdef SPU_STEAL
  if (steal_score > 32) {
   force_no_thread = 1;
