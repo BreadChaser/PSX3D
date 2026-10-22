@@ -81,22 +81,20 @@ Tekken 3 and Klonoa draw 60; Final Fantasy VII battles draw 15). See
 [methodology](docs/performance.md).
 
 <!-- perf-table -->
-**PLACEHOLDER: v0.4.1 numbers until the v0.5.0 Old 3DS gate is measured.**
-
 | Game (Old 3DS) | Frameskip off: speed / FPS | Auto frameskip: speed / FPS |
 |---|---:|---:|
-| Crash Bandicoot | 84.9% / 20.0 | 96.1% / 13.9 |
-| Crash Bandicoot 2 | 70.3% / 21.4 | 85.9% / 15.4 |
-| Crash Team Racing | 75.4% / 22.3 | 85.2% / 15.1 |
-| Gran Turismo 2 | 50.3% / 13.4 | 50.7% / 12.2 |
-| Ridge Racer Type 4 | 78.2% / 23.9 | 86.5% / 16.6 |
-| Need for Speed: High Stakes | 35.2% / 11.7 | 35.5% / 11.1 |
-| Tekken 3 | 63.7% / 38.7 | 87.2% / 15.1 |
-| Final Fantasy VII | 100.0% / 15.2 | 100.0% / 15.2 |
-| Klonoa | 83.5% / 50.6 | 97.8% / 15.1 |
-| Silent Hill (alley) | 67.4% / 20.5 | 77.8% / 15.2 |
-| Silent Hill (café) | 68.4% / 16.1 | 69.8% / 15.3 |
-| Symphony of the Night | 96.3% / 58.3 | 100.0% / 50.1 |
+| Crash Bandicoot | 88.3% / 21.0 | 97.9% / 16.0 |
+| Crash Bandicoot 2 | 76.0% / 23.1 | 92.4% / 16.3 |
+| Crash Team Racing | 78.8% / 23.5 | 89.7% / 15.2 |
+| Gran Turismo 2 | 53.8% / 14.1 | 54.3% / 12.7 |
+| Ridge Racer Type 4 | 82.5% / 25.2 | 90.2% / 18.2 |
+| Need for Speed: High Stakes | 35.8% / 11.5 | 36.0% / 10.7 |
+| Tekken 3 | 66.8% / 40.6 | 92.1% / 15.2 |
+| Final Fantasy VII | 100.4% / 15.2 | 100.2% / 15.3 |
+| Klonoa | 88.3% / 53.6 | 99.8% / 15.1 |
+| Silent Hill (alley) | 74.0% / 22.6 | 86.4% / 15.2 |
+| Silent Hill (café) | 73.2% / 17.3 | 77.2% / 15.2 |
+| Symphony of the Night | 98.6% / 59.6 | 100.0% / 53.0 |
 <!-- /perf-table -->
 
 </details>
