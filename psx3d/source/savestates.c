@@ -446,7 +446,7 @@ static void resume_top(void *ud)
 		draw_tex(&r->tex, px + dx, py, pw, ph, 0.64f);
 	char when[40], line[64];
 	when_text(when, sizeof(when), r->saved);
-	snprintf(line, sizeof(line), "Left off %s", when);
+	snprintf(line, sizeof(line), r->saved ? "Left off %s" : "", when);
 	ui_text_ex(NULL, 200 + dx, 215, 0.5f, C2D_Color32(240, 242, 255, 255), C2D_AlignCenter, line);
 }
 

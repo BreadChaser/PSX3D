@@ -579,7 +579,7 @@ void ui_star(float cx, float cy, float r, u32 c, u32 hollow, float z)
 
 static void bar_icon(int icon, float cx, float cy, float s, u32 ink, u32 bg, bool on)
 {
-	const float z = 0.72f;
+	const float z = 0.68f;
 	switch (icon) {
 	case UI_ICON_STAR:
 		ui_star(cx, cy, s * 0.62f, on ? ui_bar_color(UI_COL_STAR) : ink, on ? 0 : bg, z);
@@ -657,10 +657,11 @@ static int bar_layout(const ui_button_t *b, int n, int *order, float *x, float *
 
 void ui_bar_draw(const ui_button_t *b, int n)
 {
+	// everything under the text, which ui_text_ex draws at 0.7
 	const theme_t *th = theme();
 	if (n > UI_BAR_MAX) n = UI_BAR_MAX;
-	C2D_DrawRectSolid(0, BAR_TOP, 0.68f, 320, 240 - BAR_TOP, ui_bar_color(UI_COL_BAR));
-	C2D_DrawRectSolid(0, BAR_TOP, 0.69f, 320, 1, ui_bar_color(UI_COL_RULE));
+	C2D_DrawRectSolid(0, BAR_TOP, 0.64f, 320, 240 - BAR_TOP, ui_bar_color(UI_COL_BAR));
+	C2D_DrawRectSolid(0, BAR_TOP, 0.645f, 320, 1, ui_bar_color(UI_COL_RULE));
 	int order[UI_BAR_MAX];
 	float xs[UI_BAR_MAX], ws[UI_BAR_MAX];
 	int m = bar_layout(b, n, order, xs, ws);
@@ -675,13 +676,13 @@ void ui_bar_draw(const ui_button_t *b, int n)
 		bool main = p->key == KEY_A;
 		u32 top = main ? mix(th->hl_top, 0xffffffff, 0.1f, 255) : face_top;
 		u32 bottom = main ? mix(th->hl_bottom, th->hl_top, 0.2f, 255) : face_bottom;
-		C2D_DrawRectangle(x, y, 0.7f, w, h, top, top, bottom, bottom);
+		C2D_DrawRectangle(x, y, 0.65f, w, h, top, top, bottom, bottom);
 		if (flash_t > 0 && flash_key == p->key)
-			C2D_DrawRectSolid(x, y, 0.705f, w, h, mix(th->hl_top, 0xffffffff, 0.45f, 120 * flash_t / 9));
-		C2D_DrawRectSolid(x, y, 0.71f, w, 1, border);
-		C2D_DrawRectSolid(x, y + h - 1, 0.71f, w, 1, border_dim);
-		C2D_DrawRectSolid(x, y, 0.71f, 1, h, border);
-		C2D_DrawRectSolid(x + w - 1, y, 0.71f, 1, h, border_dim);
+			C2D_DrawRectSolid(x, y, 0.655f, w, h, mix(th->hl_top, 0xffffffff, 0.45f, 120 * flash_t / 9));
+		C2D_DrawRectSolid(x, y, 0.66f, w, 1, border);
+		C2D_DrawRectSolid(x, y + h - 1, 0.66f, w, 1, border_dim);
+		C2D_DrawRectSolid(x, y, 0.66f, 1, h, border);
+		C2D_DrawRectSolid(x + w - 1, y, 0.66f, 1, h, border_dim);
 		// content, centred
 		float chip = chip_w(p->key);
 		float room = w - 10 - (chip ? chip + 5 : 0) - (p->icon ? 14 : 0);
@@ -690,7 +691,7 @@ void ui_bar_draw(const ui_button_t *b, int n)
 		float cx = x + (w - ((chip ? chip + 5 : 0) + (p->icon ? 14 : 0) + lw)) / 2;
 		if (chip) {
 			const char *t = chip_text(p->key);
-			C2D_DrawRectSolid(cx, mid - 6, 0.72f, chip, 12, chip_color(p->key));
+			C2D_DrawRectSolid(cx, mid - 6, 0.67f, chip, 12, chip_color(p->key));
 			ui_text_ex(NULL, cx + chip / 2, mid - (t[1] ? 6 : 7.5f), t[1] ? 0.3f : 0.36f,
 				p->key == KEY_B ? C2D_Color32(30, 24, 10, 255) : C2D_Color32(255, 255, 255, 255), C2D_AlignCenter, t);
 			cx += chip + 5;
