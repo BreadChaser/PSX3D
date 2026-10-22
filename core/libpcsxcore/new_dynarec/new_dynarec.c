@@ -361,7 +361,8 @@ struct compile_state
   int linkcount;
   int8_t is_delayslot;
   int8_t maybe_cache_isolated;
-  int8_t unused[2];
+  int8_t flip_reg;  // group cold copy: base guessing the other kind, else -1
+  int8_t flip_spad; // that kind: 1 scratchpad, 0 RAM
   void *instr_addr[MAXBLOCK];
   struct link_entry link_addr[MAXBLOCK];
   uint64_t unneeded_reg[MAXBLOCK];
@@ -381,7 +382,7 @@ struct compile_state
 // Treated like a guest register with its own home in dynarec_local
 // (LO_ldtmp, the otherwise unused zeromem_ptr word).
 #define LDTMP 34
-#define NDRC_LAYOUT_PAD "1908" // see new_dynarec_init()
+#define NDRC_LAYOUT_PAD "1660" // see new_dynarec_init()
 //#define CSREG 35 // Coprocessor status
 #define CCREG 36 // Cycle count
 #define INVCP 37 // Pointer to invalid_code
@@ -3405,6 +3406,10 @@ static void *emit_fastpath_cmp_jump(struct compile_state *st, int i,
     type=get_ptr_mem_type(st, st->start);
     //printf("set nospec   @%08x r%d %d\n", st->start+i*4, mr, type);
   }
+  // A group's cold copy runs because its base was not the guessed kind:
+  // guess the other direct kind for that base until something writes it.
+  if (dynr2_cold && mr == st->flip_reg)
+    type = st->flip_spad ? MTYPE_1F80 : 0;
 
   if (dops[i].may_except) {
     // alignment check
@@ -5663,7 +5668,9 @@ static void drc_dbg_emit_wb_dirtys(int i, const struct regstat *i_regs)
 
 // The run [head, cover] again with every access guarded as usual, entered
 // from the head's failed group guard, mid-instruction after its address
-// generation. Repeats the main loop's emission and speculation exactly.
+// generation. Repeats the main loop's emission and speculation exactly,
+// except that accesses through the head's base guess the other direct
+// kind (RAM <-> scratchpad): the copy only runs when the first guess failed.
 static void do_dynr2_cold_stub(struct compile_state *st, int n)
 {
   int head = stubs[n].a, cover = stubs[n].b, j;
@@ -5680,6 +5687,11 @@ static void do_dynr2_cold_stub(struct compile_state *st, int n)
   }
   dynr2_cold = 1;
   dynr2_snap_restore(sn);
+  st->flip_reg = -1;
+  if (psxRegs.ptrs.psxH != (void *)0x1f800000) {
+    st->flip_reg = dops[head].rs1;
+    st->flip_spad = dynr2_active[head] != 2;
+  }
   assemble(st, head, &regs[head], cinfo[head].ccadj);
   drc_dbg_emit_wb_dirtys(head, &regs[head]);
   literal_pool_jumpover(256);
@@ -5713,7 +5725,10 @@ static void do_dynr2_cold_stub(struct compile_state *st, int n)
     assemble(st, j, &regs[j], cinfo[j].ccadj);
     drc_dbg_emit_wb_dirtys(j, &regs[j]);
     literal_pool_jumpover(256);
+    if (dops[j].rt1 == st->flip_reg || dops[j].rt2 == st->flip_reg)
+      st->flip_reg = -1;
   }
+  st->flip_reg = -1;
   emit_jmp(dynr2_resume[cover]);
   literal_pool(0);
   dynr2_cold = 0;
