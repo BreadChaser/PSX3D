@@ -741,7 +741,7 @@ static void game_draw_bottom(void *ud)
 	}
 	if (!has_audio)
 		ui_text(4, 186, 0.42f, C2D_Color32(255, 160, 120, 255),
-			"No sound available");
+			"No sound: run DSP1 once (it saves the 3DS sound firmware)");
 }
 
 // Without a touch panel or FPS counter the bottom backlight can turn off.
@@ -1099,12 +1099,42 @@ static void game_apt(APT_HookType hook, void *param)
 
 bool emu_continue_now;
 
+// Why a game didn't start, in words a player can act on (main.c shows it).
+static char load_error[320];
+const char *emu_load_error(void)
+{
+	return load_error[0] ? load_error : "Could not start the game\nThe disc could not be read.";
+}
+
+// After a failed load: the likeliest reason, checked from the files.
+static void explain_failure(const char *path)
+{
+	char name[160];
+	const char *ext = strrchr(path, '.');
+	if (library_missing_file(path, name, sizeof(name))) {
+		bool self = !strcmp(name, strrchr(path, '/') ? strrchr(path, '/') + 1 : path);
+		if (self)
+			snprintf(load_error, sizeof(load_error), "Game not found\n%s is not on the SD card any more. "
+				"If you moved or renamed it, press SELECT in the library to look for games again.", name);
+		else
+			snprintf(load_error, sizeof(load_error), "A disc file is missing\n%s is named in the game's "
+				"%s file but is not next to it. Copy it into the same folder.", name, ext ? ext + 1 : "disc list");
+	} else if (!library_is_ps1_image(path))
+		snprintf(load_error, sizeof(load_error), "Not a PlayStation disc\nThis looks like a disc of another "
+			"console. PSX3D only plays PS1 games.");
+	else
+		snprintf(load_error, sizeof(load_error), "Could not start the game\nThe disc could not be read. It may "
+			"be damaged or in a format PSX3D can't open. PSX3D opens .cue + .bin, .chd, .pbp, .iso, .img, "
+			".mdf and .m3u.");
+}
+
 static bool run_game(const char *path, const char *save_name, const char *title)
 {
 	struct retro_game_info info = { .path = path };
 	struct retro_system_av_info av;
 	u64 fps_t0;
 	int fps_frames = 0, present_count = 0, srm_counter = 0;
+	load_error[0] = 0;
 
 	if (save_name)
 		snprintf(game_name, sizeof(game_name), "%s", save_name);
@@ -1135,6 +1165,8 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	log_printf("renderer: GPU\n");
 	if (!video_game_begin()) {
 		log_printf("renderer initialization failed\n");
+		snprintf(load_error, sizeof(load_error), "Not enough memory\nThe game's picture could not be set up. "
+			"Close PSX3D from the HOME Menu and start it again.");
 		config_game_end();
 		clip_close();
 		return false;
@@ -1145,6 +1177,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 	core_initialized = true;
 	if (!retro_load_game(&info)) {
 		log_printf("retro_load_game failed\n");
+		explain_failure(path);
 		config_game_end();
 		retro_deinit();
 		core_initialized = false;
