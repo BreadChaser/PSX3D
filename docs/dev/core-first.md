@@ -64,6 +64,17 @@ page offsets.
   built `-O2` instead of `-Os` shifted the frontend code after it by 432 bytes,
   and Crash 2 lost 1.6%. `presets.o` keeps `-Os` so the frontend maps as it
   did in the measured presets build.
+- Since save safety 3 (which grew the frontend ~26 KB and cost Silent Hill
+  1.1-1.3% on the Old 3DS), the per-frame frontend objects (`audio*.o`,
+  `emu.o`, `gamecfg.o`, `gpu_cache.o`, `gpustereo*.o`, `input.o`,
+  `renderqueue.o`, `statsview.o`, `video.o`, `widescreen.o`, `picadirect.o`)
+  link first in the frontend, in v0.5.0 RC4's order and at its page offsets,
+  code and `.bss` alike (`core-first.ld`). Menu and save code can grow without
+  moving them. Growth inside one of them still moves the rest of its block:
+  mark new save, menu or message functions in those files `PSX3D_COLD`
+  (`psx3d.h`: noinline, linked after all other frontend code), and link new
+  cold objects through `LATE_OFILES` (`psx3d/Makefile`). A new per-frame
+  object belongs in the list in `core-first.ld`.
 
 ## Checks
 
