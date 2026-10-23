@@ -223,6 +223,8 @@ static void constellations(const layer_t *L, float t) {
     int n = (int)((L->n ? L->n : 34) * fmaxf(.4f, strength) + .5f);
     if (n > 46)
         n = 46;
+    if (!g_new3ds)
+        n = (n * 3 + 3) / 4;
     for (int i = 0; i < n; i++) {
         const cn_seed_t *q = &CN[i];
         float x =
@@ -247,12 +249,21 @@ static void constellations(const layer_t *L, float t) {
             line(p[i].x, p[i].y, p[j].x, p[j].y, th->fx_colour, a * .25f, a * .25f, 2.4f);
             line(p[i].x, p[i].y, p[j].x, p[j].y, th->fx_colour, a, a, .8f);
         }
+    if (!g_new3ds) {
+        for (int i = 0; i < n; i++) {
+            if (p[i].a < .02f) continue;
+            float a = p[i].a * strength * (.8f + .2f * sn(t * .9f + p[i].x * .05f));
+            glow(p[i].x, p[i].y, p[i].l ? 10 : 6, th->fx_colour, .5f * a, 1);
+        }
+        blend(false);
+    }
     for (int i = 0; i < n; i++) {
         if (p[i].a < .02f)
             continue;
         float tw = .8f + .2f * sn(t * .9f + p[i].x * .05f), a = p[i].a * strength * tw,
               r = p[i].l ? 1.8f : 1.2f;
-        glow(p[i].x, p[i].y, p[i].l ? 10 : 6, th->fx_colour, .5f * a, 1);
+        if (g_new3ds)
+            glow(p[i].x, p[i].y, p[i].l ? 10 : 6, th->fx_colour, .5f * a, 1);
         blend(false);
         rect(p[i].x - r / 2, p[i].y - r / 2, r, r, alpha(mix(th->fx_colour, th->scene_white, .75f), a));
     }
@@ -265,8 +276,10 @@ static void silk(const layer_t *L, float t) {
     blend(true);
     for (int r = 0; r < 3; r++) {
         const float *b = rb[r];
-        int step = (!g_new3ds && bottom) ? 12 : 8, N = (int)(w / step) + 2;
-        int S = bottom ? (g_new3ds ? 10 : 6) : 16;
+        // Old keeps all three ribbons and their bright edges; fewer interior
+        // fibres and longer segments leave headroom for the rest of the menu.
+        int step = g_new3ds ? 8 : 16, N = (int)(w / step) + 2;
+        int S = g_new3ds ? (bottom ? 10 : 16) : (bottom ? 4 : 6);
         u32 col = r == 0 ? th->fx_colour : r == 1 ? th->fx_colour2 : th->silk_light;
         for (int j = 0; j < N; j++) {
             float x = -8 + j * step;
@@ -331,6 +344,9 @@ static void flow(const layer_t *L, float t) {
     int glow_count = 0;
     blend(true);
     for (int i = 0; i < keep; i++) {
+        // Preserve the four bright guide fibres; thin the dim weave on Old.
+        if (!g_new3ds && (i & 1) && i != 15 && i != 27)
+            continue;
         const fl_seed_t *q = &FL[i];
         point_t p[31];
         // Stagger the refresh across fibres so the integration work is spread
@@ -352,11 +368,12 @@ static void flow(const layer_t *L, float t) {
             p[k] = (point_t){a.x + (b.x-a.x)*phase, a.y + (b.y-a.y)*phase};
         }
         u32 col = mix(th->fx_colour, th->fx_colour2, ((int)q->bnd & 1) * .6f);
-        for (int k = 0; k < steps; k++) {
+        int stride = g_new3ds ? 1 : 2;
+        for (int k = 0; k < steps; k += stride) {
             float a0 = smooth(0, w * .2f, p[k].x) * smooth(w, w * .8f, p[k].x),
-                  a1 = smooth(0, w * .2f, p[k + 1].x) * smooth(w, w * .8f, p[k + 1].x),
+                  a1 = smooth(0, w * .2f, p[k + stride].x) * smooth(w, w * .8f, p[k + stride].x),
                   opacity = (i == 0 || i == 12 || i == 26 || i == 36 ? .5f : .16f) * q->b * strength;
-            line(p[k].x, p[k].y, p[k + 1].x, p[k + 1].y, col, opacity * a0, opacity * a1, .75f);
+            line(p[k].x, p[k].y, p[k + stride].x, p[k + stride].y, col, opacity * a0, opacity * a1, .75f);
         }
         if (!q->bead)
             continue;
@@ -435,16 +452,18 @@ static void glyphs(const layer_t *L, float t) {
         inv_radius[k] = 1 / br[k];
     }
     blend(false);
-    for (int j = 0; j < 20; j++)
-        for (int i = 0; i < (int)(w / 8); i++) {
-            float x = (i + .5f) * 8, y = (j + .5f) * 12, b = 0;
+    int dx_cell = g_new3ds ? 8 : 16, dy_cell = g_new3ds ? 12 : 16;
+    for (int j = 0; j < 240 / dy_cell; j++)
+        for (int i = 0; i < (int)(w / dx_cell); i++) {
+            float x = (i + .5f) * dx_cell, y = (j + .5f) * dy_cell, b = 0;
             for (int k = 0; k < 4; k++) {
                 float dx = (x - bx[k]) * inv_radius[k], dy = (y - by[k]) * inv_radius[k], d = dx * dx + dy * dy;
                 if (d < 4)
                     b += decay(d * 1.6f);
             }
-            float grain = ws->grain[j][i],
-                  v = .5f + .5f * sn(i * .23f - j * .31f + t * .3f);
+            float gx = x / 8 - .5f, gy = y / 12 - .5f;
+            float grain = ws->grain[(int)gy][(int)gx],
+                  v = .5f + .5f * sn(gx * .23f - gy * .31f + t * .3f);
             b += (bottom ? .2f : .3f) * (.35f + .65f * v * v) * grain;
             b *= strength * .85f;
             if (b < .09f)
@@ -457,7 +476,7 @@ static void glyphs(const layer_t *L, float t) {
 #ifdef __3DS__
             scene_draw_glyph(&ws->cached_glyph[ci], x - 3 + depth, y - 6, z, col);
 #else
-            C2D_DrawText(&ws->glyph[ci], C2D_WithColor, x - 3 + depth, y - 6, z, .25f, .25f, col);
+            C2D_DrawText(&ws->glyph[ci], C2D_WithColor, x - 3 + depth, y - 6, z, g_new3ds ? .25f : .32f, g_new3ds ? .25f : .32f, col);
 #endif
         }
     for (int k = 0; k < 4; k++)
@@ -718,7 +737,7 @@ static bool prepare(void) {
         C2D_TextParse(&ws->glyph[i], ws->text, s);
         C2D_TextOptimize(&ws->glyph[i]);
 #ifdef __3DS__
-        ws->cached_glyph[i] = scene_cache_glyph(&ws->glyph[i], .25f);
+        ws->cached_glyph[i] = scene_cache_glyph(&ws->glyph[i], g_new3ds ? .25f : .32f);
 #endif
     }
     return true;
@@ -755,6 +774,9 @@ void scene_draw(bool is_bottom) {
         memset(peak, 0, sizeof(peak));
         report_tick = start;
         sample_theme = th;
+#ifdef __3DS__
+        video_take_heap_flush_ticks(); // discard the preceding theme/game interval
+#endif
     }
     bottom = is_bottom;
     w = bottom ? 320 : 400;
@@ -840,6 +862,13 @@ void scene_draw(bool is_bottom) {
                    (unsigned long)samples[1],
                    samples[0] * (double)SYSCLOCK_ARM11 / (start - report_tick),
                    samples[1] * (double)SYSCLOCK_ARM11 / (start - report_tick));
+#ifdef __3DS__
+        // Separate a cadence bottleneck outside scene generation from a heavy
+        // effect. Menu-only diagnostics; no gameplay path or pacing change.
+        log_printf("menu-cost: %s prior CPU %.3f GPU %.3f heap %.3f ms/frame\n",
+                   th->id, C3D_GetProcessingTime(), C3D_GetDrawingTime(),
+                   video_take_heap_flush_ticks() * 1000.0 / SYSCLOCK_ARM11 / samples[0]);
+#endif
         memset(samples, 0, sizeof(samples));
         memset(ticks, 0, sizeof(ticks));
         memset(peak, 0, sizeof(peak));

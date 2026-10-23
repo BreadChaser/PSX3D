@@ -22,8 +22,12 @@ Only effects used by these eight scenes are compiled; the mock's unused proposal
 
 The engine uses a sine lookup table, a decay lookup table and one 128x128 A8 radial
 gradient generated in code from the mock's gradient stops. This replaces expensive
-triangle fans for glow sprites. Silk waves uses fewer strands and wider columns
-on the Old 3DS bottom screen. Curves are sampled polylines/meshes; the vignette is
+triangle fans for glow sprites. On Old 3DS, Silk keeps three ribbons with6/4 strands and16px columns
+(top/bottom). Quicksilver thins dim fibres and uses15 drawing segments while
+retaining30 integration steps and full-resolution bead motion. Star chart uses
+three quarters of the constellation nodes and groups their additive halos.
+Phosphor uses a16px cell grid with slightly larger glyphs. New geometry stays
+unchanged. All layers continue moving every frame. Curves are sampled polylines/meshes; the vignette is
 a coarse radial mesh. Citro2D's rasterization and these approximations can differ
 slightly from the browser canvas, especially at thin glows.
 
@@ -73,7 +77,7 @@ Phosphor caches system-font glyph metadata and its static grain at menu entry.
 Ember groups additive tails, glows and cores to avoid per-particle shader changes.
 All cached metadata and working buffers are released before gameplay.
 
-Quicksilver retains all fibres and 30 path integration steps. Paths are cached
+On New, Quicksilver retains all fibres; both models retain30 path integration steps. Paths are cached
 at 8 Hz, with vertex positions interpolated every frame. The host error check
 compares those positions to exact integration for both screen sizes (180 time
 samples up to ~51 minutes); the observed worst displacement is 0.025 pixels.
