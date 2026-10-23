@@ -16,7 +16,7 @@
 #define PSX3D_VERSION  "0.5.1"
 // Optional private test identity; the release reports its human version.
 #ifndef PSX3D_BUILD
-#define PSX3D_BUILD "themes-v06-3"
+#define PSX3D_BUILD "themes-v06-4"
 #endif
 #define PSX3D_DIR      "sdmc:/3ds/PSX3D"
 #define PSX3D_BIOS_DIR PSX3D_DIR "/bios"

@@ -178,6 +178,8 @@ SECTIONS
 		. = . + ((0xdbc - .) & 0xfff);
 		libui.o(.text.libui_font)
 		__psx3d_frontend_hot_end = .;
+		/* Menu diagnostics live outside the protected per-frame block. */
+		*(.menu_text)
 		/* The rest of the frontend, in link order. */
 		*(.text)
 		*(.text.*)

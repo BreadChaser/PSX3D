@@ -375,6 +375,9 @@ float C3D_GetDrawingTime(void)
 	return osTickCounterRead(&gpuTime);
 }
 
+// rc9 discarded this getter. Menu diagnostics must not insert it ahead of
+// the pinned render-target/texture-copy functions when they retain it.
+__attribute__((section(".menu_text")))
 float C3D_GetProcessingTime(void)
 {
 	return osTickCounterRead(&cpuTime);

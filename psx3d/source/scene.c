@@ -452,7 +452,10 @@ static void glyphs(const layer_t *L, float t) {
         inv_radius[k] = 1 / br[k];
     }
     blend(false);
-    int dx_cell = g_new3ds ? 8 : 16, dy_cell = g_new3ds ? 12 : 16;
+    // The smaller Old bottom screen keeps the moving four-light glyph field,
+    // with 16x12 samples instead of 20x15. New and Old top stay unchanged.
+    int dx_cell = g_new3ds ? 8 : (bottom ? 20 : 16);
+    int dy_cell = g_new3ds ? 12 : (bottom ? 20 : 16);
     for (int j = 0; j < 240 / dy_cell; j++)
         for (int i = 0; i < (int)(w / dx_cell); i++) {
             float x = (i + .5f) * dx_cell, y = (j + .5f) * dy_cell, b = 0;
