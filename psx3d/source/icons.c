@@ -335,7 +335,7 @@ bool icons_draw(int slot, int id, float cx, float cy, float size, bool lit, floa
 		whole[k] = cell(0, 0, n, n, n);
 		tint4(&tint, th->icon_a, th->icon_b, a);
 		image(&s->rev, &whole[k], cx, cy, size, z, &tint);
-		C2D_PlainImageTint(&tint, TH_RGBA(255, 255, 255, a * 9 / 10), 1);
+		C2D_PlainImageTint(&tint, theme_alpha(th->scene_white, a * 9 / 10), 1);
 		image(&s->tip, &whole[k], cx, cy, size, z + 0.001f, &tint);
 	} else {
 		tint4(&tint, th->icon_a, th->icon_b, a);

@@ -62,7 +62,7 @@ static const char *const tips[] = {
  [F_REWIND]="Hold the rewind shortcut to go back.",
  [F_RECOMMENDED]="Remove this game's Advanced changes.",
  [F_RECORD]="Capture 30 seconds for troubleshooting.", [F_TONE]="Play a tone to check audio output.",
- [F_THEME]="Change the colours of the menus.",
+ [F_THEME]="Change the menu colours and animated scene.",
  [F_FOLDER]="Pick the folder the library shows.",
  [F_STEREO]="Real 3D is experimental: slower in busy games.",
 };

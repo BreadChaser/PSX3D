@@ -8,6 +8,9 @@
 #define CA TH_RGBA
 
 #define ORIGINAL \
+	.disc_title=C(236,236,242), .disc_rim=C(40,40,48), .disc_inner=C(26,24,34), .disc_outer=C(10,9,14), \
+	.disc_mirror={C(70,72,84),C(30,30,38)}, .disc_hub={C(120,124,136),C(60,62,72)}, .disc_hole=C(6,6,10), \
+	.disc_rainbow={C(255,60,90),C(255,170,40),C(220,255,60),C(50,230,170),C(60,140,255),C(170,80,255)}, \
 	.input_face={C(47,163,107),C(208,49,59),C(47,111,196),C(215,127,181)}, \
 	.input_shoulder=C(176,90,222), .input_stick=C(69,191,208), .input_other=C(154,165,200), .input_hide=C(43,51,96), \
 	.shadow = C(0,0,0), .moon = C(3,3,7), .scene_white=C(255,255,255), .silk_light=C(255,225,240), .silk_glint=C(255,235,220), \

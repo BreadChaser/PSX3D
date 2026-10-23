@@ -125,8 +125,8 @@ static void draw_title(const char *title, float cx, float top, float bottom, flo
 				return;
 		}
 		C2D_TextOptimize(&t);
-		C2D_DrawText(&t, C2D_WithColor | C2D_AlignCenter, cx + 0.6f * s, y + 0.8f * s, z, s, s, C2D_Color32(0, 0, 0, alpha / 2));
-		C2D_DrawText(&t, C2D_WithColor | C2D_AlignCenter, cx, y, z + 0.0005f, s, s, C2D_Color32(236, 236, 242, alpha));
+		C2D_DrawText(&t, C2D_WithColor | C2D_AlignCenter, cx + 0.6f * s, y + 0.8f * s, z, s, s, theme_alpha(theme()->shadow, alpha / 2));
+		C2D_DrawText(&t, C2D_WithColor | C2D_AlignCenter, cx, y, z + 0.0005f, s, s, theme_alpha(theme()->disc_title, alpha));
 	}
 }
 
@@ -150,19 +150,20 @@ static u32 rgba(int r, int g, int b, int a)
 // the disc drawn in code, radius r; dim darkens it like the covers
 static void drawn_disc(float cx, float cy, float r, float z, u32 accent, float dim)
 {
+	const theme_t *th = theme();
 	int a = 255, seg = r > 40 ? 48 : 32;
 	// shadow, rim (a little of the theme's colour), data area
-	C2D_DrawCircleSolid(cx + r * 0.05f, cy + r * 0.07f, z - 0.002f, r, rgba(0, 0, 0, a * 45 / 100));
-	C2D_DrawCircleSolid(cx, cy, z, r, rgba(((accent & 255) + 3 * 40) / 4, ((accent >> 8 & 255) + 3 * 40) / 4,
-		((accent >> 16 & 255) + 3 * 48) / 4, a));
-	ring(cx, cy, z + 0.0002f, r * 0.30f, r * 0.975f, rgba(26, 24, 34, a), rgba(10, 9, 14, a), seg);
+	C2D_DrawCircleSolid(cx + r * 0.05f, cy + r * 0.07f, z - 0.002f, r, theme_alpha(th->shadow, a * 45 / 100));
+	C2D_DrawCircleSolid(cx, cy, z, r, rgba(((accent & 255) + 3 * (th->disc_rim & 255)) / 4, ((accent >> 8 & 255) + 3 * ((th->disc_rim >> 8) & 255)) / 4,
+		((accent >> 16 & 255) + 3 * ((th->disc_rim >> 16) & 255)) / 4, a));
+	ring(cx, cy, z + 0.0002f, r * 0.30f, r * 0.975f, theme_alpha(th->disc_inner, a), theme_alpha(th->disc_outer, a), seg);
 	// the rainbow a disc throws back: two thin opposite fans, clear at the centre
-	static const u8 hue[6][3] = { { 255, 60, 90 }, { 255, 170, 40 }, { 220, 255, 60 }, { 50, 230, 170 }, { 60, 140, 255 }, { 170, 80, 255 } };
+
 	for (int side = 0; side < 2; side++)
 		for (int k = 0; k < 6; k++) {
 			float a0 = (side ? 3.55f : 0.41f) + k * 0.075f, a1 = a0 + 0.075f;
-			u32 in = rgba(hue[k][0], hue[k][1], hue[k][2], 0);
-			u32 out = rgba(hue[k][0], hue[k][1], hue[k][2], a * 34 / 255);
+			u32 in = theme_alpha(th->disc_rainbow[k], 0);
+			u32 out = theme_alpha(th->disc_rainbow[k], a * 34 / 255);
 			C2D_DrawTriangle(cx + cosf(a0) * r * 0.32f, cy + sinf(a0) * r * 0.32f, in,
 			                 cx + cosf(a0) * r * 0.96f, cy + sinf(a0) * r * 0.96f, out,
 			                 cx + cosf(a1) * r * 0.96f, cy + sinf(a1) * r * 0.96f, out, z + 0.0004f);
@@ -171,11 +172,11 @@ static void drawn_disc(float cx, float cy, float r, float z, u32 accent, float d
 			                 cx + cosf(a1) * r * 0.32f, cy + sinf(a1) * r * 0.32f, in, z + 0.0004f);
 		}
 	// mirror band, clear hub, hole
-	ring(cx, cy, z + 0.0006f, r * 0.24f, r * 0.30f, rgba(70, 72, 84, a), rgba(30, 30, 38, a), seg);
-	ring(cx, cy, z + 0.0006f, r * 0.12f, r * 0.24f, rgba(120, 124, 136, a * 70 / 100), rgba(60, 62, 72, a * 70 / 100), seg);
-	C2D_DrawCircleSolid(cx, cy, z + 0.0008f, r * 0.12f, rgba(6, 6, 10, a));
+	ring(cx, cy, z + 0.0006f, r * 0.24f, r * 0.30f, theme_alpha(th->disc_mirror[0], a), theme_alpha(th->disc_mirror[1], a), seg);
+	ring(cx, cy, z + 0.0006f, r * 0.12f, r * 0.24f, theme_alpha(th->disc_hub[0], a * 70 / 100), theme_alpha(th->disc_hub[1], a * 70 / 100), seg);
+	C2D_DrawCircleSolid(cx, cy, z + 0.0008f, r * 0.12f, theme_alpha(th->disc_hole, a));
 	if (dim > 0)
-		C2D_DrawCircleSolid(cx, cy, z + 0.001f, r, rgba(0, 0, 0, (int)(dim * 255)));
+		C2D_DrawCircleSolid(cx, cy, z + 0.001f, r, theme_alpha(th->shadow, (int)(dim * 255)));
 }
 
 void cover_placeholder(float cx, float cy, float size, float dim, float z, const char *title, u32 accent)

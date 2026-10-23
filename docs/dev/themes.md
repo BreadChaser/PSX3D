@@ -55,3 +55,8 @@ Azahar and real-console images separately. Emulator timing is not an Old 3DS
 performance result. Developer logs report CPU drawing time and draws/second over
 five-second intervals; captures temporarily disturb cadence, so measure separate
 intervals without screenshots.
+
+The procedural no-cover disc's material colours and the icon draw-on tip also
+live in the theme table. Material colours are shared defaults (including its
+rainbow sheen), so missing box art stays recognizable across palettes. Their
+roles can be overridden per palette without adding drawing-time literals.

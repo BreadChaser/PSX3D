@@ -264,12 +264,12 @@ static void draw_top(void *ud)
 static void draw_bottom(void *ud)
 {
 	(void)ud;
-	C2D_DrawRectSolid(0, 0, .1f, 320, 240, C2D_Color32(255, 255, 255, 255));   // fixed: the QR code scans black on white
+	C2D_DrawRectSolid(0, 0, .1f, 320, 240, theme()->scene_white);   // fixed: the QR code scans black on white
 	if (!qr_size)
 		return;
 	float px = (float)(int)(228.0f / (qr_size + 6));
 	float x0 = (320 - px * qr_size) / 2, y0 = (240 - px * qr_size) / 2;
-	u32 black = C2D_Color32(0, 0, 0, 255);   // fixed: QR modules
+	u32 black = theme()->shadow;   // fixed: QR modules
 	for (int y = 0; y < qr_size; y++)
 		for (int x = 0; x < qr_size;) {
 			if (!qr[y * qr_size + x]) {

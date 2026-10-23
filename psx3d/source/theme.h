@@ -33,6 +33,7 @@ typedef struct {
 	// gradient from top-left to bottom-right, and its glow (alpha = strength,
 	// 0 = none). Unselected icons use theme_icon_dim().
 	u32 icon_a, icon_b, icon_glow;
+	u32 disc_title, disc_rim, disc_inner, disc_outer, disc_mirror[2], disc_hub[2], disc_hole, disc_rainbow[6];
 	u32 input_face[4], input_shoulder, input_stick, input_other, input_hide;
 	u32 fx_colour, fx_colour2;
 	u32 shadow, moon, scene_white, silk_light, silk_glint;
