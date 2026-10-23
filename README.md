@@ -1,7 +1,8 @@
 <p align="center"><img src="psx3d/meta/banner.png" alt="PSX3D" width="384"></p>
 
 <h1 align="center">PSX3D</h1>
-<p align="center">A standalone PlayStation emulator for Nintendo 3DS.</p>
+<p align="center"><b>A PlayStation emulator built for the Nintendo 3DS.</b><br>
+GPU rendering, a box-art library and settings tuned for every tested game.</p>
 
 <p align="center">
   <a href="https://github.com/BreadChaser/PSX3D/releases/latest"><img src="https://img.shields.io/github/v/release/BreadChaser/PSX3D?color=ae68df" alt="Latest release"></a>
@@ -10,65 +11,147 @@
   <img src="https://img.shields.io/badge/platform-Nintendo%203DS-e60012" alt="Nintendo 3DS">
 </p>
 
-PSX3D runs PlayStation games on Old and New 3DS with GPU rendering, a box-art
-library and tested settings for each game. It's built on PCSX-ReARMed and needs
-no BIOS file.
-
-> **Work in progress.** Expect some drawing errors. Demanding games run slower on
-> Old 3DS; see [Performance](#performance).
-
-## Screenshots
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#controls">Controls</a> ·
+  <a href="#performance">Performance</a> ·
+  <a href="#faq">FAQ</a> ·
+  <a href="https://github.com/BreadChaser/PSX3D/issues/new/choose">Report a problem</a>
+</p>
 
 <table>
   <tr>
-    <td align="center"><img src="docs/screenshots/main-menu.png" width="300" alt="Main menu"><br>Main menu</td>
-    <td align="center"><img src="docs/screenshots/library.png" width="300" alt="Box-art library"><br>Library</td>
-    <td align="center"><img src="docs/screenshots/crash.png" width="300" alt="Crash Bandicoot with its bottom screen"><br>Crash Bandicoot</td>
+    <td align="center"><img src="docs/screenshots/main-menu.png" width="300" alt="Main menu"><br><sub>Main menu</sub></td>
+    <td align="center"><img src="docs/screenshots/library.png" width="300" alt="Box-art library"><br><sub>Library</sub></td>
+    <td align="center"><img src="docs/screenshots/crash.png" width="300" alt="Crash Bandicoot with touch controls on the Old 3DS"><br><sub>Crash Bandicoot on Old 3DS</sub></td>
   </tr>
 </table>
 
+PSX3D plays PlayStation games on every 3DS and 2DS. It draws with the 3DS
+graphics chip, opens straight into your game library, and applies the right
+settings for each tested game on your console. No BIOS file, no setup.
+
+> [!NOTE]
+> PSX3D is a work in progress and improves with every release. Most games run
+> well; demanding 3D games run slower on the Old 3DS. See
+> [Performance](#performance) and [Known issues](#known-issues).
+
 ## Features
 
-- GPU rendering on Old and New 3DS, with smart frameskip
-- Tested settings for each game and each console, applied automatically
-- Real widescreen for games with a tested widescreen fix
-- A main menu with Continue, a box-art library with recently played games,
-  favourites, sorting and a letter jump
-- Sharp box art, clean titles and multi-disc grouping
-- Save states with previews, memory cards with backups, cheats and disc swapping
-- Save backups: the last ten automatic saves and dated memory card copies per game, and Undo in the pause menu
-- "Continue where I left off": your place is saved when you quit, on sleep and every few minutes
-- Remappable buttons and touch controls, fast forward in every game
-- Built-in BIOS: no BIOS file needed
-- European discs with LibCrypt protection (some PAL releases) need a matching `.sbi` file next to the disc image, see [docs/presets.md](docs/presets.md#regions)
+**Plays well**
+- Hardware (GPU) rendering on Old and New 3DS
+- Tested settings per game and per console, applied automatically
+- Auto frameskip that keeps games at full speed where it can
+- Widescreen in games with a tested widescreen fix
+- Fast forward in every game
+- Built-in BIOS: a BIOS file is optional
+
+**Easy to use**
+- Main menu with **Continue**: back in your game in one press
+- Box-art library with recently played games, favourites, sorting and a letter jump
+- Box art downloads by itself; clean titles; multi-disc games grouped
+- Finds your games on the SD card without any setup
+
+**Keeps your progress safe**
+- Your place is saved when you quit, when the 3DS sleeps and every few minutes
+- Save states with previews
+- The last ten automatic saves and dated memory card copies are kept per game
+- **Undo** in the pause menu takes back the last load, save or reset
+
+**And more**
+- Cheats, disc swapping, remappable buttons
+- Touch-screen L2/R2 for the Old 3DS, plus a right stick in analog games
 
 ### New 3DS extras
 
-- **3D**: raise the 3D slider and the picture sits behind the screen. Pick
-  **Real 3D** (experimental) in Settings > Display > 3D and each object gets its
-  own depth, drawn from the game's own 3D data; it can be slower in busy games.
-- **Rewind**: on by default; hold the rewind button to go back a few seconds.
+- **3D**: raise the 3D slider and the picture sits behind the screen.
+  **Real 3D** (experimental, Settings → Display → 3D) gives every object its own
+  depth; it slows busy scenes.
+- **Rewind**: hold SELECT + L to go back a few seconds.
 - **Faster PS1 processor** for games that slowed down on a real PlayStation
-  (Crash Team Racing, Gran Turismo 2, Silent Hill, Need for Speed: High Stakes),
-  so busy scenes stay smooth.
+  (Crash Team Racing, Gran Turismo 2, Silent Hill, Need for Speed: High Stakes).
 
-### Settings
+## Install
 
-The menu holds what is a matter of taste: screen shape, smoothing, the FPS
-counter, controls and saves. Technical options live under **Advanced**. Each
-tested game comes with recommended values for its console, marked **P**, and
-*Reset to recommended* brings them back. Everything else is set for you.
+**You need** a 3DS or 2DS with [Luma3DS](https://github.com/LumaTeam/Luma3DS)
+custom firmware, and your own PlayStation game images.
+
+1. Open **FBI → Remote Install → Scan QR Code** and scan this code:
+
+   <img src="docs/qr-install.png" width="180" alt="QR code for the latest PSX3D.cia">
+
+   Or download [**PSX3D.cia**](https://github.com/BreadChaser/PSX3D/releases/latest/download/PSX3D.cia)
+   and install it with FBI.
+2. Copy your games to `sdmc:/roms/psx/`.
+3. Start **PSX3D** from the HOME Menu.
+
+To update, scan the same code again. A `.3dsx` for the Homebrew Launcher is on
+the [release page](https://github.com/BreadChaser/PSX3D/releases/latest).
+
+## Getting started
+
+**Games.** PSX3D reads `.cue/.bin`, `.chd`, `.pbp`, `.iso`, `.img`, `.mdf` and
+`.m3u`. It looks in `sdmc:/roms/psx/` and other common folders; to use another
+folder, pick it in **Settings → Games folder**. Press SELECT in the library to
+scan again after adding games.
+
+**Box art** downloads automatically, even for files with unusual names. To use
+your own picture, see [box art](docs/box-art.md).
+
+**BIOS.** Not needed. If you have a real PlayStation BIOS, copy it to
+`sdmc:/3ds/PSX3D/bios/` and PSX3D uses it (`scph5500.bin`, `scph5501.bin`,
+`scph5502.bin`, `scph1001.bin`, `scph7001.bin`, `scph101.bin` or
+`psxonpsp660.bin`).
+
+**Your files** live in `sdmc:/3ds/PSX3D/`:
+
+| Folder or file | What it holds |
+|---|---|
+| `saves/` | Memory cards |
+| `states/` | Save states and Continue |
+| `backups/` | Save backups |
+| `config.ini`, `games/` | Your settings |
+| `log.txt` | What happened last session (older ones: `log.1.txt` to `log.4.txt`) |
+
+## Controls
+
+| Where | Button | Action |
+|---|---|---|
+| Main menu | A / X | Open / Settings |
+| Library | A / X / Y | Play / Sort / Favourite |
+| Library | L / R | Previous / next letter |
+| Library | SELECT | Scan for new games |
+| In game | A / B / X / Y | Circle / Cross / Triangle / Square |
+| In game | L / R / ZL / ZR | L1 / R1 / L2 / R2 |
+| In game | Circle Pad / C-Stick | D-pad or left stick / right stick |
+| In game | Tap **MENU** (touch screen) | Pause menu |
+| In game | SELECT + R | Fast forward on / off |
+| In game | Hold SELECT + L | Rewind (New 3DS) |
+
+Every button and both shortcuts can be changed in **Settings → Controls**.
+The Old 3DS shows L2 and R2 on the touch screen, plus a right stick in analog games.
+
+## Settings
+
+Settings has four pages: **Display**, **Controls**, **Saves** and **Advanced**.
+Open it from the main menu to change all games, or from the pause menu to
+change only the game you are playing. Tested games already start with the best
+values for your console, so most players never need Advanced. **Reset this
+game** and **Reset all settings** put everything back.
 
 ## Performance
 
-<picture><source media="(prefers-color-scheme: light)" srcset="docs/performance-light.svg"><img src="docs/performance-dark.svg" alt="PSX3D performance" width="880"></picture>
+PSX3D is tuned hardest for the Old 3DS. Most games run at or near full speed
+with Auto frameskip; demanding 3D games, such as racing games, run slower.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="docs/performance-light.svg"><img src="docs/performance-dark.svg" alt="PSX3D performance on the Old 3DS" width="880"></picture>
 
 <details>
 <summary>Exact numbers</summary>
 
 Old 3DS, heaviest tested scene of each game. Speed: 100% = full speed. Most PS1
 3D games run at 30 FPS at most; Symphony of the Night, Tekken 3 and Klonoa at 60.
-See [methodology](docs/performance.md).
+See [methodology](docs/performance.md) and [compatibility](docs/compatibility.md).
 
 <!-- perf-table -->
 | Game (Old 3DS) | Frameskip off: speed / FPS | Auto frameskip: speed / FPS |
@@ -89,65 +172,45 @@ See [methodology](docs/performance.md).
 
 </details>
 
-**New 3DS:** every game in the table runs at full speed in its heaviest tested
-scene with Auto frameskip. With frameskip off, Gran Turismo 2 and Need for Speed
-races run at 94–98%, and the opening area of Metal Gear Solid at about 80%.
-
-## Install
-
-You need a 3DS or 2DS with Luma3DS and your own game images. Luma3DS is what
-lets PSX3D use its fast mode; without it, or in a PC emulator such as Azahar,
-PSX3D still starts but runs much slower.
-
-In **FBI → Remote Install → Scan QR Code**, scan:
-
-<p align="center"><img src="docs/qr-install.png" width="200" alt="QR code for the latest PSX3D.cia"></p>
-
-Or install [**PSX3D.cia**](https://github.com/BreadChaser/PSX3D/releases/latest/download/PSX3D.cia)
-with FBI (a 3DSX for Homebrew Launcher is also on the release page).
-
-Put games (`.cue/.bin`, `.chd`, `.pbp`, `.iso`, `.m3u`) in `sdmc:/roms/psx/`; PSX3D also
-finds them in other usual folders, or pick one in **Settings → Games folder**. Box art downloads automatically, even for
-files with other names; your own picture goes in `sdmc:/3ds/PSX3D/covers/`
-([how](docs/box-art.md)).
-
-Got a real BIOS? Copy it to `sdmc:/3ds/PSX3D/bios/` and PSX3D uses it by itself
-(`scph5500`, `scph5501`, `scph5502`, `psxonpsp660`, `scph101`, `scph7001` or `scph1001`, all `.bin`).
-
-## Controls
-
-| Where | Input | Action |
-|---|---|---|
-| Main menu | A / X | Open / settings |
-| Library | A / X / Y | Play / sort / favourite |
-| Library | L / R | Jump to the previous / next letter |
-| In game | A / B / X / Y | Circle / Cross / Triangle / Square |
-| In game | L / R / ZL / ZR | L1 / R1 / L2 / R2 |
-| In game | Circle Pad / C-Stick | D-pad or left stick / right stick |
-| In game | Touch MENU | Pause menu |
-| In game | SELECT + R | Fast forward on/off |
-| In game | Hold SELECT + L | Rewind (New 3DS) |
-
-Everything can be remapped. Old 3DS gets extra buttons and a right stick on the
-touch screen.
-
-## Saves and logs
-
-Everything lives in `sdmc:/3ds/PSX3D/`: `saves/` (memory cards), `states/` (save states and Continue), `backups/` (save backups), `config.ini` and `games/` (settings).
-
-If something breaks, `log.txt` there says what happened (older sessions are `log.1.txt` to `log.4.txt`). Attach it to your issue.
+**New 3DS:** every game above runs at full speed in its heaviest tested scene
+with Auto frameskip.
 
 ## Known issues
 
 - Some games show drawing glitches, flicker or thin cracks at polygon edges.
-- Games with LibCrypt protection (some PAL discs) need a `.sbi` file next to the disc image.
-- `.ccd` images can't be played; use `.cue/.bin` or `.chd`.
-- Gran Turismo 1 hangs and Mega Man Legends 2 goes black after the intro with the built-in BIOS; a real BIOS fixes the first one.
+- Demanding 3D games run below full speed on the Old 3DS.
+- Real 3D (New 3DS) is experimental and slows busy scenes.
+- European discs with LibCrypt protection need a matching `.sbi` file next to
+  the disc image ([details](docs/presets.md#regions)).
+- With the built-in BIOS, the first Gran Turismo hangs and Mega Man Legends 2
+  goes black after the intro. A real BIOS fixes Gran Turismo.
 
-## Building
+Found something else? [Open an issue](https://github.com/BreadChaser/PSX3D/issues/new/choose)
+and attach `log.txt` if you can.
 
-Needs devkitPro (devkitARM, libctru, citro2d, citro3d), makerom and bannertool.
-See [building](docs/building.md).
+## FAQ
+
+**Old 3DS or New 3DS?**
+Both are supported. The New 3DS runs every tested game at full speed with Auto
+frameskip, and adds
+3D, rewind and a faster PS1 processor. The Old 3DS runs most games well;
+demanding 3D games are slower there.
+
+**Which game files work?**
+`.cue/.bin`, `.chd`, `.pbp`, `.iso`, `.img`, `.mdf` and `.m3u` for multi-disc
+games. `.ccd` (CloneCD) images don't load; convert them to `.cue/.bin` or `.chd`.
+
+**Why is it slow in Azahar or without Luma3DS?**
+PSX3D's fast mode needs Luma3DS on a real console. Without it PSX3D still
+starts, but much slower.
+
+**Do I need a BIOS?**
+No. A BIOS is built in. A real one is used automatically if you add it.
+
+## Building from source
+
+You need devkitPro (devkitARM, libctru, citro2d, citro3d), makerom and
+bannertool. Full steps are in [docs/building.md](docs/building.md).
 
 ```bash
 git clone https://github.com/BreadChaser/PSX3D.git
@@ -164,4 +227,5 @@ make cia    # psx3d/PSX3D.cia
 - The PCSX-ReARMed 3DS port authors; devkitPro (libctru, citro2d, citro3d)
 - [DSP1](https://github.com/zoogie/DSP1) by zoogie; [artwork, fonts and cheat sources](tools/art/CREDITS.md)
 
-Not affiliated with Sony, Nintendo or libretro. GPL-2.0, see [LICENSE](LICENSE).
+PSX3D is licensed under the [GPL-2.0](LICENSE). It is not affiliated with Sony,
+Nintendo or libretro.
