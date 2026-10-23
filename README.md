@@ -21,22 +21,9 @@ no BIOS file.
 
 <table>
   <tr>
+    <td align="center"><img src="docs/screenshots/main-menu.png" width="300" alt="Main menu"><br>Main menu</td>
     <td align="center"><img src="docs/screenshots/library.png" width="300" alt="Box-art library"><br>Library</td>
-    <td align="center"><img src="docs/screenshots/menu.png" width="300" alt="Pause menu"><br>Pause menu</td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/settings.png" width="300" alt="Settings"><br>Settings</td>
-    <td align="center"><img src="docs/screenshots/settings-display.png" width="300" alt="Display settings"><br>Display settings</td>
-  </tr>
-</table>
-
-<p align="center"><img src="docs/screenshots/touch-layout.png" width="300" alt="Old 3DS touch controls"><br>Old 3DS touch controls</p>
-
-<table>
-  <tr>
-    <td align="center"><img src="docs/screenshots/ctr.png" width="280" alt="Crash Team Racing"><br>Crash Team Racing</td>
-    <td align="center"><img src="docs/screenshots/silent-hill.png" width="280" alt="Silent Hill"><br>Silent Hill</td>
-    <td align="center"><img src="docs/screenshots/sotn.png" width="280" alt="Symphony of the Night"><br>Symphony of the Night</td>
+    <td align="center"><img src="docs/screenshots/crash.png" width="300" alt="Crash Bandicoot with its bottom screen"><br>Crash Bandicoot</td>
   </tr>
 </table>
 
