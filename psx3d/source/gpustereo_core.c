@@ -36,7 +36,7 @@ static tent *ttab;
 // generation (24-31), depth (0: none), flags (E_*).
 #define VT_BITS 15
 #define VT_WAYS 4
-typedef struct { uint32_t kg; uint16_t z, f; } vent;
+typedef union { struct { uint32_t kg; uint16_t z, f; }; uint64_t u; } vent;   // (u: one atomic store/load)
 static vent *vtab;
 // The polygons queued for the capture (main thread -> GPU thread), in order.
 // FIFO_N covers a frame's polygons: the main thread drains what is left at
@@ -46,6 +46,7 @@ static gs_rec *fifo;
 static unsigned fifo_head, fifo_tail;   // written by the main thread / by the capture
 static unsigned n_dropped;
 int gs_defer = 1;
+int gs_debug;                           // test switch st3d=N: 1 no capture, 2 no shift
 uint64_t (*gs_clock)(void);             // the capture's time (gs_core_ticks), if set
 static uint64_t cap_ticks;
 
@@ -243,9 +244,11 @@ static void vput(int x, int y, float z, unsigned edge, bool keep)
 		if (a > oldest)
 			oldest = a, victim = e;
 	}
-	victim->kg = key | (uint32_t)(gen & 0xff) << 24;
-	victim->z = zint(z);
-	victim->f = E_VALID | put_flags | edge;
+	vent n = { { key | (uint32_t)(gen & 0xff) << 24, (uint16_t)zint(z), (uint16_t)(E_VALID | put_flags | edge) } };
+	if (gs_defer)
+		*victim = n;
+	else   // captured on the main thread: the GPU thread may be reading it
+		__atomic_store_n(&victim->u, n.u, __ATOMIC_RELAXED);
 }
 
 // the vertex entry at the position (0: none)
@@ -293,7 +296,20 @@ static void put_tri(const int (*c)[2], const float *z, const unsigned *edge)
 		n.z[r[i]] = zint(z[i]);
 		n.f |= ((edge[i] | put_flags) >> 3 & 7) << (3 * r[i]);   // E_LEFT, E_RIGHT, E_FAR: T_L, T_R, T_FAR
 	}
-	*victim = n;
+	if (gs_defer) {
+		*victim = n;
+		return;
+	}
+	// Captured on the main thread while the GPU thread may read this entry:
+	// invalid while it changes, then valid with a new count (gs_shift reads
+	// the flags before and after the rest).
+	unsigned count = ((victim->f >> 10) + 1) & 31;
+	__atomic_store_n(&victim->f, 0, __ATOMIC_RELAXED);
+	__atomic_thread_fence(__ATOMIC_RELEASE);
+	victim->h = n.h;
+	victim->k0 = n.k0;
+	memcpy(victim->z, n.z, sizeof(n.z));
+	__atomic_store_n(&victim->f, n.f | count << 10, __ATOMIC_RELEASE);
 }
 
 // a corner's vertex depth: its own, else the polygon's estimate (none for a 2D polygon)
@@ -382,7 +398,7 @@ static void capture(const gs_rec *r);
 // captures it before it draws it); else captured now.
 void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint32_t e5, const uint16_t z[4])
 {
-	if (!ttab || cmd < 0x20 || cmd >= 0x40)
+	if (!ttab || cmd < 0x20 || cmd >= 0x40 || (gs_debug & 1))
 		return;
 	gs_rec now, *r = &now;
 	unsigned head = fifo_head;
@@ -826,7 +842,7 @@ int gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 	uint16_t now = gen;
 	int moved = 0;
 	memcpy(dst, src, n * sizeof(*dst));
-	if (!ttab || zn <= 0 || k <= 0)
+	if (!ttab || zn <= 0 || k <= 0 || (gs_debug & 2))
 		return 0;
 	for (int t = 0; t + 3 <= n; t += 3) {
 		const gs_vtx *v = &src[t];
@@ -856,27 +872,44 @@ int gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 			for (int i = 0; i < 3; i++)
 				sk[r[i]] = key[i];
 			uint32_t h = tri_hash(sk[0], sk[1], sk[2]);
-			const tent *e = &ttab[(h >> (32 - TT_BITS)) & ~(TT_WAYS - 1u)], *end = e + TT_WAYS;
-			while (e < end && (e->h != h || (e->k0 & 0xffffff) != sk[0] || !(e->f & T_VALID) || (uint8_t)(now - (e->k0 >> 24)) > 1))
-				e++;
-			if (e < end) {
+			const tent *b = &ttab[(h >> (32 - TT_BITS)) & ~(TT_WAYS - 1u)], *e = NULL;
+			UNROLL for (unsigned w = 0; w < TT_WAYS; w++)
+				if (b[w].h == h && (b[w].k0 & 0xffffff) == sk[0] && (b[w].f & T_VALID) && (uint8_t)(now - (b[w].k0 >> 24)) <= 1) {
+					e = &b[w];
+					break;
+				}
+			tent copy;
+			if (e && !gs_defer) {
+				// the main thread may be writing it (see put_tri): a copy whose
+				// flags were the same before and after
+				uint16_t f1 = __atomic_load_n(&e->f, __ATOMIC_ACQUIRE);
+				copy = *e;
+				__atomic_thread_fence(__ATOMIC_ACQUIRE);
+				bool same = (f1 & T_VALID) && __atomic_load_n(&e->f, __ATOMIC_RELAXED) == f1 && copy.h == h &&
+					(copy.k0 & 0xffffff) == sk[0] && (uint8_t)(now - (copy.k0 >> 24)) <= 1;
+				copy.f = f1;
+				e = same ? &copy : NULL;
+			}
+			if (e) {
 				unsigned z[3], fl[3], mesh = 0;
-				const vent *vert[3] = { NULL, NULL, NULL };
+				vent vert[3] = { { { 0, 0, 0 } }, { { 0, 0, 0 } }, { { 0, 0, 0 } } };
 				entries = 3;
 				for (int i = 0; i < 3; i++) {
 					z[i] = e->z[r[i]];
 					fl[i] = e->f >> (3 * r[i]);
 					if (!z[i]) {
-						vert[i] = vget(px[i], py[i], now);
-						mesh += vert[i] != 0;   // 3D polygons' vertices (estimates too) only
+						const vent *ve = vget(px[i], py[i], now);
+						if (ve)   // (as one load: the main thread may be writing it)
+							vert[i].u = __atomic_load_n(&ve->u, __ATOMIC_RELAXED);
+						mesh += ve != NULL;   // 3D polygons' vertices (estimates too) only
 					}
 				}
 				bool borrow = !(e->f & T_EST) || mesh >= 2;
 				for (int i = 0; i < 3; i++) {
 					bool f = fl[i] & T_FAR;
 					if (!z[i] && borrow) {
-						z[i] = vert[i] ? vert[i]->z : 0;
-						f = vert[i] && (vert[i]->f & E_FAR);
+						z[i] = vert[i].z;
+						f = vert[i].f & E_FAR;
 					}
 					edge[i] = fl[i] & (T_L | T_R);
 					known[i] = z[i] != 0;

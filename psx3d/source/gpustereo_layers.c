@@ -585,11 +585,51 @@ GS_COLD void __wrap_gs_core_clear(void)
 	lay_reset();
 }
 
+// Where the capture runs (test switch stcap=auto, the default): the GPU
+// thread or the main thread, whichever gives shorter frames. Games that
+// draw at 30 fps leave the main thread time, 60 fps ones the GPU thread.
+// While a scene runs slower than full speed, every AUTO_HOLD windows of
+// AUTO_WIN frames the other way runs for a window; the faster one stays.
+// Switching happens here, between frames: both threads idle, nothing queued.
+int gs_cap_auto = 1;
+#define AUTO_WIN  48
+#define AUTO_HOLD 8
+static struct { uint64_t last, sum; unsigned n, hold; int trial; float best; } lauto;
+static void lay_auto(void)
+{
+	uint64_t now = gs_clock ? gs_clock() : 0;
+	if (!gs_cap_auto || !now || lstrength <= 0) {
+		lauto.last = 0;
+		return;
+	}
+	if (lauto.last)
+		lauto.sum += now - lauto.last, lauto.n++;
+	lauto.last = now;
+	if (lauto.n < AUTO_WIN)
+		return;
+	float period = (float)lauto.sum / lauto.n;   // ticks per frame
+	lauto.sum = lauto.n = 0;
+	if (lauto.trial) {   // the other way's window is over: keep the faster
+		if (period > lauto.best)
+			gs_defer = !gs_defer;
+		lauto.trial = 0;
+		lauto.hold = AUTO_HOLD;
+	} else if (lauto.hold)
+		lauto.hold--;
+	// (full speed: 60 frames a second, a little over 16.7 ms each with pacing)
+	else if (period > 17.2f * 268111.856f / 1000) {
+		lauto.best = period * 0.98f;   // the other way must be 2% faster
+		lauto.trial = 1;
+		gs_defer = !gs_defer;
+	}
+}
+
 GS_COLD void __wrap_gs_core_frame(float strength, int hres)
 {
 	__real_gs_core_frame(strength, hres);
 	lstrength = strength;
 	lframes++;
+	lay_auto();
 	// screen depth or layers: asked for LAY_WANT frames in a row before the
 	// fade starts (a still that is flat one pass and not the next would
 	// otherwise move the whole picture back and forth); movies and unsteady
@@ -691,8 +731,8 @@ GS_COLD void __wrap_gpustereo_status(char *out, int n)
 	gs_core_queue(&dropped, &cap);
 	float per = lframes ? 1.0f / (lframes * CPU_TICKS_PER_MSEC) : 0;
 	k = strlen(out);
-	snprintf(out + k, n - k, ",\"speed3d\":{\"capture\":\"%s\",\"capture_ms\":%.3f,\"shift_ms\":%.3f,\"dropped\":%u,\"frames\":%u}",
-		gs_defer ? "gpu" : "main", cap * per, shift_ticks * per, dropped, lframes);
+	snprintf(out + k, n - k, ",\"speed3d\":{\"capture\":\"%s%s\",\"capture_ms\":%.3f,\"shift_ms\":%.3f,\"dropped\":%u,\"frames\":%u}",
+		gs_cap_auto ? "auto " : "", gs_defer ? "gpu" : "main", cap * per, shift_ticks * per, dropped, lframes);
 	shift_ticks = 0;
 	lframes = 0;
 }
