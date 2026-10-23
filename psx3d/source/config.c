@@ -57,9 +57,9 @@ static int default_controller;   // the all-games Controller choice
 
 // Frontend settings a game keeps for itself when changed in its menu
 // (games/<game>.ini stores only the ones that differ from all games).
-static int *const game_fields[] = { &g_cfg.smooth, &g_cfg.show_fps, &g_cfg.touch_click_left };
-static const char *const game_field_keys[] = { "smooth", "show_fps", "touch_click_left" };
-#define GAME_FIELDS 3
+static int *const game_fields[] = { &g_cfg.smooth, &g_cfg.show_fps, &g_cfg.touch_click_left, &g_cfg.stereo_screen };
+static const char *const game_field_keys[] = { "smooth", "show_fps", "touch_click_left", "stereo_style" };
+#define GAME_FIELDS 4
 static int default_fields[GAME_FIELDS];
 static void game_fields_store(void)
 {
@@ -84,7 +84,7 @@ static void game_fields_restore(void)
 static int factory(const char *key)
 {
 	static const char *const words[][2] = {
-		{ "smooth", "off|on" }, { "show_fps", "off|fps|detailed" }, { "stereo", "off|screen|real" },
+		{ "smooth", "off|on" }, { "show_fps", "off|fps|detailed" }, { "stereo", "off|screen|real" }, { "stereo_style", "real|screen" },
 		{ "sounds", "off|on" }, { "music", "off|on" }, { "touch_click_left", "right|left" },
 		{ "screen", "original|stretch|widescreen" }, { "controller", "digital|analog" }, { "rewind", "off|on" },
 		{ "theme", "original|midnight-teal|ps1-grey|sunset-magenta|high-contrast" },
@@ -126,6 +126,7 @@ static void set_defaults(void)
 	g_cfg.theme = factory("theme");
 	g_cfg.show_fps = factory("show_fps");
 	g_cfg.stereo = factory("stereo");
+	g_cfg.stereo_screen = factory("stereo_style");
 	g_cfg.sounds = factory("sounds");
 	g_cfg.music = factory("music");
 	g_cfg.touch_click_left = factory("touch_click_left");
@@ -213,6 +214,8 @@ void config_load(void)
 			g_cfg.debug = atoi(v) != 0;
 		else if (strcmp(k, "smooth") == 0)
 			g_cfg.smooth = atoi(v) != 0;
+		else if (strcmp(k, "stereo_style") == 0)
+			g_cfg.stereo_screen = atoi(v) == 1;
 		else if (strcmp(k, "show_fps") == 0)
 			g_cfg.show_fps = atoi(v) >= 0 && atoi(v) <= 2 ? atoi(v) : 0;
 		else if (strcmp(k, "library_view") == 0) {
@@ -265,6 +268,7 @@ void config_save(void)
 #define SAVE_INT(key, value, factory) do { int v_ = (value); if (user_has(key) || v_ != (factory)) fprintf(f, key "=%d\n", v_); } while (0)
 	SAVE_INT("smooth", g_cfg.smooth, factory("smooth"));
 	SAVE_INT("show_fps", g_cfg.show_fps, factory("show_fps"));
+	SAVE_INT("stereo_style", g_cfg.stereo_screen, factory("stereo_style"));
 	if (g_cfg.theme != factory("theme"))   // a look, not an intent: the default is never written
 		fprintf(f, "theme=%s\n", theme_get(g_cfg.theme)->id);
 	SAVE_INT("stretch", screen == 1, factory("screen") == 1);
@@ -377,6 +381,9 @@ void config_sync_stereo(void)
 	// No 3D setting: the slider alone turns Real 3D on (New 3DS, defaults.ini).
 	g_cfg.stereo = factory("stereo");
 	if (!g_new3ds) g_cfg.stereo = 0;
+	// The 3D setting: Screen depth puts the whole picture behind the screen
+	// (v0.5.0's 3D) instead of Real 3D; the slider still sets the strength.
+	if (g_cfg.stereo == 2 && g_cfg.stereo_screen) g_cfg.stereo = 1;
 	config_set_core_override("pcsx_rearmed_psx3d_stereo",
 		stereo_active ? "enabled" : "disabled");
 	options_mark_updated();

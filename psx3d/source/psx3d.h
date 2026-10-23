@@ -47,6 +47,7 @@ typedef struct {
 	int  theme;        // menu colours (theme.c), index into the theme table
 	int  show_fps;
 	int  stereo;       // 3D slider: 0 off, 1 screen depth, 2 real (per-object)
+	int  stereo_screen; // 3D setting (New 3DS): 0 Real 3D, 1 Screen depth
 	int  debug;        // show debug tools in the menu
 	int  stretch;      // stretch the picture to 400x240
 	int  sounds;       // interface sounds

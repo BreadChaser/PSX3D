@@ -27,11 +27,13 @@ Base: `release/v0.5.0-candidate` (`4bc03da`, presets-v2 merged). It replaces
    2026-10-21). It is the original PS1 look, and Off only causes banding.
    Measured cost on the Old 3DS is about 0 (v0.4.0 A/B: Crash −0.4%, others ±0.3%).
 7. Cheats live in the pause menu only. They are not part of Settings.
-8. **3D has no setting** (user, 2026-10-21). The 3DS 3D slider is the only
-   control: slider down is flat 2D, slider up is Real 3D in games (New 3DS).
-   The old "Screen depth" mode for games is gone; menus and the library keep
-   their own slider-driven depth effect. Real 3D is called experimental in the
-   README only.
+8. **3D** (user, 2026-10-21; style row back 2026-10-23, issue #4). The 3DS 3D
+   slider turns 3D on and sets its strength: slider down is flat 2D. The
+   Display row **3D** (New 3DS only) picks the style in games: **Real 3D**
+   (default; frames without depth fall back to screen depth or 2D layers by
+   themselves) or **Screen depth** (v0.5.0's 3D: the whole picture sits behind
+   the screen, every frame). Menus and the library keep their own slider-driven
+   depth effect. Real 3D is called experimental in the README only.
 9. **No Sound category** (user, 2026-10-21). Sound echo, menu sounds and
    library music are always on; there is no game volume.
 
@@ -81,6 +83,7 @@ player sees.
 Display | Screen | screen | Original, Stretch, Widescreen | Original | Original | both | all | taste
 Display | Smoothing | smooth | On, Off | On | On | both | all | taste
 Display | FPS counter | show_fps | Off, FPS, Detailed | Off | Off | both | all | taste
+Display | 3D | stereo_style | Real 3D, Screen depth | - | Real 3D | new | all | taste
 Controls | Button mappings | > | - | - | - | both | all | taste
 Controls | Controller | controller | Digital, Analog | Digital | Digital | both | all | tech
 Controls | Analog mode shortcut | analog_combo | Off, L1+R1+Select, L1+R1+Start, L1+R1+L3, L1+R1+R3, L3+R3 | L1+R1+Select | L1+R1+Select | both | all | taste
@@ -124,7 +127,13 @@ game without a widescreen fix, Screen offers only Original and Stretch. Scope
     override with a plain per-game choice.
   - `hidden`: not offered (it cannot work).
   In the library, Widescreen means "use widescreen in games that have a fix".
-- **3D**: no row (principle 8). The slider alone decides.
+- **3D** (New 3DS only; per game like the other Display rows): Real 3D or
+  Screen depth (principle 8). The slider still turns 3D on and off and sets the
+  strength in both. Help: "Screen depth: the whole picture sits behind the
+  screen." Old 3DS has no row: this build draws no game 3D there (`stereo` is
+  forced off on Old). Screen depth would be the cheaper style on Old, but it
+  still draws a second top picture every frame and has never been speed-gated
+  on the Old, so it is not offered.
 - **Games folder** (library only, home page; moved from the library's Y, which
   is Favourite now). A opens the folder browser; its "Use this folder for games"
   row sets `games_dir`. The value shows the folder's name. It is not a stored
@@ -250,7 +259,8 @@ Fates:
 |---|---|---|---|---|---|---|
 | screen (+ stretch, core widescreen) | Screen mode (Display) | Original | Original | **Setting** "Screen" | taste | `widescreen` policy: 35 files |
 | smooth | Smoothing (Display) | On | On | **Setting** | taste | no |
-| stereo | 3D (Display, New) | Off (fixed) | Screen depth | **Force**: Real 3D on New, off on Old; the 3D slider is the only control | User, 2026-10-21: Screen depth for games dropped | no |
+| stereo | 3D (Display, New) | Off (fixed) | Screen depth | **Force**: 3D on New (style from `stereo_style`), off on Old; the 3D slider turns it on | User, 2026-10-21; style row back 2026-10-23 | no |
+| stereo_style | 3D (Display, New) | — | Real 3D | **Setting** "3D": Real 3D or Screen depth | taste (issue #4: Screen depth is steadier) | no |
 | show_fps | Show FPS (Display) | Off | Off | **Setting** "FPS counter" | taste | no |
 | theme | Theme (Display, library only; hidden in v0.5.1, THEMES_SHOWN 0 in theme.h) | Original (v0.5.0) | Original (v0.5.0) | **Setting** "Theme" | taste; one look for the whole app, so no per-game value. The five palettes of the UI mock-up; colours only (game pictures, cover art and the library backdrop are unchanged) | no |
 | touch_click_left | Bottom-screen buttons (Controls, New) | — | Right | **Setting** (New only) | taste | no |

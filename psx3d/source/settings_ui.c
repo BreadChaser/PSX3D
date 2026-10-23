@@ -44,13 +44,13 @@ static const char *const categories[] = {"Settings",
 										 "Button mappings",
 										 "Debug"};
 enum { F_SCREEN, F_SMOOTH, F_FPS, F_CONTROLLER, F_SIDE,
-       F_REWIND, F_HEADING, F_RECOMMENDED, F_RECORD, F_TONE, F_THEME, F_FOLDER, F_COUNT };
+       F_REWIND, F_HEADING, F_RECOMMENDED, F_RECORD, F_TONE, F_THEME, F_FOLDER, F_STEREO, F_COUNT };
 static const char *const labels[] = {
  [F_SCREEN]="Screen", [F_SMOOTH]="Smoothing", [F_FPS]="FPS counter",
  [F_CONTROLLER]="Controller",
  [F_SIDE]="Bottom-screen buttons", [F_REWIND]="Rewind", [F_HEADING]="Compatibility",
  [F_RECOMMENDED]="Reset to recommended", [F_RECORD]="Record audio", [F_TONE]="Test tone",
- [F_THEME]="Theme", [F_FOLDER]="Games folder"
+ [F_THEME]="Theme", [F_FOLDER]="Games folder", [F_STEREO]="3D"
 };
 static const char *const tips[] = {
  [F_SCREEN]="Widescreen only in games with a widescreen fix.",
@@ -63,6 +63,7 @@ static const char *const tips[] = {
  [F_RECORD]="Capture 30 seconds for troubleshooting.", [F_TONE]="Play a tone to check audio output.",
  [F_THEME]="Change the colours of the menus.",
  [F_FOLDER]="Pick the folder the library shows.",
+ [F_STEREO]="Screen depth: the whole picture sits behind the screen.",
 };
 // Longer help, shown on the top screen while the row is selected.
 static const char *const helps[] = {
@@ -76,6 +77,7 @@ static const char *const helps[] = {
  [F_RECORD]="Record 30 seconds of game audio for troubleshooting.",
  [F_TONE]="Play a steady tone to check audio output.",
  [F_FOLDER]="The folder on the SD card that the library lists. Opens the folder browser; you can also start a game from there.",
+ [F_STEREO]="Use the 3D slider to turn 3D on and set its strength. Real 3D gives every object its own depth. Screen depth puts the whole picture behind the screen: steadier, less depth.",
  [F_THEME]="Choose the colours of the menus and the library backdrop. Synthwave is the original look; the others are calmer. Game pictures and cover art are not changed.",
 };
 static const char *const category_tips[] = {
@@ -119,7 +121,7 @@ typedef struct {
 static bool frontend_visible(settings_ui_t *s, int i)
 {
 	// Only physical limits hide a row (docs/settings.md section 1).
-	if (i == F_SIDE && !g_new3ds)
+	if ((i == F_SIDE || i == F_STEREO) && !g_new3ds)   // no game 3D on Old 3DS
 		return false;
 	if ((i == F_THEME || i == F_FOLDER) && s->game)   // one look, one library for the whole app
 		return false;
@@ -164,7 +166,7 @@ static void build_page(settings_ui_t *s, int page)
 		}
 		break;
 	case CAT_DISPLAY:
-		add_frontend(s, F_SCREEN); add_frontend(s, F_SMOOTH); add_frontend(s, F_FPS);
+		add_frontend(s, F_SCREEN); add_frontend(s, F_SMOOTH); add_frontend(s, F_FPS); add_frontend(s, F_STEREO);
 		if (THEMES_SHOWN)
 			add_frontend(s, F_THEME);
 		break;
@@ -222,7 +224,7 @@ static const char *override_key(int item)
 	static const char *const keys[] = {
 	 [F_SCREEN]="screen", [F_SMOOTH]="smooth", [F_FPS]="show_fps",
 	 [F_SIDE]="touch_click_left", [F_CONTROLLER]="controller", [F_REWIND]="rewind",
-	 [F_THEME]="theme"};
+	 [F_THEME]="theme", [F_STEREO]="stereo_style"};
 	if (item >= CORE_ROW && item < CONTROL_ROW)
 		return options_game_key(options_key(item - CORE_ROW));
 	return item >= 0 && item < F_COUNT && item < (int)(sizeof(keys) / sizeof(keys[0])) ? keys[item] : NULL;
@@ -327,6 +329,8 @@ static const char *row_value(int i, void *ud)
 		return g_cfg.smooth ? "On" : "Off";
 	case F_FPS:
 		return (const char *const[]){"Off", "FPS", "Detailed"}[g_cfg.show_fps];
+	case F_STEREO:
+		return g_cfg.stereo_screen ? "Screen depth" : "Real 3D";
 	case F_THEME:
 		return theme()->name;
 	case F_FOLDER: {
@@ -524,6 +528,10 @@ static void change(settings_ui_t *s, int item, int dir)
 		}
 		else
 			g_cfg.show_fps = (g_cfg.show_fps + dir + 3) % 3;
+		break;
+	case F_STEREO:
+		g_cfg.stereo_screen ^= 1;
+		config_sync_stereo();
 		break;
 	case F_FOLDER:
 		// the caller opens the folder browser once Settings has closed
