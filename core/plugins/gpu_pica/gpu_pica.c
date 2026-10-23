@@ -884,6 +884,12 @@ static void PICA_COLD readback_part_impl(int x, int y, int w, int h)
 {
 	if (w <= 0 || h <= 0 || !ready)
 		return;
+	// Uploads still waiting for a GPU frame are newer than the render target
+	// but their blocks can still be marked drawn: reading those back put the
+	// older picture over them (RE2 kept the previous camera's characters in
+	// its background). Open the frame so they reach the render target first.
+	if (npend && !frame_open && pica_open_frame)
+		pica_open_frame();
 	if (!rtt_old()) { readback_fine(x, y, w, h); return; }
 	int bx0 = x >> 6, bx1 = (x + w - 1) >> 6, by0 = y >> 4, by1 = (y + h - 1) >> 4;
 	u16 m = (u16)(((2u << bx1) - 1) & ~((1u << bx0) - 1));

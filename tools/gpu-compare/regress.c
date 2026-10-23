@@ -43,6 +43,8 @@ static void triangle(int x0,int y0,int x1,int y1,int x2,int y2)
     u32 p[]={0x200000ff,xy(x0,y0),xy(x1,y1),xy(x2,y2)};
     commands(p,4);
 }
+extern void (*pica_open_frame)(void);
+static void open_frame(void) { pica_frame_started(); }
 static void pixel(int x,int y,bool red)
 {
     renderer_flush_queues();
@@ -215,6 +217,20 @@ int main(void)
     pixel(110,110,true);   // the GPU drawing survives
     pixel(605,305,true);   // the uploads arrived
     pixel(300,300,false);
+
+    // A CPU read right after an upload made while no GPU frame is open must
+    // return the upload, not the older GPU drawing under it (RE2 read its
+    // screen back and kept the previous camera's characters).
+    pica_open_frame=open_frame;
+    clear(); triangle(300,300,360,300,300,360); pixel(310,310,true);
+    pica_frame_ended();
+    pica_settle_rect(296,296,64,64);
+    for(int r=0;r<64;r++)for(int c=0;c<64;c++) vram[(296+r)*1024+296+c]=0x03e0; // PS1 green
+    renderer_update_caches(296,296,64,64,0);
+    pica_readback_rect(296,296,64,64);
+    assert(vram[310*1024+310]==0x03e0);
+    pixel(310,310,false);
+    pica_open_frame=NULL;
     pica_frame_ended();
     pica_game_end();
     assert(pica_game_begin(true)); // buffer cleanup/reallocation
