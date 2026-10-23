@@ -33,8 +33,14 @@ citro3d, after Real 3D's own shift.
 - **Primitives and segments.** A primitive is a triangle or the two halves of a quad
   (neighbouring tiles share edges too; chained, they took one another's level). A segment is a run of primitives of one
   kind (polygon, sprite, untextured) from one 256x256 part of the texture atlas: text, a
-  tile map, a sprite's parts. CPU uploads and fills (no vertex colour) are not part of the
-  drawing order: they open no pass and mark nothing.
+  tile map, a sprite's parts. CPU uploads (no vertex colour) are not part of the drawing
+  order: they open no pass and mark nothing.
+- **Fills and uploads stay in their buffer.** Fills and CPU uploads are not limited to the
+  drawing area (the renderer draws fills with a scissor over all of VRAM, uploads with none).
+  Moved right, they reached into whatever lies to their right: in games with two framebuffers
+  side by side (SotN) the other buffer's left edge (and Richter's HP bar) showed the fill's
+  colour every other frame. A fill is one colour and is not moved at all; an upload's corners
+  don't move past the right edge of the buffer it is in.
 - **Levels.** A 4x4-pixel cell grid over VRAM records what each pass drew (one pixel less at
   each edge, so touching tiles don't overlap). A primitive's level is one above the highest
   level of another segment it covers, and never below the level the pass has reached; the
@@ -51,24 +57,44 @@ citro3d, after Real 3D's own shift.
   the base `LAY_MAX` (14 px of a 320-wide picture; 8 px in the first version) behind. A picture of one step (an
   uploaded movie, a still) sits half deep, anything on it on the screen. One table for all
   buffers, smoothed (15% per pass). Shifts are whole pixels so sprites stay sharp.
+- **Depths hold still.** A level's shown depth changes only when its new value (half a pixel
+  away or more) has held for `LAY_SETTLE` (45) passes. Blinking text, or a sprite's level
+  showing in one pass and not the next, re-spaced the levels every few frames: the right eye's
+  picture grew and shrank (SFA2's title).
+- **Screen depth or layers.** The switch to screen depth (a flat picture) and back starts only
+  after it was asked for 30 frames in a row, then fades over 12; movies and unsteady scenes
+  switch at once.
+- **Unsteady scenes get screen depth.** Per pass, the area of segments whose first piece sits
+  where it sat last pass is compared with the area of those among them that changed to another
+  level of another depth. A picture is unsteady when 8% or more did; when that is true of
+  30% of recent pictures (about 40) the scene gets screen depth until 300 pictures after the
+  last such moment (2D fighters: Capcom vs SNK Pro, Street Fighter Alpha 3 as the fighters
+  animate). SotN and Mega Man X5/X6 stay on layers. Status: `layers3d.unsteady`, `layers3d.hold`.
 - **Real 3D or layers.** Per shown picture, the share of triangles Real 3D moved decides:
   30% or more → Real 3D, under 10% → layers, between: keep going where it was; the blend
   moves 10% per picture. Settled on Real 3D, the layers do no work at all.
 - **Edges.** A vertex on the buffer's left edge is not moved (moved right, it would leave a
   strip the right eye never draws).
+- **Crack fill.** A primitive whose left neighbour (the cells just left of it, this or the last
+  pass) is a nearer level moves its left corners back by the difference (5 px at most), so no
+  gap opens between them. Tiles of the same layer move together and are not stretched: the
+  first version pulled every primitive back by the step to the next level, which stretched each
+  16-px tile of SFA2's title by 5 px over its neighbour and cut the logo into bands.
 
 ## Checks (simulator)
 
 - Left eye identical to main (draw hash) in 12 scenes; in settled 3D games the right eye is
   pixel-identical to Real 3D's (Crash, GT2, CTR, Tekken, Silent Hill).
-- Flicker (static parts changing depth between frames, 61 frames): 0% median in SotN menu and
-  fight, Mega Man X5/X6; Capcom vs SNK Pro 12%.
+- Flicker (static parts changing depth between frames): 0% median in SotN menu and fight,
+  Mega Man X5/X6; Capcom vs SNK Pro and Street Fighter Alpha 3 fights 0% (screen depth), SFA2
+  title and menu 0% (devtools/stereo-sf/REPORT.md).
 - `tools/layout/compare.py` against v0.5.0: PASS, no existing code moves.
 
 ## Limits
 
-- Painted backgrounds made of many overlapping pieces (Capcom vs SNK Pro) are cut into depth
-  slices and re-balance as sprites animate.
+- Painted backgrounds made of many overlapping pieces (Capcom vs SNK Pro) re-balance as
+  sprites animate; such scenes are detected and shown with screen depth instead, after a
+  short start (about 16-50 pictures) on layers.
 - Pictures copied or uploaded into VRAM (movies, some logos) and text on black have nothing to
   separate and stay flat: Screen depth (issue #4) is the fallback; `gs_picture_flat()` says when.
 - A crack of 1 px can remain where a tile meets a neighbour more than one level nearer.
