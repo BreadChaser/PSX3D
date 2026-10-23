@@ -46,7 +46,8 @@ static const theme_t themes[] = {
 		.card_stack = C(30, 64, 74), .folder = C(150, 215, 220),
 		.version_ink = CA(120, 170, 180, 160), .logo_3d = CA(90, 220, 220, 200),
 		.sky = { { 26, 38, 13, 0 }, { 90, 115, 38, 0 }, { 77, 102, 90, 0 } },
-		.grid_near = C(60, 200, 210), .grid_side = C(40, 110, 200), .grid_far = C(140, 240, 230) },
+		.grid_near = C(60, 200, 210), .grid_side = C(40, 110, 200), .grid_far = C(140, 240, 230),
+		.scene = 2, .sky_top = C(1, 6, 14), .sky_low = C(10, 52, 66), .sky_glow = CA(90, 230, 230, 110) },
 	{ ORIGINAL, .id = "ps1-grey", .name = "PS1 grey",
 		.menu_bg = C(28, 28, 32), .hl_top = CA(90, 90, 100, 235), .hl_bottom = CA(60, 60, 70, 235),
 		.hl_glow = CA(200, 200, 210, 30), .value = C(200, 200, 215), .muted = C(150, 150, 160),
@@ -58,7 +59,8 @@ static const theme_t themes[] = {
 		.card_stack = C(78, 78, 88), .folder = C(200, 200, 210),
 		.version_ink = CA(160, 160, 170, 160), .logo_3d = CA(200, 205, 220, 200),
 		.sky = { { 110, 100, 40, 6 }, { 110, 100, 40, 6 }, { 115, 105, 45, 12 } },
-		.grid_near = C(175, 178, 195), .grid_side = C(115, 120, 140), .grid_far = C(225, 228, 240) },
+		.grid_near = C(175, 178, 195), .grid_side = C(115, 120, 140), .grid_far = C(225, 228, 240),
+		.scene = 1, .sky_top = C(44, 46, 54), .sky_low = C(128, 132, 142), .sky_glow = CA(235, 236, 245, 90) },
 	{ ORIGINAL, .id = "sunset-magenta", .name = "Sunset magenta",
 		.menu_bg = C(16, 4, 26), .hl_top = CA(120, 30, 120, 235), .hl_bottom = CA(60, 14, 74, 235),
 		.hl_glow = CA(255, 80, 200, 40), .value = C(255, 140, 210), .muted = C(190, 130, 190),
@@ -82,7 +84,8 @@ static const theme_t themes[] = {
 		.version_ink = CA(190, 200, 220, 220),
 		.logo = CA(255, 255, 255, 235), .logo_3d = CA(120, 190, 255, 235),
 		.sky = { { 190, 114, -95, -67 }, { 218, 131, -109, -77 }, { 256, 154, -128, -60 } },
-		.grid_near = C(200, 225, 255), .grid_side = C(90, 140, 240), .grid_far = C(255, 255, 255) },
+		.grid_near = C(200, 225, 255), .grid_side = C(90, 140, 240), .grid_far = C(255, 255, 255),
+		.scene = 1, .sky_top = C(0, 0, 0), .sky_low = C(8, 12, 34), .sky_glow = CA(160, 200, 255, 120) },
 };
 #define NTHEMES ((int)(sizeof(themes) / sizeof(themes[0])))
 
