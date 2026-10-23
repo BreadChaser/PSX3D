@@ -45,6 +45,8 @@ void gs_core_pass_shown(int x, int y, int w, int h);
 float gs_layer_blend(void);    // 0: draw-order layers .. 1: Real 3D
 void gs_layer_status(char *out, int n);
 bool gs_picture_flat(void);    // the picture shown has no layers (a still, an FMV): screen depth
+float gs_layer_unsteady(void);  // share of steady pieces changing depth (smoothed)
+int gs_layer_hold(void);        // >0: pictures left on screen depth for an unsteady scene
 // diagnostics, reset by each call: corners looked up, found; vertices
 // shifted; corners rejected (another object's depth)
 void gs_core_counts(unsigned *lookups, unsigned *found, unsigned *shifted, unsigned *rejected);

@@ -55,6 +55,10 @@ static int lhres = 320;              // the picture's width in PS1 pixels
 #define LAY_AREA    0.4f   // area vs rank in a level's depth (rank: even steps between layers)
 #endif
 #define LAY_SMOOTH  0.15f  // per pass
+#ifndef LAY_SETTLE
+#define LAY_SETTLE  45     // passes a level's new depth must hold, unchanged, before it is shown
+#endif
+#define LAY_WANT    30     // frames screen depth (or layers) must be asked for before the fade starts
 #define LAY_MINOR   15     // per mille of the picture: a level this small is no step of its own
 #define LAY_SLOTS   4
 #ifndef LAY_FLOOR
@@ -62,6 +66,18 @@ static int lhres = 320;              // the picture's width in PS1 pixels
 #endif
 #define LAY_LEVELS  256
 #define LAY_SEGS    2048   // segment levels kept for the next pass (hash table)
+// A scene whose layers don't hold still (pieces that stay where they are
+// but change depth from pass to pass: 2D fighters' backdrops as the
+// fighters animate) gets screen depth instead, until it has been steady a while.
+#ifndef LAY_UNSTABLE
+#define LAY_UNSTABLE 0.3f  // share of recent pictures (about 40) that were unsteady
+#endif
+#ifndef LAY_JUMPY
+#define LAY_JUMPY   0.08f  // a picture is unsteady: this share of the steady pieces' area changed depth
+#endif
+#ifndef LAY_HOLD
+#define LAY_HOLD    300    // pictures: screen depth this long after the last unsteady one
+#endif
 // a cell: the level shown, the level by the rules alone (see lay_tri),
 // the segment and the pass that drew it last
 #define C_H(c)   ((unsigned)(c) & 0xff)
@@ -88,7 +104,7 @@ static struct {                      // the primitive being drawn
 	int16_t pos[3][2];
 	int ntri;                      // its triangles so far
 	float share, step;
-	int left;
+	int left, right;
 	uint64_t cell;                 // what its triangles write (0: nothing)
 } lprev;
 // One depth per level for all buffers (they show the same scene); the
@@ -98,7 +114,9 @@ static bool lmap_used;
 // Each segment's level, kept from pass to pass, found by its kind and
 // texture position (stable while a scene pans; draw-order position isn't:
 // a segment more or less earlier would hand every later one another's).
-static struct lsegent { uint32_t key; unsigned pass; uint8_t last, now; } *lsegs, *lsegcur;   // LAY_SEGS
+// rx, ry, shown: where its first primitive was last pass (in its buffer) and
+// the level shown there (-1: none yet)
+static struct lsegent { uint32_t key; unsigned pass; uint8_t last, now; int16_t rx, ry, shown; } *lsegs, *lsegcur;   // LAY_SEGS
 static float lblend;                 // 0: layers .. 1: Real 3D
 static float lwant;                  // where lblend is heading (1: Real 3D)
 static float lready;                 // the layers' strength: 0 until frames were seen to be flat, then faded in
@@ -109,8 +127,16 @@ static bool lflat;                   // the picture shown has nothing to separat
 // .. 1: screen depth, faded over LAY_SCREEN_FADE frames.
 #define LAY_SCREEN_FADE 12
 static float lscreen;
+static float lscreen_want;           // where lscreen is heading
+static int lasked;                   // frames the other way was asked for (LAY_WANT)
 static bool lnotgpu;                 // the last picture shown wasn't drawn by the GPU (a 24-bit movie)
 static unsigned ltris, ldepth;       // triangles this frame, those with a GTE depth
+static uint8_t lpend[LAY_LEVELS];    // passes a level's new depth has held (LAY_SETTLE)
+static float lcand[LAY_LEVELS];      // that new depth
+static unsigned lsteady, lmoved;     // since the last picture: area of pieces that stayed put, of those that changed depth
+static float lunst;                  // share of recent pictures that were unsteady (LAY_JUMPY)
+static int lhold;                    // pictures left on screen depth for an unsteady scene
+static int lay_scissor_right(void);  // the draw's right limit, VRAM px (fills: all of VRAM; uploads: none, 1024)
 
 // Until a buffer's first pass has been measured (and for drawing outside
 // every buffer shown so far: a static logo drawn once before it is shown)
@@ -143,9 +169,14 @@ static void lay_reset(void)
 	lblend = 0;
 	lready = 0;
 	lflat = false;
-	lscreen = 0;
+	lscreen = lscreen_want = 0;
+	lasked = 0;
 	lnotgpu = false;
 	ltris = ldepth = 0;
+	memset(lpend, 0, sizeof(lpend));
+	lsteady = lmoved = 0;
+	lunst = 0;
+	lhold = 0;
 }
 
 static lslot *lay_slot(int cx, int cy)
@@ -202,10 +233,23 @@ GS_COLD static void lay_remap(lslot *s)
 	float a = lmap_used ? LAY_SMOOTH : 1;
 	for (int l = 0; l < LAY_LEVELS; l++) {
 		lmap[l] += (next[l] - lmap[l]) * a;
-		// what is shown moves only for a real change (7% of the depth range,
-		// about half a pixel): small drifts would flip whole-pixel shifts
-		if (a == 1 || fabsf(lmap[l] - lshow[l]) > 0.07f)
-			lshow[l] = lmap[l];
+		// What is shown moves only for a real change (7% of the depth range,
+		// about half a pixel) that then holds still for LAY_SETTLE passes: small
+		// drifts would flip whole-pixel shifts, and blinking text or a sprite's
+		// level showing in one pass and not the next re-spaces the levels above
+		// it, back and forth (the right eye's picture grew and shrank).
+		if (a == 1) {
+			lshow[l] = lcand[l] = lmap[l];
+			lpend[l] = 0;
+		} else if (fabsf(lmap[l] - lshow[l]) <= 0.07f) {
+			lpend[l] = 0;
+		} else if (fabsf(lmap[l] - lcand[l]) > 0.07f || !lpend[l]) {
+			lcand[l] = lmap[l];
+			lpend[l] = 1;
+		} else if (++lpend[l] >= LAY_SETTLE) {
+			lshow[l] = lcand[l];
+			lpend[l] = 0;
+		}
 	}
 	lmap_used = true;
 	s->used = true;
@@ -236,6 +280,20 @@ GS_COLD void gs_core_shown(int x, int y, int w, int h)
 	s->w = w; s->h = h;
 	s->shown = lgen++;
 	lflat = s->used && s->flat;
+	// steadiness: enough of the picture to judge (2%) stayed put
+	if (lsteady * 50 >= (unsigned)(w * h) && lready >= 1) {
+		float r = (float)lmoved / lsteady;
+#ifdef PSX3D_SIM
+		if (getenv("STEREO_LAYDBG"))
+			fprintf(stderr, "steady %u moved %.3f\n", lsteady, r);
+#endif
+		lunst += ((r > LAY_JUMPY ? 1.0f : 0.0f) - lunst) * 0.025f;
+		if (lunst > LAY_UNSTABLE)
+			lhold = LAY_HOLD;
+	}
+	if (lhold)
+		lhold--;
+	lsteady = lmoved = 0;
 	// Real 3D where the frame's polygons have GTE depths
 	float want = ltris >= 32 && ldepth * 10 >= ltris * 3 ? 1 : ltris >= 32 && ldepth * 10 < ltris ? 0 : lblend;
 	lwant = want;
@@ -265,9 +323,12 @@ GS_COLD void gs_layer_status(char *out, int n)
 	}
 }
 bool gs_picture_flat(void) { return lflat && lblend < 0.5f; }
+float gs_layer_unsteady(void) { return lunst; }
+int gs_layer_hold(void) { return lhold; }
 
 // the primitive's depth (share of LAY_MAX) and the cells it covers
 static int lleft;   // the primitive's buffer's left edge (VRAM px), -1: none
+static int lright;  // its right edge (VRAM px), -1: none
 static float lstep; // the primitive's depth minus the next level's in front (share)
 static float lay_tri(const gs_vtx *v, bool first)
 {
@@ -307,10 +368,12 @@ static float lay_tri(const gs_vtx *v, bool first)
 				for (int x = cx0; x <= cx1; x++)
 					lcell[y * LC_W + x] = lprev.cell;
 		lleft = lprev.left;
+		lright = lprev.right;
 		lstep = lprev.step;
 		return lprev.share;
 	}
 	lslot *s = lay_slot((px0 + px1) >> 1, (py0 + py1) >> 1);
+	lprev.right = lright = s == &slots[LAY_SLOTS] ? -1 : s->x + s->w;
 	// CPU uploads and fills (no vertex colour) are not part of the drawing
 	// order: they open no pass and mark nothing; they sit at the base, or
 	// with what the pass has drawn so far.
@@ -362,6 +425,7 @@ static float lay_tri(const gs_vtx *v, bool first)
 	bool big = (float)(px1 - px0) * (py1 - py0) >= 0.5f * dw * dh;
 	int h, n = 0;
 	uint64_t cell = 0;
+	bool segfirst = false;   // the segment's first primitive in this pass
 	if (big && (s->cur == 0 || s->top == 0)) {
 		h = 0;   // the picture's base: a clear, a background
 		s->edge = px0;
@@ -377,12 +441,14 @@ static float lay_tri(const gs_vtx *v, bool first)
 			uint32_t key = (1u << 31 | kind | (v[0].u & 0x7ff) << 2 | (v[0].v & 0x7ff) << 13) ^
 				((uint32_t)(sw > 255 ? 255 : sw) << 24 | (uint32_t)(sh > 255 ? 255 : sh) << 16);
 			struct lsegent *e = &lsegs[(key * 2654435761u) >> 21];
-			if (e->key != key)
-				*e = (struct lsegent){ key, s->pid, 0, 0 };
-			else if (e->pass != s->pid) {   // the first time in this pass
+			if (e->key != key) {
+				*e = (struct lsegent){ key, s->pid, 0, 0, 0, 0, -1 };
+				segfirst = true;
+			} else if (e->pass != s->pid) {   // the first time in this pass
 				e->last = e->now;
 				e->now = 0;
 				e->pass = s->pid;
+				segfirst = true;
 			}
 			lsegcur = e;
 			s->cur = s->segmax > s->cur ? s->segmax : s->cur;
@@ -420,7 +486,28 @@ static float lay_tri(const gs_vtx *v, bool first)
 	lprev.cell = cell;
 	const float *map = s == &slots[LAY_SLOTS] ? s->map : lshow;
 	lprev.share = map[h];
-	lprev.step = lstep = h < LAY_LEVELS - 1 && map[h] > map[h + 1] ? map[h] - map[h + 1] : 0;
+	// Crack fill (lay_shift) only where the neighbour on the left is nearer:
+	// tiles of one layer next to each other move together, and stretching
+	// every one of them by the step cut the picture into bands.
+	float nearer = map[h];
+	if (px0 >= 1)
+		for (int y = cy0, x = (px0 - 1) / LC; y <= cy1; y++) {
+			uint64_t c = lcell[y * LC_W + x];
+			if (c && C_SEG(c) != lseg && map[C_H(c)] < nearer)
+				nearer = map[C_H(c)];
+		}
+	if (segfirst && lsegcur && s != &slots[LAY_SLOTS]) {
+		// a piece where it was last pass: did it move to another depth? (the
+		// depth table settling on new values moves whole levels, once: not this)
+		int rx = px0 - s->x, ry = py0 - s->y;
+		unsigned area = (unsigned)(px1 - px0 + 1) * (py1 - py0 + 1);
+		if (lsegcur->shown >= 0 && lsegcur->rx == rx && lsegcur->ry == ry) {
+			lsteady += area;
+			lmoved += lsegcur->shown != h && lrintf(map[lsegcur->shown] * LAY_MAX) != lrintf(map[h] * LAY_MAX) ? area : 0;
+		}
+		lsegcur->rx = rx; lsegcur->ry = ry; lsegcur->shown = (int16_t)h;
+	}
+	lprev.step = lstep = map[h] - nearer;
 #ifdef PSX3D_SIM
 	if (getenv("STEREO_PRIMDBG"))
 		fprintf(stderr, "prim %u slot %d,%d box %d,%d-%d,%d kind %d uv %d,%d seg %u segno %u cov %d cur %d h %d big %d share %.2f\n",
@@ -476,7 +563,18 @@ GS_COLD void __wrap_gs_core_frame(float strength, int hres)
 {
 	__real_gs_core_frame(strength, hres);
 	lstrength = strength;
-	float want = lnotgpu || gs_picture_flat() ? 1 : 0;
+	// screen depth or layers: asked for LAY_WANT frames in a row before the
+	// fade starts (a still that is flat one pass and not the next would
+	// otherwise move the whole picture back and forth); movies and unsteady
+	// scenes at once
+	bool unsteady = lhold && lblend < 0.5f;
+	float now = lnotgpu || gs_picture_flat() || unsteady ? 1 : 0;
+	lasked = now == lscreen_want ? 0 : lasked + 1;
+	if (lnotgpu || (unsteady && now > lscreen_want) || lasked >= LAY_WANT) {
+		lscreen_want = now;
+		lasked = 0;
+	}
+	float want = lscreen_want;
 	lscreen += want > lscreen ? 1.0f / LAY_SCREEN_FADE : want < lscreen ? -1.0f / LAY_SCREEN_FADE : 0;
 	lscreen = lscreen < 0.01f ? 0 : lscreen > 0.99f ? 1 : lscreen;
 	lhres = hres > 0 ? hres : 320;
@@ -491,6 +589,11 @@ int __wrap_gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 		return moved;
 	float a = gs_focus() > 0 ? lblend : 0;
 	float k = 16 * LAY_MAX * lhres / 320.0f * lstrength * (1 - a) * (1 - lscreen) * lready;
+	// Draws the drawing area doesn't limit (fills, CPU uploads) would carry
+	// the shift into whatever lies to their right: the other framebuffer of
+	// games that keep two side by side (SotN), whose left edge then showed
+	// it every other frame.
+	int scr = lay_scissor_right();
 	moved = 0;
 	for (int t = 0; t + 3 <= n; t += 3) {
 		gs_vtx *d = &dst[t];
@@ -503,7 +606,13 @@ int __wrap_gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 		// 3D's shift (one value per shared corner, scaled by the blend): a
 		// per-triangle layer step on top of it opened cracks between
 		// neighbours sharing those corners.
+		lright = -1;
 		float lay = a < 1 && !(depth && (a > 0 || lwant >= 1)) ? lay_tri(s, t == 0) * k : 0;
+		int limit = lright >= 0 && scr > lright ? lright : -1;   // the buffer's right edge, if the draw passes it
+		if (limit >= 0 && s[0].u == s[1].u && s[1].u == s[2].u && s[0].v == s[1].v && s[1].v == s[2].v) {
+			d[0] = s[0]; d[1] = s[1]; d[2] = s[2];   // a fill: one colour, nothing to move
+			continue;
+		}
 		// A layer moves right further than the one in front of it: next to
 		// a nearer neighbour on its left it would leave a crack. Its left
 		// edge comes back by that step (5 px at most; the texture stretches).
@@ -518,6 +627,8 @@ int __wrap_gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 			if (lay > 0 && !(lleft >= 0 && (((s[i].x >> 4) - lleft) & 1023) == 0))
 				sh += 16 * (whole - (s[i].x == xmin ? pull : 0));
 			int x = s[i].x + (int)lrintf(sh);
+			if (limit >= 0 && x > limit * 16 && x > s[i].x)
+				x = s[i].x > limit * 16 ? s[i].x : limit * 16;
 			d[i].x = x < 0 ? 0 : x > 1024 * 16 - 1 ? 1024 * 16 - 1 : x;
 			moved += d[i].x != s[i].x;
 		}
@@ -525,7 +636,10 @@ int __wrap_gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 	return moved;
 }
 
-#ifndef PSX3D_SIM
+#ifdef PSX3D_SIM
+int sim_scissor_right(void);   // the replay's citro3d
+static int lay_scissor_right(void) { return sim_scissor_right(); }
+#else
 void __real_gpustereo_status(char *out, int n);
 GS_COLD void __wrap_gpustereo_status(char *out, int n)
 {
@@ -533,14 +647,21 @@ GS_COLD void __wrap_gpustereo_status(char *out, int n)
 	int k = strlen(out);
 	char buf[512];
 	gs_layer_status(buf, sizeof(buf));
-	snprintf(out + k, n - k, ",\"layers3d\":{\"real3d\":%.2f,\"flat\":%s,\"buffers\":[%s]}",
-		lblend, gs_picture_flat() ? "true" : "false", buf);
+	snprintf(out + k, n - k, ",\"layers3d\":{\"real3d\":%.2f,\"flat\":%s,\"unsteady\":%.3f,\"hold\":%d,\"buffers\":[%s]}",
+		lblend, gs_picture_flat() ? "true" : "false", lunst, lhold, buf);
 }
 
 // the picture the frontend shows (GPU thread, in draw order): a buffer
 #include <3ds.h>
 #include <citro3d.h>
+#include "../vendor/citro3d/internal.h"
 #include "../../core/plugins/gpu_pica/gpu_pica.h"
+// the draw being mirrored (gpustereo.c, inside C3D_DrawArrays) uses this scissor
+static int lay_scissor_right(void)
+{
+	C3D_Context *ctx = C3Di_GetContext();
+	return ctx->scissor[0] == GPU_SCISSOR_DISABLE ? 1024 : (int)(ctx->scissor[2] & 0xffff) + 1;
+}
 int __real_pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h);
 int __wrap_pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h)
 {
@@ -554,6 +675,8 @@ int __wrap_pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, f
 	return pic;
 }
 
+#endif
+
 // How much of the 3D effect is screen depth (video.c). Without polygon
 // depth (gpustereo_core.c's gs_flat) the layers take over, except for
 // pictures with nothing to separate and movies: there screen depth stays.
@@ -563,4 +686,3 @@ float __wrap_gs_flat(void)
 	float f = __real_gs_flat();
 	return lcell && lstrength > 0 ? f * lscreen : f;
 }
-#endif

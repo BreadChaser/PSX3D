@@ -109,6 +109,7 @@ int BufInfo_Add(C3D_BufInfo *b, const void *d, int s, int n, u64 p)
 { assert(n == 3 && p == 0x210); b->data=d; b->stride=s; return 0; }
 void C3D_SetViewport(u32 x,u32 y,u32 w,u32 h)
 { viewport[0]=x; viewport[1]=y; viewport[2]=w; viewport[3]=h; }
+int sim_scissor_right(void) { return scissor_on ? scissor[2] : 1024; }
 void C3D_SetScissor(int m,u32 l,u32 t,u32 r,u32 b)
 { scissor_on=m!=GPU_SCISSOR_DISABLE; scissor[0]=l; scissor[1]=t; scissor[2]=r; scissor[3]=b; }
 void C3D_AlphaBlend(int a,int b,int c,int d,int e,int f)
