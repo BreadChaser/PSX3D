@@ -587,7 +587,6 @@ GS_COLD void __wrap_gs_core_clear(void)
 
 GS_COLD void __wrap_gs_core_frame(float strength, int hres)
 {
-	gs_drain();   // what the GPU thread didn't capture yet (it is idle now)
 	__real_gs_core_frame(strength, hres);
 	lstrength = strength;
 	lframes++;
