@@ -8,6 +8,9 @@ are adapted to match the 3DS. Production sources are never rewritten in place.
 - memory.c: 192 directed MFC0/MFC2/CFC2 cases (r0-r31, plain/branch-slot),
   4,000 random load-delay programs, 6,000 ALU/load/store programs, scratchpad
   guards and mirrors, and repeated emitted-store SMC invalidation.
+- multipage.c: a 5,600-byte block spanning three pages; emitted stores and
+  SPU DMA4 overwrite instructions in each page through four RAM aliases, then
+  re-enter its cached start and compare all GPRs with the interpreter.
 - gte.c: 12,000 random/edge NCCT/NCLIP/MVMVA guest programs, comparing every
   GPR and CP2 register with the interpreter, then repeating production codegen
   for exact cycles and busy-cycle state. FLAG is observed for MVMVA: the

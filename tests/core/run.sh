@@ -15,7 +15,7 @@ python3 "$repo/tests/core/prepare.py" "$work"
 fakes=$repo/tools/dynarec-speed/fake3ds
 make -C "$work/core" -f Makefile.libretro platform=ctrsim CTR_GPU=pica CFLAGS_OPT=-O2 \
  DEBUG_SYMS=1 ASSERTS=1 PICA_CFLAGS="-I$fakes -DPICA_LAYOUT_SPLIT" -j"${JOBS:-4}" > "$work/build.log" 2>&1 || { tail -80 "$work/build.log"; exit 1; }
-for suite in memory gte determinism; do
+for suite in memory gte determinism multipage; do
  arm-linux-gnueabihf-gcc -O2 -g -march=armv6k -mfloat-abi=hard -mfpu=vfp -marm -DPICA -DDYNAREC_MICROTEST \
   -I"$fakes" -I"$work/core" -I"$work/core/include" -I"$work/core/deps/libretro-common/include" \
   -o "$work/$suite" "$repo/tools/dynarec-speed/runner.c" "$repo/tests/core/$suite.c" \

@@ -43,3 +43,15 @@ header[:8] = b'PS-X EXE'
 struct.pack_into('<IIII', header, 16, 0x80010000, 0, 0x80010000, 2048)
 struct.pack_into('<I', header, 48, 0x801fff00)
 (dst / 'synthetic.exe').write_bytes(header + struct.pack('<IIII', 0x25080001, 0xac080100, 0x08004000, 0) + bytes(2032))
+
+# Test-only descriptor observer: prove that the SMC program is one long block.
+f = dst / 'core/libpcsxcore/new_dynarec/new_dynarec.c'
+f.write_text(f.read_text() + """
+unsigned multipage_length(unsigned start)
+{
+  struct block_info *b;
+  for (b = blocks[get_page(start)]; b; b = b->next_by_vaddr)
+    if (b->start == start && !b->is_dirty) return b->len;
+  return 0;
+}
+""")

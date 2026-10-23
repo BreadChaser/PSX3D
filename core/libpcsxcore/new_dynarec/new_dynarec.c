@@ -382,7 +382,7 @@ struct compile_state
 // Treated like a guest register with its own home in dynarec_local
 // (LO_ldtmp, the otherwise unused zeromem_ptr word).
 #define LDTMP 34
-#define NDRC_LAYOUT_PAD "1660" // see new_dynarec_init()
+#define NDRC_LAYOUT_PAD "1748" // recomputed for multi-page invalidation; see new_dynarec_init()
 //#define CSREG 35 // Coprocessor status
 #define CCREG 36 // Cycle count
 #define INVCP 37 // Pointer to invalid_code
@@ -912,10 +912,21 @@ static u_int get_page(u_int vaddr)
 }
 
 // get a page for looking for a block that has vaddr
-// (needed because the block may start in previous page)
+// (a MAXBLOCK-instruction block can start up to two pages earlier)
+static u_int get_page_prev_invalidate(u_int vaddr)
+{
+  // MAXBLOCK counts guest instructions, not bytes. Clamp at the source
+  // region boundary: blocks never cross a 2 MiB RAM/mapped region.
+  const u_int preceding = (MAXBLOCK * 4 + 4095) >> 12;
+  u_int page = get_page(vaddr);
+  page -= min(page & 511, preceding);
+  return page;
+}
+
+// Preserve the existing lookup/entry selection: reusing third-page entries
+// changes GT2 guest IRQ timing. Invalidation must still cover the whole block.
 static u_int get_page_prev(u_int vaddr)
 {
-  assert(MAXBLOCK <= (1 << 12));
   u_int page = get_page(vaddr);
   if (page & 511)
     page--;
@@ -1007,7 +1018,7 @@ static void mark_invalid_code(u_int vaddr, u_int len, char invalid)
 
 static attr_unused void check_for_block_changes(u_int start, u_int end)
 {
-  u_int start_page = get_page_prev(start);
+  u_int start_page = get_page_prev_invalidate(start);
   u_int end_page = get_page(end - 1);
   u_int page;
 
@@ -1833,7 +1844,7 @@ static int invalidate_range_(u_int start, u_int end,
   u32 *inv_start_ret, u32 *inv_end_ret)
 {
   struct block_info *last_block = NULL;
-  u_int start_page = get_page_prev(start);
+  u_int start_page = get_page_prev_invalidate(start);
   u_int end_page = get_page(end - 1);
   u_int start_m = pmmask(start);
   u_int end_m = pmmask(end - 1);
@@ -1903,7 +1914,7 @@ void new_dynarec_invalidate_range(unsigned int start, unsigned int end)
 // check if the range may need invalidation (must be thread-safe)
 int new_dynarec_quick_check_range(unsigned int start, unsigned int end)
 {
-  u_int start_page = get_page_prev(start);
+  u_int start_page = get_page_prev_invalidate(start);
   u_int end_page = get_page(end - 1);
   u_int page;
 
