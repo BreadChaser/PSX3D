@@ -42,11 +42,6 @@ typedef struct {
 	// + row[3]); the Original's is the identity, so it is drawn as it is stored.
 	s16 sky[3][4];
 	u32 grid_near, grid_side, grid_far;   // wire floor: middle near the viewer, sides, toward the horizon
-	// The scene behind the wire floor: 0 = the sunset picture (recoloured by sky), 1 = a drawn
-	// sky (sky_top at the top to sky_low at the horizon, a glow over the horizon), 2 = the same
-	// with stars.
-	u8 scene;
-	u32 sky_top, sky_low, sky_glow;
 } theme_t;
 
 int theme_count(void);

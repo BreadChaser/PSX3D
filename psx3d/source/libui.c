@@ -582,41 +582,14 @@ static void draw_jump(int a)
 	}
 }
 
-// The scene behind the wire floor (theme.h, scene): the sunset picture, or a drawn sky
-// for the themes with their own (no sun or palms), with stars for the night one.
-static void draw_sky(void)
-{
-	const theme_t *th = theme();
-	if (th->scene == 0) {
-		sky_sync();
-		if (bg_ok)
-			C2D_DrawImageAt(bg_img, ui_depth(3.0f), 0, 0.1f, NULL, 1.0f, 1.0f);   // sky: far back
-		return;
-	}
-	float dx = ui_depth(3.0f), x = dx - 16, w = 432;
-	C2D_DrawRectangle(x, 0, 0.1f, w, HORIZON, th->sky_top, th->sky_top, th->sky_low, th->sky_low);
-	u32 floor = sky_colour(th, 16, 2, 44);
-	C2D_DrawRectSolid(x, HORIZON, 0.1f, w, 240 - HORIZON, floor);
-	u32 clear = theme_alpha(th->sky_glow, 0);
-	C2D_DrawRectangle(x, HORIZON - 34, 0.11f, w, 34, clear, clear, th->sky_glow, th->sky_glow);
-	if (th->scene == 2) {   // a fixed field of stars, brighter toward the top
-		u32 seed = 0x2545f491u;
-		for (int i = 0; i < 90; i++) {
-			seed = seed * 1664525u + 1013904223u;
-			float sx = (seed >> 8) % 432, sy = (float)((seed >> 20) % 1000) * (HORIZON - 40) / 1000;
-			int a = 230 - (int)(sy * 1.2f);
-			float sz = (seed & 7) == 0 ? 2 : 1;
-			C2D_DrawRectSolid(x + sx, sy, 0.12f, sz, sz, theme_alpha(th->grid_far, a < 60 ? 60 : a));
-		}
-	}
-}
-
 static void draw_top(void *ud)
 {
 	(void)ud;
 	int n = nview;
 	const theme_t *th = theme();
-	draw_sky();
+	sky_sync();
+	if (bg_ok)
+		C2D_DrawImageAt(bg_img, ui_depth(3.0f), 0, 0.1f, NULL, 1.0f, 1.0f);   // sky: far back
 	draw_grid(clock_s);
 
 	// carousel: neighbours first so the selection sits on top
@@ -717,7 +690,9 @@ static void draw_top(void *ud)
 // system clock there.
 void libui_draw_backdrop(void)
 {
-	draw_sky();
+	sky_sync();
+	if (bg_ok)
+		C2D_DrawImageAt(bg_img, ui_depth(3.0f), 0, 0.1f, NULL, 1.0f, 1.0f);
 	double t = svcGetSystemTick() / (double)SYSCLOCK_ARM11;
 	draw_grid((float)(t - 3600.0 * (u32)(t / 3600.0)));
 }
