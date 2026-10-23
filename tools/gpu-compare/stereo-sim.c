@@ -22,7 +22,7 @@ static float strength = 1;
 static int seeded;
 static uint16_t *zs;
 static unsigned zn, zpos;
-static unsigned long long draws, mirrored, moved_draws;
+static unsigned long long draws, mirrored, moved_draws, frame_vtx;
 static FILE *dump;      // STEREO_DUMP: frame, triangle vertices before/after the shift
 static FILE *tris;      // STEREO_TRIS: every triangle drawn into PS1 VRAM (draw order)
 static int dump_frame;
@@ -177,6 +177,7 @@ void stereo_sim_draw(int primitive, int first, int n)
             fputc('\n', tris);
         }
     }
+    frame_vtx += n;
     gs_vtx *shifted = malloc(n * sizeof(gs_vtx)); assert(shifted);
     int moved = gs_shift((const gs_vtx *)data + first, shifted, n);
     C3D_RenderTarget back = { canon };
@@ -251,10 +252,13 @@ void stereo_sim_frame(const char *dir, const int *info)
     if (getenv("STEREO_LAYDBG")) {
         char st[1024]; gs_layer_status(st, sizeof(st));
         extern unsigned long long lay_cells, lay_prims, lay_tris;
-        fprintf(stderr, "layers %d shown %d,%d flat %d work tris %llu prims %llu cells %llu %s\n", frame, x, y, gs_picture_flat(),
+        fprintf(stderr, "layers %d shown %d,%d flat %d unsteady %.3f hold %d work tris %llu prims %llu cells %llu %s\n", frame, x, y, gs_picture_flat(), gs_layer_unsteady(), gs_layer_hold(),
             lay_tris, lay_prims, lay_cells, st);
         lay_cells = lay_prims = lay_tris = 0;
     }
+    // video.c: the whole picture's screen depth (both eyes, opposite ways)
+    fprintf(stderr, "present %d flat %.3f vertices %llu\n", frame, gs_flat(), frame_vtx);
+    frame_vtx = 0;
     unsigned lookups, found, shifted, rejected;
     gs_core_counts(&lookups, &found, &shifted, &rejected);
     extern unsigned gs_missed __attribute__((weak));   // (older gpustereo_core.c: none)
