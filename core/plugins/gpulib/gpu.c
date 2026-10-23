@@ -235,6 +235,27 @@ static noinline void frameskip_prepare_noskip(struct psx_gpu *gpu)
   }
 }
 
+// A skipped frame still clears with a rectangle larger than the screen, like
+// the large fill below: Resident Evil 2 blanks both 24-bit buffers that way
+// once before its movies, and without it the borders show stale VRAM.
+static noinline __attribute__((cold, section(".psx3d_cold.text")))
+void frameskip_draw_clear(struct psx_gpu *gpu, uint32_t *list)
+{
+  const int16_t *slist = (void *)list;
+  int dummy = 0;
+  if ((LE16TOH(slist[4]) & 0x3ff) <= gpu->screen.w
+      && (LE16TOH(slist[5]) & 0x1ff) <= gpu->screen.h)
+    return;
+  if (gpu->frameskip.ecmds_dirty_renderer) {
+    gpu->frameskip.ecmds_dirty_renderer = 0;
+    sync_renderer_ecmds(gpu);
+  }
+  if (gpu_async_enabled(gpu))
+    (void)gpu_async_do_cmd_list(gpu, list, 3, &dummy, &dummy, &dummy, &dummy);
+  else
+    renderer_do_cmd_list(list, 3, gpu->ex_regs, &dummy, &dummy, &dummy);
+}
+
 #define FRAMESKIP_MAX_FLIP_DELAY 5
 
 static noinline void decide_frameskip(struct psx_gpu *gpu, uint32_t flip_delay)
@@ -816,6 +837,8 @@ static noinline int do_cmd_list_skip(struct psx_gpu *gpu, uint32_t *data, int li
       case 0x60 ... 0x63:
         w = LE16TOH(slist[4]) & 0x3FF;
         h = LE16TOH(slist[5]) & 0x1FF;
+        if (!(cmd & 2))
+          frameskip_draw_clear(gpu, list);
         gput_sum(cyc_sum, cyc, gput_sprite(w, h));
         break;
       case 0x64 ... 0x67:
