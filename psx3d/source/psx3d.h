@@ -525,7 +525,7 @@ void covers_exit(void);
 // holds the picture (its own aspect), in citro2d's flipped convention.
 C3D_Tex *covers_get(int game, Tex3DS_SubTexture *sub);
 u32 covers_frame(void);
-// a cover's stand-in: the downloaded disc picture (discart.h) or one drawn in code
+// a cover's stand-in: a disc drawn in code with the title on it (placeholder.c)
 void cover_placeholder(float cx, float cy, float size, float dim, float z, const char *title, u32 accent);
 void covers_reset(void);
 void covers_focus(int game);

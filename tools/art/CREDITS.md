@@ -25,14 +25,6 @@ names and serials of the [libretro-database](https://github.com/libretro/libretr
 `psx3d/romfs/covers/LICENSE.txt`). No pictures are shipped; the app downloads
 them. `tools/boxart/` builds the table.
 
-## Disc picture (downloaded, not shipped)
-
-- Games without box art show [Playstation disc.jpg](https://commons.wikimedia.org/wiki/File:Playstation_disc.jpg)
-  by Zyliskiai (Wikimedia Commons, **CC BY-SA 4.0**) with the public domain
-  [PlayStation wordmark (1994-2009)](https://commons.wikimedia.org/wiki/File:PlayStation_wordmark_(1994-2009).svg)
-  (a trademark of Sony Interactive Entertainment). The app downloads both once and combines them
-  (`psx3d/source/discart.c`); neither file is in the repository or the CIA. See `docs/box-art.md`.
-
 ## Widescreen bundles and research
 
 - [DuckStation chtdb](https://github.com/duckstation/chtdb): widescreen, culling and HUD patch collection; original code rights remain with their authors (MIT covers its processing scripts).

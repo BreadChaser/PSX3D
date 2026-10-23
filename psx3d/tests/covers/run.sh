@@ -37,36 +37,3 @@ cc -std=gnu11 -Wall -Wextra -Werror -g -fsanitize=address,undefined \
   "$ROOT/psx3d/tests/covers/pack.c" "$ROOT/psx3d/source/covers_pack.c" "$ROOT/psx3d/source/covers_png.c" \
   $(pkg-config --cflags --libs libpng) -lm -o "$TMP/pack"
 "$TMP/pack" ""
-
-# The disc stand-in (discart.c): its JPEG decoder against ImageMagick's
-# (libjpeg) on synthetic pictures in every layout it takes, refusal of the ones
-# it does not, damaged files, and a disc put together from a synthetic photo
-# (dark disc on white, white hole) and wordmark (black text on transparent).
-cc -std=gnu11 -DDISCART_TEST -Wall -Wextra -Werror -g -fsanitize=address,undefined \
-  "$ROOT/psx3d/tests/covers/disc.c" "$ROOT/psx3d/source/discart.c" "$ROOT/psx3d/source/covers_png.c" \
-  "$ROOT/psx3d/source/covers_pack.c" $(pkg-config --cflags --libs libpng) -lm -o "$TMP/disc"
-magick -size 333x217 -seed 7 plasma:fractal "$TMP/src.ppm"
-pairs=()
-for v in "420:2x2" "444:1x1" "422:2x1" "440:1x2"; do
-  n=${v%%:*}
-  magick "$TMP/src.ppm" -sampling-factor "${v#*:}" -quality 92 "$TMP/t$n.jpg"
-  pairs+=("$TMP/t$n.jpg" "$TMP/t$n.ppm")
-done
-magick "$TMP/src.ppm" -colorspace gray -quality 90 "$TMP/tgray.jpg"
-pairs+=("$TMP/tgray.jpg" "$TMP/tgray.ppm")
-magick "$TMP/src.ppm" -resize 1001x763\! -quality 85 "$TMP/tbig.jpg"   # sizes not a multiple of the block
-pairs+=("$TMP/tbig.jpg" "$TMP/tbig.ppm")
-for ((i = 0; i < ${#pairs[@]}; i += 2)); do
-  # the reference: libjpeg through ImageMagick, accurate DCT, chroma repeated (no smoothing)
-  magick -define jpeg:fancy-upsampling=off -define jpeg:dct-method=float "${pairs[i]}" -colorspace sRGB -type TrueColor "${pairs[i+1]}"
-done
-"$TMP/disc" decode "${pairs[@]}"
-magick "$TMP/src.ppm" -interlace JPEG "$TMP/tprog.jpg"
-printf 'not a jpeg' > "$TMP/tjunk.jpg"
-"$TMP/disc" fail "$TMP/tprog.jpg" "$TMP/tjunk.jpg"
-"$TMP/disc" broken "$TMP/t420.jpg"
-magick -size 600x560 xc:white -fill '#15111c' -draw 'ellipse 300,280 280,262 0,360' \
-  -fill '#2a2238' -draw 'ellipse 300,270 70,64 0,360' -fill white -draw 'ellipse 300,270 26,24 0,360' \
-  -quality 90 "$TMP/photo.jpg"
-magick -size 400x80 xc:none -fill black -draw 'rectangle 10,10 390,70' "$TMP/word.png"
-"$TMP/disc" make "$TMP/photo.jpg" "$TMP/word.png" "$TMP/disc.pam"

@@ -1,12 +1,10 @@
-// A game without box art (yet): a black disc with the game's title on it.
-// The disc is the downloaded photo (discart.h) once it is there; before that,
-// or without Wi-Fi, one drawn here: rim, data area with a faint rainbow
-// sheen, mirror band, clear hub and hole. No logos in the drawn one.
+// A game without box art (yet): a black disc with the game's title on it,
+// drawn here: rim in the theme's colour, data area with a faint rainbow
+// sheen, mirror band, clear hub and hole. No logos.
 // The title is word-wrapped (three lines at most) into the band above the hole.
 #include <math.h>
 #include <string.h>
 #include "psx3d.h"
-#include "discart.h"
 
 #define LINES 3
 #define REF 256.0f    // layouts are made at this size and scaled
@@ -183,22 +181,6 @@ static void drawn_disc(float cx, float cy, float r, float z, u32 accent, float d
 void cover_placeholder(float cx, float cy, float size, float dim, float z, const char *title, u32 accent)
 {
 	float fade = 1 - dim;
-	disc_head_t h;
-	C3D_Tex *t = covers_disc(&h);
-	if (t) {
-		// the photo: the disc's longer side is `size`
-		float dw = h.right - h.left, dh = h.bottom - h.top;
-		float sc = size / (dw > dh ? dw : dh);
-		float x = cx - (h.left + dw / 2) * sc, y = cy - (h.top + dh / 2) * sc;
-		Tex3DS_SubTexture st = { DISC_TEX, DISC_TEX, 0.0f, 1.0f, 1.0f, 0.0f };
-		C2D_ImageTint tint;
-		C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim);
-		C2D_DrawImageAt((C2D_Image){ t, &st }, x, y, z, dim > 0 ? &tint : NULL, sc, sc);
-		float w = dw * 0.66f * sc;
-		draw_title(title, x + h.hub_x * sc, y + h.label_top * sc, y + h.label_bottom * sc, w, sc * (DISC_TEX / REF), z + 0.003f,
-			(u8)(255 * fade));
-		return;
-	}
 	float r = size * 0.48f;
 	drawn_disc(cx, cy, r, z, accent, dim);
 	draw_title(title, cx, cy - r * 0.86f, cy - r * 0.33f, r * 1.25f, size / REF, z + 0.003f, (u8)(255 * fade));

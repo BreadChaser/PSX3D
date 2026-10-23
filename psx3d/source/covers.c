@@ -29,7 +29,6 @@
 #include "covers_png.h"
 #include "covers_pack.h"
 #include "boxart.h"
-#include "discart.h"
 #include "safefile.h"
 #include "psx3d.h"
 #include "devtools.h"
@@ -44,18 +43,6 @@
 #define THUMB_URL "https://thumbnails.libretro.com/Sony%20-%20PlayStation/Named_Boxarts/"
 #endif
 #define SLOTS 24
-// the stand-in for a game without box art (discart.h): Wikimedia Commons,
-// "Playstation disc.jpg" by Zyliskiai, CC BY-SA 4.0, and "PlayStation
-// wordmark (1994-2009).svg", public domain (a trademark of Sony)
-#ifndef DISC_URL
-#define DISC_URL "https://upload.wikimedia.org/wikipedia/commons/6/6a/Playstation_disc.jpg"
-#endif
-#ifndef WORDMARK_URL
-#define WORDMARK_URL "https://upload.wikimedia.org/wikipedia/commons/thumb/2/28/" \
-	"PlayStation_wordmark_%281994-2009%29.svg/500px-PlayStation_wordmark_%281994-2009%29.svg.png"
-#endif
-#define DISC_FILE COVER_DIR "/_disc.bin"
-#define DISC_MISS "_disc"   // remembered like a missing cover
 
 // cache file: a header, then covers_pack's COVER_PACK_BYTES
 #define CV2_MAGIC 0x32564350u   // "PCV2"
@@ -103,11 +90,6 @@ static tslot_t tslots[TSLOTS];
 static u32 pump_frame;            // frames the covers were drawn in
 static int thumb_uploads_left;    // this frame's budget
 static unsigned thumb_made, thumb_filled, thumb_load_ms, thumb_save_ms;
-static disc_head_t disc_head;
-static u8 *disc_pixels;            // worker -> frame start (then on the GPU)
-static volatile int disc_state;    // 0 not looked at, 1 pixels ready, 2 on the GPU, 3 none for now, 4 a worker is on it
-static C3D_Tex disc_tex;
-static bool disc_tex_ok;
 #define WORKERS 2
 static Thread workers[WORKERS];
 static LightLock lock;
@@ -849,80 +831,6 @@ static bool upgrade_cover(const game_t *g, bool *retry, cover_t *c)
 	return ok;
 }
 
-// The disc stand-in (worker, nothing else to do): from its cache, else
-// downloaded once and put together. true: did something.
-static bool disc_work(void)
-{
-	if (disc_state || quit || paused)
-		return false;
-	LightLock_Lock(&lock);
-	bool go = !paused && !disc_state;
-	if (go) {
-		disc_state = 4;   // ours: the other worker leaves it
-		__atomic_add_fetch(&busy, 1, __ATOMIC_SEQ_CST);
-	}
-	LightLock_Unlock(&lock);
-	if (!go)
-		return false;
-	u8 *px = malloc(DISC_BYTES);
-	disc_head_t head;
-	FILE *f = px ? fopen(DISC_FILE, "rb") : NULL;
-	bool ok = f && fread(&head, sizeof(head), 1, f) == 1 && head.magic == DISC_MAGIC &&
-	          head.version == DISC_VERSION && fread(px, 1, DISC_BYTES, f) == DISC_BYTES;
-	if (f) fclose(f);
-	bool tried = false, none = false;
-	LightLock_Lock(&state_lock);
-	bool missed = boxart_miss_known(DISC_MISS, osGetTime());
-	LightLock_Unlock(&state_lock);
-	if (!ok && px && !missed && !sw_nonet && osGetTime() >= net_retry_at) {
-		tried = true;
-		long code1 = 0, code2 = 0;
-		bool aborted = false;
-		LightLock_Lock(&net_lock);
-		CURLcode rc = fetch_file(DISC_URL, COVER_DIR "/_disc.jpg", 1024 * 1024, &code1, &aborted);
-		CURLcode rc2 = CURLE_OK;
-		if (!aborted && rc == CURLE_OK && code1 == 200)
-			rc2 = fetch_file(WORDMARK_URL, COVER_DIR "/_disc.png", 512 * 1024, &code2, &aborted);
-		LightLock_Unlock(&net_lock);
-		log_printf("covers: disc picture http %ld/%ld (%d/%d)\n", code1, code2, rc, rc2);
-		if (aborted) {
-			// HOME, sleep or a game: again later
-		} else if (network_error(rc) || network_error(rc2)) {
-			net_failed();
-		} else if (rc == CURLE_OK && code1 == 200) {
-			// without the wordmark (gone from the server) the disc still shows
-			ok = discart_make(COVER_DIR "/_disc.jpg", rc2 == CURLE_OK && code2 == 200 ? COVER_DIR "/_disc.png" : NULL,
-			                  &head, px);
-			FILE *o = ok ? safe_begin(DISC_FILE) : NULL;
-			if (o)
-				safe_finish(o, DISC_FILE, fwrite(&head, sizeof(head), 1, o) == 1 && fwrite(px, 1, DISC_BYTES, o) == DISC_BYTES);
-			none = !ok;
-		} else
-			none = true;   // not on the server (any more): the drawn disc
-		remove(COVER_DIR "/_disc.jpg");
-		remove(COVER_DIR "/_disc.png");
-		if (none) {
-			LightLock_Lock(&state_lock);
-			boxart_miss_add(DISC_MISS, osGetTime());
-			LightLock_Unlock(&state_lock);
-			state_flush();
-		}
-	}
-	LightLock_Lock(&lock);
-	if (ok) {
-		disc_head = head;
-		disc_pixels = px;
-		px = NULL;
-		disc_state = 1;
-	} else if (none || missed || sw_nonet || !px)
-		disc_state = 3;   // the drawn disc until the next rescan
-	else
-		disc_state = 0;   // interrupted or no network yet: again later
-	LightLock_Unlock(&lock);
-	free(px);
-	__atomic_sub_fetch(&busy, 1, __ATOMIC_SEQ_CST);
-	return tried || ok;
-}
 
 // Nothing to load for the screen: make small copies of cached covers that
 // have none yet (nearest to the selection first), and save the small cover
@@ -1073,7 +981,7 @@ static void worker_main(void *arg)
 				__atomic_sub_fetch(&busy, 1, __ATOMIC_SEQ_CST);
 			}
 			if (pick < 0) {
-				if (disc_work() || thumbs_idle_work())
+				if (thumbs_idle_work())
 					continue;
 				break;
 			}
@@ -1194,9 +1102,6 @@ void covers_exit(void)
 		if (tslots[i].tex_ok)
 			C3D_TexDelete(&tslots[i].tex);
 	thumbs_free();
-	if (disc_tex_ok)
-		C3D_TexDelete(&disc_tex);
-	free(disc_pixels);
 	free(own_pngs);
 	own_pngs = NULL;
 	free(thumb_tried);
@@ -1319,15 +1224,6 @@ C3D_Tex *covers_get(int game, Tex3DS_SubTexture *sub)
 	return tex;
 }
 
-// The disc stand-in, once it is on the GPU (else NULL: placeholder.c draws one)
-C3D_Tex *covers_disc(disc_head_t *head)
-{
-	if (disc_state != 2 || !disc_tex_ok)
-		return NULL;
-	*head = disc_head;
-	return &disc_tex;
-}
-
 // counts the frames the library is drawn in (a new number = a new frame)
 u32 covers_frame(void)
 {
@@ -1357,23 +1253,6 @@ static void covers_pump_in_frame(void)
 	frame_last = now;
 	pump_frame++;
 	thumb_uploads_left = 12;
-	if (disc_state == 1) {
-		if (!disc_tex_ok && (disc_tex_ok = C3D_TexInit(&disc_tex, DISC_TEX, DISC_TEX, GPU_RGBA8))) {
-			C3D_TexSetFilter(&disc_tex, GPU_LINEAR, GPU_LINEAR);
-			C3D_TexSetWrap(&disc_tex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
-		}
-		LightLock_Lock(&lock);
-		if (disc_tex_ok && disc_pixels) {
-			memcpy(disc_tex.data, disc_pixels, DISC_BYTES);
-			GSPGPU_FlushDataCache(disc_tex.data, DISC_BYTES);
-			disc_state = 2;
-		}
-		free(disc_pixels);
-		disc_pixels = NULL;
-		if (disc_state != 2)
-			disc_state = 3;
-		LightLock_Unlock(&lock);
-	}
 	int done = 0;
 	for (int i = 0; i < SLOTS && done < 2; i++) {
 		slot_t *s = &slots[i];
@@ -1600,13 +1479,6 @@ void covers_release_gpu(void)
 		tslots[i].tex_ok = false;
 		tslots[i].game = -1;
 	}
-	if (disc_tex_ok)
-		C3D_TexDelete(&disc_tex);
-	disc_tex_ok = false;
-	free(disc_pixels);
-	disc_pixels = NULL;
-	if (disc_state != 3)
-		disc_state = 0;   // read from its cache again in the library
 	own_pngs_ok = false;  // and the player's PNGs looked for again
 	LightLock_Unlock(&lock);
 	// The small covers' memory (8 KiB a game, 1.6 MB for 200) goes to the game
@@ -1646,8 +1518,6 @@ void covers_reset(void)
 	thumb_tried = NULL;
 	thumb_tried_n = 0;
 	own_pngs_ok = false;   // the worker looks at the folder again
-	if (disc_state == 3)
-		disc_state = 0;      // and for the disc picture
 	LightLock_Unlock(&lock);
 }
 
@@ -1693,7 +1563,7 @@ void covers_debug(char *out, size_t len)
 	         "\"frames\":%u,\"frame_avg_us\":%u,\"frame_max_us\":%u,\"frames_over_25ms\":%u,\"frames_over_40ms\":%u,"
 	         "\"test_active\":%s,\"sel_changes\":%u,\"sel_any\":%u,\"sel_any_avg_ms\":%u,\"sel_any_max_ms\":%u,"
 	         "\"sel_full\":%u,\"sel_full_avg_ms\":%u,\"sel_full_max_ms\":%u,\"near_draws\":%u,\"near_blank\":%u,\"near_small\":%u,"
-	         "\"thumbs\":%d,\"thumbs_loaded\":%s,\"thumb_made\":%u,\"thumb_filled\":%u,\"thumb_load_ms\":%u,\"thumb_save_ms\":%u,\"own_pngs\":%d,\"disc\":%d,\"fast\":%s,"
+	         "\"thumbs\":%d,\"thumbs_loaded\":%s,\"thumb_made\":%u,\"thumb_filled\":%u,\"thumb_load_ms\":%u,\"thumb_save_ms\":%u,\"own_pngs\":%d,\"fast\":%s,"
 	         "\"heap_used\":%u,\"heap_arena\":%u,\"linear_free\":%u}",
 	         paused ? "true" : "false", busy, net_open ? "true" : "false", attempts,
 	         downloaded, cache_hits, aborted_count, failures, last_curl, last_http,
@@ -1703,6 +1573,6 @@ void covers_debug(char *out, size_t len)
 	         test_kind ? "true" : "false", sel_changes, sel_any_n, sel_any_n ? (unsigned)(sel_any_total_ms / sel_any_n) : 0,
 	         sel_any_max_ms, sel_full_n, sel_full_n ? (unsigned)(sel_full_total_ms / sel_full_n) : 0, sel_full_max_ms,
 	         near_draws, near_blank, near_small, nthumbs, thumbs_loaded ? "true" : "false", thumb_made, thumb_filled,
-	         thumb_load_ms, thumb_save_ms, nown_pngs, disc_state, covers_slow ? "false" : "true",
+	         thumb_load_ms, thumb_save_ms, nown_pngs, covers_slow ? "false" : "true",
 	         heap_used, heap_arena, linear_free);
 }

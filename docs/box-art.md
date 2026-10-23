@@ -23,17 +23,8 @@ in the library (rescan) asks again at once. With no Wi-Fi it waits longer betwee
 
 ## Games without a picture
 
-They show a black PlayStation disc with the game's title on it. The disc is a photo from
-Wikimedia Commons with the PlayStation wordmark, downloaded once the first time the library
-has nothing else to fetch (`covers/_disc.bin`, about 256 KB); it is not part of PSX3D. Until
-then, or without Wi-Fi, a disc drawn by PSX3D stands in.
-
-- Photo: [Playstation disc.jpg](https://commons.wikimedia.org/wiki/File:Playstation_disc.jpg)
-  by Zyliskiai, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), cut out of its
-  white background and shrunk.
-- Wordmark: [PlayStation wordmark (1994-2009).svg](https://commons.wikimedia.org/wiki/File:PlayStation_wordmark_(1994-2009).svg),
-  public domain (simple text), a trademark of Sony Interactive Entertainment. PSX3D is not
-  made or endorsed by Sony.
+They show a black disc drawn by PSX3D, with the game's title on it; its rim takes the
+menu theme's colour.
 
 ## Your own picture
 

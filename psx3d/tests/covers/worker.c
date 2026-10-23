@@ -76,7 +76,6 @@ CURLMcode __wrap_curl_multi_poll(CURLM *m,struct curl_waitfd *f,unsigned n,int m
 {assert(ms==0);return __real_curl_multi_poll(m,f,n,ms,num);}
 #include "../../source/covers.c"
 static bool fresh;
-bool discart_make(const char *jpg, const char *wordmark, disc_head_t *head, uint8_t *out) {(void)jpg;(void)wordmark;(void)head;(void)out;return false;}
 static void svcSleepThread(long long ns) { if(cancel_after && ++sleeps>=cancel_after) paused=true;usleep(ns/1000); }
 int main(void)
 {

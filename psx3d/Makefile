@@ -142,7 +142,7 @@ endif
 # library, display.o once per picture. Share PSX3D (qrcode.o, share.o, mp_ui.o)
 # and playlog.o (library play history and favourites) follow; the save code
 # links last. cmdroom.o's code is PSX3D_COLD (after everything).
-LATE_OFILES := picadirect.o presetupdate.o discart.o placeholder.o uploadskip.o display.o boxart.o qrcode.o share.o mp_ui.o playlog.o history.o safefile.o saveid.o savestates.o statefile.o cmdroom.o
+LATE_OFILES := picadirect.o presetupdate.o placeholder.o uploadskip.o display.o boxart.o qrcode.o share.o mp_ui.o playlog.o history.o safefile.o saveid.o savestates.o statefile.o cmdroom.o
 export OFILES_SOURCES 	:=	$(CPPFILES:.cpp=.o) $(filter-out $(LATE_OFILES),$(CFILES:.c=.o)) $(SFILES:.s=.o) $(LATE_OFILES)
 
 export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES)) \
