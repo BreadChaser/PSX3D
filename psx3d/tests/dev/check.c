@@ -45,6 +45,7 @@ bool sw_prof, sw_stats, sw_fs1, sw_fs3, sw_noskip, sw_nosputhread, sw_acap;
 bool sw_nogputhread, sw_aa, sw_gpu_async, sw_gpu_flush;
 float sw_slider;
 int sw_stereo = -1;
+bool gs_defer, gs_cap_auto;
 void gpustereo_status(char *out, int n) { (void)n; out[0] = 0; }
 int defaults_version(void) { return 1; }
 int sw_state = -1, sw_pmu0 = -1, sw_pmu1 = -1, sw_gldbg, sw_vramdump, sw_autosave_test;

@@ -19,6 +19,19 @@
 
 typedef struct { int16_t x, y, u, v; uint32_t rgba; } gs_vtx;   // gpu_pica's 12-byte vertex
 
+// lrintf without the library call (one VFP conversion; the FPSCR rounds
+// to nearest even, as lrintf does): the 3D code rounds per vertex
+static inline int gs_rint(float f)
+{
+#if defined(__arm__) && defined(__ARM_FP)
+	int r;
+	__asm__("vcvtr.s32.f32 %1, %1\n\tvmov %0, %1" : "=r"(r), "+t"(f));
+	return r;
+#else
+	return (int)__builtin_lrintf(f);
+#endif
+}
+
 // gpustereo_core.c: platform independent
 bool gs_core_alloc(void);      // the depth table (main thread, renderer idle)
 void gs_core_free(void);

@@ -242,7 +242,9 @@ SECTIONS
 		   capture and the shift come with the rest of the frontend. */
 		gpustereo_core.o(.text .text.vput .text.vget .text.unlikely.gs_core_alloc .text.unlikely.gs_core_free .text.unlikely.gs_core_clear .text.put_tri .text.gs_capture .text.gs_drain .text.unlikely.gs_core_queue)
 		. = . + ((0x114 - .) & 0xfff);
-		gpustereo_core.o(.text.unlikely.gs_core_frame .text.gs_focus .text.gs_flat .text.unlikely.gs_core_counts .text.unlikely.gs_core_pass_shown)
+		gpustereo_core.o(.text.unlikely.gs_core_frame)
+		. = . + ((0x4d4 - .) & 0xfff);
+		gpustereo_core.o(.text.gs_focus .text.gs_flat .text.unlikely.gs_core_counts .text.unlikely.gs_core_pass_shown)
 		. = . + ((0xc8 - .) & 0xfff);
 		/* Preserve existing per-function cache sets across gameplay palette edits. */
 		. = . + ((0x0c8 - .) & 0xfff);

@@ -99,7 +99,7 @@ static bool retired(const char *k)
 {
 	return !strcmp(k, "show_all_settings") || !strcmp(k, "audio_stretch") || !strcmp(k, "fast_forward") ||
 	       !strcmp(k, "stereo") || !strcmp(k, "sounds") || !strcmp(k, "music") ||
-	       !strcmp(k, "core.preset_fast_forward") || !strcmp(k, "core.psx3d_auto_floor");
+	       !strcmp(k, "core.pcsx_rearmed_psx3d_stereo") || !strcmp(k, "core.preset_fast_forward") || !strcmp(k, "core.psx3d_auto_floor");
 }
 // A core option fixed in defaults.ini: no player value is kept for it.
 static bool forced_core(const char *key)
@@ -293,7 +293,7 @@ void config_save(void)
 		fprintf(f, "debug=1\n");
 	for (int i = 0; i < novr; i++) {
 		char key[64]; snprintf(key, sizeof(key), "core.%s", ovr[i].key);
-		if (!user_has(key) || forced_core(ovr[i].key)) continue; // internal synchronization is never user intent
+		if (retired(key) || !user_has(key) || forced_core(ovr[i].key)) continue; // internal synchronization is never user intent
 		if (strcmp(ovr[i].key, WS_KEY) == 0)
 			fprintf(f, "core.%s=%s\n", ovr[i].key, screen == 2 ? "52429" : "0");
 		else fprintf(f, "core.%s=%s\n", ovr[i].key, ovr[i].value);

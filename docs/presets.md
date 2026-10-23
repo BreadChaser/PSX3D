@@ -311,3 +311,5 @@ and serials. Add only differing values with scoped evidence for each option;
 checker authoring rules reject redundant defaults/common repeats. Explicit
 runtime values are accepted even when equal to a default, so an update can
 pin a policy deliberately. Bump VERSION and run the checks.
+
+Preview 2026-10-23: owner-approved Old 3DS Auto floors: Silent Hill USA 12 pictures/s; Klonoa USA 20 pictures/s. Other consoles retain their defaults.
