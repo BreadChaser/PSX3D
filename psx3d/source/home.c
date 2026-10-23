@@ -846,7 +846,7 @@ static void empty_top(void *ud)
 	(void)ud;
 	libui_draw_backdrop();
 	C2D_DrawRectSolid(0, 0, 0.3f, 400, 240, theme_alpha(theme()->menu_bg, 70));
-	big_title("No games yet", "Put PS1 games in " DEFAULT_GAMES_DIR " and press SELECT", 1);
+	big_title("No games yet", "Put PS1 games on the SD card, then pick their folder", 1);
 	top_common();
 	if (fade > 0.001f)   // fixed: fade from/to black
 		C2D_DrawRectSolid(0, 0, 0.95f, 400, 240, C2D_Color32(0, 0, 0, (u8)(255 * fminf(fade, 1))));
@@ -888,6 +888,10 @@ int home_empty_library_run(void)
 	have_games = false;
 	fade = 1;
 	empty_msg_frames = 0;
+	if (g_cfg.games_dir[0]) {   // a folder was chosen but holds no games: say so, don't just look unchanged
+		snprintf(empty_msg, sizeof(empty_msg), "No games found in %.70s", g_cfg.games_dir);
+		empty_msg_frames = 300;
+	}
 	music_play(true);
 	ui_wants_3d = true;
 	int r = 0;
