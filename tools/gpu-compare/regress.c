@@ -16,6 +16,7 @@ static uint16_t vram[1024 * 512];
 void pica_flip(void);
 void pica_readback_rect(int x,int y,int w,int h);
 void pica_drop_fills(void);
+void pica_settle_rect(int x,int y,int w,int h);
 
 static void movie_mode(int a,int b,int c,int d,int e) { (void)a;(void)b;(void)c;(void)d;(void)e; }
 static void movie_flip(const void *a,int b,int c,int d,int e,int f,int g,int h)
@@ -197,6 +198,23 @@ int main(void)
     assert(pica_picture(&tex,&l,&t,&r,&b,&w,&h)==PICA_PIC_NONE);
     gpu.status=PSX_GPU_STATUS_RGB24;
     assert(pica_picture(&tex,&l,&t,&r,&b,&w,&h)==PICA_PIC_CPU);
+
+    // Uploads while no GPU frame is open (frame skip, RE2 loading a camera's
+    // background in 20 strips) must not push stale CPU VRAM over GPU drawing.
+    gpu.status=0; gpu.frameskip.set=0;
+    area(0,0,1024,512,0,0);
+    clear(); triangle(100,100,160,100,100,160); pixel(110,110,true);
+    pica_frame_ended();
+    for(int i=0;i<20;i++) {
+        int x=600+(i%10)*16, y=300+(i/10)*100;
+        pica_settle_rect(x,y,16,100);
+        for(int r=0;r<100;r++)for(int c=0;c<16;c++) vram[(y+r)*1024+x+c]=0x001f; // PS1 red
+        renderer_update_caches(x,y,16,100,0);
+    }
+    pica_frame_started();   // the next GPU frame pushes them
+    pixel(110,110,true);   // the GPU drawing survives
+    pixel(605,305,true);   // the uploads arrived
+    pixel(300,300,false);
     pica_frame_ended();
     pica_game_end();
     assert(pica_game_begin(true)); // buffer cleanup/reallocation

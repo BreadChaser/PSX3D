@@ -3017,17 +3017,52 @@ int pica_vram_copy(int sx, int sy, int dx, int dy, int w, int h, unsigned mask)
 
 // the CPU wrote a VRAM rectangle (upload, copy, state load): put it into
 // the render target too, through a staging texture
+static prect __attribute__((__cold__, __noinline__, __section__(".psx3d_cold.text"))) prect_union(prect a, prect b)
+{
+	int x0 = a.x < b.x ? a.x : b.x, y0 = a.y < b.y ? a.y : b.y;
+	int x1 = a.x + a.w > b.x + b.w ? a.x + a.w : b.x + b.w;
+	int y1 = a.y + a.h > b.y + b.h ? a.y + a.h : b.y + b.h;
+	return (prect){ x0, y0, x1 - x0, y1 - y0 };
+}
+
+// An upload while no GPU frame is open. The list never grows to the whole
+// of VRAM: the CPU copy is stale wherever the GPU drew, and pushing it all
+// brought older pictures back (RE2 loads a camera's background in 20 strips
+// during frames without drawing). When full, the two rectangles whose union
+// adds the least area merge; adjacent strips merge exactly.
+static void __attribute__((__cold__, __noinline__, __section__(".psx3d_cold.text"))) pend_add(prect r)
+{
+	if (npend == 1 && pend[0].w == VRAM_W && pend[0].h == VRAM_H)
+		return;
+	for (int i = 0; i < npend; i++)
+		if (r.x >= pend[i].x && r.y >= pend[i].y && r.x + r.w <= pend[i].x + pend[i].w &&
+		    r.y + r.h <= pend[i].y + pend[i].h)
+			return;
+	if (npend < 16) {
+		pend[npend++] = r;
+		return;
+	}
+	prect c[17];
+	memcpy(c, pend, sizeof(pend));
+	c[16] = r;
+	int bi = 0, bj = 1, best = 0x7fffffff;
+	for (int i = 0; i < 17; i++)
+		for (int j = i + 1; j < 17; j++) {
+			prect u = prect_union(c[i], c[j]);
+			int added = u.w * u.h - c[i].w * c[i].h - c[j].w * c[j].h;
+			if (added < best) { best = added; bi = i; bj = j; }
+		}
+	c[bi] = prect_union(c[bi], c[bj]);
+	c[bj] = c[16];
+	memcpy(pend, c, sizeof(pend));
+}
+
 static void push_to_target_reference(int x, int y, int w, int h)
 {
 	if (!ready || w <= 0 || h <= 0)
 		return;
 	if (!frame_open) {   // e.g. a state load: do it when the next GPU frame opens
-		if (npend == 16) {   // too many: everything, once
-			pend[0] = (prect){ 0, 0, VRAM_W, VRAM_H };
-			npend = 1;
-		}
-		if (!(npend == 1 && pend[0].w == VRAM_W && pend[0].h == VRAM_H))
-			pend[npend++] = (prect){ x, y, w, h };
+		pend_add((prect){ x, y, w, h });
 		return;
 	}
 	// parts past the right or bottom edge wrap around to the left or top
@@ -3116,12 +3151,7 @@ static void PICA_COLD push_to_target(int x, int y, int w, int h)
 	if (!ready || w <= 0 || h <= 0)
 		return;
 	if (!frame_open) {   // e.g. a state load: do it when the next GPU frame opens
-		if (npend == 16) {   // too many: everything, once
-			pend[0] = (prect){ 0, 0, VRAM_W, VRAM_H };
-			npend = 1;
-		}
-		if (!(npend == 1 && pend[0].w == VRAM_W && pend[0].h == VRAM_H))
-			pend[npend++] = (prect){ x, y, w, h };
+		pend_add((prect){ x, y, w, h });
 		return;
 	}
 	// parts past the right or bottom edge wrap around to the left or top
