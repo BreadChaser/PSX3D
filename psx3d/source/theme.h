@@ -1,19 +1,10 @@
-// Menu colours. Every menu colour that differs between palettes comes from the
-// active theme (Settings > Display > Theme). The palettes and token names are
-// the UI mock-up's (devtools/ui-mock js/theme.js); a token the palettes never
-// change stays a literal where it is drawn. docs/dev/themes.md lists each
-// token and where it is used.
+// Menu colour roles and code-drawn scene colours, shared with the approved UI mock.
 #pragma once
 #include <stdbool.h>
 #include <3ds.h>
 
 #define TH_RGBA(r, g, b, a) ((u32)(r) | ((u32)(g) << 8) | ((u32)(b) << 16) | ((u32)(a) << 24))
 #define TH_RGB(r, g, b) TH_RGBA(r, g, b, 255)
-
-// Colours that are the same in every theme: black shadows, and the save state
-// picker (savestates.c), which still draws its own literals.
-#define TH_COVER_SHADOW  TH_RGBA(0, 0, 0, 110)    // drop shadow behind covers
-#define TH_TITLE_SHADOW  TH_RGBA(0, 0, 0, 255)    // library title shadow (alpha scaled by the caller)
 
 typedef struct {
 	const char *id, *name;       // config.ini value, name shown in Settings (the mock's palette name)
@@ -38,20 +29,18 @@ typedef struct {
 	u32 version_ink;             // "v0.5.1" in the corner
 	u32 logo, logo_3d;           // "PSX" and "3D" of the small wordmark
 	u32 folder;                  // folder browser: the games folder line
-	// Backdrop: the sunset picture goes through this colour matrix (out = row . (r, g, b) / 256
-	// + row[3]); the Original's is the identity, so it is drawn as it is stored.
-	s16 sky[3][4];
-	u32 grid_near, grid_side, grid_far;   // wire floor: middle near the viewer, sides, toward the horizon
-	// The scene behind the wire floor: 0 = the sunset picture (recoloured by sky), 1 = a drawn
-	// sky (sky_top at the top to sky_low at the horizon, a glow over the horizon), 2 = the same
-	// with stars.
-	u8 scene;
-	u32 sky_top, sky_low, sky_glow;
 	// Icons (icons.c, the UI mock's js/icon-tokens.js): the selected picture's
 	// gradient from top-left to bottom-right, and its glow (alpha = strength,
 	// 0 = none). Unselected icons use theme_icon_dim().
 	u32 icon_a, icon_b, icon_glow;
+	u32 input_face[4], input_shoulder, input_stick, input_other, input_hide;
+	u32 fx_colour, fx_colour2;
+	u32 shadow, moon, scene_white, silk_light, silk_glint;
+	u32 sun_sky[5], floor_sky[3], sun_floor[3], sun_disc[4];
+	u32 sun_glow, sun_hot, sun_rim, ridge_high, ridge_low;
 } theme_t;
+
+#define THEMES_SHOWN 1
 
 int theme_count(void);
 const theme_t *theme_get(int i);

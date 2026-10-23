@@ -1,6 +1,7 @@
 // One settings navigator for the library and pause menu. Runs only while idle.
 #include "devtools.h"
 #include "psx3d.h"
+#include "scene.h"
 #include "statsview.h"
 #include "widescreen.h"
 #include "audio_resample.h"
@@ -78,7 +79,7 @@ static const char *const helps[] = {
  [F_TONE]="Play a steady tone to check audio output.",
  [F_FOLDER]="The folder on the SD card that the library lists. Opens the folder browser; you can also start a game from there.",
  [F_STEREO]="Use the 3D slider to turn 3D on and set its strength. Screen depth puts the whole picture behind the screen. Real 3D gives every object its own depth; it is experimental and can be slower in busy games.",
- [F_THEME]="Choose the colours of the menus and the library backdrop. Synthwave is the original look; the others are calmer. Game pictures and cover art are not changed.",
+ [F_THEME]="Choose the menu colours, animated background and icons. Each theme has its own scene. Game pictures and cover art keep their colours.",
 };
 static const char *const category_tips[] = {
  [CAT_DISPLAY]=THEMES_SHOWN ? "Picture shape, smoothing, FPS counter and theme." : "Picture shape, smoothing and FPS counter.",
@@ -427,7 +428,8 @@ static void draw_settings(void *ud)
 	int sel = s->selected[s->page];
 	const theme_t *th = theme();
 	u32 muted = th->muted;
-	C2D_DrawRectSolid(0, 0, .1f, 320, 240, th->menu_bg);
+	if (!s->game) scene_draw(true);
+	else C2D_DrawRectSolid(0, 0, .1f, 320, 240, th->menu_bg);
 	ui_menu_header(categories[s->page], s->game ? ui_fit(emu_game_title(), .42f, 150) : "All games");
 	const char *header = advanced_header(s);
 	if (header)
@@ -592,7 +594,7 @@ static void draw_category(int pic, int item)
 	float size = .8f, w = ui_text_width(libui_font(), size, name);
 	if (w > 380)
 		size *= 380 / w;
-	ui_text_ex(libui_font(), 201, 173, size, theme_alpha(TH_TITLE_SHADOW, 160), C2D_AlignCenter, name);
+	ui_text_ex(libui_font(), 201, 173, size, theme_alpha(theme()->shadow, 160), C2D_AlignCenter, name);
 	ui_text_ex(libui_font(), 200, 172, size, th->game_title, C2D_AlignCenter, name);
 	if (tip)
 		ui_text_ex(NULL, 200, 206, .45f, th->game_sub, C2D_AlignCenter, ui_fit(tip, .45f, 384));

@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "psx3d.h"
+#include "scene.h"
 #include "presetupdate.h"
 #include "devtools.h"
 #include "clip.h"
@@ -296,6 +297,7 @@ float slider_get(void)
 // A game starts: the menus' pictures give their memory to it first.
 static bool start_game(const char *path, const char *save_name, const char *title)
 {
+	scene_release();
 	icons_release();
 	return emu_run_game(path, save_name, title);
 }

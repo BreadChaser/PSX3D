@@ -27,7 +27,7 @@ SCALAR = {'menu_bg': 'menuBg', 'header_title': 'headerTitle', 'header_right': 'h
     'error': 'error', 'scrollbar': 'scrollbar', 'help_bg': 'helpBg', 'help_bar': 'helpBar', 'help_title': 'helpTitle',
     'help_impact': 'helpImpact', 'help_text': 'helpText', 'slow_bg': 'slowBg', 'slow_text': 'slowText',
     'game_title': 'gameTitle', 'game_sub': 'gameSub', 'pause_veil': 'pauseVeil', 'touch_face': 'touchFace',
-    'touch_border': 'touchBorder', 'icon_a': 'iconA', 'icon_b': 'iconB', 'icon_glow': 'iconGlow'}
+    'touch_border': 'touchBorder', 'fx_colour': 'fxColour', 'fx_colour2': 'fxColour2', 'icon_a': 'iconA', 'icon_b': 'iconB', 'icon_glow': 'iconGlow'}
 work = pathlib.Path(tempfile.mkdtemp())
 dump = ['#include <stdio.h>', '#include "psx3d.h"', '#include "theme.c"', 'psx3d_config g_cfg;',
     'static void c(const char *k, u32 v) { printf("\\"%s\\":[%u,%u,%u,%u],", k, v & 255, (v >> 8) & 255, (v >> 16) & 255, v >> 24); }',

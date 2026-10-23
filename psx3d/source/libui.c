@@ -11,16 +11,13 @@
 #include "psx3d.h"
 #include "devtools.h"
 #include "presetupdate.h"
+#include "scene.h"
 
 #define ROWS 8
 #define ROW_H 24
 #define RECENT_N 5
 
 static C2D_Font title_font;
-static C3D_Tex bg_tex;
-static Tex3DS_Texture bg_t3x;
-static C2D_Image bg_img;
-static bool bg_ok;
 static C2D_TextBuf tbuf;
 
 static int sel, list_top;
@@ -211,96 +208,18 @@ static const u32 *accent(int i)
 	return &theme()->accent[i & 3];
 }
 
-// The backdrop picture (sunset, sun and palms), RGB565.
-static void bg_load(void)
-{
-	FILE *f = fopen("romfs:/gfx/library_bg.t3x", "rb");
-	if (f) {
-		bg_t3x = Tex3DS_TextureImportStdio(f, &bg_tex, NULL, false);
-		fclose(f);
-		if (bg_t3x) {
-			bg_img.tex = &bg_tex;
-			bg_img.subtex = Tex3DS_GetSubTexture(bg_t3x, 0);
-			bg_ok = true;
-		}
-	}
-}
-
-static void bg_free(void)
-{
-	if (bg_ok) {
-		Tex3DS_TextureFree(bg_t3x);
-		C3D_TexDelete(&bg_tex);
-		bg_ok = false;
-	}
-}
-
-// One colour through the theme's backdrop matrix (theme.h, sky).
-static int sky_channel(const s16 *m, int r, int g, int b)
-{
-	int v = (m[0] * r + m[1] * g + m[2] * b) / 256 + m[3];
-	return v < 0 ? 0 : v > 255 ? 255 : v;
-}
-
-static u32 sky_colour(const theme_t *th, int r, int g, int b)
-{
-	return TH_RGB(sky_channel(th->sky[0], r, g, b), sky_channel(th->sky[1], r, g, b), sky_channel(th->sky[2], r, g, b));
-}
-
-static bool sky_identity(const theme_t *th)
-{
-	for (int i = 0; i < 3; i++)
-		for (int j = 0; j < 4; j++)
-			if (th->sky[i][j] != (i == j ? 256 : 0))
-				return false;
-	return true;
-}
-
-// The backdrop in the active theme's colours. The picture is recoloured in place
-// when the theme changes (a few milliseconds, once), and loaded again first when
-// it holds another theme's colours; the Original draws it as stored. Runs before
-// the first draw of a menu frame: menu frames begin after the previous one has
-// finished on the GPU, and nothing in this frame reads the texture yet.
-static const theme_t *bg_for;      // the theme the picture is coloured for; NULL = as stored
-
-static void sky_sync(void)
-{
-	const theme_t *th = theme(), *want = sky_identity(th) ? NULL : th;
-	if (want == bg_for)
-		return;
-	if (bg_for) {
-		bg_free();
-		bg_load();
-	}
-	bg_for = NULL;
-	if (!want || !bg_ok || bg_tex.fmt != GPU_RGB565)
-		return;
-	u16 *px = bg_tex.data;
-	for (u32 i = 0, n = bg_tex.size / 2; i < n; i++) {
-		u32 v = px[i];
-		int r = (v >> 11) & 31, g = (v >> 5) & 63, b = v & 31;
-		r = r << 3 | r >> 2;
-		g = g << 2 | g >> 4;
-		b = b << 3 | b >> 2;
-		px[i] = (u16)((sky_channel(want->sky[0], r, g, b) >> 3) << 11 |
-		              (sky_channel(want->sky[1], r, g, b) >> 2) << 5 | sky_channel(want->sky[2], r, g, b) >> 3);
-	}
-	GSPGPU_FlushDataCache(bg_tex.data, bg_tex.size);
-	bg_for = want;
-}
-
 void libui_init(void)
 {
 	title_font = C2D_FontLoad("romfs:/font/title.bcfnt");
 	tbuf = C2D_TextBufNew(4096);
-	bg_load();
+
 	if (!title_font)
 		log_printf("libui: title font missing, using system font\n");
 }
 
 void libui_exit(void)
 {
-	bg_free();
+	scene_release();
 	if (title_font)
 		C2D_FontFree(title_font);
 	C2D_TextBufDelete(tbuf);
@@ -346,7 +265,7 @@ static void draw_cover(int e, float cx, float cy, float size, float dim, float z
 				float bs = size * (1 - 0.07f * k), f = k * size * 0.11f;
 				float sc = bs / (st.width > st.height ? st.width : st.height);
 				C2D_ImageTint tint;
-				C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim + 0.15f * k);   // fixed: dimmed toward black
+				C2D_PlainImageTint(&tint, theme()->shadow, dim + 0.15f * k);   // fixed: dimmed toward black
 				C2D_DrawImageAt((C2D_Image){ t, &st }, x + size - bs + f + ui_depth(0.3f * k) + (bs - st.width * sc) / 2,
 					y - f + (bs - st.height * sc) / 2, bz, &tint, sc, sc);
 				continue;
@@ -373,11 +292,11 @@ static void draw_cover(int e, float cx, float cy, float size, float dim, float z
 	// drop shadow on the "floor", a little behind the cover (the disc has its own)
 	if (t)
 		C2D_DrawRectSolid(x + (size - cw) / 2 + 4 + ui_depth(1.5f), y + (size - ch) / 2 + 6, z - 0.01f, cw, ch,
-			TH_COVER_SHADOW);
+			theme_alpha(theme()->shadow, 110));
 	if (t) {
 		C2D_Image img = { t, &st };
 		C2D_ImageTint tint;
-		C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim);   // fixed: dimmed toward black
+		C2D_PlainImageTint(&tint, theme()->shadow, dim);   // fixed: dimmed toward black
 		C2D_DrawImageAt(img, x + (size - cw) / 2, y + (size - ch) / 2, z, dim > 0 ? &tint : NULL, sc, sc);
 	} else
 		cover_placeholder(cx, cy, size, dim, z, entry_title(e), *accent(e));
@@ -386,138 +305,6 @@ static void draw_cover(int e, float cx, float cy, float size, float dim, float z
 		C2D_DrawCircleSolid(x + size - r * 1.6f, y + r * 1.6f, z + 0.006f, r * 1.35f, theme_alpha(theme()->menu_bg, (u8)(200 * (1 - dim))));
 		ui_star(x + size - r * 1.6f, y + r * 1.6f, r, theme_alpha(ui_bar_color(UI_COL_STAR), (int)(255 * (1 - dim * 0.7f))), 0, z + 0.007f);
 	}
-}
-
-// the neon floor, scrolling toward the viewer; each line gets its own depth
-// so the floor recedes into the screen in 3D
-// The floor: one wireframe mesh, flat in the middle and rising into hills
-// toward the sides, rolling toward the viewer. Same maths as
-// tools/make_art.py (height(), colour()), which draws it for the title art.
-#define MESH_COLS 37            // x = -18 .. 18
-#define MESH_ROWS 28
-#define MESH_DZ   1.4f
-#define HORIZON   140.0f
-
-static float mesh_height(float x, float z_world, float z)
-{
-	float a = fabsf(x) - 2.0f;
-	if (a <= 0)
-		return 0;
-	float rise = powf(a, 1.15f) * 0.32f;
-	float n = 0.8f + 0.22f * sinf(x * 0.9f + z_world * 0.35f) + 0.12f * sinf(x * 1.7f - z_world * 0.5f);
-	float near = (z - 1.0f) / 6.0f;
-	if (near > 1) near = 1;
-	if (near < 0) near = 0;
-	return rise * n * (0.35f + 0.65f * near);
-}
-
-// The theme's grid colours (near middle, sides, far), as numbers for mesh_colour.
-typedef struct { int n[3], s[3], f[3]; } mesh_ink_t;
-
-static void mesh_ink(mesh_ink_t *k, const theme_t *th)
-{
-	for (int i = 0; i < 3; i++) {
-		k->n[i] = (th->grid_near >> (8 * i)) & 255;
-		k->s[i] = (th->grid_side >> (8 * i)) & 255;
-		k->f[i] = (th->grid_far >> (8 * i)) & 255;
-	}
-}
-
-static u32 mesh_colour(const mesh_ink_t *k, float x, float z, u8 alpha)
-{
-	float side = fabsf(x) / 9.0f, depth = (z - 1.0f) / 25.0f;
-	if (side > 1) side = 1;
-	if (depth > 1) depth = 1;
-	if (depth < 0) depth = 0;
-	float t = powf(side, 0.8f);
-	float r = k->n[0] + (k->s[0] - k->n[0]) * t, g = k->n[1] + (k->s[1] - k->n[1]) * t,
-	      b = k->n[2] + (k->s[2] - k->n[2]) * t;
-	float p = powf(depth, 0.7f) * (1 - side) * 0.85f;
-	r += (k->f[0] - r) * p; g += (k->f[1] - g) * p; b += (k->f[2] - b) * p;
-	return C2D_Color32((u8)r, (u8)g, (u8)b, alpha);
-}
-
-// Line clipped to just beyond the screen. Far off-screen vertices (the
-// nearest grid rows land thousands of pixels out) can make the GPU drop the
-// whole line, so lines vanished before reaching the screen edges.
-static void clip_line(float x0, float y0, u32 c0, float x1, float y1, u32 c1, float w)
-{
-	const float xmin = -8, xmax = 408, ymin = -8, ymax = 248;
-	float t0 = 0, t1 = 1, dx = x1 - x0, dy = y1 - y0;
-	float p[4] = { -dx, dx, -dy, dy }, q[4] = { x0 - xmin, xmax - x0, y0 - ymin, ymax - y0 };
-	for (int i = 0; i < 4; i++) {
-		if (p[i] == 0) {
-			if (q[i] < 0) return;
-			continue;
-		}
-		float r = q[i] / p[i];
-		if (p[i] < 0) { if (r > t1) return; if (r > t0) t0 = r; }
-		else { if (r < t0) return; if (r < t1) t1 = r; }
-	}
-	C2D_DrawLine(x0 + dx * t0, y0 + dy * t0, c0, x0 + dx * t1, y0 + dy * t1, c1, w, 0.16f);
-}
-
-static void draw_grid(float t)
-{
-	static float px[MESH_ROWS + 1][MESH_COLS], py[MESH_ROWS + 1][MESH_COLS];
-	static float hgt[MESH_ROWS + 1][MESH_COLS];
-	static float rz[MESH_ROWS + 1];
-	const float cx = 200, f = 225;
-	float zoff = t * 0.45f;                      // world units scrolled (slow drift)
-	float phase = fmodf(zoff, MESH_DZ);
-
-	for (int j = 0; j <= MESH_ROWS; j++) {
-		// The nearest row must always land below the screen, or the floor
-		// stops short of the bottom edge for part of each scroll step (at
-		// z = 1.85 it projected to y = 194). It runs from 0.45 down past the
-		// camera; clamped at 0.4 it still projects below the screen (y ~ 392),
-		// so the lines toward it reach the bottom edge.
-		float z = 0.45f - phase + j * MESH_DZ;
-		if (z < 0.4f)
-			z = 0.4f;
-		rz[j] = z;
-		float zw = z + zoff;
-		for (int i = 0; i < MESH_COLS; i++) {
-			float x = i - 18.0f;
-			float h = mesh_height(x, zw, z);
-			hgt[j][i] = h;
-			// far rows sit deeper behind the screen in 3D
-			px[j][i] = cx + x / z * f + ui_depth(2.5f * (z - 1) / 40.0f - 0.5f);
-			py[j][i] = HORIZON + (1.0f - h) / z * f * 0.45f;
-		}
-	}
-	// hills hide the lines behind them in the floor's colour (the picture's, through the theme)
-	const theme_t *th = theme();
-	u32 fillc = sky_colour(th, 16, 2, 44);
-	mesh_ink_t ink;
-	mesh_ink(&ink, th);
-	// back to front: hill cells hide the lines behind them
-	for (int j = MESH_ROWS - 1; j >= 0; j--) {
-		for (int i = 0; i < MESH_COLS - 1; i++) {
-			if (hgt[j][i] + hgt[j][i + 1] + hgt[j + 1][i] + hgt[j + 1][i + 1] < 0.01f)
-				continue;   // flat floor: nothing to hide
-			float minx = fminf(fminf(px[j][i], px[j][i + 1]), fminf(px[j + 1][i], px[j + 1][i + 1]));
-			float maxx = fmaxf(fmaxf(px[j][i], px[j][i + 1]), fmaxf(px[j + 1][i], px[j + 1][i + 1]));
-			if (maxx < 0 || minx > 400)
-				continue;   // off-screen: don't spend draw budget on it
-			C2D_DrawTriangle(px[j][i], py[j][i], fillc, px[j][i + 1], py[j][i + 1], fillc,
-				px[j + 1][i + 1], py[j + 1][i + 1], fillc, 0.15f);
-			C2D_DrawTriangle(px[j][i], py[j][i], fillc, px[j + 1][i + 1], py[j + 1][i + 1], fillc,
-				px[j + 1][i], py[j + 1][i], fillc, 0.15f);
-		}
-		// this strip's lines: the far edge across, and the lines toward the viewer
-		float zf = rz[j + 1];
-		u8 fade = zf > 32 ? (u8)(255 * (40 - zf) / 8) : 255;   // fade in at the horizon
-		for (int i = 0; i < MESH_COLS - 1; i++)
-			clip_line(px[j + 1][i], py[j + 1][i], mesh_colour(&ink, i - 18.0f, zf, fade),
-				px[j + 1][i + 1], py[j + 1][i + 1], mesh_colour(&ink, i - 17.0f, zf, fade), 1.2f);
-		for (int i = 0; i < MESH_COLS; i++)
-			clip_line(px[j + 1][i], py[j + 1][i], mesh_colour(&ink, i - 18.0f, zf, fade),
-				px[j][i], py[j][i], mesh_colour(&ink, i - 18.0f, rz[j], 255), 1.2f);
-	}
-	for (int i = 0; i < MESH_COLS - 1; i++)
-		clip_line(px[0][i], py[0][i], mesh_colour(&ink, i - 18.0f, rz[0], 255),
-			px[0][i + 1], py[0][i + 1], mesh_colour(&ink, i - 17.0f, rz[0], 255), 1.4f);
 }
 
 // under the title: series and disc counts, and in the sort views when it was played
@@ -587,10 +374,7 @@ static void draw_top(void *ud)
 	(void)ud;
 	int n = nview;
 	const theme_t *th = theme();
-	sky_sync();
-	if (bg_ok)
-		C2D_DrawImageAt(bg_img, ui_depth(3.0f), 0, 0.1f, NULL, 1.0f, 1.0f);   // sky: far back
-	draw_grid(clock_s);
+	scene_draw(false);
 
 	// carousel: neighbours first so the selection sits on top
 	float spacing = 116.0f;
@@ -638,7 +422,7 @@ static void draw_top(void *ud)
 		if (w > 380)
 			size *= 380 / w;
 		float tx = 200 + ui_depth(-0.8f);   // floats just in front of the screen
-		text(f, tx + 1, ty + 1, size, theme_alpha(TH_TITLE_SHADOW, a * 5 / 8), C2D_AlignCenter, title);
+		text(f, tx + 1, ty + 1, size, theme_alpha(theme()->shadow, a * 5 / 8), C2D_AlignCenter, title);
 		text(f, tx, ty, size, theme_alpha(th->game_title, a), C2D_AlignCenter, title);
 		char dd[64];
 		sub_line(sel, dd, sizeof(dd));
@@ -683,18 +467,14 @@ static void draw_top(void *ud)
 	if (launch_t >= 0)
 		f = launch_t > 0.4f ? (launch_t - 0.4f) / 0.6f : 0;
 	if (f > 0.001f)   // fixed: a fade to the game picture, black in every theme
-		C2D_DrawRectSolid(0, 0, 0.9f, 400, 240, C2D_Color32(0, 0, 0, (u8)(255 * (f > 1 ? 1 : f))));
+		C2D_DrawRectSolid(0, 0, 0.9f, 400, 240, theme_alpha(theme()->shadow, (u8)(255 * (f > 1 ? 1 : f))));
 }
 
 // The same backdrop for the main menu and its screens; the grid rolls on the
 // system clock there.
 void libui_draw_backdrop(void)
 {
-	sky_sync();
-	if (bg_ok)
-		C2D_DrawImageAt(bg_img, ui_depth(3.0f), 0, 0.1f, NULL, 1.0f, 1.0f);
-	double t = svcGetSystemTick() / (double)SYSCLOCK_ARM11;
-	draw_grid((float)(t - 3600.0 * (u32)(t / 3600.0)));
+	scene_draw(false);
 }
 
 static flist_t lst;
@@ -777,7 +557,7 @@ static void draw_bottom(void *ud)
 	(void)ud;
 	int n = nrows();
 	const theme_t *th = theme();
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->menu_bg);
+	scene_draw(true);
 	if (!nview && open_series < 0 && g_cfg.library_view == V_FAV) {
 		ui_menu_header("Favourites", "None yet");
 		ui_text_wrap(16, 48, 0.45f, th->help_text, 288, "Pick a game in A-Z and press Y (or tap the star).");

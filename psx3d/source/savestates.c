@@ -11,6 +11,7 @@
 #include <math.h>
 #include <sys/stat.h>
 #include "psx3d.h"
+#include "scene.h"
 #include "devtools.h"
 #include "safefile.h"
 #include "history.h"
@@ -519,7 +520,7 @@ static void draw_bottom(void *ud)
 	C2D_Font font = libui_font();
 	u32 white = theme()->help_title, dim = theme()->hint_menu;
 
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, theme()->menu_bg);
+	scene_draw(true);
 	ui_text_ex(font, 10, 6, 0.5f, white, 0, b->saving ? "Save state" : "Load state");
 	if (b->saving)
 		ui_text_ex(NULL, 310, 9, 0.42f, dim, C2D_AlignRight, b->title);
@@ -765,7 +766,7 @@ static void resume_bottom(void *ud)
 {
 	resume_t *r = ud;
 	const theme_t *th = theme();
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->menu_bg);
+	scene_draw(true);
 	ui_text_ex(libui_font(), 160, 70, 0.6f, th->header_title, C2D_AlignCenter, "Continue?");
 	ui_text_wrap(30, 112, 0.5f, th->help_text, 260, "Pick up where you left off, or start the game from the beginning.");
 	ui_text_wrap(30, 160, 0.42f, th->hint_lib, 260, "Starting the game keeps this spot in Auto-saves.");

@@ -4,6 +4,7 @@
 // PSX3D CIA over the local Wi-Fi (HTTP, LAN only). Only that one file is ever
 // served, and only after AM confirms it is a PSX3D CIA: never games or saves.
 #include "psx3d.h"
+#include "scene.h"
 #include "devtools.h"
 #include "qrcode.h"
 #include <arpa/inet.h>
@@ -240,7 +241,7 @@ static void draw_top(void *ud)
 	(void)ud;
 	const theme_t *th = theme();
 	u32 white = th->header_title, dim = th->muted;
-	C2D_DrawRectSolid(0, 0, .1f, 400, 240, th->menu_bg);
+	scene_draw(false);
 	ui_text(20, 14, .7f, white, "PSX3D %s", PSX3D_VERSION);
 	ui_text(20, 42, .45f, dim, "PS1 emulator for 3DS. Free software (GPL).");
 	ui_text(20, 194, .38f, dim, "Icons by Dreamstale from Flaticon");

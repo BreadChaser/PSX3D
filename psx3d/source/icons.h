@@ -20,5 +20,5 @@ enum { ICON_STILL = -1, ICON_SLOT_TOP, ICON_SLOT_TILE, ICON_SLOT_GROUP, ICON_SLO
 bool icons_draw(int slot, int id, float cx, float cy, float size, bool lit, float alpha, float z);
 // A button bar glyph (UI_ICON_*, about 14 px, drawn 1:1) in one colour.
 bool icons_glyph(int ui_icon, float cx, float cy, u32 ink, float z);
-// Frees the pictures (the bar glyphs stay: 8 KB, used in the pause menu too).
+// Frees every texture and CPU buffer. A later menu reloads lazily.
 void icons_release(void);

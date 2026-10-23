@@ -78,6 +78,10 @@ LDFLAGS += -Wl,--wrap=C3D_DrawArrays,--wrap=GX_TextureCopy
 LDFLAGS += -Wl,--wrap=gs_shift,--wrap=gs_core_frame,--wrap=gs_core_alloc,--wrap=gs_core_clear,--wrap=gs_core_free
 LDFLAGS += -Wl,--wrap=gpustereo_status,--wrap=pica_picture,--wrap=gs_flat
 
+# Keep rc9 archive members after replacing the old image backdrop. Their
+# removal would shift gameplay library code on Old 3DS. Never executed here.
+LDFLAGS += -Wl,-u,Tex3DS_TextureImportStdio,-u,Tex3DS_GetSubTexture,-u,Tex3DS_TextureFree,-u,fmodf
+
 LIBS	:= $(CORELIB) -lcitro2d -lcitro3d -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lpng16 -lz -lctru -lm
 
 #---------------------------------------------------------------------------------
@@ -146,7 +150,7 @@ endif
 # and playlog.o (library play history and favourites) follow; the save code
 # links last. cmdroom.o's code is PSX3D_COLD (after everything);
 # gpustereo_layers.o (New 3DS 3D) comes last.
-LATE_OFILES := picadirect.o presetupdate.o placeholder.o uploadskip.o display.o boxart.o qrcode.o share.o mp_ui.o playlog.o history.o safefile.o saveid.o savestates.o statefile.o icons.o cmdroom.o gpustereo_layers.o
+LATE_OFILES := picadirect.o presetupdate.o placeholder.o uploadskip.o display.o boxart.o qrcode.o share.o mp_ui.o playlog.o history.o safefile.o saveid.o savestates.o statefile.o scene.o icons.o cmdroom.o gpustereo_layers.o
 export OFILES_SOURCES 	:=	$(CPPFILES:.cpp=.o) $(filter-out $(LATE_OFILES),$(CFILES:.c=.o)) $(SFILES:.s=.o) $(LATE_OFILES)
 
 export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES)) \

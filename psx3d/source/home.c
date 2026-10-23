@@ -12,6 +12,7 @@
 #include <time.h>
 #include "psx3d.h"
 #include "devtools.h"
+#include "scene.h"
 
 enum { E_CONTINUE, E_LIBRARY, E_HOST, E_JOIN, E_SHARE, E_SETTINGS };
 enum { K_HERO, K_MID, K_SMALL, K_SUB };
@@ -269,7 +270,7 @@ static void cover_card(int game, float cx, float cy, float size, float angle, fl
 		// the cover keeps its own aspect: the longer side is `size`
 		float sc = size / (st.width > st.height ? st.width : st.height);
 		C2D_ImageTint tint;
-		C2D_PlainImageTint(&tint, C2D_Color32(0, 0, 0, 255), dim);   // fixed: dimmed toward black
+		C2D_PlainImageTint(&tint, theme()->shadow, dim);   // fixed: dimmed toward black
 		C2D_DrawImageAtRotated((C2D_Image){ t, &st }, cx, cy, z, angle, dim > 0 ? &tint : NULL, sc, sc);
 		return;
 	}
@@ -319,7 +320,7 @@ static void big_title(const char *title, const char *line, float ease)
 		size *= 380 / w;
 	float ty = 172 + (1 - ease) * 10, tx = 200 + ui_depth(-0.8f);
 	const theme_t *th = theme();
-	ui_text_ex(libui_font(), tx + 1, ty + 1, size, theme_alpha(TH_TITLE_SHADOW, a * 5 / 8), C2D_AlignCenter, title);
+	ui_text_ex(libui_font(), tx + 1, ty + 1, size, theme_alpha(theme()->shadow, a * 5 / 8), C2D_AlignCenter, title);
 	ui_text_ex(libui_font(), tx, ty, size, theme_alpha(th->game_title, a), C2D_AlignCenter, title);
 	ui_text_ex(NULL, tx, ty + 34, 0.45f, theme_alpha(th->game_sub, a), C2D_AlignCenter, line);
 }
@@ -384,7 +385,7 @@ static void draw_top(void *ud)
 		big_title(title, line, ease);
 	top_common();
 	if (fade > 0.001f)   // fixed: fade from/to black
-		C2D_DrawRectSolid(0, 0, 0.95f, 400, 240, C2D_Color32(0, 0, 0, (u8)(255 * fminf(fade, 1))));
+		C2D_DrawRectSolid(0, 0, 0.95f, 400, 240, theme_alpha(theme()->shadow, (u8)(255 * fminf(fade, 1))));
 }
 
 // ---------------------------------------------------------------- bottom screen
@@ -492,7 +493,7 @@ static void draw_sub(const tile_t *t, bool lit)
 static void draw_bottom(void *ud)
 {
 	(void)ud;
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, MENU_BG);
+	scene_draw(true);
 	int s = sel_index();
 	if (have_group)
 		draw_group(tiles[s].kind == K_SUB);
@@ -503,7 +504,7 @@ static void draw_bottom(void *ud)
 			draw_tile(&tiles[i], i == s, i);
 	}
 	if (fade > 0.001f)   // fixed: fade from/to black
-		C2D_DrawRectSolid(0, 0, 0.95f, 320, 240, C2D_Color32(0, 0, 0, (u8)(255 * fminf(fade, 1))));
+		C2D_DrawRectSolid(0, 0, 0.95f, 320, 240, theme_alpha(theme()->shadow, (u8)(255 * fminf(fade, 1))));
 }
 
 // D-pad moves spatially: up/down between rows, left/right within a row.
@@ -588,7 +589,7 @@ static void launch_leave(void)
 static void soon_bottom(void *ud)
 {
 	const theme_t *th = theme();
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->menu_bg);
+	scene_draw(true);
 	ui_menu_header("Play together", ud);
 	ui_text_wrap(16, 52, 0.5f, th->help_text, 288, "Coming soon. Playing together with a friend's 3DS arrives in a later version.");
 	static const ui_button_t back = { KEY_B, "Back", 0, false };
@@ -797,7 +798,7 @@ static void empty_top(void *ud)
 	big_title("No games yet", "Put PS1 games on the SD card, then pick their folder", 1);
 	top_common();
 	if (fade > 0.001f)   // fixed: fade from/to black
-		C2D_DrawRectSolid(0, 0, 0.95f, 400, 240, C2D_Color32(0, 0, 0, (u8)(255 * fminf(fade, 1))));
+		C2D_DrawRectSolid(0, 0, 0.95f, 400, 240, theme_alpha(theme()->shadow, (u8)(255 * fminf(fade, 1))));
 }
 
 static const ui_button_t empty_bar[3] = {
@@ -807,7 +808,7 @@ static const ui_button_t empty_bar[3] = {
 static void empty_bottom(void *ud)
 {
 	(void)ud;
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, MENU_BG);
+	scene_draw(true);
 	ui_menu_header("Library", "Empty");
 	static const char *const steps[3] = {
 		"Copy games to " DEFAULT_GAMES_DIR, "Press SELECT", "Or pick another folder (Y)"
@@ -828,7 +829,7 @@ static void empty_bottom(void *ud)
 		ui_text_ex(NULL, 8, 186, 0.4f, th->message, 0, ui_fit(empty_msg, 0.4f, 304));
 	ui_bar_draw(empty_bar, 3);
 	if (fade > 0.001f)   // fixed: fade from/to black
-		C2D_DrawRectSolid(0, 0, 0.95f, 320, 240, C2D_Color32(0, 0, 0, (u8)(255 * fminf(fade, 1))));
+		C2D_DrawRectSolid(0, 0, 0.95f, 320, 240, theme_alpha(theme()->shadow, (u8)(255 * fminf(fade, 1))));
 }
 
 int home_empty_library_run(void)

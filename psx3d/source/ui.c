@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "psx3d.h"
+#include "scene.h"
 #include "devtools.h"
 
 static C2D_TextBuf textbuf;
@@ -438,7 +439,7 @@ static void confirm_draw(void *ud)
 	confirm_t *c = ud;
 	// Behind the header's colour rule, like the other menus.
 	const theme_t *th = theme();
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->menu_bg);
+	scene_draw(true);
 	ui_menu_header(c->title, config_in_game() ? ui_fit(emu_game_title(), .42f, 150) : "All games");
 	C2D_Text t;
 	if (C2D_TextParse(&t, textbuf, c->message))
@@ -543,7 +544,7 @@ u32 ui_bar_color(int which)
 {
 	const theme_t *th = theme();
 	switch (which) {
-	case UI_COL_BAR: return mix(th->menu_bg, 0, 0.35f, 255);
+	case UI_COL_BAR: return mix(th->menu_bg, th->shadow, 0.35f, 255);
 	case UI_COL_RULE: return mix(th->menu_bg, th->hl_top, 0.55f, 255);
 	case UI_COL_NOTICE: return theme_alpha(th->menu_bg, 225);
 	case UI_COL_STAR: return th->help_impact;
@@ -748,7 +749,7 @@ void ui_bar_draw(const ui_button_t *b, int n)
 		else if (i)
 			C2D_DrawRectSolid(x, BAR_TOP + 4, 0.65f, 1, 240 - BAR_TOP - 8, divider);
 		if (lit)
-			C2D_DrawRectSolid(x, BAR_TOP, 0.655f, w, 240 - BAR_TOP, mix(th->hl_top, 0xffffffff, 0.45f, 110 * flash_t / 9));
+			C2D_DrawRectSolid(x, BAR_TOP, 0.655f, w, 240 - BAR_TOP, mix(th->hl_top, th->white, 0.45f, 110 * flash_t / 9));
 		u32 c = main || lit ? ink_main : ink;
 		bar_icon(bar_icon_of(p), cx, BAR_ICON_Y, 11, c, face, p->on);
 		// one short word; a long one first gets smaller, then shorter

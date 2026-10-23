@@ -189,7 +189,11 @@ static bool load_glyphs(void)
 
 void icons_release(void)
 {
+	video_gpu_idle();
 	free_pics();
+	if (glyph_tex.data) C3D_TexDelete(&glyph_tex);
+	memset(&glyph_tex, 0, sizeof(glyph_tex));
+	glyphs_ok = glyphs_failed = false;
 	pics_failed = false;   // the next menu loads them again
 }
 
@@ -343,7 +347,7 @@ bool icons_draw(int slot, int id, float cx, float cy, float size, bool lit, floa
 
 bool icons_glyph(int ui_icon, float cx, float cy, u32 ink, float z)
 {
-	if (ui_icon < UI_ICON_STAR || ui_icon > UI_ICON_EXIT)
+	if (config_in_game() || ui_icon < UI_ICON_STAR || ui_icon > UI_ICON_EXIT)
 		return false;
 	u64 t0 = svcGetSystemTick();
 	bool ok = load_glyphs();

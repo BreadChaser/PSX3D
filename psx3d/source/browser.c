@@ -8,6 +8,7 @@
 #include <string.h>
 #include <strings.h>
 #include "psx3d.h"
+#include "scene.h"
 #include "devtools.h"
 
 #define MAX_ENTRIES 4096
@@ -236,7 +237,7 @@ static void draw_top(void *ud)
 {
 	(void)ud;
 	const theme_t *th = theme();
-	C2D_DrawRectSolid(0, 0, 0.1f, 400, 240, th->menu_bg);
+	scene_draw(false);
 	ui_text_ex(libui_font(), 16, 14, 0.8f, th->header_title, 0, "PSX3D");
 	char version[64];
 	snprintf(version, sizeof(version), "Version " PSX3D_VERSION " (game presets %d), based on PCSX-ReARMed (GPL v2)",
@@ -289,7 +290,7 @@ static void draw_bottom(void *ud)
 	(void)ud;
 	const theme_t *th = theme();
 	u32 muted = th->muted;
-	C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, th->menu_bg);
+	scene_draw(true);
 	const char *name = strrchr(cwd, '/');
 	ui_menu_header("Folders", ui_fit(name && name[1] ? name + 1 : cwd, .42f, 170));
 	flist_draw(&lst, nentries + 1, sel, 0, 40, 320, ROW_H, ROWS, row_label, row_value, NULL,
