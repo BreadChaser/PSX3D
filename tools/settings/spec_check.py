@@ -125,6 +125,9 @@ for raw in open(defaults_path):
     elif line and section:
         k, v = (x.strip() for x in line.split('=', 1)); sections[section][k] = v
 spec_keys = {row[2] for row in MENU} - {'-', '>'}
+# Settings kept in defaults.ini while their row is hidden (theme: THEMES_SHOWN 0 in
+# psx3d/source/theme.h for v0.5.1; docs/settings.md section 4 keeps its row).
+spec_keys |= {'theme'}
 for console in ('old', 'new'):
     if set(sections.get(console, {})) != spec_keys:
         problems.append(f'defaults.ini [{console}] keys differ from the spec: '

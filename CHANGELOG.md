@@ -7,14 +7,15 @@ Speed figures are for specific saved scenes; see [Performance](README.md#perform
 
 - New: a main menu with Continue, Library, Share PSX3D and Settings.
 - New: the library shows recently played games first; sort by name, recent or most played; mark favourites with Y; L/R jumps by letter.
-- New: five colour themes in Settings → Display → Theme.
 - New: touch buttons at the bottom of every menu.
 - New: save backups: the last ten automatic saves and dated memory card copies per game; Undo and Redo in the pause menu.
 - New: sharper box art, found by disc serial for files with any name.
 - New: PSX3D finds your games on first start; only PlayStation discs are listed.
 - New: clear messages when a game can't start (missing file, wrong disc, not enough memory).
 - New: European and Japanese discs of the tested games get their settings too.
-- New: Real 3D falls back to screen depth for menus, movies and 2D scenes.
+- New: Real 3D gives 2D games and menus layered depth; logos, movies and stills keep screen depth.
+- New: covers show at once while you scroll; games without box art show a disc with their title.
+- Fixed: Real 3D cracks between polygons, blurry logos and jumping text.
 - Faster: Old 3DS in busy scenes, about 4% on average: Crash Bandicoot 2 76% to 85% game speed, Silent Hill 77% to 87% (café, Auto), Gran Turismo 2 54% to 58%.
 - Fixed: the picture sits where a TV shows it, including borders, 480i and PAL movies.
 - Fixed: a possible New 3DS crash with Real 3D in busy game start-ups (Crash Bandicoot, Harvest Moon).

@@ -44,6 +44,11 @@ typedef struct {
 	u32 grid_near, grid_side, grid_far;   // wire floor: middle near the viewer, sides, toward the horizon
 } theme_t;
 
+// v0.5.1 ships the Original look only (owner): the Theme row is hidden and
+// theme() is the Original whatever config.ini says (the saved value is kept
+// and written back unchanged). 1 brings the five palettes back.
+#define THEMES_SHOWN 0
+
 int theme_count(void);
 const theme_t *theme_get(int i);
 const theme_t *theme(void);          // the one in use (g_cfg.theme)

@@ -46,7 +46,7 @@ no BIOS file.
 - Tested settings for each game and each console, applied automatically
 - Real widescreen for games with a tested widescreen fix
 - A main menu with Continue, a box-art library with recently played games,
-  favourites, sorting and a letter jump, and five colour themes
+  favourites, sorting and a letter jump
 - Sharp box art, clean titles and multi-disc grouping
 - Save states with previews, memory cards with backups, cheats and disc swapping
 - Save backups: the last ten automatic saves and dated memory card copies per game, and Undo in the pause menu

@@ -79,7 +79,7 @@ static const char *const helps[] = {
  [F_THEME]="Choose the colours of the menus and the library backdrop. Synthwave is the original look; the others are calmer. Game pictures and cover art are not changed.",
 };
 static const char *const category_tips[] = {
- [CAT_DISPLAY]="Picture shape, smoothing, FPS counter and theme.",
+ [CAT_DISPLAY]=THEMES_SHOWN ? "Picture shape, smoothing, FPS counter and theme." : "Picture shape, smoothing and FPS counter.",
  [CAT_CONTROLS]="Buttons, touch buttons and the controller.",
  [CAT_CHEATS]="Turn this game's cheat codes on or off.",
  [CAT_SAVES]="Memory cards and rewind.",
@@ -165,7 +165,8 @@ static void build_page(settings_ui_t *s, int page)
 		break;
 	case CAT_DISPLAY:
 		add_frontend(s, F_SCREEN); add_frontend(s, F_SMOOTH); add_frontend(s, F_FPS);
-		add_frontend(s, F_THEME);
+		if (THEMES_SHOWN)
+			add_frontend(s, F_THEME);
 		break;
 	case CAT_CONTROLS:
 		add(s, CATEGORY_ROW + CAT_BINDINGS);

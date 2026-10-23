@@ -88,7 +88,7 @@ static const theme_t themes[] = {
 
 int theme_count(void) { return NTHEMES; }
 const theme_t *theme_get(int i) { return &themes[i >= 0 && i < NTHEMES ? i : 0]; }
-const theme_t *theme(void) { return theme_get(g_cfg.theme); }
+const theme_t *theme(void) { return theme_get(THEMES_SHOWN ? g_cfg.theme : 0); }
 
 int theme_from_id(const char *id)
 {
