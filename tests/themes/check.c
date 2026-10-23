@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "theme.h"
+#include "../../core/deps/libretro-common/include/libretro.h"
 static struct {int theme;} g_cfg;
 static bool g_new3ds, playing, fail_tex, fail_text;
 static unsigned textures, texts, draws;

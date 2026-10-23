@@ -25,6 +25,7 @@ const char *emu_game_title(void) { return "Crash Bandicoot"; }
 #error "build with -DPSX3D_TEST_PRESETS=\"<repo>/psx3d/romfs/presets\""
 #endif
 #include "../../source/theme.c"
+#include "../../source/theme_game.c"
 #include "../../source/presets.c"
 #include "../../source/input.c"
 #include "../../source/config.c"
@@ -658,6 +659,27 @@ static void presets_v2_checks(void)
  config_game_end();config_reset_defaults();
  puts("PASS: sparse global config, conservative dense migration, Omega presence/override/reset and auto_floor inheritance");
 }
+static void game_palette_checks(void)
+{
+ for(int i=0;i<theme_count();i++) {
+  g_cfg.theme=i; theme_game_begin();
+  game_palette_t saved=g_game_palette;
+  assert(saved.black==C2D_Color32(0,0,0,255));
+  assert(ui_input_color(RETRO_DEVICE_ID_JOYPAD_X)==theme_get(i)->input_face[0]);
+  assert(ui_input_color(INPUT_BIND_HIDE)==theme_get(i)->input_hide);
+  assert(ui_input_color(RETRO_DEVICE_ID_JOYPAD_L)==theme_get(i)->input_shoulder);
+  assert(ui_input_color(999)==theme_get(i)->input_other);
+  if(i) assert(saved.bg==theme_get(i)->menu_bg && saved.face==theme_get(i)->touch_face);
+  g_cfg.theme=(i+1)%theme_count();
+  assert(!memcmp(&saved,&g_game_palette,sizeof(saved))); // frozen until next launch
+  theme_menu_refresh();
+  assert(!memcmp(&saved,&g_game_palette,sizeof(saved)));
+ }
+ g_cfg.theme=0; theme_game_begin();
+ assert(g_game_palette.bg==C2D_Color32(6,9,24,255));
+ assert(g_game_palette.gradient[0]==C2D_Color32(40,58,130,255));
+}
+
 int main(void)
 {
  assert(!mkdir("sdmc:",0700)); assert(!mkdir("sdmc:/3ds",0700)); assert(!mkdir(PSX3D_DIR,0700));
@@ -670,7 +692,7 @@ int main(void)
  assert(!strcmp(options_get("pcsx_rearmed_spu_interpolation"),"simple"));
  g_new3ds=true;
  assert(!strcmp(options_get("pcsx_rearmed_spu_interpolation"),"gaussian"));
- config_load(); layout_checks(); curved_fill_checks(); side_and_new_checks(); action_checks(); serial_config_checks(); symbol_checks(); stats_input_checks();
+ config_load(); game_palette_checks(); theme_game_begin(); layout_checks(); curved_fill_checks(); side_and_new_checks(); action_checks(); serial_config_checks(); symbol_checks(); stats_input_checks();
  frameskip_checks(); presets_v2_checks();
  fps_mockups();
  confirm_accept=false; confirm_step=0; assert(!ui_confirm("RESET?","Cancel test",false));

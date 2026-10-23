@@ -3,6 +3,7 @@
 // The circle pad doubles as the d-pad for digital games and is also the
 // left analog stick; the New 3DS C-stick is the right stick.
 #include "psx3d.h"
+#include "game_palette.h"
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
@@ -839,20 +840,19 @@ void input_control_cycle(int row, int dir)
 
 // Approved controller artwork. Arc geometry is cached; no geometry
 // or drawing work is done on frames where the cached bottom target is retained.
-static u32 rgb(unsigned hex) { return C2D_Color32(hex>>16, hex>>8, hex, 255); }
 
 // Precompose 40% opacity over the panel: no alpha accumulation on mesh seams.
 static u32 button_ink(u32 color, bool enabled)
 {
 	if (enabled) return color;
-	return C2D_Color32(6+((int)(color&255)-6)*0.4f,
-		9+((int)((color>>8)&255)-9)*0.4f, 24+((int)((color>>16)&255)-24)*0.4f, 255);
+	return C2D_Color32((g_game_palette.bg&255)+((int)(color&255)-(int)(g_game_palette.bg&255))*0.4f,
+		((g_game_palette.bg>>8)&255)+((int)((color>>8)&255)-(int)((g_game_palette.bg>>8)&255))*0.4f, ((g_game_palette.bg>>16)&255)+((int)((color>>16)&255)-(int)((g_game_palette.bg>>16)&255))*0.4f, 255);
 }
 
 static void touch_mark(int id, float x, float y, float pixels, float spacing)
 {
 	if (!touch_map_enabled(id)) return;
-	u32 color = button_ink(rgb(0xc8cff0), touch_map_enabled(id));
+	u32 color = button_ink(g_game_palette.mark, touch_map_enabled(id));
 	if (!ui_input_symbol(id, x, y, pixels*1.6f, color))
 		ui_button_text(x, y, pixels, spacing, color, id);
 }
@@ -864,13 +864,6 @@ static bool touch_button_lit(int i)
 		(id == INPUT_FF_TOGGLE && input_fast_forward()));
 }
 
-static u32 gradient(float t)
-{
-	if (t < 0) t = 0;
-	if (t > 1) t = 1;
-	return C2D_Color32(40-16*t, 58-24*t, 130-46*t, 255);
-}
-
 static void edge(float x, float y, float x2, float y2, float width, u32 color)
 {
 	C2D_DrawLine(x, y, color, x2, y2, color, width, 0.56f);
@@ -878,11 +871,11 @@ static void edge(float x, float y, float x2, float y2, float width, u32 color)
 
 static void touch_panel_draw(tbutton_t b, bool enabled, bool hit)
 {
-	C2D_DrawRectSolid(b.x, b.y, 0.51f, b.w, b.h, button_ink(rgb(0x1f2a5a), enabled));
+	C2D_DrawRectSolid(b.x, b.y, 0.51f, b.w, b.h, button_ink(g_game_palette.border, enabled));
 	if (hit)
 		C2D_DrawRectangle(b.x+1, b.y+1, 0.52f, b.w-2, b.h-2,
-			gradient(0), gradient(0), gradient(1), gradient(1));
-	else C2D_DrawRectSolid(b.x+1, b.y+1, 0.52f, b.w-2, b.h-2, button_ink(rgb(0x0c1230), enabled));
+			g_game_palette.gradient[0], g_game_palette.gradient[0], g_game_palette.gradient[1], g_game_palette.gradient[1]);
+	else C2D_DrawRectSolid(b.x+1, b.y+1, 0.52f, b.w-2, b.h-2, button_ink(g_game_palette.face, enabled));
 }
 
 static void quadrant_draw(int i)
@@ -896,7 +889,7 @@ static void quadrant_draw(int i)
 	// This keeps a full-ring button seamless without a per-frame tessellation.
 	touch_panel_draw(b, enabled, hit);
 	u32 accent = button_ink(ui_input_color(id), enabled);
-	if (hit) accent = C2D_Color32((accent&255)*0.65f+89, ((accent>>8)&255)*0.65f+89, ((accent>>16)&255)*0.65f+89, 255);
+	if (hit) accent = C2D_Color32((accent&255)*0.65f+(g_game_palette.pressed_add&255), ((accent>>8)&255)*0.65f+((g_game_palette.pressed_add>>8)&255), ((accent>>16)&255)*0.65f+((g_game_palette.pressed_add>>16)&255), 255);
 	// Accent only the outer cluster edges touched by this face.
 	int cluster_x = 92;
 	if (b.y == 12)
@@ -964,25 +957,25 @@ static void stick_cutout_draw(void)
 			}
 		}
 	}
-	C2D_DrawCircleSolid(STICK_X, STICK_Y, 0.53f, 60, rgb(0x060918));
+	C2D_DrawCircleSolid(STICK_X, STICK_Y, 0.53f, 60, g_game_palette.bg);
 	for (int j = 0; j < nsegments; j++)
-		edge(segments[j][0], segments[j][1], segments[j][2], segments[j][3], 1, rgb(0x1f2a5a));
+		edge(segments[j][0], segments[j][1], segments[j][2], segments[j][3], 1, g_game_palette.border);
 }
 
 static void stick_draw(void)
 {
-	C2D_DrawCircleSolid(STICK_X, STICK_Y, 0.60f, 50.75f, rgb(0x2b3a8c));
-	C2D_DrawCircleSolid(STICK_X, STICK_Y, 0.61f, 49.25f, rgb(0x080c22));
+	C2D_DrawCircleSolid(STICK_X, STICK_Y, 0.60f, 50.75f, g_game_palette.stick_rim);
+	C2D_DrawCircleSolid(STICK_X, STICK_Y, 0.61f, 49.25f, g_game_palette.stick_face);
 	for (int d = -36; d <= 36; d += 18) {
 		float extent = sqrtf(48.75f*48.75f-d*d);
-		u32 c = C2D_Color32(90, 63, 184, 179);
+		u32 c = g_game_palette.stick_grid;
 		C2D_DrawLine(STICK_X+d, STICK_Y-extent, c, STICK_X+d, STICK_Y+extent, c, 1, 0.62f);
 		C2D_DrawLine(STICK_X-extent, STICK_Y+d, c, STICK_X+extent, STICK_Y+d, c, 1, 0.62f);
 	}
 	float x = STICK_X+stick_x, y = STICK_Y+stick_y;
-	C2D_DrawCircleSolid(x, y, 0.64f, 19.75f, rgb(0x6f86e8));
+	C2D_DrawCircleSolid(x, y, 0.64f, 19.75f, g_game_palette.stick_thumb);
 	C2D_DrawEllipse(x-18.25f, y-18.25f, 0.65f, 36.5f, 36.5f,
-		gradient(0), gradient(0), gradient(1), gradient(1));
+		g_game_palette.gradient[0], g_game_palette.gradient[0], g_game_palette.gradient[1], g_game_palette.gradient[1]);
 }
 
 static void touch_rect_draw(int i, bool left)
@@ -992,7 +985,7 @@ static void touch_rect_draw(int i, bool left)
 	bool enabled = touch_map_enabled(id), hit = touch_button_lit(i);
 	touch_panel_draw(b, enabled, hit);
 	u32 c = button_ink(ui_input_color(id), enabled);
-	if (hit) c = C2D_Color32((c&255)*0.65f+89, ((c>>8)&255)*0.65f+89, ((c>>16)&255)*0.65f+89, 255);
+	if (hit) c = C2D_Color32((c&255)*0.65f+(g_game_palette.pressed_add&255), ((c>>8)&255)*0.65f+((g_game_palette.pressed_add>>8)&255), ((c>>16)&255)*0.65f+((g_game_palette.pressed_add>>16)&255), 255);
 	C2D_DrawRectSolid(left ? b.x : b.x+b.w-3, b.y, 0.58f, 3, b.h, c);
 	touch_mark(id, b.x+b.w/2.0f, b.y+b.h/2.0f, g_new3ds ? 16 : 13, g_new3ds ? 3 : 2);
 }
@@ -1001,17 +994,16 @@ void touch_buttons_draw(void)
 {
 	if (!touch_buttons_active() && g_cfg.show_fps != 1) return;
 	if (touch_buttons_active())
-		C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, rgb(0x060918));
+		C2D_DrawRectSolid(0, 0, 0.1f, 320, 240, g_game_palette.bg);
 	bool left = g_new3ds && g_cfg.touch_click_left;
 	ui_text_pixels(NULL, left ? 308 : 12, 22, 11, 1.5f, 0,
-		rgb(0xebeeff), left ? C2D_AlignRight : 0, "MENU");
-	const unsigned header[] = { 0xd0313b, 0xe8b21c, 0x2fa36b, 0x2f6fc4 };
+		g_game_palette.title, left ? C2D_AlignRight : 0, "MENU");
 	for (int j = 0; j < 4; j++) {
-		C2D_DrawRectSolid((left ? 266 : 12)+11*j, 27, 0.5f, 9, 2, rgb(header[j]));
+		C2D_DrawRectSolid((left ? 266 : 12)+11*j, 27, 0.5f, 9, 2, g_game_palette.stripe[j]);
 		if (g_cfg.show_fps != 1)
-			C2D_DrawRectSolid((left ? 246 : 12)+16*j, 220, 0.5f, 14, 2, rgb(header[j]));
+			C2D_DrawRectSolid((left ? 246 : 12)+16*j, 220, 0.5f, 14, 2, g_game_palette.stripe[j]);
 	}
-	if (g_cfg.show_fps != 1) ui_text_pixels(libui_font(), left ? 246 : 12, 214, 16, 0, 62, rgb(0x2b3360), 0, "PSX3D");
+	if (g_cfg.show_fps != 1) ui_text_pixels(libui_font(), left ? 246 : 12, 214, 16, 0, 62, g_game_palette.ink, 0, "PSX3D");
 	if (!g_new3ds) {
 		for (int i = 0; i < 4; i++) if(touch_button_visible(i)) quadrant_draw(i);
 		if (touch_stick_active()) { stick_cutout_draw(); stick_draw(); }

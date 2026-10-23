@@ -357,9 +357,9 @@ static bool osd_alert_up(void) { return osd_n && osd_q[0].alert; }
 PSX3D_COLD static void alert_draw_top(void)
 {
 	float dx = ui_depth(-0.7f);
-	C2D_DrawRectSolid(0, 0, 0.9f, 400, 30, C2D_Color32(20, 8, 4, 225));
-	C2D_DrawRectSolid(0, 30, 0.9f, 400, 2, C2D_Color32(255, 170, 60, 255));
-	ui_text_ex(NULL, 200 + dx, 8, 0.45f, C2D_Color32(255, 225, 170, 255), C2D_AlignCenter,
+	C2D_DrawRectSolid(0, 0, 0.9f, 400, 30, g_game_palette.alert_bg);
+	C2D_DrawRectSolid(0, 30, 0.9f, 400, 2, g_game_palette.alert_rule);
+	ui_text_ex(NULL, 200 + dx, 8, 0.45f, g_game_palette.alert_text, C2D_AlignCenter,
 		ui_fit(osd_q[0].text, 0.45f, 390));
 }
 
@@ -375,8 +375,8 @@ static void game_draw_top(void *ud)
 	t += 1.0f / 60.0f;
 	float x = 400 - 46 + ui_depth(-0.6f), y = 10, h = 16, w = 13;
 	u8 a = (u8)(200 + 55 * sinf(t * 6));
-	u32 c = C2D_Color32(255, 255, 255, a), sh = C2D_Color32(0, 0, 0, 120);
-	C2D_DrawRectSolid(x - 6, y - 4, 0.8f, 2 * w + 12, h + 8, C2D_Color32(0, 0, 0, 90));
+	u32 c = ((g_game_palette.speed_ink & 0xffffff) | ((u32)a << 24)), sh = g_game_palette.speed_shadow;
+	C2D_DrawRectSolid(x - 6, y - 4, 0.8f, 2 * w + 12, h + 8, g_game_palette.speed_bg);
 	for (int k = 0; k < 2; k++) {
 		float x0 = x + k * w;
 		for (int pass = 0; pass < 2; pass++) {
@@ -995,7 +995,7 @@ static void menu_draw_top(void *ud)
 	const theme_t *th = theme();
 	C2D_DrawRectSolid(0, 0, 0.6f, 400, 240, th->pause_veil);
 	float dx = ui_depth(-0.8f);
-	ui_text_ex(libui_font(), 201 + dx, 87, 1.1f, C2D_Color32(0, 0, 0, 150), C2D_AlignCenter, "PAUSED");   // fixed: shadow
+	ui_text_ex(libui_font(), 201 + dx, 87, 1.1f, theme_alpha(th->shadow,150), C2D_AlignCenter, "PAUSED");   // fixed: shadow
 	ui_text_ex(libui_font(), 200 + dx, 86, 1.1f, th->game_title, C2D_AlignCenter, "PAUSED");
 	ui_text_ex(NULL, 200 + dx, 136, 0.55f, th->game_sub, C2D_AlignCenter, game_title);
 	for (int i = 0; i < 4; i++)
@@ -1274,22 +1274,22 @@ resume:
 static void game_draw_bottom(void *ud)
 {
 	(void)ud;
-	u32 white = C2D_Color32(230, 230, 240, 255);
-	C2D_DrawRectSolid(0, 0, 0.05f, 320, 240, C2D_Color32(0, 0, 0, 255));   // in game it's always black
+	u32 white = g_game_palette.text;
+	C2D_DrawRectSolid(0, 0, 0.05f, 320, 240, g_game_palette.black);   // in game it's always black
 
 	if (g_cfg.show_fps == 2) {
-		ui_rect(125, 184, 70, 30, C2D_Color32(28, 30, 42, 255));
+		ui_rect(125, 184, 70, 30, g_game_palette.panel);
 		ui_text(142, 191, .45f, white, "MENU");
 	} else if (touch_buttons_active() || g_cfg.show_fps == 1)
 		touch_buttons_draw();
 	statsview_draw();
 	if (osd_n) {   // above the touch pads and the FPS counter
-		C2D_DrawRectSolid(0, 200, 0.9f, 320, 22, C2D_Color32(0, 0, 0, 200));
-		ui_text_ex(NULL, 4, 204, 0.45f, osd_q[0].alert ? C2D_Color32(255, 200, 120, 255) : white, 0,
+		C2D_DrawRectSolid(0, 200, 0.9f, 320, 22, g_game_palette.osd_bg);
+		ui_text_ex(NULL, 4, 204, 0.45f, osd_q[0].alert ? g_game_palette.notice : white, 0,
 			ui_fit(osd_q[0].text, 0.45f, 312));
 	}
 	if (!has_audio)
-		ui_text(4, 186, 0.42f, C2D_Color32(255, 160, 120, 255),
+		ui_text(4, 186, 0.42f, g_game_palette.warning,
 			"No sound: run DSP1 once (it saves the 3DS sound firmware)");
 }
 
@@ -1783,6 +1783,7 @@ static bool run_game(const char *path, const char *save_name, const char *title)
 		snprintf(cfg, sizeof(cfg), saveid_provisional ? "%s [?]" : "%s", game_name);
 		config_game_begin(cfg);
 	}
+	theme_game_begin(); // once per launch, before any gameplay drawing
 	log_printf("renderer: GPU\n");
 	if (!video_game_begin()) {
 		log_printf("renderer initialization failed\n");

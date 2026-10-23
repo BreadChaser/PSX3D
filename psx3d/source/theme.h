@@ -6,6 +6,8 @@
 #define TH_RGBA(r, g, b, a) ((u32)(r) | ((u32)(g) << 8) | ((u32)(b) << 16) | ((u32)(a) << 24))
 #define TH_RGB(r, g, b) TH_RGBA(r, g, b, 255)
 
+#include "game_palette.h"
+
 typedef struct {
 	const char *id, *name;       // config.ini value, name shown in Settings (the mock's palette name)
 	u32 menu_bg;                 // menu pages (bottom screen, plain top screens)
@@ -34,6 +36,7 @@ typedef struct {
 	// 0 = none). Unselected icons use theme_icon_dim().
 	u32 icon_a, icon_b, icon_glow;
 	u32 disc_title, disc_rim, disc_inner, disc_outer, disc_mirror[2], disc_hub[2], disc_hole, disc_rainbow[6];
+	game_palette_t game;
 	u32 input_face[4], input_shoulder, input_stick, input_other, input_hide;
 	u32 fx_colour, fx_colour2;
 	u32 shadow, moon, scene_white, silk_light, silk_glint;

@@ -110,6 +110,119 @@ SECTIONS
 		emu.o(.text.emu_audio_ticks .text.emu_frontend_stats)
 		. = . + ((0x360 - .) & 0xfff);
 		emu.o(.text.__wrap_fread)
+		/* Preserve existing per-function cache sets across gameplay palette edits. */
+		. = . + ((0x380 - .) & 0xfff);
+		emu.o(.text.autosave_failed)
+		. = . + ((0x444 - .) & 0xfff);
+		emu.o(.text.save_take)
+		. = . + ((0x588 - .) & 0xfff);
+		emu.o(.text.clip_frame)
+		. = . + ((0x6ac - .) & 0xfff);
+		emu.o(.text.menu_bar)
+		. = . + ((0x734 - .) & 0xfff);
+		emu.o(.text.bottom_backlight)
+		. = . + ((0x7dc - .) & 0xfff);
+		emu.o(.text.state_save_to)
+		. = . + ((0x9d0 - .) & 0xfff);
+		emu.o(.text.clip_game_path.constprop.0)
+		. = . + ((0xa88 - .) & 0xfff);
+		emu.o(.text.clip_start)
+		. = . + ((0xde4 - .) & 0xfff);
+		emu.o(.text.autosave_collect.part.0)
+		. = . + ((0xe9c - .) & 0xfff);
+		emu.o(.text.menu_draw_bottom)
+		. = . + ((0xff0 - .) & 0xfff);
+		emu.o(.text.menu_draw_top)
+		. = . + ((0x160 - .) & 0xfff);
+		emu.o(.text.save_put)
+		. = . + ((0x290 - .) & 0xfff);
+		emu.o(.text.autosave_writer)
+		. = . + ((0x2e0 - .) & 0xfff);
+		emu.o(.text.autosave_start)
+		. = . + ((0x4c8 - .) & 0xfff);
+		emu.o(.text.game_apt)
+		. = . + ((0x7bc - .) & 0xfff);
+		emu.o(.text.emu_game_title)
+		. = . + ((0x7c8 - .) & 0xfff);
+		emu.o(.text.emu_record_start)
+		. = . + ((0x85c - .) & 0xfff);
+		emu.o(.text.emu_osd)
+		. = . + ((0x864 - .) & 0xfff);
+		emu.o(.text.state_load_from)
+		. = . + ((0x8ec - .) & 0xfff);
+		emu.o(.text.emu_state_format)
+		. = . + ((0x928 - .) & 0xfff);
+		emu.o(.text.emu_debug_state)
+		. = . + ((0x978 - .) & 0xfff);
+		emu.o(.text.emu_init)
+		. = . + ((0x9f8 - .) & 0xfff);
+		emu.o(.text.emu_deinit)
+		. = . + ((0xa34 - .) & 0xfff);
+		emu.o(.text.emu_run_game)
+		. = . + ((0x6e0 - .) & 0xfff);
+		emu.o(.text.disc_count)
+		. = . + ((0x70c - .) & 0xfff);
+		emu.o(.text.disc_query)
+		. = . + ((0x7b0 - .) & 0xfff);
+		emu.o(.text.osd_push)
+		. = . + ((0x920 - .) & 0xfff);
+		emu.o(.text.clip_osd)
+		. = . + ((0x9b8 - .) & 0xfff);
+		emu.o(.text.write_file)
+		. = . + ((0xa50 - .) & 0xfff);
+		emu.o(.text.file_id)
+		. = . + ((0xa84 - .) & 0xfff);
+		emu.o(.text.saved_at)
+		. = . + ((0xaac - .) & 0xfff);
+		emu.o(.text.ref_entry)
+		. = . + ((0xad8 - .) & 0xfff);
+		emu.o(.text.sta_retire)
+		. = . + ((0xb80 - .) & 0xfff);
+		emu.o(.text.disc_map)
+		. = . + ((0xbfc - .) & 0xfff);
+		emu.o(.text.ref_of)
+		. = . + ((0xc9c - .) & 0xfff);
+		emu.o(.text.undo_set)
+		. = . + ((0xcdc - .) & 0xfff);
+		emu.o(.text.menu_build)
+		. = . + ((0xf48 - .) & 0xfff);
+		emu.o(.text.base_name)
+		. = . + ((0xf68 - .) & 0xfff);
+		emu.o(.text.disc_names_init)
+		. = . + ((0x0bc - .) & 0xfff);
+		emu.o(.text.explain_failure)
+		. = . + ((0x1a0 - .) & 0xfff);
+		emu.o(.text.undo_resolve)
+		. = . + ((0x304 - .) & 0xfff);
+		emu.o(.text.slot_leftovers)
+		. = . + ((0x354 - .) & 0xfff);
+		emu.o(.text.safety_copy)
+		. = . + ((0x65c - .) & 0xfff);
+		emu.o(.text.alert_draw_top)
+		. = . + ((0x770 - .) & 0xfff);
+		emu.o(.text.slot_paths.constprop.0)
+		. = . + ((0x808 - .) & 0xfff);
+		emu.o(.text.slot_save_over)
+		. = . + ((0x950 - .) & 0xfff);
+		emu.o(.text.emu_osd_alert)
+		. = . + ((0x958 - .) & 0xfff);
+		emu.o(.text.card_trouble_dialog)
+		. = . + ((0xa8c - .) & 0xfff);
+		emu.o(.text.continue_declined)
+		. = . + ((0xce4 - .) & 0xfff);
+		emu.o(.text.card_put_back)
+		. = . + ((0xd60 - .) & 0xfff);
+		emu.o(.text.state_load_file)
+		. = . + ((0x040 - .) & 0xfff);
+		emu.o(.text.state_load)
+		. = . + ((0x0bc - .) & 0xfff);
+		emu.o(.text.ring_restore)
+		. = . + ((0x130 - .) & 0xfff);
+		emu.o(.text.continue_prompt)
+		. = . + ((0x240 - .) & 0xfff);
+		emu.o(.text.undo_run.isra.0)
+		. = . + ((0x5f0 - .) & 0xfff);
+		emu.o(.text.emu_load_error)
 		emu.o(.text .text.*)
 		. = . + ((0x3bc - .) & 0xfff);
 		__psx3d_frontend_hot_gpu = .;
@@ -131,12 +244,140 @@ SECTIONS
 		. = . + ((0x114 - .) & 0xfff);
 		gpustereo_core.o(.text.unlikely.gs_core_frame .text.gs_focus .text.gs_flat .text.unlikely.gs_core_counts .text.unlikely.gs_core_pass_shown)
 		. = . + ((0xc8 - .) & 0xfff);
+		/* Preserve existing per-function cache sets across gameplay palette edits. */
+		. = . + ((0x0c8 - .) & 0xfff);
+		input.o(.text.stats_contains)
+		. = . + ((0x168 - .) & 0xfff);
+		input.o(.text.control_item)
+		. = . + ((0x298 - .) & 0xfff);
+		input.o(.text.button_ink.part.0)
+		. = . + ((0x334 - .) & 0xfff);
+		input.o(.text.touch_map_enabled)
+		. = . + ((0x3a8 - .) & 0xfff);
+		input.o(.text.input_hotkey_combo_name.part.0)
+		. = . + ((0x438 - .) & 0xfff);
+		input.o(.text.input_stick_binding.part.0)
+		. = . + ((0x490 - .) & 0xfff);
+		input.o(.text.touch_mark.part.0)
+		. = . + ((0x51c - .) & 0xfff);
+		input.o(.text.touch_panel_draw.isra.0)
+		. = . + ((0x664 - .) & 0xfff);
+		input.o(.text.input_ps1_name)
+		. = . + ((0x684 - .) & 0xfff);
+		input.o(.text.input_map_factory)
+		. = . + ((0x6a0 - .) & 0xfff);
+		input.o(.text.input_map_key_name)
+		. = . + ((0x6c0 - .) & 0xfff);
+		input.o(.text.input_map_raw)
+		. = . + ((0x754 - .) & 0xfff);
+		input.o(.text.input_map_get)
+		. = . + ((0x8c8 - .) & 0xfff);
+		input.o(.text.touch_parts)
+		. = . + ((0xa34 - .) & 0xfff);
+		input.o(.text.touch_button)
+		. = . + ((0xdf8 - .) & 0xfff);
+		input.o(.text.input_map_set)
+		. = . + ((0xeec - .) & 0xfff);
+		input.o(.text.input_map_cycle)
+		. = . + ((0xf88 - .) & 0xfff);
+		input.o(.text.input_map_reset)
+		. = . + ((0x008 - .) & 0xfff);
+		input.o(.text.input_hotkey_factory)
+		. = . + ((0x018 - .) & 0xfff);
+		input.o(.text.input_hotkey_get)
+		. = . + ((0x034 - .) & 0xfff);
+		input.o(.text.input_hotkey_set)
+		. = . + ((0x050 - .) & 0xfff);
+		input.o(.text.input_hotkey_key_name)
+		. = . + ((0x070 - .) & 0xfff);
+		input.o(.text.input_hotkey_combo_name)
+		. = . + ((0x08c - .) & 0xfff);
+		input.o(.text.input_hotkey_load)
+		. = . + ((0x114 - .) & 0xfff);
+		input.o(.text.input_gameplay)
+		. = . + ((0x144 - .) & 0xfff);
+		input.o(.text.input_remote_key)
+		. = . + ((0x1c0 - .) & 0xfff);
+		input.o(.text.input_poll)
+		. = . + ((0x970 - .) & 0xfff);
+		input.o(.text.input_controller_apply)
+		. = . + ((0x9c4 - .) & 0xfff);
+		input.o(.text.input_keys_down)
+		. = . + ((0x9d4 - .) & 0xfff);
+		input.o(.text.input_keys_held)
+		. = . + ((0x9e4 - .) & 0xfff);
+		input.o(.text.input_fast_forward)
+		. = . + ((0xa40 - .) & 0xfff);
+		input.o(.text.touch_button_lit)
+		. = . + ((0xa8c - .) & 0xfff);
+		input.o(.text.touch_rect_draw)
+		. = . + ((0xc68 - .) & 0xfff);
+		input.o(.text.input_fast_forward_off)
+		. = . + ((0xc80 - .) & 0xfff);
+		input.o(.text.input_rewind)
+		. = . + ((0xcb8 - .) & 0xfff);
+		input.o(.text.input_state)
+		. = . + ((0xfc0 - .) & 0xfff);
+		input.o(.text.touch_buttons_active)
+		. = . + ((0xfd4 - .) & 0xfff);
+		input.o(.text.input_touch_begin)
+		. = . + ((0x130 - .) & 0xfff);
+		input.o(.text.input_touch_disc_log)
+		. = . + ((0x200 - .) & 0xfff);
+		input.o(.text.input_touch_reset)
+		. = . + ((0x248 - .) & 0xfff);
+		input.o(.text.input_stats_touched)
+		. = . + ((0x260 - .) & 0xfff);
+		input.o(.text.menu_touched)
+		. = . + ((0x278 - .) & 0xfff);
+		input.o(.text.input_touch_changed)
+		. = . + ((0x3a8 - .) & 0xfff);
+		input.o(.text.input_controls_count)
+		. = . + ((0x3d0 - .) & 0xfff);
+		input.o(.text.input_control_slot)
+		. = . + ((0x3e4 - .) & 0xfff);
+		input.o(.text.input_controls_help)
+		. = . + ((0x444 - .) & 0xfff);
+		input.o(.text.input_control_label)
+		. = . + ((0x4f0 - .) & 0xfff);
+		input.o(.text.input_control_value)
+		. = . + ((0x680 - .) & 0xfff);
+		input.o(.text.input_control_color)
+		. = . + ((0x704 - .) & 0xfff);
+		input.o(.text.input_control_cycle)
+		. = . + ((0x8b4 - .) & 0xfff);
+		input.o(.text.touch_buttons_draw)
+		. = . + ((0x460 - .) & 0xfff);
+		input.o(.text.input_control_key)
+		. = . + ((0x4e0 - .) & 0xfff);
+		input.o(.text.config_control_overridden)
 		input.o(.text .text.*)
 		. = . + ((0x210 - .) & 0xfff);
 		__psx3d_frontend_hot_queue = .;
 		renderqueue.o(.text .text.*)
 		. = . + ((0x24c - .) & 0xfff);
 		__psx3d_frontend_hot_stats = .;
+		/* Preserve existing per-function cache sets across gameplay palette edits. */
+		. = . + ((0x24c - .) & 0xfff);
+		statsview.o(.text.parse)
+		. = . + ((0x2ec - .) & 0xfff);
+		statsview.o(.text.statsview_collecting)
+		. = . + ((0x35c - .) & 0xfff);
+		statsview.o(.text.statsview_begin)
+		. = . + ((0x430 - .) & 0xfff);
+		statsview.o(.text.statsview_frame)
+		. = . + ((0x4b8 - .) & 0xfff);
+		statsview.o(.text.statsview_emulated)
+		. = . + ((0x4c8 - .) & 0xfff);
+		statsview.o(.text.statsview_update)
+		. = . + ((0xbc0 - .) & 0xfff);
+		statsview.o(.text.statsview_draw)
+		. = . + ((0xeb0 - .) & 0xfff);
+		statsview.o(.text.statsview_cycle)
+		. = . + ((0xf94 - .) & 0xfff);
+		statsview.o(.text.statsview_touch)
+		. = . + ((0xfbc - .) & 0xfff);
+		statsview.o(.text.statsview_redraw)
 		statsview.o(.text .text.*)
 		. = . + ((0xb90 - .) & 0xfff);
 		__psx3d_frontend_hot_video = .;
@@ -404,6 +645,7 @@ SECTIONS
 	/* RTT descriptors are deliberately outside the established core BSS.
 	   Keep them in startup's zero range without turning .bss into PROGBITS. */
 	.pica_rtt_bss (NOLOAD) : { *(.pica_rtt.bss) } : data
+	.theme_game_bss ALIGN(0x1000) (NOLOAD) : { *(.theme_game.bss) } : data
 	__bss_end__ = .;
 
 	__end__ = ABSOLUTE(.) ;

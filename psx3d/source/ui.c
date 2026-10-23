@@ -212,20 +212,8 @@ static void symbol_line(float x, float y, float x2, float y2, float stroke, u32 
 // Shared action palette: touch accents and symbols, Controls highlights/icons.
 u32 ui_input_color(int id)
 {
-	unsigned hex = 0x9aa5c8; // soft lavender / grey-blue for other actions
-	switch (id) {
-	// These four PlayStation hues belong only to their face buttons.
-	case RETRO_DEVICE_ID_JOYPAD_X: hex = 0x2fa36b; break;
-	case RETRO_DEVICE_ID_JOYPAD_A: hex = 0xd0313b; break;
-	case RETRO_DEVICE_ID_JOYPAD_B: hex = 0x2f6fc4; break;
-	case RETRO_DEVICE_ID_JOYPAD_Y: hex = 0xd77fb5; break;
-	// Library-inspired synthwave hues, separate from the PS1 face palette.
-	case RETRO_DEVICE_ID_JOYPAD_L: case RETRO_DEVICE_ID_JOYPAD_R:
-	case RETRO_DEVICE_ID_JOYPAD_L2: case RETRO_DEVICE_ID_JOYPAD_R2: hex = 0xb05ade; break;
-	case RETRO_DEVICE_ID_JOYPAD_L3: case RETRO_DEVICE_ID_JOYPAD_R3: hex = 0x45bfd0; break;
-	case INPUT_BIND_HIDE: hex = 0x2b3360; break;
-	}
-	return C2D_Color32(hex>>16, hex>>8, hex, 255);
+ // Bounds include Hide (-1) and the three frontend actions (16..18).
+ return g_input_palette[id >= -1 && id <= 18 ? id+1 : 3];
 }
 
 bool ui_input_symbol(int id, float x, float y, float size, u32 color)

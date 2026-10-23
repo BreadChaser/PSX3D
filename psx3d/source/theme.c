@@ -7,7 +7,17 @@
 #define C TH_RGB
 #define CA TH_RGBA
 
+#define ORIGINAL_GAME { \
+ .bg=C(6,9,24), .title=C(235,238,255), .ink=C(43,51,96), .mark=C(200,207,240), \
+ .border=C(31,42,90), .face=C(12,18,48), .gradient={C(40,58,130),C(24,34,84)}, .pressed_add=C(89,89,89), \
+ .stick_rim=C(43,58,140), .stick_face=C(8,12,34), .stick_grid=CA(90,63,184,179), .stick_thumb=C(111,134,232), \
+ .stripe={C(208,49,59),C(232,178,28),C(47,163,107),C(47,111,196)}, \
+ .stats=C(175,183,198), .stats_focus=C(125,215,185), .budget_bg=C(30,35,42), .budget_over=C(220,130,90), .budget_ok=C(85,170,140), \
+ .text=C(230,230,240), .panel=C(28,30,42), .notice=C(255,200,120), .warning=C(255,160,120), \
+ .alert_bg=CA(20,8,4,225), .alert_rule=C(255,170,60), .alert_text=C(255,225,170), \
+ .black=C(0,0,0), .osd_bg=CA(0,0,0,200), .speed_ink=C(255,255,255), .speed_shadow=CA(0,0,0,120), .speed_bg=CA(0,0,0,90) }
 #define ORIGINAL \
+ .game=ORIGINAL_GAME, \
 	.disc_title=C(236,236,242), .disc_rim=C(40,40,48), .disc_inner=C(26,24,34), .disc_outer=C(10,9,14), \
 	.disc_mirror={C(70,72,84),C(30,30,38)}, .disc_hub={C(120,124,136),C(60,62,72)}, .disc_hole=C(6,6,10), \
 	.disc_rainbow={C(255,60,90),C(255,170,40),C(220,255,60),C(50,230,170),C(60,140,255),C(170,80,255)}, \
@@ -41,7 +51,8 @@
 #pragma GCC diagnostic ignored "-Woverride-init"
 static const theme_t themes[] = {
 	{ ORIGINAL, .id = "original", .name = "Original (v0.5.0)", .fx_colour = C(255, 70, 210), .fx_colour2 = C(170, 80, 255) },
-	{ ORIGINAL, .id = "midnight-teal", .name = "Midnight teal", .fx_colour = C(120, 230, 225), .fx_colour2 = C(60, 120, 200),
+	{ ORIGINAL, .id = "midnight-teal", .name = "Midnight teal",
+		.input_shoulder=C(60,170,180), .input_stick=C(100,225,215), .input_other=C(110,160,170), .input_hide=C(20,70,80), .fx_colour = C(120, 230, 225), .fx_colour2 = C(60, 120, 200),
 		.menu_bg = C(4, 14, 20), .hl_top = CA(20, 92, 110, 235), .hl_bottom = CA(10, 50, 64, 235),
 		.hl_glow = CA(40, 180, 200, 40), .value = C(110, 210, 220), .muted = C(110, 160, 170),
 		.help_bar = C(40, 190, 200), .scrollbar = C(40, 110, 120), .header_right = C(90, 140, 150),
@@ -52,7 +63,8 @@ static const theme_t themes[] = {
 		.card_stack = C(30, 64, 74), .folder = C(150, 215, 220),
 		.version_ink = CA(120, 170, 180, 160), .logo_3d = CA(90, 220, 220, 200),
 		.icon_a = C(150, 250, 230), .icon_b = C(60, 140, 235), .icon_glow = CA(90, 220, 230, 130) },
-	{ ORIGINAL, .id = "ps1-grey", .name = "PS1 grey", .fx_colour = C(205, 212, 230), .fx_colour2 = C(140, 150, 180),
+	{ ORIGINAL, .id = "ps1-grey", .name = "PS1 grey",
+		.input_shoulder=C(175,175,190), .input_stick=C(220,220,230), .input_other=C(150,150,160), .input_hide=C(80,80,90), .fx_colour = C(205, 212, 230), .fx_colour2 = C(140, 150, 180),
 		.menu_bg = C(28, 28, 32), .hl_top = CA(90, 90, 100, 235), .hl_bottom = CA(60, 60, 70, 235),
 		.hl_glow = CA(200, 200, 210, 30), .value = C(200, 200, 215), .muted = C(150, 150, 160),
 		.help_bg = CA(24, 24, 28, 230), .help_bar = C(200, 200, 210), .header_right = C(140, 140, 150),
@@ -63,7 +75,8 @@ static const theme_t themes[] = {
 		.card_stack = C(78, 78, 88), .folder = C(200, 200, 210),
 		.version_ink = CA(160, 160, 170, 160), .logo_3d = CA(200, 205, 220, 200),
 		.icon_a = C(245, 246, 252), .icon_b = C(135, 145, 180), .icon_glow = CA(210, 215, 235, 90) },
-	{ ORIGINAL, .id = "sunset-magenta", .name = "Sunset magenta", .fx_colour = C(255, 130, 200), .fx_colour2 = C(255, 190, 140),
+	{ ORIGINAL, .id = "sunset-magenta", .name = "Sunset magenta",
+		.input_shoulder=C(220,90,190), .input_stick=C(255,160,210), .input_other=C(190,130,190), .input_hide=C(90,30,100), .fx_colour = C(255, 130, 200), .fx_colour2 = C(255, 190, 140),
 		.menu_bg = C(16, 4, 26), .hl_top = CA(120, 30, 120, 235), .hl_bottom = CA(60, 14, 74, 235),
 		.hl_glow = CA(255, 80, 200, 40), .value = C(255, 140, 210), .muted = C(190, 130, 190),
 		.help_bar = C(255, 80, 180), .help_bg = CA(16, 4, 26, 225), .header_right = C(170, 110, 170),
@@ -74,7 +87,8 @@ static const theme_t themes[] = {
 		.card_stack = C(74, 32, 82), .folder = C(235, 170, 220),
 		.version_ink = CA(190, 140, 190, 160), .logo_3d = CA(255, 150, 205, 200),
 		.icon_a = C(255, 205, 140), .icon_b = C(255, 70, 170), .icon_glow = CA(255, 110, 190, 150) },
-	{ ORIGINAL, .id = "high-contrast", .name = "High contrast", .fx_colour = C(200, 225, 255), .fx_colour2 = C(70, 110, 210),
+	{ ORIGINAL, .id = "high-contrast", .name = "High contrast",
+		.input_shoulder=C(220,230,255), .input_stick=C(255,255,255), .input_other=C(215,215,225), .input_hide=C(120,120,140), .fx_colour = C(200, 225, 255), .fx_colour2 = C(70, 110, 210),
 		.menu_bg = C(0, 0, 0), .hl_top = CA(30, 70, 200, 255), .hl_bottom = CA(20, 50, 160, 255),
 		.hl_glow = CA(0, 0, 0, 0), .row_dim = { 215, 215, 225 }, .value = C(170, 210, 255),
 		.muted = C(190, 200, 220), .hint_lib = C(170, 180, 200), .hint_menu = C(170, 180, 200),
@@ -86,6 +100,7 @@ static const theme_t themes[] = {
 		.logo = CA(255, 255, 255, 235), .logo_3d = CA(120, 190, 255, 235),
 		.icon_a = C(255, 255, 255), .icon_b = C(255, 255, 255), .icon_glow = CA(120, 170, 255, 0) },
 	{ ORIGINAL, .id = "phosphor", .name = "Phosphor",
+		.input_shoulder=C(70,200,110), .input_stick=C(150,255,180), .input_other=C(100,170,120), .input_hide=C(20,80,40),
 		.menu_bg = CA(2, 10, 5, 255),
 		.header_title = CA(235, 238, 255, 255),
 		.header_right = CA(90, 150, 105, 255),
@@ -122,6 +137,7 @@ static const theme_t themes[] = {
 		.icon_b = CA(40, 200, 100, 255),
 		.icon_glow = CA(80, 255, 140, 140) },
 	{ ORIGINAL, .id = "eclipse", .name = "Eclipse",
+		.input_shoulder=C(200,175,145), .input_stick=C(245,220,180), .input_other=C(160,150,170), .input_hide=C(60,52,50),
 		.menu_bg = CA(6, 5, 12, 255),
 		.header_title = CA(235, 238, 255, 255),
 		.header_right = CA(150, 140, 160, 255),
@@ -158,6 +174,7 @@ static const theme_t themes[] = {
 		.icon_b = CA(140, 120, 255, 255),
 		.icon_glow = CA(255, 225, 185, 110) },
 	{ ORIGINAL, .id = "ember", .name = "Ember",
+		.input_shoulder=C(230,110,50), .input_stick=C(255,190,110), .input_other=C(190,140,110), .input_hide=C(90,36,16),
 		.menu_bg = CA(14, 5, 3, 255),
 		.header_title = CA(235, 238, 255, 255),
 		.header_right = CA(170, 120, 95, 255),
@@ -198,7 +215,26 @@ static const theme_t themes[] = {
 
 int theme_count(void) { return NTHEMES; }
 const theme_t *theme_get(int i) { return &themes[i >= 0 && i < NTHEMES ? i : 0]; }
+// Refreshed only on config load, theme selection or game launch. ui_input_color itself
+// has no config/theme lookup, including when called by the touch controller.
+u32 g_input_palette[20] __attribute__((section(".theme_game.bss")));
 const theme_t *theme(void) { return theme_get(g_cfg.theme); }
+void theme_menu_refresh(void)
+{
+ const theme_t *t = theme_get(g_cfg.theme);
+ g_input_palette[0] = t->input_hide;
+ for (int i = 1; i < 20; i++) g_input_palette[i] = t->input_other;
+ g_input_palette[RETRO_DEVICE_ID_JOYPAD_X+1] = t->input_face[0];
+ g_input_palette[RETRO_DEVICE_ID_JOYPAD_A+1] = t->input_face[1];
+ g_input_palette[RETRO_DEVICE_ID_JOYPAD_B+1] = t->input_face[2];
+ g_input_palette[RETRO_DEVICE_ID_JOYPAD_Y+1] = t->input_face[3];
+ g_input_palette[RETRO_DEVICE_ID_JOYPAD_L+1] = t->input_shoulder;
+ g_input_palette[RETRO_DEVICE_ID_JOYPAD_R+1] = t->input_shoulder;
+ g_input_palette[RETRO_DEVICE_ID_JOYPAD_L2+1] = t->input_shoulder;
+ g_input_palette[RETRO_DEVICE_ID_JOYPAD_R2+1] = t->input_shoulder;
+ g_input_palette[RETRO_DEVICE_ID_JOYPAD_L3+1] = t->input_stick;
+ g_input_palette[RETRO_DEVICE_ID_JOYPAD_R3+1] = t->input_stick;
+}
 
 int theme_from_id(const char *id)
 {

@@ -542,6 +542,7 @@ static void change(settings_ui_t *s, int item, int dir)
 	case F_THEME:
 		// the menus redraw in the new colours at once
 		g_cfg.theme = (g_cfg.theme + dir + theme_count()) % theme_count();
+		theme_menu_refresh();
 		break;
 	case F_SIDE:
 		g_cfg.touch_click_left ^= 1;

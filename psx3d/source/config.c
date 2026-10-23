@@ -124,6 +124,7 @@ static void set_defaults(void)
 	strcpy(g_cfg.last_dir, "sdmc:/");
 	g_cfg.smooth = factory("smooth");
 	g_cfg.theme = factory("theme");
+	theme_menu_refresh();
 	g_cfg.show_fps = factory("show_fps");
 	g_cfg.stereo = factory("stereo");
 	g_cfg.stereo_screen = factory("stereo_style");
@@ -232,6 +233,7 @@ void config_load(void)
 
 	}
 	fclose(f);
+	theme_menu_refresh();
 	if(g_cfg.touch_stick < -1 || g_cfg.touch_stick > 1) g_cfg.touch_stick = -1;
 	g_cfg.bottom_off = 1;
 	config_sync_stereo();

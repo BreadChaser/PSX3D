@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "statsview.h"
+#include "game_palette.h"
 #include "devtools.h"
 
 #define ROWS 14
@@ -122,29 +123,27 @@ void statsview_update(const statsview_sample *s)
 void statsview_draw(void)
 {
 	if (!g_cfg.show_fps) return;
-	u32 color = C2D_Color32(175, 183, 198, 255);
+	u32 color = g_game_palette.stats;
 	if (g_cfg.show_fps == 1) {
 		bool left = g_new3ds && g_cfg.touch_click_left;
 		float x = left ? 308 : 12;
 		u32 align = left ? C2D_AlignRight : 0;
-		u32 ink = C2D_Color32(43, 51, 96, 255);
+		u32 ink = g_game_palette.ink;
 		ui_text_pixels(libui_font(), x, 204, 16, 0, 62, ink, align, brief);
 		ui_text_pixels(NULL, x, 216, 9, 0, -62, ink, align, speed_label);
-		const unsigned colors[] = { 0xd0313b, 0xe8b21c, 0x2fa36b, 0x2f6fc4 };
 		for (int j = 0; j < 4; j++) {
-			unsigned c = colors[j];
 			C2D_DrawRectSolid((left ? 246 : 12)+16*j, 220, .5f, 14, 2,
-				C2D_Color32(c>>16, c>>8, c, 255));
+				g_game_palette.stripe[j]);
 		}
 		return;
 	}
 	if (!buf) return;
 	for (int i=0; i<ROWS; i++)
 		C2D_DrawText(&text[i], C2D_WithColor, 6, 3+i*12, .6f, .38f, .38f,
-			i == 1 ? C2D_Color32(125,215,185,255) : color);
+			i == 1 ? g_game_palette.stats_focus : color);
 	float f = budget_fraction > 1 ? 1 : budget_fraction;
-	ui_rect(6, 176, 308, 3, C2D_Color32(30,35,42,255));
-	ui_rect(6, 176, 308*f, 3, budget_fraction > 1 ? C2D_Color32(220,130,90,255) : C2D_Color32(85,170,140,255));
+	ui_rect(6, 176, 308, 3, g_game_palette.budget_bg);
+	ui_rect(6, 176, 308*f, 3, budget_fraction > 1 ? g_game_palette.budget_over : g_game_palette.budget_ok);
 	C2D_DrawText(&footer, C2D_WithColor, 6, 222, .6f, .38f, .38f, color);
 	// Options are sampled with the panel, never looked up in the draw path.
 }
