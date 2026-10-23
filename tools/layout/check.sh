@@ -49,7 +49,9 @@ echo "grown: $(size "$grown")"
 status=0
 echo "== frontend grown (code, constants, data, bss)"
 python3 "$ROOT/tools/layout/compare.py" "$base" "$grown" || status=1
+python3 "$ROOT/tools/layout/check-pinned.py" "$base" "$grown" "$WORK/grown/psx3d/build" || status=1
 echo "== frontend grown and a new libm function linked (libraries may move, the core may not)"
 python3 "$ROOT/tools/layout/compare.py" --allow-lib-moves "$base" "$libm" || status=1
+python3 "$ROOT/tools/layout/check-pinned.py" "$base" "$libm" "$WORK/libm/psx3d/build" || status=1
 [ -n "${1:-}" ] || rm -rf "$WORK"
 exit $status

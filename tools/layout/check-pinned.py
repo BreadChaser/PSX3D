@@ -24,6 +24,10 @@ b, n = syms(base), syms(new)
 bad = total = 0
 for o in objs:
     names = defined(o)
+    # Partial shared-UI objects: only explicitly selected per-frame primitives
+    # belong to this block; the rest remain movable menu code.
+    if o in ('ui', 'libui'):
+        names &= set(re.findall(r'\b' + o + r'\.o\(\.text\.([a-z_0-9.]+)\)', ld))
     moved = [s for s in names if s in b and s in n and not ({v & 0xfff for v in b[s]} & {v & 0xfff for v in n[s]})]
     same = [s for s in names if s in b and s in n and b[s] & n[s]]
     total += len(names)

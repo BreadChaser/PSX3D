@@ -134,3 +134,13 @@ drifting ≤0.4%. CPU counters for core-first-2: instruction cache misses follow
 the presets build's pattern; data-hazard stalls are still +0.4–1.6% in every
 scene, a small data-side residue with no identified cause (core and library
 data keep RC4's cache sets).
+
+The animated-theme integration also pins the shared `ui.o` primitives called by
+in-game touch controls and diagnostics (`symbol_line`, `ui_begin`, text drawing,
+`ui_fit`, `ui_rect`, `ui_input_color`, `ui_input_symbol`) and `libui_font` to their
+v0.5.1 rc9 page offsets. These helpers otherwise moved with library/menu code,
+even when the previously pinned frontend objects passed their check. The rest
+of these two objects remains menu code. `tools/layout/check-pinned.py` checks the
+explicit selections as well as the complete hot objects. Local symbol names can
+repeat across objects; its symbol reader retains all definitions rather than
+silently substituting the last unrelated static function with the same name.

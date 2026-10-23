@@ -153,6 +153,30 @@ SECTIONS
 		   none of it. */
 		uploadskip.o(.text .text.*)
 		display.o(.text .text.*)
+		/* Shared UI primitives are also called by gameplay touch controls/FPS.
+		   Keep their rc9 cache sets when menu code grows or shrinks. */
+		. = . + ((0xfc0 - .) & 0xfff);
+		ui.o(.text.symbol_line)
+		. = . + ((0x180 - .) & 0xfff);
+		ui.o(.text.ui_begin)
+		. = . + ((0x190 - .) & 0xfff);
+		ui.o(.text.ui_text)
+		. = . + ((0x21c - .) & 0xfff);
+		ui.o(.text.ui_fit)
+		. = . + ((0x3f0 - .) & 0xfff);
+		ui.o(.text.ui_rect)
+		. = . + ((0x410 - .) & 0xfff);
+		ui.o(.text.ui_text_ex)
+		. = . + ((0x494 - .) & 0xfff);
+		ui.o(.text.ui_text_wrap)
+		. = . + ((0x6b8 - .) & 0xfff);
+		ui.o(.text.ui_text_pixels)
+		. = . + ((0xd38 - .) & 0xfff);
+		ui.o(.text.ui_input_color)
+		. = . + ((0xd70 - .) & 0xfff);
+		ui.o(.text.ui_input_symbol)
+		. = . + ((0xdbc - .) & 0xfff);
+		libui.o(.text.libui_font)
 		__psx3d_frontend_hot_end = .;
 		/* The rest of the frontend, in link order. */
 		*(.text)
