@@ -15,6 +15,7 @@ Speed figures are for specific saved scenes; see [Performance](README.md#perform
 - New: European and Japanese discs of the tested games get their settings too.
 - New: Real 3D gives 2D games and menus layered depth; logos, movies and stills keep screen depth.
 - New: covers show at once while you scroll; games without box art show a disc with their title.
+- New: Settings > Display > 3D (New 3DS): Real 3D or Screen depth, the steadier v0.5.0 style with the whole picture behind the screen.
 - Fixed: Real 3D cracks between polygons, blurry logos and jumping text.
 - Fixed: Real 3D flicker and sliced logos in 2D games (Street Fighter Alpha, Castlevania's left edge); busy 2D fighters show screen depth.
 - Faster: Old 3DS in busy scenes, about 4% on average: Crash Bandicoot 2 76% to 85% game speed, Silent Hill 77% to 87% (café, Auto), Gran Turismo 2 54% to 58%.
