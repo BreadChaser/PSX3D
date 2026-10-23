@@ -20,6 +20,7 @@ Speed figures are for specific saved scenes; see [Performance](README.md#perform
 - Faster: Old 3DS in busy scenes, about 4% on average: Crash Bandicoot 2 76% to 85% game speed, Silent Hill 77% to 87% (café, Auto), Gran Turismo 2 54% to 58%.
 - Fixed: the picture sits where a TV shows it, including borders, 480i and PAL movies.
 - Fixed: leftover pictures above and below Resident Evil 2 movies with frameskip on.
+- Fixed: Resident Evil 2 showing the previous camera view (missing or doubled characters) after a camera cut.
 - Fixed: a possible New 3DS crash with Real 3D in busy game start-ups (Crash Bandicoot, Harvest Moon).
 - Fixed: memory cards are checked before a backup is replaced; damaged cards ask what to do.
 - Known: Play together comes in a later version.
