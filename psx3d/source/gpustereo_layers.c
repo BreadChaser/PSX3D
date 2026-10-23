@@ -17,6 +17,10 @@
 #define LC_W (1024 / LC)
 #define LC_H (512 / LC)
 static uint64_t *lcell;
+// per cell, the last level (+1) a primitive that is not the base drew there, in
+// any pass: the crack fill's neighbours (a pass's base clears lcell first, and
+// the neighbour on the left may come later in the pass)
+static uint8_t *lnear;
 #ifdef PSX3D_SIM
 unsigned long long lay_cells, lay_prims, lay_tris;   // work counters (simulator)
 #define LAY_COUNT(v, n) (v += (n))
@@ -105,6 +109,7 @@ static struct {                      // the primitive being drawn
 	int ntri;                      // its triangles so far
 	float share, step;
 	int left, right;
+	uint8_t near;                  // what it writes into lnear (0: nothing)
 	uint64_t cell;                 // what its triangles write (0: nothing)
 } lprev;
 // One depth per level for all buffers (they show the same scene); the
@@ -160,6 +165,8 @@ static void lay_reset(void)
 	lmap_used = false;
 	if (lcell)
 		memset(lcell, 0, LC_W * LC_H * sizeof(*lcell));
+	if (lnear)
+		memset(lnear, 0, LC_W * LC_H);
 	lgen = 1;
 	lpass = 0;
 	memset(lsegs, 0, LAY_SEGS * sizeof(*lsegs));
@@ -365,8 +372,11 @@ static float lay_tri(const gs_vtx *v, bool first)
 	if (joined) {   // the same primitive: its level, its cells
 		if (lprev.cell)
 			for (int y = cy0; y <= cy1; y++)
-				for (int x = cx0; x <= cx1; x++)
+				for (int x = cx0; x <= cx1; x++) {
 					lcell[y * LC_W + x] = lprev.cell;
+					if (lprev.near)
+						lnear[y * LC_W + x] = lprev.near;
+				}
 		lleft = lprev.left;
 		lright = lprev.right;
 		lstep = lprev.step;
@@ -379,6 +389,7 @@ static float lay_tri(const gs_vtx *v, bool first)
 	// with what the pass has drawn so far.
 	if ((v[0].rgba >> 24) == 0) {
 		lprev.cell = 0;
+		lprev.near = 0;
 		lprev.left = lleft = s == &slots[LAY_SLOTS] ? s->edge : s->x;
 		lprev.share = (s == &slots[LAY_SLOTS] ? s->map : lshow)[s->shown >= s->start ? 0 : s->scur];
 		lprev.step = lstep = 0;
@@ -476,12 +487,16 @@ static float lay_tri(const gs_vtx *v, bool first)
 		s->ssegmax = h > s->ssegmax ? h : s->ssegmax;
 	}
 	h = h < LAY_LEVELS - 1 ? h : LAY_LEVELS - 1;
+	lprev.near = !big ? (uint8_t)(h + 1) : 0;
 	if (!big || h == 0) {
 		cell = (uint64_t)h | (uint64_t)n << 8 | (uint64_t)lseg << 16 | (uint64_t)pid << 32;
 		s->top = h > s->top ? h : s->top;
 		for (int y = cy0; y <= cy1; y++)
-			for (int x = cx0; x <= cx1; x++)
+			for (int x = cx0; x <= cx1; x++) {
 				lcell[y * LC_W + x] = cell;
+				if (lprev.near)
+					lnear[y * LC_W + x] = lprev.near;
+			}
 	}
 	lprev.cell = cell;
 	const float *map = s == &slots[LAY_SLOTS] ? s->map : lshow;
@@ -489,12 +504,14 @@ static float lay_tri(const gs_vtx *v, bool first)
 	// Crack fill (lay_shift) only where the neighbour on the left is nearer:
 	// tiles of one layer next to each other move together, and stretching
 	// every one of them by the step cut the picture into bands.
+	// (cells are marked a pixel in from each edge: the neighbour's last
+	// column of cells is the one with its pixel px0 - 2)
 	float nearer = map[h];
-	if (px0 >= 1)
-		for (int y = cy0, x = (px0 - 1) / LC; y <= cy1; y++) {
-			uint64_t c = lcell[y * LC_W + x];
-			if (c && C_SEG(c) != lseg && map[C_H(c)] < nearer)
-				nearer = map[C_H(c)];
+	if (px0 >= 2)
+		for (int y = cy0, x = (px0 - 2) / LC; y <= cy1; y++) {
+			unsigned v = lnear[y * LC_W + x];
+			if (v && map[v - 1] < nearer)
+				nearer = map[v - 1];
 		}
 	if (segfirst && lsegcur && s != &slots[LAY_SLOTS]) {
 		// a piece where it was last pass: did it move to another depth? (the
@@ -533,13 +550,14 @@ GS_COLD bool __wrap_gs_core_alloc(void)
 {
 	if (!lcell) {
 		lcell = calloc(LC_W * LC_H, sizeof(*lcell));
+		lnear = calloc(LC_W * LC_H, 1);
 		slots = calloc(LAY_SLOTS + 1, sizeof(*slots));
 		lsegs = calloc(LAY_SEGS, sizeof(*lsegs));
-		if (lcell && slots && lsegs)
+		if (lcell && lnear && slots && lsegs)
 			lay_reset();
 		else {
-			free(lcell); free(slots); free(lsegs);
-			lcell = NULL; slots = NULL; lsegs = NULL;
+			free(lcell); free(lnear); free(slots); free(lsegs);
+			lcell = NULL; lnear = NULL; slots = NULL; lsegs = NULL;
 		}
 	}
 	return __real_gs_core_alloc() && lcell;
@@ -548,8 +566,8 @@ GS_COLD bool __wrap_gs_core_alloc(void)
 GS_COLD void __wrap_gs_core_free(void)
 {
 	__real_gs_core_free();
-	free(lcell); free(slots); free(lsegs);
-	lcell = NULL; slots = NULL; lsegs = NULL;
+	free(lcell); free(lnear); free(slots); free(lsegs);
+	lcell = NULL; lnear = NULL; slots = NULL; lsegs = NULL;
 	lstrength = 0;
 }
 
