@@ -63,7 +63,7 @@ static const char *const tips[] = {
  [F_RECORD]="Capture 30 seconds for troubleshooting.", [F_TONE]="Play a tone to check audio output.",
  [F_THEME]="Change the colours of the menus.",
  [F_FOLDER]="Pick the folder the library shows.",
- [F_STEREO]="Screen depth: the whole picture sits behind the screen.",
+ [F_STEREO]="Real 3D: objects at their own depth. Experimental: can be slower in busy games.",
 };
 // Longer help, shown on the top screen while the row is selected.
 static const char *const helps[] = {
@@ -77,7 +77,7 @@ static const char *const helps[] = {
  [F_RECORD]="Record 30 seconds of game audio for troubleshooting.",
  [F_TONE]="Play a steady tone to check audio output.",
  [F_FOLDER]="The folder on the SD card that the library lists. Opens the folder browser; you can also start a game from there.",
- [F_STEREO]="Use the 3D slider to turn 3D on and set its strength. Real 3D gives every object its own depth. Screen depth puts the whole picture behind the screen: steadier, less depth.",
+ [F_STEREO]="Use the 3D slider to turn 3D on and set its strength. Screen depth puts the whole picture behind the screen. Real 3D gives every object its own depth; it is experimental and can be slower in busy games.",
  [F_THEME]="Choose the colours of the menus and the library backdrop. Synthwave is the original look; the others are calmer. Game pictures and cover art are not changed.",
 };
 static const char *const category_tips[] = {
@@ -330,7 +330,7 @@ static const char *row_value(int i, void *ud)
 	case F_FPS:
 		return (const char *const[]){"Off", "FPS", "Detailed"}[g_cfg.show_fps];
 	case F_STEREO:
-		return g_cfg.stereo_screen ? "Screen depth" : "Real 3D";
+		return g_cfg.stereo_screen ? "Screen depth" : "Real 3D (experimental)";
 	case F_THEME:
 		return theme()->name;
 	case F_FOLDER: {

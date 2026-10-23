@@ -57,8 +57,9 @@ no BIOS file.
 
 ### New 3DS extras
 
-- **Real 3D** (experimental): raise the 3D slider and each object gets its own
-  depth, drawn from the game's own 3D data.
+- **3D**: raise the 3D slider and the picture sits behind the screen. Pick
+  **Real 3D** (experimental) in Settings > Display > 3D and each object gets its
+  own depth, drawn from the game's own 3D data; it can be slower in busy games.
 - **Rewind**: on by default; hold the rewind button to go back a few seconds.
 - **Faster PS1 processor** for games that slowed down on a real PlayStation
   (Crash Team Racing, Gran Turismo 2, Silent Hill, Need for Speed: High Stakes),
