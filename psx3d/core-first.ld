@@ -117,7 +117,13 @@ SECTIONS
 		gpu_cache.o(.text .text.*)
 		gpustereo.o(.text .text.*)
 		. = . + ((0xa58 - .) & 0xfff);
-		gpustereo_core.o(.text .text.*)
+		/* Real 3D (New 3DS only) between gpustereo.o and input.o: the
+		   functions the Old 3DS runs every frame (gs_core_frame to
+		   gs_core_pass_shown) from RC9's address of gs_core_frame; the
+		   capture and the shift come with the rest of the frontend. */
+		gpustereo_core.o(.text .text.vput .text.vget .text.unlikely.gs_core_alloc .text.unlikely.gs_core_free .text.unlikely.gs_core_clear .text.put_tri .text.gs_capture .text.gs_drain .text.unlikely.gs_core_queue)
+		. = . + ((0x114 - .) & 0xfff);
+		gpustereo_core.o(.text.unlikely.gs_core_frame .text.gs_focus .text.gs_flat .text.unlikely.gs_core_counts .text.unlikely.gs_core_pass_shown)
 		. = . + ((0xc8 - .) & 0xfff);
 		input.o(.text .text.*)
 		. = . + ((0x210 - .) & 0xfff);

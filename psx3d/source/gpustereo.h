@@ -24,9 +24,16 @@ bool gs_core_alloc(void);      // the depth table (main thread, renderer idle)
 void gs_core_free(void);
 void gs_core_clear(void);
 // main thread: one polygon command (0x20-0x3f) with its corners' GTE depths
-// (0 = unknown) and the drawing area / offset registers (E3, E4, E5) it uses
+// (0 = unknown) and the drawing area / offset registers (E3, E4, E5) it uses.
+// With gs_defer (the default) it is only queued: gs_drain captures it on the
+// thread that shifts (gs_shift and gs_core_frame drain first).
 void gs_capture(const uint32_t *words, uint32_t cmd, uint32_t e3, uint32_t e4, uint32_t e5,
 	const uint16_t z[4]);
+typedef struct { int16_t x[4], y[4]; uint16_t z[4]; uint32_t e3, e4; } gs_rec;   // one queued polygon
+void gs_drain(void);
+extern int gs_defer;                   // 0: capture on the main thread (test switch stcap=main)
+extern uint64_t (*gs_clock)(void);     // set: the capture's time is counted (gs_core_queue)
+void gs_core_queue(unsigned *dropped, uint64_t *capture_ticks);   // since the last call
 // main thread, once per emulated frame: new generation, depth range update.
 // strength 0..1 (the 3D slider), hres the picture's width in PS1 pixels;
 // the GPU thread uses them from now on.

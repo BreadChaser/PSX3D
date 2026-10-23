@@ -168,6 +168,7 @@ bool sw_csnd, sw_nonet, sw_nosound, sw_noirrst, sw_noaa, sw_nolcd, sw_nocovers;
 char sw_presets_url[96];  // test: preset update server (numeric LAN HTTP), check now
 
 extern int psx3d_idle_skip;
+extern int gs_defer;
 
 static void parse_switches(int argc, char **argv)
 {
@@ -196,6 +197,8 @@ static void parse_switches(int argc, char **argv)
 		else if (!strcmp(a, "fs3")) sw_fs3 = true;
 		else if (!strcmp(a, "idle=off")) psx3d_idle_skip = 0;
 		else if (!strcmp(a, "idle=on")) psx3d_idle_skip = 1;
+		else if (!strcmp(a, "stcap=main")) gs_defer = 0;   // test: Real 3D's capture on the main thread
+		else if (!strcmp(a, "stcap=gpu")) gs_defer = 1;
 		else if (!strcmp(a, "noskip")) sw_noskip = true;
 		else if (!strcmp(a, "nogputhread")) sw_nogputhread = true;
 		else if (!strcmp(a, "gputhread")) sw_nogputhread = false;

@@ -5,23 +5,48 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Depth table: four-way, 128K entries of 64 bits, written by the main thread
-// and read by the GPU thread. One entry is one atomic store/load: key (VRAM
-// x, y, 12 bits each), GTE depth, generation, tag, flags.
+// Depth tables, written by gs_capture and read by gs_shift, both on one
+// thread: the GPU thread on the 3DS (the main thread only queues each
+// polygon's corners and GTE depths, see gs_capture; the GPU thread captures
+// what is queued before it shifts a batch, see gs_drain).
 //
-// Each corner of each triangle the renderer will draw has an entry of its
-// own, tagged with the positions of the triangle's other two corners: the
-// GPU thread finds exactly the triangle it draws, never another polygon's
-// corner that happens to sit on the same pixel (a 2D logo over a 3D scene
-// took its depths from the scene that way and jumped about). Corners of
-// polygons without depth (2D polygons) are entered with depth 0. A second,
-// untagged entry per position holds the depth of a 3D vertex for corners
-// that have none of their own: every triangle sharing the vertex then
-// moves it alike (taking each triangle's mean opened cracks between them).
-#define GS_BITS 17
-#define GS_SIZE (1u << GS_BITS)
-#define GS_WAYS 4
-static uint64_t *table;
+// Triangles: each triangle the renderer will draw (a polygon's, or a piece
+// clipping cuts from it) has an entry of its own, found by its three corners'
+// positions: their depths (0: none) and flags. The GPU thread finds exactly
+// the triangle it draws, never another polygon's corner that happens to sit
+// on the same pixel (a 2D logo over a 3D scene took its depths from the scene
+// that way and jumped about). Triangles of polygons without depth (2D
+// polygons) are entered too, with no depths. Vertices: an entry per position
+// holds the depth of a 3D vertex for corners that have none of their own:
+// every triangle sharing the vertex then moves it alike (taking each
+// triangle's mean opened cracks between them).
+// Triangles: four-way, 32K entries of 16 bytes. The corners in the order of
+// their keys (VRAM x, y, 12 bits each): the smallest key with the generation
+// in bits 24-31, a hash of all three, each corner's depth and flags.
+#define TT_BITS 15
+#define TT_WAYS 4
+typedef struct { uint32_t h, k0; uint16_t z[3], f; } tent;
+#define T_EST   (1u << 9)    // a 2D polygon's (no depth, and none to borrow)
+#define T_VALID (1u << 15)
+#define T_L 1u               // per corner (3 bits each, by key order): on the drawing area's left edge,
+#define T_R 2u               // on its right edge,
+#define T_FAR 4u             // on a backdrop's vertex
+static tent *ttab;
+// Vertices: four-way, 32K entries of 64 bits: key, depth, generation, flags.
+#define VT_BITS 15
+#define VT_WAYS 4
+static uint64_t *vtab;
+// The polygons queued for the capture (main thread -> GPU thread), in order.
+// FIFO_N covers a frame's polygons: the main thread drains what is left at
+// the end of each frame (gs_core_frame), with the GPU thread idle.
+#define FIFO_N 16384u
+static gs_rec *fifo;
+static unsigned fifo_head, fifo_tail;   // written by the main thread / by the capture
+static unsigned n_dropped;
+int gs_defer = 1;
+uint64_t (*gs_clock)(void);             // the capture's time (gs_core_ticks), if set
+static uint64_t cap_ticks;
+
 // The right eye's vertices (GPU thread): one shift per mono vertex position
 // and frame. The first triangle drawn at a position decides it; every later
 // triangle on that pixel moves the vertex alike, so polygons that share it
@@ -106,46 +131,58 @@ static inline float disp(float z, float zn) { return 1 - zn / z; }
 
 static inline int sext11(uint32_t v) { return ((int32_t)(v << 21)) >> 21; }
 static inline uint32_t key_of(int x, int y) { return ((uint32_t)(y & 0xfff) << 12) | (uint32_t)(x & 0xfff); }
-static inline uint32_t slot_of(uint32_t key, uint32_t tag) { return (((key ^ tag * 0x9e3779b1u) * 2654435761u) >> (32 - GS_BITS)) & ~(GS_WAYS - 1u); }
-// a triangle corner's tag: the other two corners, in either order (never 0)
-static inline uint32_t tag_of(int ax, int ay, int bx, int by)
+// a triangle's hash, from its corners' keys in order
+static inline uint32_t tri_hash(uint32_t a, uint32_t b, uint32_t c)
 {
-	uint32_t a = key_of(ax, ay) * 0x85ebca6bu, b = key_of(bx, by) * 0x85ebca6bu;
-	uint32_t t = ((a ^ (a >> 15)) + (b ^ (b >> 15))) * 0xc2b2ae35u;
-	t = (t >> 22) & 0x3ff;
-	return t ? t : 1;
+	uint32_t h = a * 0x9e3779b1u ^ b * 0x85ebca6bu ^ c * 0xc2b2ae35u;
+	h ^= h >> 15;
+	h *= 0x2c1b3c6du;
+	return h ^ (h >> 12);
 }
-static inline uint64_t load(unsigned i) { return __atomic_load_n(&table[i], __ATOMIC_RELAXED); }
-static inline void store(unsigned i, uint64_t e) { __atomic_store_n(&table[i], e, __ATOMIC_RELAXED); }
-// entry: key bits 0-23, depth 24-39 (0: none), generation 40-47, tag 48-57
-#define E_VETO  (1ull << 58)   // untagged: the GTE depth at this pixel is another object's
-#define E_EST   (1ull << 59)   // untagged: a depth estimated from a polygon's other corners;
-                               // tagged: a 2D polygon's corner (no depth, and none to borrow)
+// each corner's place in key order (ties: by place in the triangle)
+static inline void rank3(const uint32_t k[3], int r[3])
+{
+	r[0] = (k[0] > k[1]) + (k[0] > k[2]);
+	r[1] = (k[1] >= k[0]) + (k[1] > k[2]);
+	r[2] = (k[2] >= k[0]) + (k[2] >= k[1]);
+}
+// vertex entry: key bits 0-23, depth 24-39 (0: none), generation 40-47
+#define E_VETO  (1ull << 58)   // the GTE depth at this pixel is another object's
+#define E_EST   (1ull << 59)   // a depth estimated from a polygon's other corners
+                               // (gs_shift: a 2D polygon's corner, no depth and none to borrow)
 #define E_VALID (1ull << 60)
 #define E_LEFT  (1ull << 61)   // on the drawing area's left edge
 #define E_RIGHT (1ull << 62)   // on its right edge
 #define E_FAR   (1ull << 63)   // a backdrop's: at the back
 #define E_Z(e)   ((unsigned)((e) >> 24) & 0xffff)
-#define E_TAG(e) ((uint32_t)((e) >> 48) & 0x3ff)
 static inline unsigned age(uint64_t e, uint16_t now) { return e & E_VALID ? (uint8_t)(now - (uint8_t)(e >> 40)) : 0xffff; }
 
 GS_COLD bool gs_core_alloc(void)
 {
-	if (!table)
-		table = calloc(GS_SIZE, sizeof(*table));
+	if (!ttab)
+		ttab = calloc(1u << TT_BITS, sizeof(*ttab));
+	if (!vtab)
+		vtab = calloc(1u << VT_BITS, sizeof(*vtab));
+	if (!fifo)
+		fifo = malloc(FIFO_N * sizeof(*fifo));
 	if (!seq)
 		seq = malloc(MAXSEQ);
 	if (!vshift)
 		vshift = calloc(1u << VS_BITS, sizeof(*vshift));
-	return table && seq && vshift;
+	return ttab && vtab && fifo && seq && vshift;
 }
 
 GS_COLD void gs_core_free(void)
 {
-	free(table);
+	free(ttab);
+	free(vtab);
+	free(fifo);
 	free(seq);
 	free(vshift);
-	table = NULL;
+	ttab = NULL;
+	vtab = NULL;
+	fifo = NULL;
+	fifo_head = fifo_tail = 0;
 	seq = NULL;
 	vshift = NULL;
 	strength = near_z = 0;
@@ -153,8 +190,11 @@ GS_COLD void gs_core_free(void)
 
 GS_COLD void gs_core_clear(void)
 {
-	if (table)
-		memset(table, 0, GS_SIZE * sizeof(*table));
+	if (ttab)
+		memset(ttab, 0, (1u << TT_BITS) * sizeof(*ttab));
+	if (vtab)
+		memset(vtab, 0, (1u << VT_BITS) * sizeof(*vtab));
+	fifo_head = fifo_tail = 0;   // (the GPU thread is idle)
 	if (vshift)
 		memset(vshift, 0, (1u << VS_BITS) * sizeof(*vshift));
 	near_z = aim_n = 0;
@@ -172,17 +212,23 @@ GS_COLD void gs_core_clear(void)
 // edges (an edge moved inwards would leave a strip the right eye never
 // draws). Moved outwards, the GPU's scissor cuts it at the edge.
 static uint64_t put_flags;   // E_FAR while a backdrop polygon is captured
-// z 0: no depth of its own; tag 0: the position's vertex depth. keep: an
-// entry of this frame is not replaced (all triangles drawn see the same
-// one), except an estimate by a vertex's own depth.
-static void put(int x, int y, uint32_t tag, float z, uint64_t edge, bool keep)
+static inline unsigned zint(float z)
+{
+	int zi = z > 0 ? gs_rint(z) : 0;
+	return z <= 0 ? 0 : zi < 1 ? 1 : zi > 65535 ? 65535 : zi;
+}
+
+// A vertex's depth (z 0: none). keep: an entry of this frame is not replaced
+// (all triangles drawn see the same one), except an estimate by a vertex's
+// own depth.
+static void vput(int x, int y, float z, uint64_t edge, bool keep)
 {
 	uint32_t key = key_of(x, y);
-	unsigned s = slot_of(key, tag), victim = s, oldest = 0;
-	// the same position and tag again, else the way written longest ago
-	for (unsigned w = 0; w < GS_WAYS; w++) {
-		uint64_t e = load(s + w);
-		if ((e & E_VALID) && (uint32_t)(e & 0xffffff) == key && E_TAG(e) == tag) {
+	unsigned s = ((key * 2654435761u) >> (32 - VT_BITS)) & ~(VT_WAYS - 1u), victim = s, oldest = 0;
+	// the same position again, else the way written longest ago
+	for (unsigned w = 0; w < VT_WAYS; w++) {
+		uint64_t e = vtab[s + w];
+		if ((e & E_VALID) && (uint32_t)(e & 0xffffff) == key) {
 			if (keep && age(e, gen) == 0 && (!(e & E_EST) || (edge & E_EST)) && !(edge & E_VETO))
 				return;
 			if (age(e, gen) == 0 && (e & E_VETO) && !(edge & E_VETO))
@@ -194,38 +240,64 @@ static void put(int x, int y, uint32_t tag, float z, uint64_t edge, bool keep)
 		if (a > oldest)
 			oldest = a, victim = s + w;
 	}
-	int zi = z > 0 ? (int)lrintf(z) : 0;
-	zi = z <= 0 ? 0 : zi < 1 ? 1 : zi > 65535 ? 65535 : zi;
-	store(victim, E_VALID | put_flags | edge | (uint64_t)tag << 48 | ((uint64_t)(gen & 0xff) << 40) | ((uint64_t)zi << 24) | key);
+	vtab[victim] = E_VALID | put_flags | edge | ((uint64_t)(gen & 0xff) << 40) | ((uint64_t)zint(z) << 24) | key;
 }
 
-// the entry for the position and tag (0: none)
-static uint64_t get(int x, int y, uint32_t tag, uint16_t now)
+// the vertex entry at the position (0: none)
+static uint64_t vget(int x, int y, uint16_t now)
 {
 	uint32_t key = key_of(x, y);
-	unsigned s = slot_of(key, tag);
-	for (unsigned w = 0; w < GS_WAYS; w++) {
-		uint64_t e = load(s + w);
-		if (age(e, now) <= 1 && (uint32_t)(e & 0xffffff) == key && E_TAG(e) == tag)
+	unsigned s = ((key * 2654435761u) >> (32 - VT_BITS)) & ~(VT_WAYS - 1u);
+	for (unsigned w = 0; w < VT_WAYS; w++) {
+		uint64_t e = vtab[s + w];
+		if ((uint32_t)(e & 0xffffff) == key && age(e, now) <= 1)
 			return e;
 	}
 	return 0;
 }
 
-// one triangle as the renderer draws it: an entry per corner (z 0: none),
-// and the vertex depth by position: the known corners', else an estimate
-// (est: the polygon's mean depth; 0 for a 2D polygon)
+// one triangle as the renderer draws it: its corners' depths (z 0: none)
+// and flags; est: a 2D polygon's
 static float put_est;
 static void put_tri(const int (*c)[2], const float *z, const uint64_t *edge)
 {
-	for (int k = 0; k < 3; k++) {
-		const int *a = c[(k + 1) % 3], *b = c[(k + 2) % 3];
-		put(c[k][0], c[k][1], tag_of(a[0], a[1], b[0], b[1]), z[k], edge[k] | (put_est > 0 ? 0 : E_EST), false);
-		if (z[k] > 0)
-			put(c[k][0], c[k][1], 0, z[k], edge[k], true);
-		else if (put_est > 0)
-			put(c[k][0], c[k][1], 0, put_est, edge[k] | E_EST, true);
+	uint32_t k[3], sk[3];
+	int r[3];
+	for (int i = 0; i < 3; i++)
+		k[i] = key_of(c[i][0], c[i][1]);
+	rank3(k, r);
+	for (int i = 0; i < 3; i++)
+		sk[r[i]] = k[i];
+	uint32_t h = tri_hash(sk[0], sk[1], sk[2]);
+	tent *b = &ttab[(h >> (32 - TT_BITS)) & ~(TT_WAYS - 1u)], *victim = b;
+	unsigned oldest = 0;
+	// the same triangle again, else the way written longest ago
+	for (unsigned w = 0; w < TT_WAYS; w++) {
+		tent *e = &b[w];
+		if ((e->f & T_VALID) && e->h == h && (e->k0 & 0xffffff) == sk[0]) {
+			victim = e;
+			break;
+		}
+		unsigned a = e->f & T_VALID ? (uint8_t)(gen - (e->k0 >> 24)) : 0xffff;
+		if (a > oldest)
+			oldest = a, victim = e;
 	}
+	tent n = { h, sk[0] | (uint32_t)(gen & 0xff) << 24, { 0, 0, 0 }, T_VALID | (put_est > 0 ? 0 : T_EST) };
+	for (int i = 0; i < 3; i++) {
+		uint64_t f = edge[i] | put_flags;
+		n.z[r[i]] = zint(z[i]);
+		n.f |= ((f & E_LEFT ? T_L : 0) | (f & E_RIGHT ? T_R : 0) | (f & E_FAR ? T_FAR : 0)) << (3 * r[i]);
+	}
+	*victim = n;
+}
+
+// a corner's vertex depth: its own, else the polygon's estimate (none for a 2D polygon)
+static inline void put_vertex(int x, int y, float z, uint64_t edge)
+{
+	if (z > 0)
+		vput(x, y, z, edge, true);
+	else if (put_est > 0)
+		vput(x, y, put_est, edge | E_EST, true);
 }
 
 // --- capture: the same triangles and clipping the renderer makes ----------
@@ -264,8 +336,8 @@ static void clip_put(const pt *t, int x0, int y0, int x1, int y1, bool twod)
 			if ((pc >= 0) != (qc >= 0)) {
 				float f = (float)pc / (pc - qc);
 				pt *o = &b[m++];
-				o->x = p->x + (int)lrintf((q->x - p->x) * f);
-				o->y = p->y + (int)lrintf((q->y - p->y) * f);
+				o->x = p->x + gs_rint((q->x - p->x) * f);
+				o->y = p->y + gs_rint((q->y - p->y) * f);
 				if (side < 2) o->x = side == 0 ? x0 : x1;
 				else o->y = side == 2 ? y0 : y1;
 			}
@@ -293,30 +365,77 @@ static void clip_put(const pt *t, int x0, int y0, int x1, int y1, bool twod)
 		uint64_t te[3] = { edge[0], edge[i], edge[i + 1] };
 		put_tri(c, tz, te);
 	}
+	for (int i = 0; i < n; i++)   // (each fan corner once)
+		put_vertex(a[i].x, a[i].y, z[i], edge[i]);
 }
 
+static void capture(const gs_rec *r);
+
+// The main thread hands one polygon command (0x20-0x3f) over: its corners
+// with the drawing offset (E5), their GTE depths (0 = unknown), the drawing
+// area (E3, E4). With gs_defer, it is queued for gs_drain (the GPU thread
+// captures it before it draws it); else captured now.
 void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint32_t e5, const uint16_t z[4])
 {
-	if (!table || cmd < 0x20 || cmd >= 0x40)
+	if (!ttab || cmd < 0x20 || cmd >= 0x40)
 		return;
-	int n = (cmd & 8) ? 4 : 3, found = 0;
-	static const int idx[2][3] = { { 0, 1, 2 }, { 1, 3, 2 } };
-	int ox = sext11(e5), oy = sext11(e5 >> 11);
-	pt v[4];
-	float iz[4];
-	uint16_t zk[4];
-	uint64_t far[4] = { 0 };
-	bool joined = false;   // a corner is a vertex of 3D geometry drawn before (not a backdrop's)
-	int i = 1, minx = 9999, maxx = -9999, miny = 9999, maxy = -9999;
+	gs_rec now, *r = &now;
+	unsigned head = fifo_head;
+	if (gs_defer) {
+		if (head - __atomic_load_n(&fifo_tail, __ATOMIC_ACQUIRE) >= FIFO_N) {
+			n_dropped++;   // (more polygons than a frame has)
+			return;
+		}
+		r = &fifo[head % FIFO_N];
+	}
+	int n = (cmd & 8) ? 4 : 3, ox = sext11(e5), oy = sext11(e5 >> 11), i = 1;
 	for (int k = 0; k < n; k++) {
 		if (k && (cmd & 0x10))
 			i++;   // gouraud colour
 		uint32_t xy = w[i++];
 		if (cmd & 4)
 			i++;   // texture coordinates
-		v[k].x = sext11(xy) + ox;
-		v[k].y = sext11(xy >> 16) + oy;
-		zk[k] = z[k];
+		r->x[k] = sext11(xy) + ox;
+		r->y[k] = sext11(xy >> 16) + oy;
+		r->z[k] = z[k];
+	}
+	r->e3 = (e3 & 0x7ffff) | cmd << 24;
+	r->e4 = e4 & 0x7ffff;
+	if (gs_defer)
+		__atomic_store_n(&fifo_head, head + 1, __ATOMIC_RELEASE);
+	else
+		capture(r);
+}
+
+// the queued polygons, in order (on the thread that shifts)
+void gs_drain(void)
+{
+	unsigned t = fifo_tail, h = __atomic_load_n(&fifo_head, __ATOMIC_ACQUIRE);
+	if (t == h)
+		return;
+	uint64_t t0 = gs_clock ? gs_clock() : 0;
+	for (; t != h; t++)
+		capture(&fifo[t % FIFO_N]);
+	__atomic_store_n(&fifo_tail, t, __ATOMIC_RELEASE);
+	if (gs_clock)
+		cap_ticks += gs_clock() - t0;
+}
+
+static void capture(const gs_rec *r)
+{
+	uint32_t cmd = r->e3 >> 24, e3 = r->e3, e4 = r->e4;
+	int n = (cmd & 8) ? 4 : 3, found = 0;
+	static const int idx[2][3] = { { 0, 1, 2 }, { 1, 3, 2 } };
+	pt v[4];
+	float iz[4];
+	uint16_t zk[4];
+	uint64_t far[4] = { 0 };
+	bool joined = false;   // a corner is a vertex of 3D geometry drawn before (not a backdrop's)
+	int minx = 9999, maxx = -9999, miny = 9999, maxy = -9999;
+	for (int k = 0; k < n; k++) {
+		v[k].x = r->x[k];
+		v[k].y = r->y[k];
+		zk[k] = r->z[k];
 		minx = v[k].x < minx ? v[k].x : minx; maxx = v[k].x > maxx ? v[k].x : maxx;
 		miny = v[k].y < miny ? v[k].y : miny; maxy = v[k].y > maxy ? v[k].y : maxy;
 	}
@@ -331,7 +450,7 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 	uint16_t vz[4] = { 0 };
 	int avail = 0;
 	for (int k = 0; k < n; k++) {
-		uint64_t e = get(v[k].x, v[k].y, 0, gen);
+		uint64_t e = vget(v[k].x, v[k].y, gen);
 		if (!e || age(e, gen) != 0)
 			continue;
 		if (e & E_VETO)
@@ -358,10 +477,10 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 				found++;
 			}
 	bool twod = found < 2;
-	float inv = 0;
+	float inv = 0, rz[4];   // rz: the corners' 1/z (a vetoed corner's stays unused)
 	for (int k = 0; k < n; k++)
 		if (zk[k])
-			inv += 1.0f / zk[k];
+			inv += rz[k] = 1.0f / zk[k];
 	inv = twod ? 1 : inv / found;
 	// The GTE depths come by screen position: a corner can get the depth of
 	// another object projected to the same pixel. A corner whose disparity
@@ -369,33 +488,42 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 	// could fuse along that edge) has no depth of its own here, and as the
 	// same wrong depth reaches every polygon on that pixel, none has it
 	// this frame (a veto); they all get the vertex's depth from elsewhere.
-	for (int t = 0; !twod && near_z > 0 && t < n - 2; t++)
+	float dk[4];   // each corner's disparity (the same for every triangle it is in)
+	for (int k = 0; !twod && near_z > 0 && k < n; k++)
+		dk[k] = zk[k] ? disp(zk[k], near_z) : 0;
+	for (int t = 0; !twod && near_z > 0 && t < n - 2; t++) {
+		const int *q = idx[t];
+		if (!zk[q[0]] || !zk[q[1]] || !zk[q[2]])
+			continue;
+		// each edge's jump once: jump[c] is the edge opposite corner c
+		bool jump[3];
 		for (int c = 0; c < 3; c++) {
-			const int *q = idx[t];
+			int a = q[(c + 1) % 3], b = q[(c + 2) % 3];
+			jump[c] = fabsf(dk[a] - dk[b]) * scale > MAX_GRADIENT * (abs(v[a].x - v[b].x) + abs(v[a].y - v[b].y)) + SLACK;
+		}
+		for (int c = 0; c < 3; c++) {
 			int a = q[c], b = q[(c + 1) % 3], o = q[(c + 2) % 3];
 			if (!zk[a] || !zk[b] || !zk[o])
 				continue;
-			float la = disp(zk[a], near_z), lb = disp(zk[b], near_z), lo = disp(zk[o], near_z);
-			bool ab = fabsf(la - lb) * scale > MAX_GRADIENT * (abs(v[a].x - v[b].x) + abs(v[a].y - v[b].y)) + SLACK;
-			bool ao = fabsf(la - lo) * scale > MAX_GRADIENT * (abs(v[a].x - v[o].x) + abs(v[a].y - v[o].y)) + SLACK;
-			bool bo = fabsf(lb - lo) * scale > MAX_GRADIENT * (abs(v[b].x - v[o].x) + abs(v[b].y - v[o].y)) + SLACK;
+			bool ab = jump[(c + 2) % 3], ao = jump[(c + 1) % 3], bo = jump[c];
 			if (ab && ao && !bo) {
-				put(v[a].x, v[a].y, 0, 2 / (1.0f / zk[b] + 1.0f / zk[o]), E_EST | E_VETO, false);
+				vput(v[a].x, v[a].y, 2 / (rz[b] + rz[o]), E_EST | E_VETO, false);
 				zk[a] = 0;
 				n_rejected++;
 			}
 		}
+	}
 	if (!twod) {   // the mean of what is left (the vertex estimate's base)
 		float left = 0;
 		int nl = 0;
 		for (int k = 0; k < n; k++)
-			if (zk[k]) { left += 1.0f / zk[k]; nl++; }
+			if (zk[k]) { left += rz[k]; nl++; }
 		if (nl)
 			inv = left / nl;
 	}
 	put_est = twod ? 0 : 1 / inv;
 	for (int k = 0; k < n; k++)
-		iz[k] = zk[k] ? 1.0f / zk[k] : vz[k] ? 1.0f / vz[k] : inv;
+		iz[k] = zk[k] ? rz[k] : vz[k] ? 1.0f / vz[k] : inv;
 	int x0 = e3 & 0x3ff, y0 = (e3 >> 10) & 0x1ff;
 	int x1 = (e4 & 0x3ff) + 1, y1 = ((e4 >> 10) & 0x1ff) + 1;
 	put_flags = 0;
@@ -425,7 +553,8 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 	for (int k = 0; !twod && k < n; k++)
 		if ((v[k].x < x0 || v[k].x > x1 || v[k].y < y0 || v[k].y > y1) &&
 		    v[k].x > x0 - 64 && v[k].x < x1 + 64 && v[k].y > y0 - 64 && v[k].y < y1 + 64)
-			put(v[k].x, v[k].y, 0, 1 / iz[k], E_EST, true);   // an estimate: no backdrop or joining by it
+			vput(v[k].x, v[k].y, 1 / iz[k], E_EST, true);   // an estimate: no backdrop or joining by it
+	unsigned vdone = 0;   // corners whose vertex depth is in (a quad's two triangles share two)
 	for (int t = 0; t < n - 2; t++) {
 		pt tri[3];
 		for (int k = 0; k < 3; k++)
@@ -441,25 +570,35 @@ void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint3
 		int dx = sext11(lx) - lx, dy = sext11(ly) - ly;
 		for (int k = 0; k < 3; k++) {
 			tri[k].x += dx; tri[k].y += dy;
-			tri_a[k][0] = tri[k].x; tri_a[k][1] = tri[k].y; tri_a[k][2] = iz[idx[t][k]];
-			tri_known[k] = !twod && zk[idx[t][k]] != 0;
-			tri_far[k] = far[idx[t][k]];
 		}
 		lx += dx; hx += dx; ly += dy; hy += dy;
 		if (hx <= x0 || lx >= x1 || hy <= y0 || ly >= y1)
 			continue;
+		const int *q = idx[t];
 		if (lx >= x0 && hx <= x1 && ly >= y0 && hy <= y1) {
 			int c[3][2];
 			float tz[3];
 			uint64_t te[3];
 			for (int k = 0; k < 3; k++) {
 				c[k][0] = tri[k].x; c[k][1] = tri[k].y;
-				tz[k] = tri_known[k] ? 1 / tri_a[k][2] : 0;
-				te[k] = (tri[k].x == x0 ? E_LEFT : tri[k].x == x1 ? E_RIGHT : 0) | tri_far[k];
+				tz[k] = !twod && zk[q[k]] ? 1 / iz[q[k]] : 0;
+				te[k] = (tri[k].x == x0 ? E_LEFT : tri[k].x == x1 ? E_RIGHT : 0) | far[q[k]];
 			}
 			put_tri(c, tz, te);
-		} else
+			for (int k = 0; k < 3; k++) {
+				if (!(dx | dy) && (vdone >> q[k] & 1))
+					continue;
+				put_vertex(c[k][0], c[k][1], tz[k], te[k]);
+				vdone |= !(dx | dy) << q[k];
+			}
+		} else {
+			for (int k = 0; k < 3; k++) {
+				tri_a[k][0] = tri[k].x; tri_a[k][1] = tri[k].y; tri_a[k][2] = iz[q[k]];
+				tri_known[k] = !twod && zk[q[k]] != 0;
+				tri_far[k] = far[q[k]];
+			}
 			clip_put(tri, x0, y0, x1, y1, twod);
+		}
 	}
 }
 
@@ -548,6 +687,14 @@ GS_COLD void gs_core_frame(float s, int hres)
 float gs_focus(void) { return near_z; }
 float gs_flat(void) { return flat; }
 
+GS_COLD void gs_core_queue(unsigned *dropped, uint64_t *ticks)
+{
+	*dropped = n_dropped;
+	*ticks = cap_ticks;
+	n_dropped = 0;
+	cap_ticks = 0;
+}
+
 GS_COLD void gs_core_counts(unsigned *lookups, unsigned *found, unsigned *shifted, unsigned *rejected)
 {
 	*lookups = n_lookups; *found = n_found; *shifted = n_shifted; *rejected = n_rejected;
@@ -624,11 +771,12 @@ static int vertex_shift(int x, int y, int want, bool far, uint16_t now)
 // of a pass with depth, else not at all (on the screen, as HUD and text).
 int gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 {
+	gs_drain();   // the polygons queued so far: these triangles' among them
 	float zn = near_z, k = 16 * scale * strength;
-	uint16_t now = __atomic_load_n(&gen, __ATOMIC_RELAXED);
+	uint16_t now = gen;
 	int moved = 0;
 	memcpy(dst, src, n * sizeof(*dst));
-	if (!table || zn <= 0 || k <= 0)
+	if (!ttab || zn <= 0 || k <= 0)
 		return 0;
 	for (int t = 0; t + 3 <= n; t += 3) {
 		const gs_vtx *v = &src[t];
@@ -643,22 +791,39 @@ int gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 			px[i] = v[i].x >> 4;
 			py[i] = v[i].y >> 4;
 		}
-		// each corner's own entry; without a depth of its own, the vertex's
-		// (another triangle's, by position). A 2D polygon's corners (E_EST)
-		// borrow only when two at least are 3D polygons' vertices of this
-		// frame (known or estimated depth): then
-		// it is part of a 3D mesh whose GTE record missed it; a 2D logo over
-		// the scene shares a pixel with a 3D vertex at most by chance.
+		// each corner's own entry (the triangle's); without a depth of its
+		// own, the vertex's (another triangle's, by position). A 2D polygon's
+		// corners (E_EST) borrow only when two at least are 3D polygons'
+		// vertices of this frame (known or estimated depth): then it is part
+		// of a 3D mesh whose GTE record missed it; a 2D logo over the scene
+		// shares a pixel with a 3D vertex at most by chance.
 		uint64_t own[3] = { 0 }, vert[3] = { 0 };
 		int mesh = 0;
-		for (int i = 0; poly && i < 3; i++) {
-			int a = (i + 1) % 3, b = (i + 2) % 3;
-			own[i] = get(px[i], py[i], tag_of(px[a], py[a], px[b], py[b]), now);
-			entries += own[i] != 0;
-			if (own[i] && !E_Z(own[i])) {
-				vert[i] = get(px[i], py[i], 0, now);
-				mesh += vert[i] != 0;   // 3D polygons' vertices (estimates too) only
+		if (poly) {
+			uint32_t key[3] = { key_of(px[0], py[0]), key_of(px[1], py[1]), key_of(px[2], py[2]) }, sk[3];
+			int r[3];
+			rank3(key, r);
+			for (int i = 0; i < 3; i++)
+				sk[r[i]] = key[i];
+			uint32_t h = tri_hash(sk[0], sk[1], sk[2]);
+			const tent *b = &ttab[(h >> (32 - TT_BITS)) & ~(TT_WAYS - 1u)];
+			for (unsigned w = 0; w < TT_WAYS; w++) {
+				const tent *e = &b[w];
+				if (e->h != h || (e->k0 & 0xffffff) != sk[0] || !(e->f & T_VALID) || (uint8_t)(now - (e->k0 >> 24)) > 1)
+					continue;
+				for (int i = 0; i < 3; i++) {
+					unsigned f = e->f >> (3 * r[i]);
+					own[i] = E_VALID | (uint64_t)e->z[r[i]] << 24 | (f & T_L ? E_LEFT : 0) | (f & T_R ? E_RIGHT : 0) |
+						(f & T_FAR ? E_FAR : 0) | (e->f & T_EST ? E_EST : 0);
+				}
+				entries = 3;
+				break;
 			}
+			for (int i = 0; entries && i < 3; i++)
+				if (!E_Z(own[i])) {
+					vert[i] = vget(px[i], py[i], now);
+					mesh += vert[i] != 0;   // 3D polygons' vertices (estimates too) only
+				}
 		}
 		for (int i = 0; poly && i < 3; i++) {
 			uint64_t e = own[i];
@@ -688,7 +853,7 @@ int gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 				float dd = known[i] ? d[i] : mean;
 				if ((edge[i] & E_LEFT && dd > 0) || (edge[i] & E_RIGHT && dd < 0))
 					dd = 0;
-				int x = dst[t + i].x + vertex_shift(px[i], py[i], (int)lrintf(k * dd), far[i], now);
+				int x = dst[t + i].x + vertex_shift(px[i], py[i], gs_rint(k * dd), far[i], now);
 				dst[t + i].x = x < 0 ? 0 : x > 1024 * 16 - 1 ? 1024 * 16 - 1 : x;
 				moved++;
 			}
@@ -698,7 +863,7 @@ int gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 		// 2D: CPU fills (no vertex colour, untextured) stay put
 		if (!ps->had || ps->depth || ((v[0].rgba >> 24) == 0 && v[0].u == v[1].u && v[1].u == v[2].u && v[0].v == v[1].v))
 			continue;
-		int whole = 16 * (int)lrintf(k * (1 / 16.0f));
+		int whole = 16 * gs_rint(k * (1 / 16.0f));
 		for (int i = 0; i < 3; i++) {
 			if (ps != &pass[PASS_SLOTS] && px[i] == ps->x)
 				continue;   // the buffer's left edge stays put

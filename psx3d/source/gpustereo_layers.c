@@ -29,6 +29,8 @@ unsigned long long lay_cells, lay_prims, lay_tris;   // work counters (simulator
 #endif
 static float lstrength;              // the 3D slider (gs_core_frame)
 static int lhres = 320;              // the picture's width in PS1 pixels
+static uint64_t shift_ticks;         // gs_shift's time (with the capture it drains), if gs_clock
+static unsigned lframes;             // gs_core_frame calls since the last status
 
 // --- Draw-order layers ------------------------------------------------------
 // PS1 games paint back to front (no depth buffer), so the order of drawing
@@ -546,8 +548,14 @@ void __real_gs_core_frame(float strength, int hres);
 int __real_gs_shift(const gs_vtx *src, gs_vtx *dst, int n);
 
 // all of it on the heap, only while 3D is on: nothing for the Old 3DS
+#ifndef PSX3D_SIM
+static uint64_t layer_ticks(void);
+#endif
 GS_COLD bool __wrap_gs_core_alloc(void)
 {
+#ifndef PSX3D_SIM
+	gs_clock = layer_ticks;
+#endif
 	if (!lcell) {
 		lcell = calloc(LC_W * LC_H, sizeof(*lcell));
 		lnear = calloc(LC_W * LC_H, 1);
@@ -579,8 +587,10 @@ GS_COLD void __wrap_gs_core_clear(void)
 
 GS_COLD void __wrap_gs_core_frame(float strength, int hres)
 {
+	gs_drain();   // what the GPU thread didn't capture yet (it is idle now)
 	__real_gs_core_frame(strength, hres);
 	lstrength = strength;
+	lframes++;
 	// screen depth or layers: asked for LAY_WANT frames in a row before the
 	// fade starts (a still that is flat one pass and not the next would
 	// otherwise move the whole picture back and forth); movies and unsteady
@@ -602,7 +612,10 @@ GS_COLD void __wrap_gs_core_frame(float strength, int hres)
 // put everything behind the screen: the right eye moves right only.
 int __wrap_gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 {
+	uint64_t t0 = gs_clock ? gs_clock() : 0;
 	int moved = __real_gs_shift(src, dst, n);
+	if (gs_clock)
+		shift_ticks += gs_clock() - t0;
 	if (!lcell || lstrength <= 0)
 		return moved;
 	float a = gs_focus() > 0 ? lblend : 0;
@@ -658,6 +671,11 @@ int __wrap_gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 int sim_scissor_right(void);   // the replay's citro3d
 static int lay_scissor_right(void) { return sim_scissor_right(); }
 #else
+#include <3ds.h>
+#include <citro3d.h>
+#include "../vendor/citro3d/internal.h"
+#include "../../core/plugins/gpu_pica/gpu_pica.h"
+static uint64_t layer_ticks(void) { return svcGetSystemTick(); }
 void __real_gpustereo_status(char *out, int n);
 GS_COLD void __wrap_gpustereo_status(char *out, int n)
 {
@@ -667,13 +685,20 @@ GS_COLD void __wrap_gpustereo_status(char *out, int n)
 	gs_layer_status(buf, sizeof(buf));
 	snprintf(out + k, n - k, ",\"layers3d\":{\"real3d\":%.2f,\"flat\":%s,\"unsteady\":%.3f,\"hold\":%d,\"buffers\":[%s]}",
 		lblend, gs_picture_flat() ? "true" : "false", lunst, lhold, buf);
+	// per frame since the last status: the capture (on the thread that
+	// drains, see gs_drain) and the shift including it, ms
+	unsigned dropped;
+	uint64_t cap;
+	gs_core_queue(&dropped, &cap);
+	float per = lframes ? 1.0f / (lframes * CPU_TICKS_PER_MSEC) : 0;
+	k = strlen(out);
+	snprintf(out + k, n - k, ",\"speed3d\":{\"capture\":\"%s\",\"capture_ms\":%.3f,\"shift_ms\":%.3f,\"dropped\":%u,\"frames\":%u}",
+		gs_defer ? "gpu" : "main", cap * per, shift_ticks * per, dropped, lframes);
+	shift_ticks = 0;
+	lframes = 0;
 }
 
 // the picture the frontend shows (GPU thread, in draw order): a buffer
-#include <3ds.h>
-#include <citro3d.h>
-#include "../vendor/citro3d/internal.h"
-#include "../../core/plugins/gpu_pica/gpu_pica.h"
 // the draw being mirrored (gpustereo.c, inside C3D_DrawArrays) uses this scissor
 static int lay_scissor_right(void)
 {
