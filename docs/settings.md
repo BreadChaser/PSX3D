@@ -130,8 +130,8 @@ game without a widescreen fix, Screen offers only Original and Stretch. Scope
   In the library, Widescreen means "use widescreen in games that have a fix".
 - **3D** (New 3DS only; per game like the other Display rows): Screen depth
   (default) or Real 3D (experimental) (principle 8). The slider still turns 3D
-  on and off and sets the strength in both. Help: "Real 3D: objects at their
-  own depth. Experimental: can be slower in busy games." Old 3DS has no row: this build draws no game 3D there (`stereo` is
+  on and off and sets the strength in both. Tip: "Real 3D is experimental:
+  slower in busy games." The value reads "Real 3D (experimental)". Old 3DS has no row: this build draws no game 3D there (`stereo` is
   forced off on Old). Screen depth would be the cheaper style on Old, but it
   still draws a second top picture every frame and has never been speed-gated
   on the Old, so it is not offered.
