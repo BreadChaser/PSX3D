@@ -188,6 +188,18 @@ with Auto frameskip.
 Found something else? [Open an issue](https://github.com/BreadChaser/PSX3D/issues/new/choose)
 and attach `log.txt` if you can.
 
+## Planned features
+
+- **Play together:** play with a friend over local wireless. Both players with
+  their own copy of the game, or stream the game to a friend who doesn't have
+  it.
+- **Join through Download Play:** a friend's 3DS gets PSX3D's join app straight
+  from the Download Play menu.
+- **Themes:** new colour themes with animated backgrounds and icons.
+- **Better Real 3D:** full speed and more depth in more games.
+- **More tuned games:** recommended settings for more of the PlayStation
+  library on both consoles.
+
 ## FAQ
 
 **Old 3DS or New 3DS?**
