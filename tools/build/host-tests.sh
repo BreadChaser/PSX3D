@@ -56,6 +56,7 @@ run() { # run <name> <command...>
 
 # Frontend code against a fake SDK: menus, settings, input, config, presets, widescreen, clips.
 run frontend-ui      env PSX3D_MOCKUPS="$out/mockups" bash psx3d/tests/host/run.sh
+run theme-scenes     python3 tests/themes/run.py
 run settings-ui      env PSX3D_SETTINGS_OUTPUT="$out/settings" python3 tests/settings/run.py
 run settings-spec    env SPEC_DUMP="$out/settings-menu.tsv" bash tests/settings/spec.sh
 run renderer-config  bash tests/renderer_config.sh
