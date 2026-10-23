@@ -128,6 +128,11 @@ SECTIONS
 		statsview.o(.text .text.*)
 		. = . + ((0xb90 - .) & 0xfff);
 		__psx3d_frontend_hot_video = .;
+		/* video.o up to video_present_screens, then the rest from the page
+		   offset rc1 had it at (the 3D screen-depth rounding made
+		   video_present_screens longer). */
+		video.o(.text .text.screen_box .text.video_gpu_frame_begin.part.0 .text.video_gpu_frame_begin .text.draw_picture.isra.0 .text.draw_game .text.top_begin .text.video_stereo_targets.part.0 .text.video_take_gpu_stats .text.video_take_wait_ticks .text.video_stereo_targets .text.video_stereo_on .text.video_top_aa .text.video_init .text.renderer_is_gpu .text.video_exit .text.video_bottom_target .text.video_framebuffer .text.video_frame .text.video_probe_top .text.video_take_xfer_ticks .text.video_gpu_idle .text.video_game_begin .text.idle_on_gpu_thread .text.video_present_screens)
+		. = . + ((0x308 - .) & 0xfff);
 		video.o(.text .text.*)
 		. = . + ((0xa98 - .) & 0xfff);
 		widescreen.o(.text .text.*)
