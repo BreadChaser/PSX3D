@@ -32,7 +32,6 @@ void gs_capture(const uint32_t *words, uint32_t cmd, uint32_t e3, uint32_t e4, u
 typedef struct { int16_t x[4], y[4]; uint16_t z[4]; uint32_t e3, e4; } gs_rec;   // one queued polygon
 void gs_drain(void);
 extern int gs_defer;                   // 0: capture on the main thread (test switch stcap=main)
-extern int gs_debug;                   // test switch st3d=N: 1 no capture, 2 no shift
 extern uint64_t (*gs_clock)(void);     // set: the capture's time is counted (gs_core_queue)
 void gs_core_queue(unsigned *dropped, uint64_t *capture_ticks);   // since the last call
 // main thread, once per emulated frame: new generation, depth range update.

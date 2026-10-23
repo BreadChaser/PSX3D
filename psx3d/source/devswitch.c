@@ -8,7 +8,7 @@ extern float sw_slider;
 extern int sw_stereo;
 extern unsigned pica_submit;
 extern int psx3d_idle_skip;
-extern int gs_defer, gs_debug, gs_cap_auto;
+extern int gs_defer, gs_cap_auto;
 extern bool sw_aa;
 void debug_parse_switch(const char *word);
 
@@ -30,8 +30,8 @@ bool switches_set(const char *word)
 		sw_fs1 = sw_fs3 = false;
 		word = sw_noskip ? "o:frameskip_type=disabled" : "o:frameskip_type=auto";
 	}
-	const char *integer_keys[] = {"state=", "clock=", "cdra=", "gldbg=", "vramdump=", "autosavetest=", "st3d="};
-	const long limits[] = {9, 100, 1024, 0x7fffffff, 1000000, 3600, 3};
+	const char *integer_keys[] = {"state=", "clock=", "cdra=", "gldbg=", "vramdump=", "autosavetest="};
+	const long limits[] = {9, 100, 1024, 0x7fffffff, 1000000, 3600};
 	for (unsigned i = 0; i < sizeof(limits) / sizeof(*limits); i++) {
 		size_t n = strlen(integer_keys[i]);
 		if (!strncmp(word, integer_keys[i], n)) {
@@ -73,7 +73,7 @@ bool switches_set(const char *word)
 	static const char *flags[] = {"prof",         "stats",     "fs1",         "fs3",  "noskip",
 	                              "nogputhread",  "gputhread", "nosputhread", "acap", "renderer=gpu", "state0",    "gpuasync",
 	                              "nogpuasync",   "gpuflush",  "nogpuflush",  "aa", "rtt=old", "rtt=new", "rtt=auto", "rttcache=old", "rttcache=new", "ff=on", "ff=off", "submitstate=old", "submitstate=new", "submitclip=old", "submitclip=new", "submittex=old", "submittex=new", "pmuclass=on", "pmuclass=off", "pmurender=on", "pmurender=off", "pica_prims_old", "pica_prims_fast", "pica_prims_copy", "pica_prims_clip", "pica_prims_round", "skipgate=old", "skipgate=new", "texmask=old", "texmask=new", "texmemo=old", "texmemo=new", "idle=on", "idle=off", "stcap=main", "stcap=gpu", "stcap=auto", };
-	static const char *prefix[] = {"st3d=", "slider=", "stereo=", "state=", "autosavetest=", "gldbg=", "vramdump=", "pmu=", "cdra=", "clock="};
+	static const char *prefix[] = {"slider=", "stereo=", "state=", "autosavetest=", "gldbg=", "vramdump=", "pmu=", "cdra=", "clock="};
 	bool known = false;
 	for (unsigned k = 0; k < sizeof(flags) / sizeof(*flags); k++)
 		if (!strcmp(word, flags[k]))
@@ -94,7 +94,7 @@ bool switches_set(const char *word)
  * replay= ignored local input, state= loaded a benchmark slot, o: options stuck). */
 static struct {
 	bool saved;
-	int idle_skip, stcap, stauto, st3d, state, autosave_test, pmu0, pmu1, gldbg, vramdump, skipgate, stereo;
+	int idle_skip, stcap, stauto, state, autosave_test, pmu0, pmu1, gldbg, vramdump, skipgate, stereo;
 	int clip_requested, clip_seconds;
 	unsigned submit, prims;
 	bool ff, prof, stats, fs1, fs3, noskip;
@@ -105,7 +105,7 @@ static struct {
 } local;
 #define SWITCH_COPY(TO, FROM)                                                                                  \
 	do {                                                                                                         \
-		TO(idle_skip, psx3d_idle_skip); TO(stcap, gs_defer); TO(stauto, gs_cap_auto); TO(st3d, gs_debug); \
+		TO(idle_skip, psx3d_idle_skip); TO(stcap, gs_defer); TO(stauto, gs_cap_auto); \
 		TO(state, sw_state); TO(pmu0, sw_pmu0);           \
 		TO(autosave_test, sw_autosave_test);                                                                   \
 		TO(pmu1, sw_pmu1); TO(gldbg, sw_gldbg); TO(vramdump, sw_vramdump); TO(skipgate, psx3d_skipgate);       \
@@ -142,7 +142,6 @@ bool switches_run(char *line, char *game, size_t len, char *error, size_t error_
 	psx3d_idle_skip = 1;
 	gs_defer = 1;
 	gs_cap_auto = 1;
-	gs_debug = 0;
 	pica_submit = 7;
 	sw_ff = false;
 	sw_prof = sw_stats = sw_fs1 = sw_fs3 = sw_noskip = sw_nosputhread = sw_acap = false;

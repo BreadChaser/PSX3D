@@ -20,11 +20,11 @@
 // holds the depth of a 3D vertex for corners that have none of their own:
 // every triangle sharing the vertex then moves it alike (taking each
 // triangle's mean opened cracks between them).
-// Triangles: four-way, 16K entries of 24 bytes. The corners in the order of
+// Triangles: four-way, 32K entries of 24 bytes. The corners in the order of
 // their keys (VRAM x, y, 12 bits each): the smallest key with the generation
 // in bits 24-31, a hash of all three, each corner's disparity (gs_shift's
 // disp() of its depth, worked out once) and flags.
-#define TT_BITS 14
+#define TT_BITS 15
 #define TT_WAYS 4
 typedef struct { uint32_t h, k0; float d[3]; uint32_t f; } tent;
 #define T_EST   (1u << 9)    // a 2D polygon's (no depth, and none to borrow)
@@ -36,9 +36,9 @@ typedef struct { uint32_t h, k0; float d[3]; uint32_t f; } tent;
 static tent *ttab;
 #define JUMP_N 1024
 static float *jump_at;   // the jump limit for short edges (see jump())
-// Vertices: four-way, 16K entries of 8 bytes: key (bits 0-23) and
+// Vertices: four-way, 32K entries of 8 bytes: key (bits 0-23) and
 // generation (24-31), depth (0: none), flags (E_*).
-#define VT_BITS 14
+#define VT_BITS 15
 #define VT_WAYS 4
 typedef union { struct { uint32_t kg; uint16_t z, f; }; uint64_t u; } vent;   // (u: one atomic store/load)
 static vent *vtab;
@@ -50,7 +50,6 @@ static gs_rec *fifo;
 static unsigned fifo_head, fifo_tail;   // written by the main thread / by the capture
 static unsigned n_dropped;
 int gs_defer = 1;
-int gs_debug;                           // test switch st3d=N: 1 no capture, 2 no shift
 uint64_t (*gs_clock)(void);             // the capture's time (gs_core_ticks), if set
 static uint64_t cap_ticks;
 
@@ -62,7 +61,7 @@ static uint64_t cap_ticks;
 // more than SNAP (another object on the same pixel) keeps its own, except
 // on a backdrop's vertex: what is drawn later on its pixels hangs on to it
 // (a sky dome partly found to be the backdrop stays one sheet).
-#define VS_BITS 14
+#define VS_BITS 15
 #define VS_WAYS 4
 #define SNAP (2 * 16)
 typedef struct { uint32_t kg; int16_t shift; uint16_t f; } vsent;   // key 0-23, generation 24-31; shift 1/16 px; f: 1 valid, 2 backdrop
@@ -414,7 +413,7 @@ static void capture(const gs_rec *r);
 // captures it before it draws it); else captured now.
 void gs_capture(const uint32_t *w, uint32_t cmd, uint32_t e3, uint32_t e4, uint32_t e5, const uint16_t z[4])
 {
-	if (!ttab || cmd < 0x20 || cmd >= 0x40 || (gs_debug & 1))
+	if (!ttab || cmd < 0x20 || cmd >= 0x40)
 		return;
 	gs_rec now, *r = &now;
 	unsigned head = fifo_head;
@@ -871,7 +870,7 @@ int gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 	uint16_t now = gen;
 	int moved = 0;
 	memcpy(dst, src, n * sizeof(*dst));
-	if (!ttab || zn <= 0 || k <= 0 || (gs_debug & 2))
+	if (!ttab || zn <= 0 || k <= 0)
 		return 0;
 	for (int t = 0; t + 3 <= n; t += 3) {
 		const gs_vtx *v = &src[t];
