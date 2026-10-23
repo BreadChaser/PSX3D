@@ -100,6 +100,8 @@ static bool lmap_used;
 // a segment more or less earlier would hand every later one another's).
 static struct lsegent { uint32_t key; unsigned pass; uint8_t last, now; } *lsegs, *lsegcur;   // LAY_SEGS
 static float lblend;                 // 0: layers .. 1: Real 3D
+static float lwant;                  // where lblend is heading (1: Real 3D)
+static float lready;                 // the layers' strength: 0 until frames were seen to be flat, then faded in
 static bool lflat;                   // the picture shown has nothing to separate
 // Screen depth instead of layers (the fallback of frames without polygon
 // depth, gpustereo_core.c): for pictures with nothing to separate (logos,
@@ -139,6 +141,7 @@ static void lay_reset(void)
 	lprev.on = false;
 	lkind = -1;
 	lblend = 0;
+	lready = 0;
 	lflat = false;
 	lscreen = 0;
 	lnotgpu = false;
@@ -235,6 +238,12 @@ GS_COLD void gs_core_shown(int x, int y, int w, int h)
 	lflat = s->used && s->flat;
 	// Real 3D where the frame's polygons have GTE depths
 	float want = ltris >= 32 && ldepth * 10 >= ltris * 3 ? 1 : ltris >= 32 && ldepth * 10 < ltris ? 0 : lblend;
+	lwant = want;
+	// The layers start only once frames are known to be flat (fading in);
+	// until then, 3D geometry whose depth isn't settled yet would be cut into
+	// layers per triangle and crack.
+	if (ltris >= 32)
+		lready = want < 0.5f ? (lready > 0.9f ? 1 : lready + 0.1f) : 0;
 	lblend += (want - lblend) * 0.1f;
 	lblend = lblend < 0.01f ? 0 : lblend > 0.99f ? 1 : lblend;
 	ltris = ldepth = 0;
@@ -481,7 +490,7 @@ int __wrap_gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 	if (!lcell || lstrength <= 0)
 		return moved;
 	float a = gs_focus() > 0 ? lblend : 0;
-	float k = 16 * LAY_MAX * lhres / 320.0f * lstrength * (1 - a) * (1 - lscreen);
+	float k = 16 * LAY_MAX * lhres / 320.0f * lstrength * (1 - a) * (1 - lscreen) * lready;
 	moved = 0;
 	for (int t = 0; t + 3 <= n; t += 3) {
 		gs_vtx *d = &dst[t];
@@ -489,8 +498,12 @@ int __wrap_gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 		bool depth = d[0].x != s[0].x || d[1].x != s[1].x || d[2].x != s[2].x;
 		ltris++;
 		ldepth += depth;
-		// settled on Real 3D (3D gameplay): no layer work at all
-		float lay = a < 1 ? lay_tri(s, t == 0) * k : 0;
+		// settled on Real 3D (3D gameplay): no layer work at all. While
+		// fading between the two (or about to), a triangle with real depth takes only Real
+		// 3D's shift (one value per shared corner, scaled by the blend): a
+		// per-triangle layer step on top of it opened cracks between
+		// neighbours sharing those corners.
+		float lay = a < 1 && !(depth && (a > 0 || lwant >= 1)) ? lay_tri(s, t == 0) * k : 0;
 		// A layer moves right further than the one in front of it: next to
 		// a nearer neighbour on its left it would leave a crack. Its left
 		// edge comes back by that step (5 px at most; the texture stretches).
