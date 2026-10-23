@@ -20,11 +20,11 @@
 // holds the depth of a 3D vertex for corners that have none of their own:
 // every triangle sharing the vertex then moves it alike (taking each
 // triangle's mean opened cracks between them).
-// Triangles: four-way, 32K entries of 24 bytes. The corners in the order of
+// Triangles: four-way, 16K entries of 24 bytes. The corners in the order of
 // their keys (VRAM x, y, 12 bits each): the smallest key with the generation
 // in bits 24-31, a hash of all three, each corner's disparity (gs_shift's
 // disp() of its depth, worked out once) and flags.
-#define TT_BITS 15
+#define TT_BITS 14
 #define TT_WAYS 4
 typedef struct { uint32_t h, k0; float d[3]; uint32_t f; } tent;
 #define T_EST   (1u << 9)    // a 2D polygon's (no depth, and none to borrow)
@@ -36,9 +36,9 @@ typedef struct { uint32_t h, k0; float d[3]; uint32_t f; } tent;
 static tent *ttab;
 #define JUMP_N 1024
 static float *jump_at;   // the jump limit for short edges (see jump())
-// Vertices: four-way, 32K entries of 8 bytes: key (bits 0-23) and
+// Vertices: four-way, 16K entries of 8 bytes: key (bits 0-23) and
 // generation (24-31), depth (0: none), flags (E_*).
-#define VT_BITS 15
+#define VT_BITS 14
 #define VT_WAYS 4
 typedef union { struct { uint32_t kg; uint16_t z, f; }; uint64_t u; } vent;   // (u: one atomic store/load)
 static vent *vtab;
@@ -62,7 +62,7 @@ static uint64_t cap_ticks;
 // more than SNAP (another object on the same pixel) keeps its own, except
 // on a backdrop's vertex: what is drawn later on its pixels hangs on to it
 // (a sky dome partly found to be the backdrop stays one sheet).
-#define VS_BITS 15
+#define VS_BITS 14
 #define VS_WAYS 4
 #define SNAP (2 * 16)
 typedef struct { uint32_t kg; int16_t shift; uint16_t f; } vsent;   // key 0-23, generation 24-31; shift 1/16 px; f: 1 valid, 2 backdrop
@@ -451,8 +451,17 @@ void gs_drain(void)
 	if (t == h)
 		return;
 	uint64_t t0 = gs_clock ? gs_clock() : 0;
-	for (; t != h; t++)
+	for (; t != h; t++) {
+		// the next polygon's vertex entries on their way (the 3D cost on the
+		// console is mostly waiting for memory)
+		if (t + 1 != h) {
+			const gs_rec *nx = &fifo[(t + 1) % FIFO_N];
+			for (int k = 0; k < 4; k++)
+				__builtin_prefetch(&vtab[((key_of(nx->x[k], nx->y[k]) * 2654435761u) >> (32 - VT_BITS)) & ~(VT_WAYS - 1u)]);
+			__builtin_prefetch(&fifo[(t + 2) % FIFO_N]);
+		}
 		capture(&fifo[t % FIFO_N]);
+	}
 	__atomic_store_n(&fifo_tail, t, __ATOMIC_RELEASE);
 	if (gs_clock)
 		cap_ticks += gs_clock() - t0;
@@ -531,7 +540,7 @@ static inline __attribute__((always_inline)) void capture_n(const gs_rec *r, con
 	// could fuse along that edge) has no depth of its own here, and as the
 	// same wrong depth reaches every polygon on that pixel, none has it
 	// this frame (a veto); they all get the vertex's depth from elsewhere.
-	float dk[4];   // each corner's disparity (the same for every triangle it is in)
+	float dk[4] = { 0, 0, 0, 0 };   // each corner's disparity (the same for every triangle it is in)
 	bool have_dk = !twod && near_z > 0;
 	if (have_dk) {
 		UNROLL for (int k = 0; k < n; k++)
@@ -866,6 +875,18 @@ int gs_shift(const gs_vtx *src, gs_vtx *dst, int n)
 		return 0;
 	for (int t = 0; t + 3 <= n; t += 3) {
 		const gs_vtx *v = &src[t];
+		if (t + 6 <= n) {   // the next triangle's entries on their way
+			uint32_t nk[3], ns[3];
+			int nr[3];
+			for (int i = 0; i < 3; i++) {
+				nk[i] = key_of(v[3 + i].x >> 4, v[3 + i].y >> 4);
+				__builtin_prefetch(&vshift[((nk[i] * 2654435761u) >> (32 - VS_BITS)) & ~(VS_WAYS - 1u)]);
+			}
+			rank3(nk, nr);
+			for (int i = 0; i < 3; i++)
+				ns[nr[i]] = nk[i];
+			__builtin_prefetch(&ttab[(tri_hash(ns[0], ns[1], ns[2]) >> (32 - TT_BITS)) & ~(TT_WAYS - 1u)]);
+		}
 		float d[3];
 		unsigned edge[3];   // T_L, T_R
 		bool known[3], far[3] = { false };
