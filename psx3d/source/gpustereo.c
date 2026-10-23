@@ -110,8 +110,10 @@ void gpustereo_frame(void)
 
 // --- GPU thread ------------------------------------------------------------
 
+void gpustereo_unbind_right(void);
 static void release(void)
 {
+	gpustereo_unbind_right();
 	mirror = seeded = hold_valid = need_seed = false;
 	if (right_tex.data) C3D_TexDelete(&right_tex);
 	if (right_hold.data) C3D_TexDelete(&right_hold);
@@ -195,24 +197,30 @@ static void seed(void)
 	hold_valid = false;
 }
 
+// A pair binds the other eye's frame buffer only once: the left eye's draw,
+// then the right eye's, which stays bound; the next pair draws the right
+// eye's first, then the left eye's, and so on (each switch makes the GPU
+// write its frame buffer cache back, and citro3d bind it all again).
 static noinline void mirror_draw(GPU_Primitive_t primitive, int first, int size)
 {
 	C3D_Context *ctx = C3Di_GetContext();
 	C3D_FrameBuf *fb = &ctx->fb;
-	if (fb->colorFmt != GPU_RB_RGBA5551 || fb->width != VRAM_W || fb->height != VRAM_H ||
-	    fb->colorBuf == right_tex.data || primitive != GPU_TRIANGLES) {
+	// the right eye's frame buffer, still bound from the last pair, stands for PS1 VRAM
+	bool right_first = canonical && fb->colorBuf == right_tex.data;
+	if (!right_first && (fb->colorFmt != GPU_RB_RGBA5551 || fb->width != VRAM_W || fb->height != VRAM_H ||
+	    fb->colorBuf == right_tex.data || primitive != GPU_TRIANGLES)) {
 		picadirect_draw_arrays(primitive, first, size);   // not PS1 VRAM
 		return;
 	}
-	canonical = fb->colorBuf;
+	if (!right_first)
+		canonical = fb->colorBuf;
 	if (need_seed)
 		seed();
-	cmdroom_draw_pair(primitive, first, size);
 
 	C3D_BufInfo *bi = &ctx->bufInfo;
 	C3D_BufCfg *buf = &bi->buffers[0];
 	bool moved = false;
-	u32 offset = buf->offset;
+	u32 offset = buf->offset, shifted = offset;
 	if (bi->bufCount == 1 && ((buf->flags[1] >> 16) & 0xfff) == sizeof(gs_vtx)) {
 		if (video_frame_serial != ring_serial) {
 			// a new frame: the GPU has finished the one before last
@@ -229,8 +237,7 @@ static noinline void mirror_draw(GPU_Primitive_t primitive, int first, int size)
 			if (gs_shift(src, dst, size)) {
 				moved = true;
 				ring_pos += size;
-				buf->offset = osConvertVirtToPhys(dst) - first * sizeof(gs_vtx) - bi->base_paddr;
-				ctx->flags |= C3DiF_BufInfo;
+				shifted = osConvertVirtToPhys(dst) - first * sizeof(gs_vtx) - bi->base_paddr;
 				uintptr_t lo = (uintptr_t)dst, hi = lo + size * sizeof(gs_vtx);
 				if (!dirty_hi) dirty_lo = lo, dirty_hi = hi;
 				dirty_lo = lo < dirty_lo ? lo : dirty_lo;
@@ -238,12 +245,30 @@ static noinline void mirror_draw(GPU_Primitive_t primitive, int first, int size)
 			}
 		}
 	}
-	void *color = fb->colorBuf;
-	fb->colorBuf = right_tex.data;
+	if (right_first) {
+		// the right eye (bound), then the left eye's frame buffer and vertices
+		if (moved) {
+			buf->offset = shifted;
+			ctx->flags |= C3DiF_BufInfo;
+		}
+		cmdroom_draw_pair(primitive, first, size);
+		if (moved) {
+			buf->offset = offset;
+			ctx->flags |= C3DiF_BufInfo;
+		}
+		fb->colorBuf = canonical;
+		ctx->flags |= C3DiF_FrameBuf;
+		picadirect_draw_arrays(primitive, first, size);
+		return;
+	}
+	cmdroom_draw_pair(primitive, first, size);
+	if (moved) {
+		buf->offset = shifted;
+		ctx->flags |= C3DiF_BufInfo;
+	}
+	fb->colorBuf = right_tex.data;   // (stays bound for the next pair)
 	ctx->flags |= C3DiF_FrameBuf;
 	picadirect_draw_arrays(primitive, first, size);
-	fb->colorBuf = color;
-	ctx->flags |= C3DiF_FrameBuf;
 	if (moved) {
 		buf->offset = offset;
 		ctx->flags |= C3DiF_BufInfo;
@@ -330,4 +355,16 @@ void gpustereo_status(char *out, int n)
 		seeded ? "true" : "false", hold_valid ? "true" : "false", failed ? "true" : "false",
 		gs_focus(), lookups, found, shifted, rejected, gpustereo_flat(), video_stereo_on() ? "true" : "false",
 		video_top_aa() ? "true" : "false", (unsigned)vramSpaceFree());
+}
+
+// GPU thread, between frames (the picture shown): PS1 VRAM bound again if a
+// mirrored pair left the right eye's frame buffer bound, before draws that
+// aren't mirrored (3D turned off, a game ending) can come
+void gpustereo_unbind_right(void)
+{
+	C3D_Context *ctx = C3Di_GetContext();
+	if (canonical && right_tex.data && ctx->fb.colorBuf == right_tex.data) {
+		ctx->fb.colorBuf = canonical;
+		ctx->flags |= C3DiF_FrameBuf;
+	}
 }

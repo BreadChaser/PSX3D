@@ -745,8 +745,10 @@ static int lay_scissor_right(void)
 	return ctx->scissor[0] == GPU_SCISSOR_DISABLE ? 1024 : (int)(ctx->scissor[2] & 0xffff) + 1;
 }
 int __real_pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h);
+void gpustereo_unbind_right(void);
 int __wrap_pica_picture(C3D_Tex **tex, float *l, float *t, float *r, float *b, float *w, float *h)
 {
+	gpustereo_unbind_right();   // (a mirrored pair may have left it bound: gpustereo.c)
 	int pic = __real_pica_picture(tex, l, t, r, b, w, h);
 	lnotgpu = pic != PICA_PIC_GPU;
 	if (pic == PICA_PIC_GPU && lcell && lstrength > 0 && ldrew) {

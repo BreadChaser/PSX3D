@@ -115,7 +115,13 @@ SECTIONS
 		__psx3d_frontend_hot_gpu = .;
 		gamecfg.o(.text .text.*)
 		gpu_cache.o(.text .text.*)
-		gpustereo.o(.text .text.*)
+		/* gpustereo.o: the functions the Old 3DS runs every frame (gpustereo_mode
+		   to gpustereo_status) at RC9's page offsets; the rest (Real 3D's
+		   mirrored draws and copies, New 3DS only) after them. */
+		gpustereo.o(.text)
+		. = . + ((0x318 - .) & 0xfff);
+		gpustereo.o(.text.gpustereo_mode .text.__wrap_psx3d_depth_cmd .text.__wrap_psx3d_stereo_set .text.gpustereo_frame .text.gpustereo_after_present .text.gpustereo_game_end .text.__wrap_C3D_DrawArrays .text.__wrap_GX_TextureCopy .text.gpustereo_frame_end .text.gpustereo_ready .text.gpustereo_flat .text.gpustereo_right_for .text.gpustereo_status)
+		gpustereo.o(.text.*)
 		. = . + ((0xa58 - .) & 0xfff);
 		/* Real 3D (New 3DS only) between gpustereo.o and input.o: the
 		   functions the Old 3DS runs every frame (gs_core_frame to
