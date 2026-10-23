@@ -502,7 +502,7 @@ static inline __attribute__((always_inline)) void capture_n(const gs_rec *r, con
 				found++;
 			}
 	bool twod = found < 2;
-	float inv = 0, rz[4];   // rz: the corners' 1/z (a vetoed corner's stays unused)
+	float inv = 0, rz[4] = { 0, 0, 0, 0 };   // rz: the corners' 1/z (a vetoed corner's stays unused)
 	UNROLL for (int k = 0; k < n; k++)
 		if (zk[k])
 			inv += rz[k] = 1.0f / zk[k];
