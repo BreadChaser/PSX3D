@@ -60,3 +60,21 @@ The procedural no-cover disc's material colours and the icon draw-on tip also
 live in the theme table. Material colours are shared defaults (including its
 rainbow sheen), so missing box art stays recognizable across palettes. Their
 roles can be overridden per palette without adding drawing-time literals.
+
+### Menu submission
+
+Scene primitives append complete vertices to the pinned Citro2D 1.7.0 buffers,
+using the SDK shader and state transitions. `scene_batch.h` guards private ABI
+sizes/offsets; `tools/build/toolchain.lock` pins the SDK archive and headers.
+The ARM/QEMU scene-batch test compares vertex/index output against the actual
+SDK triangle, rectangle, line, image and single-glyph functions. GPU writes are
+stubbed in this test; physical timing and screenshots remain separate gates.
+Phosphor caches system-font glyph metadata and its static grain at menu entry.
+Ember groups additive tails, glows and cores to avoid per-particle shader changes.
+All cached metadata and working buffers are released before gameplay.
+
+Quicksilver retains all fibres and 30 path integration steps. Paths are cached
+at 8 Hz, with vertex positions interpolated every frame. The host error check
+compares those positions to exact integration for both screen sizes (180 time
+samples up to ~51 minutes); the observed worst displacement is 0.025 pixels.
+Fibre and Ember additive glows are grouped to avoid repeated shader switches.

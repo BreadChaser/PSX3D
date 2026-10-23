@@ -71,5 +71,24 @@ int main(void){
   scene_release();scene_release();assert(!ws&&!textures&&!texts);
   playing=true;scene_draw(false);scene_draw(true);assert(!ws&&!textures&&!texts);playing=false;
  }
+ // Bound the temporal interpolation error against exact 30-step integration.
+ assert(prepare());
+ float worst=0;
+ for(int screen=0;screen<2;screen++) {
+  w=screen?320:400;
+  for(int sample=0;sample<180;sample++) {
+   float epoch=sample*17.125f, phase=(sample%7+1)/8.f;
+   point_t a[COUNT(FL)][31],b[COUNT(FL)][31],exact[COUNT(FL)][31];
+   for(int i=0;i<COUNT(FL);i++){flow_path(a[i],i,epoch);flow_path(b[i],i,epoch+.125f);flow_path(exact[i],i,epoch+phase*.125f);}
+   for(int i=0;i<COUNT(FL);i++)for(int k=0;k<31;k++) {
+    float dx=a[i][k].x+(b[i][k].x-a[i][k].x)*phase-exact[i][k].x;
+    float dy=a[i][k].y+(b[i][k].y-a[i][k].y)*phase-exact[i][k].y;
+    float error=sqrtf(dx*dx+dy*dy);if(error>worst)worst=error;
+   }
+  }
+ }
+ printf("flow temporal interpolation worst displacement %.5f px\n",worst);
+ assert(worst < .1f);
+ scene_release();
  printf("scene bounds/lifetime: 8 themes x 2 models x 240 times, peak %u draw objects for both screens; PASS\n",peak);
 }

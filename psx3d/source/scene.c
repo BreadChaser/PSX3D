@@ -8,6 +8,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include "scene_batch.h"
 
 #define PI 3.14159265358979323846f
 #define TAU (2 * PI)
@@ -16,11 +17,21 @@ typedef struct {
     float x, y;
 } point_t;
 typedef struct {
+    float epoch[COUNT(FL)];
+    bool valid[COUNT(FL)];
+    point_t p[2][COUNT(FL)][31];
+} flow_cache_t;
+typedef struct {
+    flow_cache_t flow[2];
     float sine[1024], decay[256];
     C3D_Tex radial;
     Tex3DS_SubTexture radial_sub;
     C2D_Text glyph[12];
     C2D_TextBuf text;
+    float grain[20][50];
+#ifdef __3DS__
+    scene_glyph cached_glyph[12];
+#endif
 
 } workspace_t;
 static workspace_t *ws;
@@ -38,7 +49,8 @@ static float smooth(float a, float b, float v) {
 static float fract(float x) { return x - floorf(x); }
 static float sn(float x) {
     float f = x * (1024 / TAU);
-    int k = (int)floorf(f);
+    int k = (int)f;
+    k -= f < k;
     float a = f - k;
     return ws->sine[k & 1023] + (ws->sine[(k + 1) & 1023] - ws->sine[k & 1023]) * a;
 }
@@ -47,7 +59,7 @@ static float decay(float x) {
     int k = (int)(x * 32);
     return k < 0 ? 1 : k > 255 ? 0 : ws->decay[k];
 }
-static u32 alpha(u32 c, float a) { return theme_alpha(c, (int)(255 * clamp(a))); }
+static u32 alpha(u32 c, float a) { return (c & 0x00ffffff) | ((u32)(255 * clamp(a)) << 24); }
 static u32 mix(u32 a, u32 b, float k) {
     u32 c = 0;
     k = clamp(k);
@@ -66,13 +78,13 @@ static void blend(bool add) {
     additive = add;
 }
 static void tri(float ax, float ay, u32 ac, float bx, float by, u32 bc, float cx, float cy, u32 cc) {
-    C2D_DrawTriangle(ax + depth, ay, ac, bx + depth, by, bc, cx + depth, cy, cc, z);
+    scene_triangle(ax + depth, ay, ac, bx + depth, by, bc, cx + depth, cy, cc, z);
 }
 static void rect(float x, float y, float ww, float hh, u32 c) {
-    C2D_DrawRectSolid(x + depth, y, z, ww, hh, c);
+    scene_rectangle(x + depth, y, z, ww, hh, c, c, c, c);
 }
 static void grad(float x, float y, float ww, float hh, u32 a, u32 b) {
-    C2D_DrawRectangle(x + depth, y, z, ww, hh, a, a, b, b);
+    scene_rectangle(x + depth, y, z, ww, hh, a, a, b, b);
 }
 static void line(float x0, float y0, float x1, float y1, u32 col, float a0, float a1, float lw) {
     if (a0 < .003f && a1 < .003f)
@@ -82,8 +94,8 @@ static void line(float x0, float y0, float x1, float y1, u32 col, float a0, floa
         return;
     float k = lw * .5f / sqrtf(dd), nx = -dy * k, ny = dx * k;
     u32 a = alpha(col, a0), b = alpha(col, a1);
-    tri(x0 - nx, y0 - ny, a, x1 - nx, y1 - ny, b, x1 + nx, y1 + ny, b);
-    tri(x0 - nx, y0 - ny, a, x1 + nx, y1 + ny, b, x0 + nx, y0 + ny, a);
+    scene_line_quad(x0 - nx + depth, y0 - ny, x1 - nx + depth, y1 - ny,
+                    x0 + nx + depth, y0 + ny, x1 + nx + depth, y1 + ny, a, b, z);
 }
 // The mock's radial gradient, generated in code once per menu session. One
 // textured quad avoids thousands of tiny fan triangles on the Old 3DS.
@@ -91,10 +103,14 @@ static void glow(float x, float y, float r, u32 col, float a, float sy) {
     if (a < .003f || r <= 0)
         return;
     blend(true);
+#ifdef __3DS__
+    scene_radial(&ws->radial, x-r+depth, y-r*sy, z, r*2, r*sy*2, alpha(col,a));
+#else
     C2D_ImageTint tint;
     C2D_PlainImageTint(&tint, alpha(col, a), 1);
     C2D_DrawImageAt((C2D_Image){&ws->radial, &ws->radial_sub}, x - r + depth, y - r * sy, z, &tint,
                     r / 64, r * sy / 64);
+#endif
 }
 static void ring(float x, float y, float r, float lw, u32 col, float a) {
     for (int i = 0; i < 64; i++) {
@@ -293,20 +309,50 @@ static point_t fibre_at(const point_t *p, float d, int steps) {
     float f = d - j;
     return (point_t){p[j].x + (p[j + 1].x - p[j].x) * f, p[j].y + (p[j + 1].y - p[j].y) * f};
 }
+// Flow changes slowly (the mock's field advances by .045 radians/second).
+// Cache its integrated paths at 8 Hz and interpolate every menu frame. All
+// fibres and 30 integration steps remain; this bounds temporal phase error
+// without making the animation update at the cache rate.
+static void flow_path(point_t p[31], int i, float t) {
+    float h = (w + 60) / 30, tt = t * .045f;
+    const fl_seed_t *q = &FL[i];
+    p[0] = (point_t){-30, q->y * 240 + 18 * sn(t * .02f + q->bnd * 1.7f) + q->off};
+    for (int k = 0; k < 30; k++) {
+        float u = p[k].x / w, v = p[k].y / 240,
+              a = .42f * sn(u * 2.6f + tt + v * 1.7f) + .22f * sn(v * 3.9f - u * 1.9f + tt * 1.4f) +
+                  .12f * sn(u * 6.1f + v * 5.3f - tt * .8f);
+        p[k + 1] = (point_t){p[k].x + cs(a) * h, p[k].y + sn(a) * h};
+    }
+}
 static void flow(const layer_t *L, float t) {
     int steps = 30, keep = (int)(COUNT(FL) * fmaxf(.3f, fminf(1, strength * (L->n ? L->n : 1))) + .5f);
-    float h = (w + 60) / steps, tt = t * .045f;
+    flow_cache_t *cache = &ws->flow[bottom];
+    struct { point_t p; u32 color; float a; } glows[COUNT(FL)];
+    int glow_count = 0;
     blend(true);
     for (int i = 0; i < keep; i++) {
         const fl_seed_t *q = &FL[i];
         point_t p[31];
-        p[0] = (point_t){-30, q->y * 240 + 18 * sn(t * .02f + q->bnd * 1.7f) + q->off};
+        // Stagger the refresh across fibres so the integration work is spread
+        // over frames instead of spiking eight times each second.
+        float offset = i / (float)keep, clock = t * 8 + offset;
+        float epoch = floorf(clock), phase = clock - epoch;
+        if (!cache->valid[i] || epoch != cache->epoch[i]) {
+            if (cache->valid[i] && epoch == cache->epoch[i] + 1)
+                memcpy(cache->p[0][i], cache->p[1][i], sizeof(cache->p[0][i]));
+            else
+                flow_path(cache->p[0][i], i, (epoch - offset) / 8);
+            flow_path(cache->p[1][i], i, (epoch + 1 - offset) / 8);
+            cache->epoch[i] = epoch;
+            cache->valid[i] = true;
+        }
+
+        for (int k = 0; k <= steps; k++) {
+            point_t a = cache->p[0][i][k], b = cache->p[1][i][k];
+            p[k] = (point_t){a.x + (b.x-a.x)*phase, a.y + (b.y-a.y)*phase};
+        }
         u32 col = mix(th->fx_colour, th->fx_colour2, ((int)q->bnd & 1) * .6f);
         for (int k = 0; k < steps; k++) {
-            float u = p[k].x / w, v = p[k].y / 240,
-                  a = .42f * sn(u * 2.6f + tt + v * 1.7f) + .22f * sn(v * 3.9f - u * 1.9f + tt * 1.4f) +
-                      .12f * sn(u * 6.1f + v * 5.3f - tt * .8f);
-            p[k + 1] = (point_t){p[k].x + cs(a) * h, p[k].y + sn(a) * h};
             float a0 = smooth(0, w * .2f, p[k].x) * smooth(w, w * .8f, p[k].x),
                   a1 = smooth(0, w * .2f, p[k + 1].x) * smooth(w, w * .8f, p[k + 1].x),
                   opacity = (i == 0 || i == 12 || i == 26 || i == 36 ? .5f : .16f) * q->b * strength;
@@ -326,10 +372,15 @@ static void flow(const layer_t *L, float t) {
         }
         if (pos > 0 && pos < steps) {
             point_t a = fibre_at(p, pos, steps);
-            glow(a.x, a.y, 7, col,
-                 .28f * q->b * strength * smooth(0, 5, pos) * smooth(steps, steps - 5, pos), 1);
+            glows[glow_count].p = a;
+            glows[glow_count].color = col;
+            glows[glow_count++].a = .28f * q->b * strength * smooth(0, 5, pos) * smooth(steps, steps - 5, pos);
         }
     }
+    // These contributions all add: defer texture mode until every solid fibre
+    // and bead tail has been submitted.
+    for (int i = 0; i < glow_count; i++)
+        glow(glows[i].p.x, glows[i].p.y, 7, glows[i].color, glows[i].a, 1);
 }
 static point_t signal_at(int i, float d) {
     d = fmaxf(0, fminf(SIG[i].len - .001f, d));
@@ -376,22 +427,23 @@ static void glyphs(const layer_t *L, float t) {
                                    {.71f, .31f, -.052f, .067f, 1},
                                    {.52f, .78f, .061f, -.043f, .8f},
                                    {.12f, .66f, -.047f, -.059f, .7f}};
-    float bx[4], by[4], br[4];
+    float bx[4], by[4], br[4], inv_radius[4];
     for (int k = 0; k < 4; k++) {
         bx[k] = (.5f + .42f * sn(t * gb[k][2] + gb[k][0] * 6.3f)) * w;
         by[k] = (.5f + .42f * sn(t * gb[k][3] + gb[k][1] * 6.3f + k)) * 240;
         br[k] = gb[k][4] * (bottom ? 44 : 56) * (.85f + .15f * sn(t * .2f + k));
+        inv_radius[k] = 1 / br[k];
     }
     blend(false);
     for (int j = 0; j < 20; j++)
         for (int i = 0; i < (int)(w / 8); i++) {
             float x = (i + .5f) * 8, y = (j + .5f) * 12, b = 0;
             for (int k = 0; k < 4; k++) {
-                float dx = (x - bx[k]) / br[k], dy = (y - by[k]) / br[k], d = dx * dx + dy * dy;
+                float dx = (x - bx[k]) * inv_radius[k], dy = (y - by[k]) * inv_radius[k], d = dx * dx + dy * dy;
                 if (d < 4)
                     b += decay(d * 1.6f);
             }
-            float grain = fract(sn(i * 12.99f + j * 78.23f) * 43758.5f),
+            float grain = ws->grain[j][i],
                   v = .5f + .5f * sn(i * .23f - j * .31f + t * .3f);
             b += (bottom ? .2f : .3f) * (.35f + .65f * v * v) * grain;
             b *= strength * .85f;
@@ -400,9 +452,13 @@ static void glyphs(const layer_t *L, float t) {
             int ci = (int)(b * 12);
             if (ci > 11)
                 ci = 11;
-            C2D_DrawText(&ws->glyph[ci], C2D_WithColor, x - 3 + depth, y - 6, z, .25f, .25f,
-                         alpha(mix(th->fx_colour, th->scene_white, clamp(b - .6f)),
-                               clamp(.12f + b * .6f) * (y > 162 && !bottom ? .35f : 1)));
+            u32 col = alpha(mix(th->fx_colour, th->scene_white, clamp(b - .6f)),
+                            clamp(.12f + b * .6f) * (y > 162 && !bottom ? .35f : 1));
+#ifdef __3DS__
+            scene_draw_glyph(&ws->cached_glyph[ci], x - 3 + depth, y - 6, z, col);
+#else
+            C2D_DrawText(&ws->glyph[ci], C2D_WithColor, x - 3 + depth, y - 6, z, .25f, .25f, col);
+#endif
         }
     for (int k = 0; k < 4; k++)
         glow(bx[k], by[k], br[k] * 1.3f, th->fx_colour, .1f * strength, .9f);
@@ -423,6 +479,10 @@ static void embers(const layer_t *L, float t) {
     int n = (int)((L->n ? L->n : 80) * fmaxf(.3f, strength) + .5f);
     if (n > COUNT(EM))
         n = COUNT(EM);
+    // All three passes use additive blending: grouping the same primitives
+    // avoids switching image/circle shader state for every particle.
+    struct { point_t p, prev; float a, size; int layer; } particles[COUNT(EM)];
+    int count = 0;
     blend(true);
     for (int i = 0; i < n; i++) {
         const em_seed_t *q = &EM[i];
@@ -436,15 +496,28 @@ static void embers(const layer_t *L, float t) {
               a = q->b * (.7f + .3f * sn(t * (.8f + q->w) + q->p)) * life * heat * strength * 1.45f;
         if (a < .02f)
             continue;
-        float size = l == 0 ? 1 : l == 1 ? 1.5f : 2.8f;
-        line(prev.x, prev.y, p.x, p.y, th->fx_colour, 0,
-             a * (l == 0   ? .45f
-                  : l == 1 ? .55f
-                           : .25f),
-             size * .9f);
-        glow(p.x, p.y, size * (l == 2 ? 8 : 5.5f), th->fx_colour, a * (l == 2 ? .3f : .5f), 1);
-        C2D_DrawCircleSolid(
-            p.x + depth, p.y, z, size * .6f,
+        particles[count].p = p;
+        particles[count].prev = prev;
+        particles[count].a = a;
+        particles[count].size = l == 0 ? 1 : l == 1 ? 1.5f : 2.8f;
+        particles[count++].layer = l;
+    }
+    for (int i = 0; i < count; i++) {
+        float a = particles[i].a, size = particles[i].size;
+        int l = particles[i].layer;
+        line(particles[i].prev.x, particles[i].prev.y, particles[i].p.x, particles[i].p.y,
+             th->fx_colour, 0, a * (l == 0 ? .45f : l == 1 ? .55f : .25f), size * .9f);
+    }
+    for (int i = 0; i < count; i++) {
+        float a = particles[i].a, size = particles[i].size;
+        int l = particles[i].layer;
+        glow(particles[i].p.x, particles[i].p.y, size * (l == 2 ? 8 : 5.5f),
+             th->fx_colour, a * (l == 2 ? .3f : .5f), 1);
+    }
+    for (int i = 0; i < count; i++) {
+        float a = particles[i].a, size = particles[i].size;
+        int l = particles[i].layer;
+        C2D_DrawCircleSolid(particles[i].p.x + depth, particles[i].p.y, z, size * .6f,
             alpha(mix(th->fx_colour, th->scene_white, .6f * a), a * (l == 2 ? .55f : 1)));
     }
 }
@@ -607,6 +680,9 @@ static bool prepare(void) {
         return false;
     for (int i = 0; i < 1024; i++)
         ws->sine[i] = sinf(i * TAU / 1024);
+    for (int j = 0; j < 20; j++)
+        for (int i = 0; i < 50; i++)
+            ws->grain[j][i] = fract(sn(i * 12.99f + j * 78.23f) * 43758.5f);
     // exp(-x/32), computed once without linking a new libm function.
     ws->decay[0] = 1;
     for (int i = 1; i < 256; i++)
@@ -641,6 +717,9 @@ static bool prepare(void) {
         char s[2] = {ramp[i], 0};
         C2D_TextParse(&ws->glyph[i], ws->text, s);
         C2D_TextOptimize(&ws->glyph[i]);
+#ifdef __3DS__
+        ws->cached_glyph[i] = scene_cache_glyph(&ws->glyph[i], .25f);
+#endif
     }
     return true;
 }
