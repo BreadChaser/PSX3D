@@ -48,6 +48,10 @@ int main(void)
   g_new3ds=model;
   file(PSX3D_CONFIG,"renderer=sw\nstereo=2\nhalf3d=1\ncore.pcsx_rearmed_gpu_unai_fast_lighting=enabled\n");
   config_load();
+  // New 3DS default 3D style is Screen depth (mode 1); stereo_style=0 picks Real 3D (mode 2).
+  assert(g_cfg.stereo==(model?1:0));
+  file(PSX3D_CONFIG,"stereo_style=0\n");
+  config_load();
   assert(g_cfg.stereo==(model?2:0));
   struct retro_variable vars[]={
    {"psx3d_renderer","Renderer; Software|GPU"},
