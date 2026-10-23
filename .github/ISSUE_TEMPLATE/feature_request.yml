@@ -1,0 +1,29 @@
+name: Feature request
+description: An idea for PSX3D
+labels: ["feature request"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: Describe the feature and how you'd use it.
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Which game is it for?
+      description: Optional. Leave blank if it's for every game.
+  - type: dropdown
+    id: console
+    attributes:
+      label: Your console
+      options:
+        - Old 3DS / Old 3DS XL / Old 2DS
+        - New 3DS / New 3DS XL / New 2DS XL
+        - Both / doesn't matter
+  - type: textarea
+    id: example
+    attributes:
+      label: Example
+      description: Optional. Another emulator or app that does this, a picture, or a link.

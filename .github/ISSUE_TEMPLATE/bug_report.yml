@@ -1,15 +1,16 @@
 name: Bug report
-description: A game doesn't start, draws wrong, runs slow, or PSX3D crashes
+description: A game draws wrong, runs slow, has sound problems, or PSX3D crashes
+labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks. Please check the [known issues](https://github.com/BreadChaser/PSX3D#known-issues) and the [compatibility list](https://github.com/BreadChaser/PSX3D/blob/main/docs/compatibility.md) first.
-        Don't attach game images, BIOS files or anything you don't own.
+        Thanks for reporting! Please check the [known issues](https://github.com/BreadChaser/PSX3D#known-issues) first.
+        Don't attach game files, BIOS files or anything you don't own.
   - type: dropdown
     id: console
     attributes:
-      label: Console model
+      label: Console
       options:
         - Old 3DS
         - Old 3DS XL
@@ -23,19 +24,32 @@ body:
     id: version
     attributes:
       label: PSX3D version
-      description: Shown in the top corner of the library (for example v0.5.0).
+      description: Shown in the top corner of the library, for example v0.5.1.
+      placeholder: v0.5.1
     validations:
       required: true
-  - type: input
-    id: luma
-    attributes:
-      label: Luma3DS version
-      description: Optional. Leave blank if you don't know.
   - type: input
     id: game
     attributes:
       label: Game and region
-      description: For example "Resident Evil 2, Spain (PAL)". Add the serial (like SCUS-94900) if you know it.
+      description: Add the serial (like SCUS-94900) if you know it.
+      placeholder: Resident Evil 2, Spain (PAL)
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of problem?
+      options:
+        - Picture (wrong, flickering, missing, garbage)
+        - Speed (slow, stuttering)
+        - Sound
+        - Crash or freeze
+        - Saves or memory card
+        - Controls
+        - 3D
+        - Menus or library
+        - Something else
     validations:
       required: true
   - type: textarea
@@ -48,14 +62,17 @@ body:
   - type: textarea
     id: repeat
     attributes:
-      label: How to make it happen again
-      description: Where in the game, and which settings you changed (frameskip, widescreen, 3D, game CPU speed).
+      label: Where in the game and which settings
+      description: Where it happens, and any settings you changed (frameskip, widescreen, 3D, game CPU speed).
+  - type: textarea
+    id: photo
+    attributes:
+      label: Photo or screenshot
+      description: A phone photo of the screen is fine. Drag it into this box.
   - type: textarea
     id: log
     attributes:
-      label: log.txt
+      label: log.txt (optional)
       description: |
-        Drag `sdmc:/3ds/PSX3D/log.txt` into this box, or paste it. It holds the last session; older ones are `log.1.txt` to `log.4.txt`.
-        Copy it before you start PSX3D again. For drawing problems, add a photo or screenshot.
-    validations:
-      required: true
+        If you can, drag `sdmc:/3ds/PSX3D/log.txt` from your SD card into this box. It's from the last time you played,
+        so copy it before you start PSX3D again. Older sessions are `log.1.txt` to `log.4.txt`.

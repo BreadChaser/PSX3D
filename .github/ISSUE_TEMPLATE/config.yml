@@ -1,5 +1,8 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
+  - name: Known issues
+    url: https://github.com/BreadChaser/PSX3D#known-issues
+    about: Problems we already know about.
   - name: Compatibility list
     url: https://github.com/BreadChaser/PSX3D/blob/main/docs/compatibility.md
-    about: What has been tested, on which console.
+    about: Which games have been tested, on which console.

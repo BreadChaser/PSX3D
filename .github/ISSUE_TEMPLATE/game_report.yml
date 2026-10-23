@@ -1,0 +1,49 @@
+name: Game report
+description: Tell us how a game plays, good or bad. It goes into the compatibility list.
+labels: ["game report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Played something? A quick report helps a lot, even if it works perfectly.
+        If something is clearly broken, a Bug report is better.
+  - type: input
+    id: game
+    attributes:
+      label: Game and region
+      placeholder: Spyro the Dragon, USA
+    validations:
+      required: true
+  - type: dropdown
+    id: console
+    attributes:
+      label: Console
+      options:
+        - Old 3DS / Old 3DS XL / Old 2DS
+        - New 3DS / New 3DS XL / New 2DS XL
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: PSX3D version
+      placeholder: v0.5.1
+    validations:
+      required: true
+  - type: dropdown
+    id: rating
+    attributes:
+      label: How does it play?
+      options:
+        - Perfect - plays like the real thing
+        - Great - small issues, fully playable
+        - Playable - noticeable problems, but you can finish it
+        - Not playable - too slow or too broken
+        - Doesn't start
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: How far you got, anything that looked or sounded off, settings you changed.
