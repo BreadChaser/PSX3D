@@ -75,9 +75,11 @@ citro3d, after Real 3D's own shift.
   moves 10% per picture. Settled on Real 3D, the layers do no work at all.
 - **Edges.** A vertex on the buffer's left edge is not moved (moved right, it would leave a
   strip the right eye never draws).
-- **Crack fill.** A primitive whose left neighbour (the cells just left of it, this or the last
-  pass) is a nearer level moves its left corners back by the difference (5 px at most), so no
-  gap opens between them. Tiles of the same layer move together and are not stretched: the
+- **Crack fill.** A primitive whose left neighbour is a nearer level moves its left corners
+  back by the difference (5 px at most), so no gap opens between them. The neighbour comes from
+  a second cell grid holding the last level anything but the base drew there, in any pass (each
+  pass starts with a fill that marks every cell as base, and the neighbour may be drawn later in
+  the pass). Tiles of the same layer move together and are not stretched: the
   first version pulled every primitive back by the step to the next level, which stretched each
   16-px tile of SFA2's title by 5 px over its neighbour and cut the logo into bands.
 
@@ -100,4 +102,4 @@ citro3d, after Real 3D's own shift.
 - A crack of 1 px can remain where a tile meets a neighbour more than one level nearer.
 - Static screens drawn before 3D turns on keep a flat right eye until they are redrawn.
 - Scenes with few GTE polygons (FF VII battle) get a mix of Real 3D and layers.
-- Memory: about 320 KB of heap while 3D is on in a game; no GPU memory.
+- Memory: about 350 KB of heap while 3D is on in a game; no GPU memory.
