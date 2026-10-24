@@ -35,3 +35,14 @@ and preserve the fresh pre-session config byte for byte. The Old requires
 read-only five-minute polls and ten minutes of stable library/config state
 before claiming its lock. Any unexpected screen/theme change ends all input. New keeps the owner's
 FPS and widescreen choices.
+
+Hardware closure 2026-10-24: first-attempt installs succeeded on New5271 and
+Old5272. New is verified in the library with byte-identical config. Old passed
+the ten-minute owner-inactivity gate and measured baseline High contrast54.27,
+Original26.04,Midnight teal41.51 and PS1 grey49.55 menu draws/s. Original costs
+18.025ms top CPU versus2.159/2.165ms for Midnight/PS1 grey. The sweep stopped
+after an unexpected Theme-picker screen during the Sunset transition; no further
+inputs, only read-only status/config/screenshot capture and lock release. Cause
+is unproven. Old saved config at stop is PS1 grey, initial High contrast; final
+screenshot is Ember preview. Nine themes and final restoration are incomplete.
+Do not claim idle actual Library or identical Old config. No install retry.
