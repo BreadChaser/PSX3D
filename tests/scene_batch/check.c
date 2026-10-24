@@ -80,5 +80,32 @@ int main(void) {
     save(); scene_rectangle(0,0,0,1,1,0,0,0,0); same(4,6);
     reset(); __C2Di_Context.flags=0; save();
     scene_rectangle(0,0,0,1,1,0,0,0,0); same(0,0);
+    // Reusing hill corners must produce the very same ordered triangle
+    // attributes after indexing. The fallback keeps individual-triangle limits.
+    reset(); scene_triangle(1,2,0x12345678,3,4,0x12345678,5,6,0x12345678,.15f);
+    scene_triangle(1,2,0x12345678,5,6,0x12345678,7,8,0x12345678,.15f); save();
+    reset(); C2Di_Context *cell=scene_solid_begin(4,6); assert(cell);
+    scene_solid_cell(cell,1,2,3,4,5,6,7,8,0x12345678,.15f);
+    assert(__C2Di_Context.vtxBufPos==4 && __C2Di_Context.idxBufPos==6);
+    for(unsigned k=0;k<6;k++)
+        assert(!memcmp(&expected_v[expected_i[k]],&vertices[indices[k]],sizeof(vertices[0])));
+    reset(); scene_solid_cell(NULL,1,2,3,4,5,6,7,8,0x12345678,.15f); same(6,6);
+    // A solid mesh run must retain literal SDK vertex/index order, including
+    // the textured-to-solid state transition, and exact-capacity fallback.
+    reset(); scene_radial(&texture,3,4,.1f,256,384,0xabcdef12);
+    scene_triangle(1,2,3,4,5,6,7,8,9,.15f);
+    scene_line_quad(1,1,5,1,1,3,5,3,3,6,.16f); save();
+    reset(); scene_radial(&texture,3,4,.1f,256,384,0xabcdef12);
+    C2Di_Context *batch=scene_solid_begin(7,9); assert(batch);
+    scene_solid_triangle(batch,1,2,3,4,5,6,7,8,9,.15f);
+    scene_solid_line(batch,1,1,5,1,1,3,5,3,3,6,.16f); same(11,15);
+    assert(!(__C2Di_Context.flags & (C2DiF_Mode_Mask|C2DiF_DirtyAny)));
+    reset(); __C2Di_Context.vtxBufSize=3; __C2Di_Context.idxBufSize=3;
+    batch=scene_solid_begin(7,9); assert(!batch);
+    scene_solid_triangle(batch,1,2,3,4,5,6,7,8,9,.15f); save();
+    scene_solid_line(batch,1,1,5,1,1,3,5,3,3,6,.16f); same(3,3);
+    reset(); __C2Di_Context.flags=0;
+    batch=scene_solid_begin(7,9); assert(!batch); save();
+    scene_solid_triangle(batch,1,2,3,4,5,6,7,8,9,.15f); same(0,0);
     puts("scene batch: actual SDK triangle/rectangle/line/radial/glyph output, state and capacity PASS");
 }

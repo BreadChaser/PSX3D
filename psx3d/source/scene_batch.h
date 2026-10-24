@@ -76,9 +76,9 @@ static inline C2Di_Vertex *scene_quad(C2Di_Context *ctx) {
     ctx->vtxBufPos += 4;
     return ctx->vtxBuf + base;
 }
-static inline void scene_triangle(float ax, float ay, u32 ac, float bx, float by, u32 bc,
+static inline void scene_solid_triangle(C2Di_Context *ctx, float ax, float ay, u32 ac, float bx, float by, u32 bc,
                                   float cx, float cy, u32 cc, float z) {
-    C2Di_Context *ctx = scene_reserve(3, 3, C2DiF_Mode_Solid, NULL);
+    if (!ctx) ctx = scene_reserve(3, 3, C2DiF_Mode_Solid, NULL);
     if (!ctx) return;
     unsigned base = ctx->vtxBufPos;
     u16 *ix = ctx->idxBuf + ctx->idxBufPos;
@@ -89,13 +89,44 @@ static inline void scene_triangle(float ax, float ay, u32 ac, float bx, float by
     scene_vertex(&v[0],ax,ay,z,0,0,0,0,ac); scene_vertex(&v[1],bx,by,z,0,0,0,0,bc); scene_vertex(&v[2],cx,cy,z,0,0,0,0,cc);
     ctx->vtxBufPos += 3;
 }
-static inline void scene_line_quad(float ax,float ay,float bx,float by,float cx,float cy,float dx,float dy,u32 a,u32 b,float z) {
-    C2Di_Context *ctx = scene_reserve(4,6,C2DiF_Mode_Solid,NULL);
+// Two original A/B/C, A/C/D triangles, sharing their identical corners.
+static inline void scene_solid_cell(C2Di_Context *ctx, float ax,float ay,float bx,float by,
+                                    float cx,float cy,float dx,float dy,u32 color,float z) {
+    if (!ctx) {
+        scene_solid_triangle(NULL,ax,ay,color,bx,by,color,cx,cy,color,z);
+        scene_solid_triangle(NULL,ax,ay,color,cx,cy,color,dx,dy,color,z);
+        return;
+    }
+    unsigned base=ctx->vtxBufPos;
+    u16 *ix=ctx->idxBuf+ctx->idxBufPos;
+    ix[0]=base; ix[1]=base+1; ix[2]=base+2;
+    ix[3]=base; ix[4]=base+2; ix[5]=base+3;
+    ctx->idxBufPos+=6; ctx->vtxBufPos+=4;
+    C2Di_Vertex *v=ctx->vtxBuf+base;
+    scene_vertex(v,ax,ay,z,0,0,0,0,color);
+    scene_vertex(v+1,bx,by,z,0,0,0,0,color);
+    scene_vertex(v+2,cx,cy,z,0,0,0,0,color);
+    scene_vertex(v+3,dx,dy,z,0,0,0,0,color);
+}
+static inline void scene_triangle(float ax, float ay, u32 ac, float bx, float by, u32 bc,
+                                  float cx, float cy, u32 cc, float z) {
+    scene_solid_triangle(NULL,ax,ay,ac,bx,by,bc,cx,cy,cc,z);
+}
+static inline void scene_solid_line(C2Di_Context *ctx, float ax,float ay,float bx,float by,float cx,float cy,float dx,float dy,u32 a,u32 b,float z) {
+    if (!ctx) ctx = scene_reserve(4,6,C2DiF_Mode_Solid,NULL);
     if (!ctx) return;
     // Left/right endpoints in the same order as SDK DrawLine.
     C2Di_Vertex *v = scene_quad(ctx);
     scene_vertex(&v[0],ax,ay,z,0,0,0,0,a); scene_vertex(&v[1],bx,by,z,0,0,0,0,b);
     scene_vertex(&v[2],cx,cy,z,0,0,0,0,a); scene_vertex(&v[3],dx,dy,z,0,0,0,0,b);
+}
+static inline void scene_line_quad(float ax,float ay,float bx,float by,float cx,float cy,float dx,float dy,u32 a,u32 b,float z) {
+    scene_solid_line(NULL,ax,ay,bx,by,cx,cy,dx,dy,a,b,z);
+}
+// Bounded solid-only runs may reserve once. No flush, texture or mode change
+// may occur before the run ends. NULL retains per-primitive capacity checks.
+static inline C2Di_Context *scene_solid_begin(unsigned vertices, unsigned indices) {
+    return scene_reserve(vertices,indices,C2DiF_Mode_Solid,NULL);
 }
 static inline void scene_rectangle(float x,float y,float z,float w,float h,u32 a,u32 b,u32 c,u32 d) {
     C2Di_Context *ctx = scene_reserve(4,6,C2DiF_Mode_Solid,NULL);
@@ -126,6 +157,16 @@ static inline void scene_draw_glyph(const scene_glyph *g, float x, float y, floa
     scene_vertex(&v[3],x+g->width,y+g->height,z,g->right,g->bottom,0,1,color);
 }
 #else
+typedef void C2Di_Context;
+#define scene_solid_begin(vertices, indices) NULL
+#define scene_solid_triangle(ctx, ...) C2D_DrawTriangle(__VA_ARGS__)
+static inline void scene_solid_cell(C2Di_Context *ctx, float ax,float ay,float bx,float by,
+                                    float cx,float cy,float dx,float dy,u32 color,float z) {
+    (void)ctx;
+    C2D_DrawTriangle(ax,ay,color,bx,by,color,cx,cy,color,z);
+    C2D_DrawTriangle(ax,ay,color,cx,cy,color,dx,dy,color,z);
+}
+#define scene_solid_line(ctx, ...) scene_line_quad(__VA_ARGS__)
 #define scene_triangle C2D_DrawTriangle
 #define scene_rectangle C2D_DrawRectangle
 static inline void scene_line_quad(float ax,float ay,float bx,float by,float cx,float cy,float dx,float dy,u32 a,u32 b,float z) {

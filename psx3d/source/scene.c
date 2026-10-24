@@ -37,6 +37,14 @@ typedef struct {
     float grain[20][50];
     float mesh_px[29][37], mesh_py[29][37], mesh_h[29][37], mesh_z[29];
     float mesh_rise[37], mesh_side[37];
+    struct { float x, y, width; u32 colour; } sun[170];
+    const theme_t *sun_theme;
+    unsigned sun_count;
+    u32 mesh_colour[29][37];
+    // Exact world-depth keys: floating point cancellation can give adjacent
+    // frames slightly different zw values even within one scrolling row.
+    // Four entries retain those values without quantizing time or geometry.
+    struct { float world[4], height[4][37]; unsigned valid, next; } mesh_wave[29];
 #ifdef __3DS__
     scene_glyph cached_glyph[12];
 #endif
@@ -699,17 +707,22 @@ static void embers(const layer_t *L, float t) {
 #define MESH_DZ   1.4f
 #define HORIZON   140.0f
 
-static float mesh_height(float x, float z_world, float z)
+static const float *mesh_wave(int row, float world)
 {
-	float a = fabsf(x) - 2.0f;
-	if (a <= 0)
-		return 0;
-	float rise = ws->mesh_rise[(int)(x+18)];
-	float n = 0.8f + 0.22f * sinf(x * 0.9f + z_world * 0.35f) + 0.12f * sinf(x * 1.7f - z_world * 0.5f);
-	float near = (z - 1.0f) / 6.0f;
-	if (near > 1) near = 1;
-	if (near < 0) near = 0;
-	return rise * n * (0.35f + 0.65f * near);
+    for (unsigned k = 0; k < ws->mesh_wave[row].valid; k++)
+        if (ws->mesh_wave[row].world[k] == world)
+            return ws->mesh_wave[row].height[k];
+    unsigned k = ws->mesh_wave[row].next;
+    ws->mesh_wave[row].next = (k + 1) % 4;
+    if (ws->mesh_wave[row].valid < 4) ws->mesh_wave[row].valid++;
+    ws->mesh_wave[row].world[k] = world;
+    for (int i = 0; i < MESH_COLS; i++) {
+        float x = i - 18.0f;
+        float n = 0.8f + 0.22f * sinf(x * 0.9f + world * 0.35f) +
+                  0.12f * sinf(x * 1.7f - world * 0.5f);
+        ws->mesh_wave[row].height[k][i] = ws->mesh_rise[i] * n;
+    }
+    return ws->mesh_wave[row].height[k];
 }
 
 // The theme's grid colours (near middle, sides, far), as numbers for mesh_colour.
@@ -724,16 +737,14 @@ static void mesh_ink(mesh_ink_t *k, const theme_t *th)
 	}
 }
 
-static u32 mesh_colour(const mesh_ink_t *k, float x, float z, u8 alpha)
+static u32 mesh_colour(const mesh_ink_t *k, float x, float depth_power, u8 alpha)
 {
-	float side = fabsf(x) / 9.0f, depth = (z - 1.0f) / 25.0f;
+	float side = fabsf(x) / 9.0f;
 	if (side > 1) side = 1;
-	if (depth > 1) depth = 1;
-	if (depth < 0) depth = 0;
 	float t = ws->mesh_side[(int)(x+18)];
 	float r = k->n[0] + (k->s[0] - k->n[0]) * t, g = k->n[1] + (k->s[1] - k->n[1]) * t,
 	      b = k->n[2] + (k->s[2] - k->n[2]) * t;
-	float p = powf(depth, 0.7f) * (1 - side) * 0.85f;
+	float p = depth_power * (1 - side) * 0.85f;
 	r += (k->f[0] - r) * p; g += (k->f[1] - g) * p; b += (k->f[2] - b) * p;
 	return TH_RGBA((u8)r, (u8)g, (u8)b, alpha);
 }
@@ -741,11 +752,17 @@ static u32 mesh_colour(const mesh_ink_t *k, float x, float z, u8 alpha)
 // Line clipped to just beyond the screen. Far off-screen vertices (the
 // nearest grid rows land thousands of pixels out) can make the GPU drop the
 // whole line, so lines vanished before reaching the screen edges.
-static void clip_line(float x0, float y0, u32 c0, float x1, float y1, u32 c1, float w)
+static inline __attribute__((always_inline)) void clip_line(C2Di_Context *batch, float x0, float y0, u32 c0, float x1, float y1, u32 c1, float w)
 {
 	const float xmin = -8, xmax = 408, ymin = -8, ymax = 248;
+    // Trivial reject before the four clip divisions. This changes no emitted
+    // endpoint: the original clipper rejects these segments as well.
+    if ((x0 < xmin && x1 < xmin) || (x0 > xmax && x1 > xmax) ||
+        (y0 < ymin && y1 < ymin) || (y0 > ymax && y1 > ymax)) return;
 	float t0 = 0, t1 = 1, dx = x1 - x0, dy = y1 - y0;
-	float p[4] = { -dx, dx, -dy, dy }, q[4] = { x0 - xmin, xmax - x0, y0 - ymin, ymax - y0 };
+    if (!(x0 >= xmin && x0 <= xmax && y0 >= ymin && y0 <= ymax &&
+          x1 >= xmin && x1 <= xmax && y1 >= ymin && y1 <= ymax)) {
+    float p[4] = { -dx, dx, -dy, dy }, q[4] = { x0 - xmin, xmax - x0, y0 - ymin, ymax - y0 };
 	for (int i = 0; i < 4; i++) {
 		if (p[i] == 0) {
 			if (q[i] < 0) return;
@@ -755,11 +772,12 @@ static void clip_line(float x0, float y0, u32 c0, float x1, float y1, u32 c1, fl
 		if (p[i] < 0) { if (r > t1) return; if (r > t0) t0 = r; }
 		else { if (r < t0) return; if (r < t1) t1 = r; }
 	}
+    }
 	float ax=x0+dx*t0, ay=y0+dy*t0, bx=x0+dx*t1, by=y0+dy*t1;
     float len=sqrtf((bx-ax)*(bx-ax)+(by-ay)*(by-ay));
     if (len < .0001f) return;
     float nx=-(by-ay)*w*.5f/len, ny=(bx-ax)*w*.5f/len;
-    scene_line_quad(ax-nx,ay-ny,bx-nx,by-ny,ax+nx,ay+ny,bx+nx,by+ny,c0,c1,.16f);
+    scene_solid_line(batch, ax-nx,ay-ny,bx-nx,by-ny,ax+nx,ay+ny,bx+nx,by+ny,c0,c1,.16f);
 }
 
 static void draw_grid(float t)
@@ -782,9 +800,14 @@ static void draw_grid(float t)
 			z = 0.4f;
 		rz[j] = z;
 		float zw = z + zoff;
+        const float *wave = mesh_wave(j, zw);
+        float near = (z - 1.0f) / 6.0f;
+        if (near > 1) near = 1;
+        if (near < 0) near = 0;
+        float scale = 0.35f + 0.65f * near;
 		for (int i = 0; i < MESH_COLS; i++) {
 			float x = i - 18.0f;
-			float h = mesh_height(x, zw, z);
+			float h = fabsf(x) <= 2.0f ? 0 : wave[i] * scale;
 			hgt[j][i] = h;
 			// far rows sit deeper behind the screen in 3D
 			px[j][i] = cx + x / z * f + ui_depth(2.5f * (z - 1) / 40.0f - 0.5f);
@@ -796,33 +819,56 @@ static void draw_grid(float t)
 	u32 fillc = th->original_floor;
 	mesh_ink_t ink;
 	mesh_ink(&ink, th);
+    // A row has one depth power and each vertex has one RGB value. Keep
+    // the original float operations; only reuse results formerly recomputed
+    // for every endpoint. Alpha still belongs to the line's far/near edge.
+    for (int j = 0; j <= MESH_ROWS; j++) {
+        float d = (rz[j] - 1.0f) / 25.0f;
+        if (d > 1) d = 1;
+        if (d < 0) d = 0;
+        float power = powf(d, 0.7f);
+        // RGB depends on |x|; mirrored columns use exactly the same value.
+        for (int i = 0; i <= MESH_COLS / 2; i++)
+            ws->mesh_colour[j][MESH_COLS - 1 - i] =
+                ws->mesh_colour[j][i] = mesh_colour(&ink, i - 18.0f, power, 255);
+    }
+    // Worst case: every cell emits two triangles, every edge a quad.
+    // Buffer space is checked once; when it cannot fit, preserve the old
+    // per-primitive checks and truncation behaviour via the NULL fallback.
+    C2Di_Context *batch = scene_solid_begin(
+        MESH_ROWS*(MESH_COLS-1)*6 +
+        (MESH_ROWS*(2*MESH_COLS-1)+MESH_COLS-1)*4,
+        MESH_ROWS*(MESH_COLS-1)*6 +
+        (MESH_ROWS*(2*MESH_COLS-1)+MESH_COLS-1)*6);
+    (void)batch;
 	// back to front: hill cells hide the lines behind them
 	for (int j = MESH_ROWS - 1; j >= 0; j--) {
 		for (int i = 0; i < MESH_COLS - 1; i++) {
 			if (hgt[j][i] + hgt[j][i + 1] + hgt[j + 1][i] + hgt[j + 1][i + 1] < 0.01f)
 				continue;   // flat floor: nothing to hide
-			float minx = fminf(fminf(px[j][i], px[j][i + 1]), fminf(px[j + 1][i], px[j + 1][i + 1]));
-			float maxx = fmaxf(fmaxf(px[j][i], px[j][i + 1]), fmaxf(px[j + 1][i], px[j + 1][i + 1]));
-			if (maxx < 0 || minx > 400)
-				continue;   // off-screen: don't spend draw budget on it
-			scene_triangle(px[j][i], py[j][i], fillc, px[j][i + 1], py[j][i + 1], fillc,
-				px[j + 1][i + 1], py[j + 1][i + 1], fillc, 0.15f);
-			scene_triangle(px[j][i], py[j][i], fillc, px[j + 1][i + 1], py[j + 1][i + 1], fillc,
-				px[j + 1][i], py[j + 1][i], fillc, 0.15f);
+            // All coordinates are finite. Compare the same four corners
+            // directly instead of six general-purpose libm min/max calls.
+            if ((px[j][i] < 0 && px[j][i + 1] < 0 &&
+                 px[j + 1][i] < 0 && px[j + 1][i + 1] < 0) ||
+                (px[j][i] > 400 && px[j][i + 1] > 400 &&
+                 px[j + 1][i] > 400 && px[j + 1][i + 1] > 400))
+                continue;
+            scene_solid_cell(batch, px[j][i], py[j][i], px[j][i + 1], py[j][i + 1],
+                px[j + 1][i + 1], py[j + 1][i + 1], px[j + 1][i], py[j + 1][i], fillc, .15f);
 		}
 		// this strip's lines: the far edge across, and the lines toward the viewer
 		float zf = rz[j + 1];
 		u8 fade = zf > 32 ? (u8)(255 * (40 - zf) / 8) : 255;   // fade in at the horizon
 		for (int i = 0; i < MESH_COLS - 1; i++)
-			clip_line(px[j + 1][i], py[j + 1][i], mesh_colour(&ink, i - 18.0f, zf, fade),
-				px[j + 1][i + 1], py[j + 1][i + 1], mesh_colour(&ink, i - 17.0f, zf, fade), 1.2f);
+			clip_line(batch, px[j + 1][i], py[j + 1][i], (ws->mesh_colour[j + 1][i] & 0x00ffffff) | ((u32)fade << 24),
+				px[j + 1][i + 1], py[j + 1][i + 1], (ws->mesh_colour[j + 1][i + 1] & 0x00ffffff) | ((u32)fade << 24), 1.2f);
 		for (int i = 0; i < MESH_COLS; i++)
-			clip_line(px[j + 1][i], py[j + 1][i], mesh_colour(&ink, i - 18.0f, zf, fade),
-				px[j][i], py[j][i], mesh_colour(&ink, i - 18.0f, rz[j], 255), 1.2f);
+			clip_line(batch, px[j + 1][i], py[j + 1][i], (ws->mesh_colour[j + 1][i] & 0x00ffffff) | ((u32)fade << 24),
+				px[j][i], py[j][i], ws->mesh_colour[j][i], 1.2f);
 	}
 	for (int i = 0; i < MESH_COLS - 1; i++)
-		clip_line(px[0][i], py[0][i], mesh_colour(&ink, i - 18.0f, rz[0], 255),
-			px[0][i + 1], py[0][i + 1], mesh_colour(&ink, i - 17.0f, rz[0], 255), 1.4f);
+		clip_line(batch, px[0][i], py[0][i], ws->mesh_colour[0][i],
+			px[0][i + 1], py[0][i + 1], ws->mesh_colour[0][i + 1], 1.4f);
 }
 
 
@@ -875,7 +921,10 @@ static void sunset(const layer_t *L, float t) {
     grad(0,140,w,100,th->original_floor,th->sun_floor[2]);
     glow(200,130,112.5f,th->sun_glow,.38f,1);
     blend(false);
-    // rc9: R=75, centre=(200,130), fixed widening horizontal bands.
+    // The band geometry and palette are static for a whole menu visit.
+    // Cache the original half-pixel rectangles, without merging their edges.
+    if (ws->sun_theme != th) {
+    ws->sun_count = 0;
     for (float y=55;y<140;y+=.5f) {
         float dy=y+.25f-130, half=sqrtf(fmaxf(0,75*75-dy*dy));
         bool cut=false;
@@ -889,8 +938,14 @@ static void sunset(const layer_t *L, float t) {
         u32 c=d<.5f?mix(th->original_sun[0],th->original_sun[1],d*2):
               d<.85f?mix(th->original_sun[1],th->original_sun[2],(d-.5f)/.35f):
               mix(th->original_sun[2],th->original_sun[3],(d-.85f)/.15f);
-        rect(200-half,y,half*2,.5f,c);
+        unsigned i = ws->sun_count++;
+        ws->sun[i].x=200-half; ws->sun[i].y=y;
+        ws->sun[i].width=half*2; ws->sun[i].colour=c;
     }
+    ws->sun_theme = th;
+    }
+    for (unsigned i=0; i<ws->sun_count; i++)
+        rect(ws->sun[i].x,ws->sun[i].y,ws->sun[i].width,.5f,ws->sun[i].colour);
     original_palms(t);
     blend(false);
     draw_grid(t);
