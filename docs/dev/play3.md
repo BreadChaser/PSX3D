@@ -30,6 +30,8 @@ Each physical-console package is checked against the frozen play3 RomFS.
 Hardware evidence, per-theme Old cadence and backdrop CPU intervals, installed
 title numbers and config preservation are recorded in the ignored main-checkout
 `devtools/play3/REPORT.md`. The owner's later instruction takes precedence over
-the initial Original-restoration request: restore Midnight teal through Settings
-and preserve the complete pre-test config byte for byte. New keeps the owner's
+the initial Original-restoration request: restore the owner's latest theme through Settings
+and preserve the fresh pre-session config byte for byte. The Old requires
+read-only five-minute polls and ten minutes of stable library/config state
+before claiming its lock. Any unexpected screen/theme change ends all input. New keeps the owner's
 FPS and widescreen choices.
