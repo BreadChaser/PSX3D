@@ -509,7 +509,6 @@ static void *pl_3ds_mmap(unsigned long addr, size_t size,
 {
    void *ret = MAP_FAILED;
    *can_retry_addr = 0;
-   (void)addr;
 
    if (tag == MAP_TAG_VRAM && vram_mem)
       return vram_mem;
@@ -517,7 +516,7 @@ static void *pl_3ds_mmap(unsigned long addr, size_t size,
    if (__ctr_svchax) do
    {
       // idea from fbalpha2012_neogeo
-      s32 addr = 0x10000000 - 0x1000;
+      s32 scan_addr = 0x10000000 - 0x1000;
       u32 found_addr = 0;
       MemInfo mem_info;
       PageInfo page_info;
@@ -532,9 +531,9 @@ static void *pl_3ds_mmap(unsigned long addr, size_t size,
 
       size = (size + 0xfff) & ~0xfff;
 
-      while (addr >= 0x08000000)
+      while (scan_addr >= 0x08000000)
       {
-         if ((r = svcQueryMemory(&mem_info, &page_info, addr)) < 0) {
+         if ((r = svcQueryMemory(&mem_info, &page_info, scan_addr)) < 0) {
             LogErr("svcQueryMemory failed: %d\n", r);
             break;
          }
@@ -544,7 +543,7 @@ static void *pl_3ds_mmap(unsigned long addr, size_t size,
             break;
          }
 
-         addr = mem_info.base_addr - 0x1000;
+         scan_addr = mem_info.base_addr - 0x1000;
       }
       if (found_addr == 0) {
          LogErr("no addr space for %u bytes\n", size);
@@ -571,11 +570,14 @@ static void *pl_3ds_mmap(unsigned long addr, size_t size,
             ret = (void *)mapped_ram;
          }
       }
-      // likewise the scratchpad: one ARM immediate, so the dynarec
-      // translates a guarded scratchpad address with a single add
+      // The 64 KB scratchpad/I/O backing follows RAM (0x13000000..
+      // 0x13210000) in the shared-mapping region on both 3DS models.
+      // Keep the scanned allocation as backing/fallback if this alias is busy.
+      // Use the requested PS1 address, not the allocation scan cursor.
+      // 0x13400000 and its delta from 0x1f800000 each fit one ARM immediate.
       else if (tag == MAP_TAG_OTHER && addr == 0x1f800000 && !mapped_spad) {
-         u32 target = 0x13400000;
-         if ((r = svcControlMemory(&mapped_spad, target, mapped_addrs[i], size, MEMOP_MAP, MEMPERM_READWRITE)) < 0)
+         u32 target = 0x13400000, alias;
+         if ((r = svcControlMemory(&alias, target, mapped_addrs[i], size, MEMOP_MAP, MEMPERM_READWRITE)) < 0)
             LogErr("could not map scratchpad %08x -> %08x: %d\n", mapped_addrs[i], target, r);
          else {
             mapped_spad_src = mapped_addrs[i];
@@ -583,6 +585,8 @@ static void *pl_3ds_mmap(unsigned long addr, size_t size,
             ret = (void *)mapped_spad;
          }
       }
+      if (tag == MAP_TAG_OTHER && addr == 0x1f800000)
+         SysPrintf("scratchpad mapped at %p (requested %08lx)\n", ret, addr);
       memset(ret, 0, size);
       return ret;
    }

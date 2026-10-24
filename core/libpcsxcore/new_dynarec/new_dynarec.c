@@ -301,7 +301,8 @@ static struct compile_info
   int ccadj;
   signed char min_free_regs;
   signed char addr;
-  signed char reserved[2];
+  signed char fold_offset; // memory displacement encoded in the load
+  signed char addr_unfold; // original address-generation destination for slow path
 } cinfo[MAXBLOCK];
 
   static u_char *out;
@@ -382,7 +383,7 @@ struct compile_state
 // Treated like a guest register with its own home in dynarec_local
 // (LO_ldtmp, the otherwise unused zeromem_ptr word).
 #define LDTMP 34
-#define NDRC_LAYOUT_PAD "1748" // recomputed for multi-page invalidation; see new_dynarec_init()
+#define NDRC_LAYOUT_PAD "3492" // play2: post-dynarec +4096 vs play1; preserve cache sets
 //#define CSREG 35 // Coprocessor status
 #define CCREG 36 // Cycle count
 #define INVCP 37 // Pointer to invalid_code
@@ -3182,9 +3183,9 @@ static int get_ptr_mem_type(struct compile_state *st, u_int a)
   return MTYPE_8000;
 }
 
-// PSX3D Old 3DS experiments, selected at a clean game load (bits):
-// Old 3DS memory access paths: the scratchpad is mapped at one ARM
-// immediate (0x13400000) so a guarded access translates with one add, a
+// Old 3DS memory access paths: a scratchpad alias at 0x13400000 makes
+// translation one ARM immediate. Always emit from the actual psxH pointer:
+// alias allocation can fail, so arbitrary relocated bases must work too. A
 // store that passed the scratchpad guard skips its SMC check, and group
 // guards share one range check (below). DYNR2_FORCE_COLD (tests only)
 // makes every group guard fail into its cold copy.
@@ -3212,7 +3213,7 @@ static int get_ro_reg(const struct regstat *i_regs, int host_tempreg_free)
 // access. If that guard fails, a cold copy of the run with the usual
 // per-access guards takes over and returns to the hot code after the run.
 #define DYNR2_RUN 32
-#define DYNR2_SPAN 64
+#define DYNR2_SPAN 1024
 #define DYNR2_MAXCOLD 64
 static short dynr2_head[MAXBLOCK]; // group head index of a member, else -1
 static short dynr2_last[MAXBLOCK]; // head: last member
@@ -3245,6 +3246,33 @@ static void dynr2_snap_restore(const struct dynr2_snap *sn)
 static int dynr2_plain_mem(int i)
 {
   return (dops[i].itype == LOAD || dops[i].itype == STORE) && !dops[i].is_ds;
+}
+
+// Fold a displacement into [translated scratchpad base, #imm].
+// Keep the guest base intact; the cold copy regenerates the full address.
+// Signed byte/halfword ARM accesses have a smaller immediate field.
+static int dynr2_fold_offset(int i, const struct regstat *i_regs)
+{
+  int h = dynr2_head[i], rs = get_reg(i_regs->regmap, dops[i].rs1);
+  if (psxRegs.ptrs.psxH == (void *)0x1f800000
+      || dynr2_cold || dops[i].may_except || dops[i].itype != LOAD
+      || dops[i].is_ds || rs < 0 || ((i_regs->wasconst >> rs) & 1))
+    return 0;
+  int op = dops[i].opcode, limit = 4095, ofs = cinfo[i].imm;
+  if (op == 0x20 || op == 0x21 || op == 0x25)
+    limit = 255;
+  if (ofs < -limit || limit < ofs)
+    return 0;
+  if (h >= 0 && dynr2_active[h] == 2)
+    return ofs;
+  // Standalone accesses can prove a conservative base+offset interval.
+  // Do not replace a group head's effective-address guard.
+  int mr = dops[i].rs1;
+  if (dynr2_last[i] < 0 && 0 < ofs && ofs <= 255
+      && ((smrv_strong | smrv_weak) & (1u << mr))
+      && (ndrc_smrv_regs[mr] >> 12) == 0x1f800)
+    return ofs;
+  return 0;
 }
 
 // Form candidate groups for a block; emission decides which are used.
@@ -3315,14 +3343,11 @@ static int dynr2_fastpath(struct compile_state *st, int i, int type, int addr,
       return 0;
     if (spad) {
       uintptr_t k = 0x1f800000 - (uintptr_t)psxRegs.ptrs.psxH;
-      u_int armval;
       host_tempreg_acquire();
-      if (genimm(-k, &armval) || genimm(k, &armval))
-        emit_addimm(addr, -k, HOST_TEMPREG);
-      else {
-        emit_xorimm(addr, 0x1f800000, HOST_TEMPREG);
-        emit_spad_translate(HOST_TEMPREG);
-      }
+      // A folded base can lie outside the proven effective-address window.
+      // Use linear translation: XOR(base, 0x1f800000) is not base-0x1f800000
+      // across that boundary. emit_addimm also handles multiword constants.
+      emit_addimm(addr, -k, HOST_TEMPREG);
       *addr_reg_override = HOST_TEMPREG;
     }
     else if (ram_offset != 0)
@@ -3422,6 +3447,9 @@ static void *emit_fastpath_cmp_jump(struct compile_state *st, int i,
   if (dynr2_cold && mr == st->flip_reg)
     type = st->flip_spad ? MTYPE_1F80 : 0;
 
+  if (cinfo[i].fold_offset)
+    type = MTYPE_1F80; // folding uses a group proof or a guarded scratchpad guess
+
   if (dops[i].may_except) {
     // alignment check
     u_int op = dops[i].opcode;
@@ -3473,8 +3501,11 @@ static void *emit_fastpath_cmp_jump(struct compile_state *st, int i,
       // Guard the existing 4 KB dynarec scratchpad mapping. Failure enters
       // the original slow stub with the guest address and mappings intact.
       host_tempreg_acquire();
+      u_int n = 0x1000 - (cinfo[i].fold_offset ? cinfo[i].imm : 0), armval;
+      while (!genimm(n, &armval))
+        n &= n - 1;
       emit_xorimm(addr, 0x1f800000, HOST_TEMPREG);
-      emit_cmpimm(HOST_TEMPREG, 0x1000);
+      emit_cmpimm(HOST_TEMPREG, n);
       jaddr = out;
       emit_jc(0);
       emit_spad_translate(HOST_TEMPREG);
@@ -3552,44 +3583,44 @@ static int reglist_find_free(u_int reglist)
   return __builtin_ctz(free_regs);
 }
 
-static void do_load_word(int a, int rt, int offset_reg)
+static void do_load_word(int a, int rt, int offset_reg, int ofs)
 {
   if (offset_reg >= 0)
     emit_ldr_dualindexed(offset_reg, a, rt);
   else
-    emit_readword_indexed(0, a, rt);
+    emit_readword_indexed(ofs, a, rt);
 }
 
-static void do_load_hword(int a, int rt, int offset_reg)
+static void do_load_hword(int a, int rt, int offset_reg, int ofs)
 {
   if (offset_reg >= 0)
     emit_ldrh_dualindexed(offset_reg, a, rt);
   else
-    emit_movzwl_indexed(0, a, rt);
+    emit_movzwl_indexed(ofs, a, rt);
 }
 
-static void do_load_shword(int a, int rt, int offset_reg)
+static void do_load_shword(int a, int rt, int offset_reg, int ofs)
 {
   if (offset_reg >= 0)
     emit_ldrsh_dualindexed(offset_reg, a, rt);
   else
-    emit_movswl_indexed(0, a, rt);
+    emit_movswl_indexed(ofs, a, rt);
 }
 
-static void do_load_byte(int a, int rt, int offset_reg)
+static void do_load_byte(int a, int rt, int offset_reg, int ofs)
 {
   if (offset_reg >= 0)
     emit_ldrb_dualindexed(offset_reg, a, rt);
   else
-    emit_movzbl_indexed(0, a, rt);
+    emit_movzbl_indexed(ofs, a, rt);
 }
 
-static void do_load_sbyte(int a, int rt, int offset_reg)
+static void do_load_sbyte(int a, int rt, int offset_reg, int ofs)
 {
   if (offset_reg >= 0)
     emit_ldrsb_dualindexed(offset_reg, a, rt);
   else
-    emit_movsbl_indexed(0, a, rt);
+    emit_movsbl_indexed(ofs, a, rt);
 }
 
 static void do_store_word(int a, int ofs, int rt, int offset_reg, int preseve_a)
@@ -3694,6 +3725,12 @@ static void load_assemble(struct compile_state *st, int i,
   int c = 0, offset_reg = -1, is_dummy;
   u_int saddr_likely = 0;
   u_int saddr_const = resolve_const_io(i, i_regs, &c, &saddr_likely);
+  int folded_ofs = cinfo[i].fold_offset ? cinfo[i].imm : 0;
+  if (folded_ofs) {
+    // The address register holds the base; do not resolve base+imm as a constant.
+    c = 0;
+    saddr_likely = 0;
+  }
   int ram80x_io = (signed int)saddr_const < (signed int)(0x80000000 + RAM_SIZE);
   int inline_slow_io = saddr_likely != 0;
   u_int reglist = get_host_reglist(i_regs->regmap);
@@ -3726,27 +3763,27 @@ static void load_assemble(struct compile_state *st, int i,
   case 0x20: // LB
     type = LOADB_STUB;
     if (addr_hr_io >= 0 && !is_dummy)
-      do_load_sbyte(addr_hr_io, tl, offset_reg);
+      do_load_sbyte(addr_hr_io, tl, offset_reg, folded_ofs);
     break;
   case 0x21: // LH
     type = LOADH_STUB;
     if (addr_hr_io >= 0 && !is_dummy)
-      do_load_shword(addr_hr_io, tl, offset_reg);
+      do_load_shword(addr_hr_io, tl, offset_reg, folded_ofs);
     break;
   case 0x23: // LW
     type = LOADW_STUB;
     if (addr_hr_io >= 0 && !is_dummy)
-      do_load_word(addr_hr_io, tl, offset_reg);
+      do_load_word(addr_hr_io, tl, offset_reg, folded_ofs);
     break;
   case 0x24: // LBU
     type = LOADBU_STUB;
     if (addr_hr_io >= 0 && !is_dummy)
-      do_load_byte(addr_hr_io, tl, offset_reg);
+      do_load_byte(addr_hr_io, tl, offset_reg, folded_ofs);
     break;
   case 0x25: // LHU
     type = LOADHU_STUB;
     if (addr_hr_io >= 0 && !is_dummy)
-      do_load_hword(addr_hr_io, tl, offset_reg);
+      do_load_hword(addr_hr_io, tl, offset_reg, folded_ofs);
     break;
   default:
     assert(0);
@@ -3756,7 +3793,10 @@ static void load_assemble(struct compile_state *st, int i,
   if (jaddr && dynr2_cold_pending)
     dynr2_add_cold(jaddr, i);
   else if (jaddr)
-    add_stub_r(type, jaddr, out, i, addr_hr, i_regs, ccadj_,reglist);
+    // Snapshot the original address destination: cold group emission reuses cinfo.
+    add_stub_r(type, jaddr, out, i,
+      folded_ofs ? addr_hr | (cinfo[i].addr_unfold << 4) | 0x100 : addr_hr,
+      i_regs, ccadj_, reglist);
   if (inline_slow_io)
     do_read_slow(st, i, i_regs, type, NULL, addr_hr, ccadj_, reglist);
   else if (addr_hr_io < 0)
@@ -3812,7 +3852,7 @@ static void loadlr_assemble(struct compile_state *st, int i,
       int a = temp2;
       if (fastio_reg_override >= 0)
         a = fastio_reg_override;
-      do_load_word(a, temp2, offset_reg);
+      do_load_word(a, temp2, offset_reg, 0);
       if (fastio_reg_override == HOST_TEMPREG || offset_reg == HOST_TEMPREG)
         host_tempreg_release();
       if(jaddr) add_stub_r(LOADW_STUB,jaddr,out,i,temp2,i_regs,ccadj_,reglist);
@@ -4569,7 +4609,7 @@ static void c2ls_assemble(struct compile_state *st, int i,
       int a = ar;
       if (fastio_reg_override >= 0)
         a = fastio_reg_override;
-      do_load_word(a, tl, offset_reg);
+      do_load_word(a, tl, offset_reg, 0);
       break;
     }
     case 0x3a: { // SWC2
@@ -4675,6 +4715,13 @@ static void do_readstub(struct compile_state *st, int n)
   literal_pool(256);
   assem_debug("do_readstub %x\n", st->start + i*4);
   set_jump_target(stubs[n].addr, out);
+  if (rs & 0x100) {
+    // A folded hot load guarded its base; the table walk needs base+imm.
+    // Reuse its allocated address register, never HOST_TEMPREG (table scratch).
+    int dest = (rs >> 4) & 15;
+    emit_addimm(rs & 15, cinfo[i].imm, dest);
+    rs = dest;
+  }
   do_read_slow(st, i, i_regs, stubs[n].type, stubs[n].retaddr, rs, adj, reglist);
 }
 
@@ -5186,7 +5233,10 @@ static void address_generation(int i, const struct regstat *i_regs, signed char 
     //if(ra>=0)
     {
       int offset = cinfo[i].imm;
-      int add_offset = offset != 0;
+      int folded_ofs = dynr2_fold_offset(i, i_regs);
+      cinfo[i].fold_offset = folded_ofs != 0;
+      cinfo[i].addr_unfold = ra;
+      int add_offset = offset != 0 && !folded_ofs;
       int c = rs >= 0 && ((i_regs->wasconst >> rs) & 1);
       if(dops[i].rs1==0) {
         // Using r0 as a base address
@@ -6653,6 +6703,80 @@ static void vpoll_loop_assemble(int i, int cc)
   restore_regs(reglist);
 }
 
+/* RE2's PsyQ DecDCTsync poll. The stack word is a timeout, not decode work.
+ * Do not generalize this pattern without checking load delay and every write. */
+#ifdef PSX3D_SIM
+unsigned long long sim_movie_skips;
+#endif
+static u32 movie_wait_x1, movie_wait_d1, movie_wait_lc1, movie_wait_sp1;
+static int movie_wait_check(struct compile_state *st, int i)
+{
+  u32 pc = st->start + i * 4, ba = cinfo[i].ba;
+  const u32 *m;
+  if (dops[i].ooo || pc != ba + 80 || (ba & 0x1fffff) != 0x94d88 || !is_ram_addr(ba)
+      || (ba & 0x1fffff) > 0x200000 - 88) return 0;
+  m = (const u32 *)(psxRegs.ptrs.psxM + (ba & 0x1fffff));
+  if (m[0] != 0x8fa20010 || m[1] || m[2] != 0x2442ffff || m[3] != 0xafa20010
+      || m[4] != 0x8fa20010 || m[5] || m[6] != 0x14440007 || m[7]
+      || m[14] != 0x3c02800b || m[15] != 0x8c422964 || m[16]
+      || m[17] != 0x8c420000 || m[18] || m[19] != 0x00431024
+      || m[20] != 0x1440ffeb || m[21] != 0x00001021) return 0;
+#ifdef PSX3D_SIM
+  SysPrintf("movie MDEC wait @%08x\n", ba);
+#endif
+  movie_wait_d1 = 0; /* a fresh translation/state must observe two real passes */
+  return 1;
+}
+
+static int movie_wait_skip(int cc, u32 sp, u32 mask, u32 limit)
+{
+  u32 x = last_count + cc, d = x - movie_wait_x1;
+  u32 *counter;
+  int k;
+  movie_wait_x1 = x;
+  if (last_count != movie_wait_lc1 || d != movie_wait_d1 || sp != movie_wait_sp1 || d - 1 >= 4096) {
+    movie_wait_lc1 = last_count; movie_wait_d1 = d; movie_wait_sp1 = sp;
+    return cc;
+  }
+  /* Both loads are RAM except the idempotent MDEC status read. Prove the
+   * global still points there, and that the counter cannot wrap or time out. */
+  if (mask != 0x20000000 || limit != 0xffffffff || cc >= 0
+      || ((sp + 16) & 3) || ((sp + 16) & 0x1fffffff) >= 0x800000
+      || (*(u32 *)(psxRegs.ptrs.psxM + 0xb2964) & 0x1fffffff) != 0x1f801824)
+    return cc;
+  k = (-cc - 1) / (int)d - 1; /* retain a full iteration before any event check */
+  u32 ca = (sp + 16) & 0x1fffff;
+  if (ca == 0xb2964 || (ca >= 0x94d88 && ca < 0x94de0)) return cc;
+  counter = (u32 *)(psxRegs.ptrs.psxM + ca);
+  if (k <= 0 || *counter <= (u32)k + 1) return cc;
+  *counter -= k;
+#ifdef PSX3D_SIM
+  sim_movie_skips += k;
+#endif
+  movie_wait_x1 += k * d;
+  return cc + k * d;
+}
+
+static void movie_wait_assemble(int i, int cc)
+{
+  const signed char *map = branch_regs[i].regmap;
+  const int guest[] = {29, 3, 4};
+  u_int reglist = get_host_reglist(map);
+  /* Materialize arguments before using the caller-saved argument registers. */
+  for (unsigned k = 0; k < ARRAY_SIZE(guest); k++) {
+    int r = get_reg(map, guest[k]);
+    if (r >= 0) emit_storereg(guest[k], r);
+  }
+  save_regs(reglist);
+  emit_mov(cc, 0);
+  emit_loadreg(29, 1);
+  emit_loadreg(3, 2);
+  emit_loadreg(4, 3);
+  emit_far_call(movie_wait_skip);
+  emit_mov(0, cc);
+  restore_regs(reglist);
+}
+
 static void vsync1_loop_assemble(int i, int cc)
 {
   u_int reglist = get_host_reglist(branch_regs[i].regmap);
@@ -6771,7 +6895,8 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
   int delay = !idle ? delay_loop_check(st, i) : 0;
   int vsync1 = !idle && dops[i].ooo && vsync1_loop_check(st, i);
   int vpoll = !idle && !vsync1 && dops[i].ooo && vpoll_loop_check(st, i);
-  if ((idle || vsync1 || delay || vpoll) && dops[i].ooo) invert=1;
+  int mwait = !idle && !vsync1 && !vpoll && movie_wait_check(st, i);
+  if ((idle || vsync1 || delay || vpoll || mwait) && dops[i].ooo) invert=1;
   #ifdef __aarch64__
   invert=1; // because of near cond. branches
   #endif
@@ -6910,6 +7035,8 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
           vsync1_loop_assemble(i, cc);
         if (vpoll)
           vpoll_loop_assemble(i, cc);
+        if (mwait)
+          movie_wait_assemble(i, cc);
         {
           if(adj) emit_addimm(cc,-adj,cc);
           store_regs_bt(st,branch_regs[i].regmap,branch_regs[i].dirty,cinfo[i].ba);
@@ -6992,6 +7119,7 @@ static void cjump_assemble(struct compile_state *st, int i, const struct regstat
         // CHECK: Is the following instruction (fall thru) allocated ok?
       }
       assert(cc==HOST_CCREG);
+      if (mwait) movie_wait_assemble(i, cc);
       store_regs_bt(st,branch_regs[i].regmap,branch_regs[i].dirty,cinfo[i].ba);
       do_cc(st,i,i_regmap,&adj,cinfo[i].ba,TAKEN,0);
       assem_debug("cycle count (adj)\n");

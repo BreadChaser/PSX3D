@@ -699,7 +699,6 @@ static noinline void PICA_HOT(mark_drawn_slow) mark_drawn_slow(int x0, int y0, i
 	// most primitives land where the previous ones did
 	if (bx0 >= known_bx0 && bx1 <= known_bx1 && by0 >= known_by0 && by1 <= known_by1)
 		return;
-	known_bx0 = bx0; known_bx1 = bx1; known_by0 = by0; known_by1 = by1;
 	u16 m = (u16)(((2u << bx1) - 1) & ~((1u << bx0) - 1));
 	for (int by = by0; by <= by1; by++) {
 		u16 add = m & ~drawn[by];
@@ -712,6 +711,21 @@ static noinline void PICA_HOT(mark_drawn_slow) mark_drawn_slow(int x0, int y0, i
 			if (add & (1u << bx))
 				vram_gen[by][bx] = gen_clock;
 	}
+	// The shortcut only needs every block inside it drawn. Grow it to the
+	// union with the previous one when that holds: Tekken alternates
+	// between primitives in different blocks, which replaced it each time.
+	if (known_bx0 <= known_bx1) {
+		int ux0 = bx0 < known_bx0 ? bx0 : known_bx0, ux1 = bx1 > known_bx1 ? bx1 : known_bx1;
+		int uy0 = by0 < known_by0 ? by0 : known_by0, uy1 = by1 > known_by1 ? by1 : known_by1;
+		u16 um = (u16)(((2u << ux1) - 1) & ~((1u << ux0) - 1));
+		int by = uy0;
+		while (by <= uy1 && (drawn[by] & um) == um)
+			by++;
+		if (by > uy1) {
+			bx0 = ux0; bx1 = ux1; by0 = uy0; by1 = uy1;
+		}
+	}
+	known_bx0 = bx0; known_bx1 = bx1; known_by0 = by0; known_by1 = by1;
 }
 
 // The common covered-rectangle case stays in the primitive hot path. Tile
@@ -2405,28 +2419,33 @@ static noinline int clip_round(float f)
 static int clip_area(const pvtx *t, int x0, int y0, int x1, int y1, unsigned planes, pvtx *out)
 {
 	pvtx storage[2][9];
-	pvtx *a = storage[0], *b = storage[1];
+	const pvtx *a = t;
+	pvtx *b = storage[0];
 	int n = 3, m;
-	memcpy(a, t, 3 * sizeof(pvtx));
 	for (int side = 0; side < 4; side++) {
 		// Clipping and integer rounding cannot leave the original bounds.
 		// A containing plane would only copy every vertex back unchanged.
 		if (!(planes & (1u << side))) continue;
 		m = 0;
+		const int axis = side >> 1;
+		const int bound = side == 0 ? x0 : side == 1 ? x1 : side == 2 ? y0 : y1;
+		int pc = (axis ? a[0].y : a[0].x) - bound;
+		if (side & 1) pc = -pc;
 		for (int i = 0; i < n; i++) {
 			const pvtx *p = &a[i], *q = i + 1 < n ? p + 1 : a;
-			int pc = side == 0 ? p->x - x0 : side == 1 ? x1 - p->x : side == 2 ? p->y - y0 : y1 - p->y;
-			int qc = side == 0 ? q->x - x0 : side == 1 ? x1 - q->x : side == 2 ? q->y - y0 : y1 - q->y;
+			int qc = (axis ? q->y : q->x) - bound;
+			if (side & 1) qc = -qc;
 			if (pc >= 0)
 				b[m++] = *p;
 			if ((pc >= 0) != (qc >= 0)) {   // the edge crosses this side
 				float f = (float)pc / (pc - qc);
 				pvtx *o = &b[m++];
 				for (int k = 0; k < 4; k++) {
+					if (k == axis) continue;
 					s16 cp, cq, co;
 					memcpy(&cp, (const char *)p + 2 * k, sizeof(cp));
 					memcpy(&cq, (const char *)q + 2 * k, sizeof(cq));
-					co = cp + clip_round((cq - cp) * f);
+					co = cp == cq ? cp : cp + clip_round((cq - cp) * f);
 					memcpy((char *)o + 2 * k, &co, sizeof(co));
 				}
 				if (side < 2) o->x = side == 0 ? x0 : x1;
@@ -2434,14 +2453,15 @@ static int clip_area(const pvtx *t, int x0, int y0, int x1, int y1, unsigned pla
 				u32 c = 0;
 				for (int k = 0; k < 32; k += 8) {
 					int cp = (p->rgba >> k) & 0xff, cq = (q->rgba >> k) & 0xff;
-					c |= (u32)(cp + clip_round((cq - cp) * f)) << k;
+					c |= (u32)(cp == cq ? cp : cp + clip_round((cq - cp) * f)) << k;
 				}
 				o->rgba = c;
 			}
+			pc = qc;
 		}
 		if (m < 3)
 			return 0;
-		pvtx *swap = a; a = b; b = swap;
+		a = b; b = b == storage[0] ? storage[1] : storage[0];
 		n = m;
 	}
 	for (int i = 1; i + 1 < n; i++) {
@@ -2606,13 +2626,87 @@ static void noinline PICA_HOT(emit_tris) emit_tris(const pvtx *v, int ntri, int 
 	st_prims++; psx3d_skip.render_prims++;
 }
 
-static void noinline __attribute__((cold)) draw_poly_slow(pvtx *v, int n, bool quad, bool textured, u32 page, u32 clut, u32 cmd);
+// Sprites, lines and fills: four corners drawn as triangles 0,1,2 and
+// 1,3,2. Inside the drawing area (nearly all of them) the finished words
+// go straight to the buffer, with emit_tris's state, batching and passes;
+// anything else becomes its two triangles for emit_tris.
+// Not cold: emit_tris must keep one ordinary caller, or GCC compiles it
+// (a third of GT2/SH polygons go through it) as rarely executed code.
+static noinline void emit_quad_tris(const pvtx *c, int blend, int texmode, tcache *tex)
+{
+	pvtx q[6] = { c[0], c[1], c[2], c[1], c[3], c[2] };
+	emit_tris(q, 2, blend, texmode, tex, false, false);
+}
+
+static noinline void emit_quad(const pvtx *c, int blend, int texmode, tcache *tex)
+{
+	int lx = c[0].x, hx = c[0].x, ly = c[0].y, hy = c[0].y;
+	for (int i = 1; i < 4; i++) {
+		lx = c[i].x < lx ? c[i].x : lx; hx = c[i].x > hx ? c[i].x : hx;
+		ly = c[i].y < ly ? c[i].y : ly; hy = c[i].y > hy ? c[i].y : hy;
+	}
+	if (lx < ps.dx1 || hx > ps.dx2 || ly < ps.dy1 || hy > ps.dy2 || !ready || (pica_debug & 4096)) {
+		emit_quad_tris(c, blend, texmode, tex);
+		return;
+	}
+	bool semi = blend != BL_OPAQUE;
+	if (addq.n && ((ps.mask & 2) || ps.area_gen != addq.area_gen ||
+		(!(blend == BL_ADD && defer_allowed()) && add_overlap(lx, ly, hx, hy))))
+		flush();
+	// emit_tris's edge handling: inside the area hx - 1 < dx2 needs no clamp
+	const int fine = !rtt_old();
+	mark_drawn(lx, ly, hx - fine, hy - fine);
+	// emit_tris's colours: raw texels 0x808080; solid alpha 255, half 128
+	// (untextured 64); other effects keep a texel's alpha, drop a plain one
+	bool untex = !tex;
+	u32 col_and = (texmode == TX_RAW ? 0 : 0x00ffffff) | (blend > BL_HALF && !untex ? 0xff000000 : 0);
+	u32 col_or = (texmode == TX_RAW ? 0x00808080 : 0) | (blend == BL_OPAQUE ? 0xff000000 :
+		blend == BL_HALF ? (untex ? 0x40000000 : 0x80000000) : 0);
+	u32 plain_uv = 0;
+	if (untex) {
+		tex = plain;
+		plain_uv = (u16)(plain->ax + (blend <= BL_HALF ? 8 : 24)) | (u32)(u16)(plain->ay + 8) << 16;
+	}
+	if (blend == BL_OPAQUE)   // solid primitives join the half-transparent state
+		blend = BL_HALF;
+	u32 q[4][3];
+	for (int k = 0; k < 4; k++) {
+		int x = c[k].x * GPU_UNIT, y = c[k].y * GPU_UNIT;   // see to_gpu
+		x = x > VRAM_W * GPU_UNIT - 1 ? VRAM_W * GPU_UNIT - 1 : x;
+		y = y > VRAM_H * GPU_UNIT - 1 ? VRAM_H * GPU_UNIT - 1 : y;
+		q[k][0] = (u16)x | (u32)(u16)y << 16;
+		q[k][1] = untex ? plain_uv : (u16)c[k].u | (u32)(u16)c[k].v << 16;
+		q[k][2] = (c[k].rgba & col_and) | col_or;
+	}
+	int passes = (blend == BL_SUB || blend == BL_QUARTER) ? 2 : 1;
+	for (int p = 0; p < passes; p++) {
+		pvtx *o;
+		if ((blend == BL_ADD || p == 1) && defer_allowed() && !batch_is(blend, p, false))
+			o = defer_verts(blend, p, false, tex, 6, lx, ly, hx, hy);
+		else {
+			use_state(DRAW_MODE(blend, TX_MOD, p, false));
+			o = alloc_verts(6);
+		}
+		if (!o)
+			return;
+		u32a *ow = (u32a *)o;
+		memcpy(ow, q, 3 * sizeof(q[0]));
+		memcpy(ow + 9, q[1], sizeof(q[0]));
+		memcpy(ow + 12, q[3], sizeof(q[0]));
+		memcpy(ow + 15, q[2], sizeof(q[0]));
+		batch_semi |= semi;
+		batch_untex |= untex;
+	}
+	tex->used_seq = seq + 1;
+	st_prims++; psx3d_skip.render_prims++;
+}
+
+static void noinline __attribute__((cold)) draw_poly_slow(const u32 *w, u32 cmd, u32 page, u32 clut);
 
 static void PICA_HOT(draw_poly_impl) draw_poly_impl(const u32 *w, u32 cmd)
 {
 	bool quad = cmd & 8, gouraud = cmd & 0x10, textured = cmd & 4;
 	int n = quad ? 4 : 3;
-	pvtx v[4];
 	u32 clut = 0, page = ps.texpage;
 	const int stride = 1 + textured + gouraud;
 	const u32 *xyword = w + 1;
@@ -2620,8 +2714,8 @@ static void PICA_HOT(draw_poly_impl) draw_poly_impl(const u32 *w, u32 cmd)
 		clut = w[2] >> 16;
 		page = w[2 + stride] >> 16;
 	}
-	// Decode positions and texture bounds first. Colours are only needed
-	// after texture/state setup, so keep them in the original packet.
+	// Only the bounds are decoded here. Positions, texels and colours stay
+	// in the original packet and are read again while finishing the vertices.
 	int bx0 = 0x7fff, bx1 = -0x8000, by0 = 0x7fff, by1 = -0x8000;
 	int u0 = 255, u1 = 0, v0 = 255, v1 = 0;
 	for (int k = 0; k < n; k++, xyword += stride) {
@@ -2629,15 +2723,11 @@ static void PICA_HOT(draw_poly_impl) draw_poly_impl(const u32 *w, u32 cmd)
 		// Keep relative positions across x=1024/y=1024. The PS1 wraps one
 		// offset for the whole triangle, not each post-offset vertex.
 		int x = sext11(xy) + ps.ox, y = sext11(xy >> 16) + ps.oy;
-		v[k].x = x;
-		v[k].y = y;
 		bx0 = x < bx0 ? x : bx0; bx1 = x > bx1 ? x : bx1;
 		by0 = y < by0 ? y : by0; by1 = y > by1 ? y : by1;
 		if (textured) {
 			u32 uv = xyword[1];
 			int tu = uv & 0xff, tv = (uv >> 8) & 0xff;
-			v[k].u = tu;
-			v[k].v = tv;
 			u0 = tu < u0 ? tu : u0; u1 = tu > u1 ? tu : u1;
 			v0 = tv < v0 ? tv : v0; v1 = tv > v1 ? tv : v1;
 		}
@@ -2650,14 +2740,17 @@ static void PICA_HOT(draw_poly_impl) draw_poly_impl(const u32 *w, u32 cmd)
 	// or additive. Finished vertices go straight to the buffer.
 	if (bx0 < ps.dx1 || bx1 > ps.dx2 || by0 < ps.dy1 || by1 > ps.dy2 || bx1 - bx0 > 1023 || by1 - by0 > 511 ||
 		blend > BL_ADD || !ready || (pica_debug & PICA_DEBUG_NO_PRIMITIVES)) {
-		for (int k = 0; k < n; k++)
-			v[k].rgba = w[gouraud ? k * stride : 0] | 0xff000000;
-		draw_poly_slow(v, n, quad, textured, page, clut, cmd);
+		draw_poly_slow(w, cmd, page, clut);
 		return;
 	}
 	tcache *tex = textured ? texture_for(page, clut, u0, u1, v0, v1) : plain;
-	mark_drawn(bx0, by0, !rtt_old() && bx1 >= ps.dx2 ? ps.dx2-1 : bx1,
-		!rtt_old() && by1 >= ps.dy2 ? ps.dy2-1 : by1);
+	// Inside the area bx1 <= dx2 already: only the exact edge needs a clamp.
+	const int fine = !rtt_old();
+	mark_drawn(bx0, by0, bx1 - (fine & (bx1 >= ps.dx2)), by1 - (fine & (by1 >= ps.dy2)));
+	// polygon_dither once and without branches (any dither_config value):
+	// textured polygons dither unless raw, untextured ones when gouraud.
+	const u32 dc = dither_config;
+	const bool dither = ((dc == 2) | ((dc != 0) & (ps.texpage >> 9))) & (textured ? ~cmd : cmd >> 4) & 1;
 	// see emit_tris: alpha 255 solid / 128 half; raw textures colour 0x80
 	u32 a = blend == BL_OPAQUE ? 0xff000000 : blend == BL_HALF ?
 		(textured ? 0x80000000 : 0x40000000) : (textured ? 0xff000000 : 0);
@@ -2665,9 +2758,9 @@ static void PICA_HOT(draw_poly_impl) draw_poly_impl(const u32 *w, u32 cmd)
 	int du = tex->ax - tex->rx, dv = tex->ay - tex->ry;
 	pvtx *o;
 	if (blend == BL_ADD || addq.n)
-		o = effect_verts(blend, tex, quad ? 6 : 3, bx0, by0, bx1, by1, polygon_dither(cmd));
+		o = effect_verts(blend, tex, quad ? 6 : 3, bx0, by0, bx1, by1, dither);
 	else {
-		use_state(DRAW_MODE(BL_HALF, TX_MOD, 0, polygon_dither(cmd)));
+		use_state(DRAW_MODE(BL_HALF, TX_MOD, 0, dither));
 		o = alloc_verts(quad ? 6 : 3);
 		if (o) batch_semi |= blend != BL_OPAQUE;
 	}
@@ -2679,16 +2772,25 @@ static void PICA_HOT(draw_poly_impl) draw_poly_impl(const u32 *w, u32 cmd)
 	// PICA cannot represent screen x=1024 or y=512 reliably.
 	u64 vertex_start = phase_begin(7);
 	u32 q[4][3];
+	// Choose every per-vertex source once: untextured vertices read a zero
+	// texel word, flat and raw colours a fixed one.
+	static const u32 no_uv;
+	const u32 *uvword = textured ? w + 2 : &no_uv, *colword = w;
+	const int uvstep = textured ? stride : 0, colstep = gouraud ? stride : 0;
+	const u32 colmask = rawcol ? 0 : 0xffffff, colbits = rawcol | a;
 	if (!textured)
 		du = plain->ax + (blend == BL_ADD ? 24 : 8), dv = plain->ay + 8;
-	for (int k = 0; k < n; k++) {
-		int u = textured ? v[k].u + du : du, vv = textured ? v[k].v + dv : dv;
-		int gx = v[k].x * GPU_UNIT + POLY_SHIFT_X, gy = v[k].y * GPU_UNIT + POLY_SHIFT_Y;   // see emit_tris
+	xyword = w + 1;
+	for (int k = 0; k < n; k++, xyword += stride, uvword += uvstep, colword += colstep) {
+		u32 xy = *xyword, uv = *uvword;
+		int u = (uv & 0xff) + du, vv = ((uv >> 8) & 0xff) + dv;
+		int gx = (sext11(xy) + ps.ox) * GPU_UNIT + POLY_SHIFT_X;   // see emit_tris
+		int gy = (sext11(xy >> 16) + ps.oy) * GPU_UNIT + POLY_SHIFT_Y;
 		gx = gx < VRAM_W * GPU_UNIT ? gx : VRAM_W * GPU_UNIT - 1;
 		gy = gy < VRAM_H * GPU_UNIT ? gy : VRAM_H * GPU_UNIT - 1;
 		q[k][0] = (u32)gx | ((u32)gy << 16);
 		q[k][1] = (u32)(u & 0xffff) | ((u32)vv << 16);
-		q[k][2] = (rawcol ? rawcol : (w[gouraud ? k * stride : 0] & 0xffffff)) | a;
+		q[k][2] = (*colword & colmask) | colbits;
 	}
 	u32a *ow = (u32a *)o;
 	static const u8 order[6] = { 0, 1, 2, 1, 3, 2 };
@@ -2722,8 +2824,22 @@ static void draw_poly(const u32 *w, u32 cmd)
 
 // polygons that need clipping, lose a triangle to the size limit, or use
 // the two-pass blend modes
-static void draw_poly_slow(pvtx *v, int n, bool quad, bool textured, u32 page, u32 clut, u32 cmd)
+static void draw_poly_slow(const u32 *w, u32 cmd, u32 page, u32 clut)
 {
+	bool quad = cmd & 8, gouraud = cmd & 0x10, textured = cmd & 4;
+	int n = quad ? 4 : 3;
+	const int stride = 1 + textured + gouraud;
+	pvtx v[4];
+	for (int k = 0; k < n; k++) {
+		u32 xy = w[1 + k * stride];
+		v[k].x = sext11(xy) + ps.ox;
+		v[k].y = sext11(xy >> 16) + ps.oy;
+		if (textured) {
+			v[k].u = w[2 + k * stride] & 0xff;
+			v[k].v = (w[2 + k * stride] >> 8) & 0xff;
+		}
+		v[k].rgba = w[gouraud ? k * stride : 0] | 0xff000000;
+	}
 	// the PS1 skips triangles wider than 1023 or taller than 511
 	pvtx tri[6];
 	int ntri = 0;
@@ -2878,11 +2994,10 @@ static void sprite(int x, int y, int sw, int sh, int u, int v, u32 col, u32 cmd,
 		u0 += tex->ax - tex->rx; u1 += tex->ax - tex->rx;
 		v0 += tex->ay - tex->ry; v1 += tex->ay - tex->ry;
 	}
-	pvtx q[6] = {
-		{ x, y, u0, v0, col }, { x + sw, y, u1, v0, col }, { x, y + sh, u0, v1, col },
-		{ x + sw, y, u1, v0, col }, { x + sw, y + sh, u1, v1, col }, { x, y + sh, u0, v1, col } };
+	pvtx q[4] = { { x, y, u0, v0, col }, { x + sw, y, u1, v0, col }, { x, y + sh, u0, v1, col },
+		{ x + sw, y + sh, u1, v1, col } };
 	int texmode = !textured ? TX_NONE : (cmd & 1) ? TX_RAW : TX_MOD;
-	emit_tris(q, 2, blend_of(cmd), texmode, tex, false, false);
+	emit_quad(q, blend_of(cmd), texmode, tex);
 }
 
 static void PICA_COLD draw_rect_impl(const u32 *w, u32 cmd)
@@ -2920,7 +3035,7 @@ static void noinline draw_line(int x0, int y0, u32 c0, int x1, int y1, u32 c1, i
 	int dx = x1 - x0, dy = y1 - y0;
 	if ((dx < 0 ? -dx : dx) > 1023 || (dy < 0 ? -dy : dy) > 511)
 		return;
-	pvtx q[6];
+	pvtx q[4];
 	bool horiz = (dx < 0 ? -dx : dx) >= (dy < 0 ? -dy : dy);
 	int ex0 = x0, ey0 = y0, ex1 = x1, ey1 = y1;
 	// include the end pixel
@@ -2929,8 +3044,8 @@ static void noinline draw_line(int x0, int y0, u32 c0, int x1, int y1, u32 c1, i
 	pvtx a = { ex0, ey0, 0, 0, c0 | 0xff000000 }, b = { ex1, ey1, 0, 0, c1 | 0xff000000 };
 	pvtx a2 = a, b2 = b;
 	a2.x += ox; a2.y += oy; b2.x += ox; b2.y += oy;
-	q[0] = a; q[1] = b; q[2] = a2; q[3] = b; q[4] = b2; q[5] = a2;
-	emit_tris(q, 2, blend, TX_NONE, NULL, false, false);
+	q[0] = a; q[1] = b; q[2] = a2; q[3] = b2;
+	emit_quad(q, blend, TX_NONE, NULL);
 }
 
 // GP0 02: fill a VRAM rectangle (ignores the drawing area and mask)
@@ -2951,10 +3066,9 @@ static void noinline fill_rect(const u32 *w)
 	ps.mask = 0;   // fills write mask 0 whatever E6 says
 	ps.dx1 = 0; ps.dy1 = 0; ps.dx2 = VRAM_W; ps.dy2 = VRAM_H;
 	ps.area_gen++;
-	pvtx q[6] = {
-		{ x, y, 0, 0, col }, { x + fw, y, 0, 0, col }, { x, y + fh, 0, 0, col },
-		{ x + fw, y, 0, 0, col }, { x + fw, y + fh, 0, 0, col }, { x, y + fh, 0, 0, col } };
-	emit_tris(q, 2, BL_OPAQUE, TX_NONE, NULL, false, false);
+	pvtx q[4] = { { x, y, 0, 0, col }, { x + fw, y, 0, 0, col }, { x, y + fh, 0, 0, col },
+		{ x + fw, y + fh, 0, 0, col } };
+	emit_quad(q, BL_OPAQUE, TX_NONE, NULL);
 	ps.dx1 = save[0]; ps.dy1 = save[1]; ps.dx2 = save[2]; ps.dy2 = save[3];
 	ps.area_gen++;
 	ps.mask = save_mask;
