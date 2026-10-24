@@ -1,6 +1,6 @@
 # v0.5.2 speed integration
 
-- Status: code integrated and all full offline gates PASS; hardware waits for owner play to end, then one Old 3DS A/B/A.
+- Status: COMPLETE; full offline gates and Old hardware acceptance PASS; selected play build left idle for owner.
 - Base: owner play1 `c5d9f1d1`, branch `t3/play-v052`; integration branch `t3/v052-speed`.
 - Changes: measured next-speed net core diff `1d663e6d..fdc0e88c` plus scratchpad mapping fix `a79b341a`; no historical test identity or documentation commits imported.
 - Implementation `741512e`: RE2 MDEC wait skipping, renderer polygon/rectangle/tracker improvements, exact clipping fast paths, scratchpad load displacement folding and wider shared memory guards, scratchpad alias fix with fallback.
@@ -15,8 +15,25 @@
 - Hardware method: one locked Old-only play1 A1 → play2 B → play1 A2, 13 heavy scenes Off and Auto plus RE2 movie slots 0/5 and FFVII slot 6; compare B with the arithmetic mean of A1/A2 per scene, then average relative scene changes.
 - Acceptance uses both 13-scene means >=0 plus screenshot/movie review; individual scene changes are reported separately because generated-code placement has an approximately 2% band.
 - Packaging: fixed makerom from the play-v052 worktree cwd, frozen play1 banner/icon, parsed ticket/TMD version and ExeFS/RomFS hash checks before every install; strictly increasing fresh titles and one attempt each.
-- Final verification requires selected fresh play build idle in library, defaults2/pack5, byte-identical config, personally inspected screenshot, queue DONE and released lock.
+- Final verification completed with play2/title5270/defaults2/pack5; owner resumed menus and explicitly superseded exact-config restore: preserve current theme change, read-only audit, DONE and release lock.
 - Constraints: no New console contact, protected-slot writes, HOME/app exit, unsafe SVC/CP15, public actions or pushes.
 - Detailed reports, per-scene tables, scripts, final artifacts and screenshot evidence: `devtools/v052-speed/REPORT.md`.
 - Offline closure 2026-10-24: all gates above PASS including all 70 raw boot saves, both 32/32 multi-page runs and 30/30 host suites with zero skips; frozen evidence rechecks after removing 1.8246 GB of own simulator/build/raw outputs.
 - Owner-play policy: no game unload; poll status read-only about every five minutes with no lock held; require library stable for three minutes before hardware; stop after four hours if busy.
+- Owner-added SotN check: before installs, read-only collect recent states/thumbnails using exact title into `devtools/heavy-scenes/user-states/sotn-old-<slot>-20261024.*`; add newest manual gameplay slot Off/Auto to each hardware leg, load-only, outside the 13-scene acceptance mean; report speed and pictures/s.
+
+- sotn-owner game=Castlevania_-_Symphony_of_the_Night state=1 frameskip=auto: speed 99.942/99.937/100.000%, change -0.034%, A drift +0.058%; pictures/s 28.503/29.335/28.418; black [0, 0, 0].
+- Screenshot review: every31 matched A1/B/A2 scene/mode row personally inspected; expected scene/timing differences only, no new visual defect; all heavy probes nonblack; movie samples reviewed separately; stills do not establish continuous motion or audible quality; offline PCM exactness covers the four movie fixtures.
+- Final CIA play2-5270.cia, SHA256 19fca0bdd1d5781271693bbb9721a8b7e3f99d7e3087f7e3c44292a124fd7db7; RomFS identical to play1; ELF/3dsx frozen in artifacts; measured candidate5268 retained.
+- Final defaults2/preset_pack5; play1 preset RomFS retained; final config SHA256 fb3b9f8e44a48b27e4e471adfad131a88dd559b4991c00e189f9a4804ac503a0, owner-confirmed theme-only change {'theme': {'before': 'midnight-teal', 'after': 'high-contrast'}}; owner requested preserve it and no further UI input; final read-only build/session/config verified, queue DONE5270 posted and lock released; last viewed idle screenshot restore-theme-07.png.
+- Old one A/B/A: mean +2.551% Off / +2.203% Auto; 13 fixed heavy scenes; movie and newest owner SotN slot1 separate.
+- Owner SotN slot1 off: play1 73.20%/44.38 pictures/s -> play2 74.14%/45.00 pictures/s; relative +1.27%.
+- Owner SotN slot1 auto: play1 99.97%/28.46 pictures/s -> play2 99.94%/29.33 pictures/s; relative -0.03%.
+- Driver correction: state API uses region save key, load API uses cleaned library title; rejected A1 owner load had no samples/writes; completed A1 heavy/movie data retained, SotN measured on identical safety play1 repack; no install retried.
+- Owner resumed menus at final handoff: owner confirmed Midnight teal->Phosphor was their change; before confirmation worker attempted exact-config restoration and stepped Phosphor->High contrast once, then unexpected library return revealed live owner interaction; owner explicitly required no further UI input and preservation of current config, so final High contrast is retained; byte-identical-config condition superseded by latest owner instruction.
+- Final read-only audit01:37:09UTC: release-v052-play2/session2ba6f9b34590/title5270, mode=library, defaults2/pack5; no further console contact; DONE5270 posted and original lock guardian interrupted/released, lslocks confirms no lock.old holder.
+- Hardware totals:93 accepted scene/mode runs (31 each leg), one rejected zero-sample SotN title lookup; exactly one candidate A/B/A; five successful first-attempt installs5264/5267safety/5268candidate/5269A2/5270final; planned5265/5266 never installed.
+- Pictures/s uses min(drawn_count,top_count) sample means; near-black counts are one-second probes, not every frame; 12s measurements are scene samples rather than sustained owner play.
+- Largest heavy changes Off/Auto: CTR+3.65/+4.94%, R4+4.53/+3.61%, GT2+5.04/+4.24%, Tekken+4.36/+2.86%; worst-0.070/-0.046%, max A1/A2 drift1.863/0.882%; GT2 Off drift is visible and bracketed, no extra rerun.
+- Play1 preset RomFS byte-identical (SH12/Klonoa20 files retained); sampled Klonoa Auto pictures15.17->25.09/s at full speed; candidate load log reports SLUS00585/no matched preset for that scene, so this is not a fresh validation of the shipped SCUS94108 floor20 match; preset mapping unchanged by speed port.
+- Cleanup final: removed9 intermediate CIAs/88641984B after queue DONE; retained measured play2-5268.cia and installed play2-5270.cia plus ELF/3dsx, package manifests/scripts/reports/logs/screenshots; prior offline1824600293B removed; owner SotN backups retained; frozen offline gates and hashes rechecked after cleanup.
