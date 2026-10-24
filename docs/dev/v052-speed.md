@@ -1,0 +1,22 @@
+# v0.5.2 speed integration
+
+- Status: code integrated and all full offline gates PASS; hardware waits for owner play to end, then one Old 3DS A/B/A.
+- Base: owner play1 `c5d9f1d1`, branch `t3/play-v052`; integration branch `t3/v052-speed`.
+- Changes: measured next-speed net core diff `1d663e6d..fdc0e88c` plus scratchpad mapping fix `a79b341a`; no historical test identity or documentation commits imported.
+- Implementation `741512e`: RE2 MDEC wait skipping, renderer polygon/rectangle/tracker improvements, exact clipping fast paths, scratchpad load displacement folding and wider shared memory guards, scratchpad alias fix with fallback.
+- Identity `116f1215`: `release-v052-play2`; retains play1 themes, stereo speed changes, multi-page invalidation, defaults version 2 and preset pack 5 (Old Silent Hill floor 12, Klonoa 20).
+- Integration conflict: only `NDRC_LAYOUT_PAD`; play1's invalidation-only multi-page fix and stereo/depth hooks preserved.
+- Layout: pad 3492; unpadded cleanup grows 604 bytes versus play1, final cleanup moves exactly 4096 bytes; all 2875 uniquely named library functions retain cache sets; linker script byte-identical including gpustereo pins; frontend pinned checker and growth/new-libm proof pass; no padding objects.
+- Expected layout comparison differences: changed core instructions and subsequent core functions/tables plus 16-byte movie-wait BSS; library page movement preserves sets; generic `compare.py` failure on changed core is not waived as a frontend-layout pass.
+- Offline evidence: ignored `devtools/v052-speed/OFFLINE-PASS.json` hashes accepted summaries; private baseline/candidate simulators use production ASSERTS=0; comparator rejects every crash.
+- Initial debug-only Crash 2 recursion assertion at frame 575 occurred in both ASSERTS=1 builds; those aborted comparisons are excluded and replaced by complete production runs.
+- Required acceptance: all 30 host suites with zero skips, both multi-page tests 32/32, memory/load-delay/SMC/GTE tests, 13 heavy and 6 standard scenes x600 exact guest/full serialization, 70 HLE boots x1200, 19x600 full-VRAM and literal real-citro3d register writes, four movie traces including PCM, clipping/mapper/emitter tests, layout and silent Azahar smokes.
+- Azahar exact-CIA smoke covers install/library/Crash load with silent wrapper; slow interpreter captures do not establish gameplay speed or visual correctness.
+- Hardware method: one locked Old-only play1 A1 → play2 B → play1 A2, 13 heavy scenes Off and Auto plus RE2 movie slots 0/5 and FFVII slot 6; compare B with the arithmetic mean of A1/A2 per scene, then average relative scene changes.
+- Acceptance uses both 13-scene means >=0 plus screenshot/movie review; individual scene changes are reported separately because generated-code placement has an approximately 2% band.
+- Packaging: fixed makerom from the play-v052 worktree cwd, frozen play1 banner/icon, parsed ticket/TMD version and ExeFS/RomFS hash checks before every install; strictly increasing fresh titles and one attempt each.
+- Final verification requires selected fresh play build idle in library, defaults2/pack5, byte-identical config, personally inspected screenshot, queue DONE and released lock.
+- Constraints: no New console contact, protected-slot writes, HOME/app exit, unsafe SVC/CP15, public actions or pushes.
+- Detailed reports, per-scene tables, scripts, final artifacts and screenshot evidence: `devtools/v052-speed/REPORT.md`.
+- Offline closure 2026-10-24: all gates above PASS including all 70 raw boot saves, both 32/32 multi-page runs and 30/30 host suites with zero skips; frozen evidence rechecks after removing 1.8246 GB of own simulator/build/raw outputs.
+- Owner-play policy: no game unload; poll status read-only about every five minutes with no lock held; require library stable for three minutes before hardware; stop after four hours if busy.
