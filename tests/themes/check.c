@@ -57,6 +57,7 @@ static void C2D_DrawText(C2D_Text *t,int f,float x,float y,float z,float sx,floa
 #include "theme-body.c"
 #include "scene-body.c"
 int main(void){
+ assert(COUNT(scenes)==theme_count() && theme_count()==12);
  // In-game paths cannot allocate any scene resources, even before first use.
  playing=true;scene_draw(false);scene_draw(true);assert(!ws&&!textures&&!texts);
  playing=false;fail_tex=true;scene_draw(false);assert(!ws&&!textures&&!texts);fail_tex=false;
@@ -67,10 +68,24 @@ int main(void){
   for(int frame=0;frame<240;frame++){
    now=(u64)(frame*15.17)*SYSCLOCK_ARM11; // includes the monotonic-hour wrap
    draws=0;scene_draw(false);scene_draw(true);
-   assert(ws&&textures==1&&texts==1);assert(draws<16384);if(draws>peak)peak=draws;
+   assert(ws&&textures==(unsigned)(1+ws->palms_ok)&&texts==1);assert(draws<16384);if(draws>peak)peak=draws;
   }
   scene_release();scene_release();assert(!ws&&!textures&&!texts);
   playing=true;scene_draw(false);scene_draw(true);assert(!ws&&!textures&&!texts);playing=false;
+ }
+ // Perspective motion must advance monotonically until clipping, preserve
+ // its seed at t=0 and remain finite on both sides of every depth recycle.
+ w=400;
+ for(int j=0;j<20;j++) {
+  point_t seed={40+j*16.f,32+j*8.f};ray_t ray=forward_ray(seed,96);
+  point_t a=forward_at(ray,0,.045f,96),b=forward_at(ray,.25f,.045f,96);
+  assert(fabsf(a.x-seed.x)<.001f&&fabsf(a.y-seed.y)<.001f);
+  assert(hypotf(b.x-200,b.y-96)>=hypotf(a.x-200,a.y-96));
+  float boundary=(ray.d-1)/.045f;
+  for(int side=-1;side<=1;side++) {
+   point_t p=forward_at(ray,boundary+side*.001f,.045f,96);
+   assert(isfinite(p.x)&&isfinite(p.y));
+  }
  }
  // Bound the temporal interpolation error against exact 30-step integration.
  assert(prepare());
@@ -91,5 +106,5 @@ int main(void){
  printf("flow temporal interpolation worst displacement %.5f px\n",worst);
  assert(worst < .1f);
  scene_release();
- printf("scene bounds/lifetime: 8 themes x 2 models x 240 times, peak %u draw objects for both screens; PASS\n",peak);
+ printf("scene bounds/lifetime: %d themes x 2 models x 240 times, peak %u draw objects for both screens; PASS\n",theme_count(),peak);
 }

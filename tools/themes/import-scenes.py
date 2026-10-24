@@ -38,7 +38,10 @@ def layer(x):
         else:q+=['.'+k+'='+str(v)]
     return '{'+','.join(q)+'}'
 for name in order:
-    sc=m['scenes'][name]; f+=['{ "'+sc['name']+'", {'+','.join(layer(x) for x in sc['top'])+'}, {'+','.join(layer(x) for x in sc['bottom'])+'} },\n']
+    sc=m['scenes'][name]
+    # Owner correction: Original restores rc9, with no darkening vignette.
+    if name=='Original (v0.5.0)':sc=dict(sc,top=[['sunset',{}]])
+    f+=['{ "'+sc['name']+'", {'+','.join(layer(x) for x in sc['top'])+'}, {'+','.join(layer(x) for x in sc['bottom'])+'} },\n']
 f+=['};\n'];(W/'psx3d/source/scene_data.h').write_text(''.join(f))
 
 sun=tables['SUN']['stars']

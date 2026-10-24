@@ -32,6 +32,7 @@ enum {
 	CAT_CHEATS,
 	CAT_BINDINGS,
 	CAT_DEBUG,
+	CAT_THEME,
 	CAT_COUNT
 };
 // The menu tree is fixed by docs/settings.md (tests/settings/spec.c checks it).
@@ -43,7 +44,7 @@ static const char *const categories[] = {"Settings",
 										 "Reset all settings",
 										 "Cheats",
 										 "Button mappings",
-										 "Debug"};
+										 "Debug", "Theme"};
 enum { F_SCREEN, F_SMOOTH, F_FPS, F_CONTROLLER, F_SIDE,
        F_REWIND, F_HEADING, F_RECOMMENDED, F_RECORD, F_TONE, F_THEME, F_FOLDER, F_STEREO, F_COUNT };
 static const char *const labels[] = {
@@ -115,7 +116,7 @@ static int message_frames;
 
 typedef struct {
 	bool game;
-	int page, selected[CAT_COUNT], items[MAX_ROWS], count;
+	int page, selected[CAT_COUNT], items[MAX_ROWS], count, theme_before;
 	flist_t list;
 } settings_ui_t;
 
@@ -166,6 +167,9 @@ static void build_page(settings_ui_t *s, int page)
 				add(s, CATEGORY_ROW + i);
 		}
 		break;
+	case CAT_THEME:
+		if (!s->game) for (int i=0; i<theme_count(); i++) add(s, i);
+		break;
 	case CAT_DISPLAY:
 		add_frontend(s, F_SCREEN); add_frontend(s, F_SMOOTH); add_frontend(s, F_FPS); add_frontend(s, F_STEREO);
 		if (THEMES_SHOWN)
@@ -208,7 +212,7 @@ static void build_page(settings_ui_t *s, int page)
 static bool heading(int i, void *ud)
 {
 	settings_ui_t *s = ud;
-	return i >= 0 && i < s->count && s->items[i] == F_HEADING;
+	return s->page != CAT_THEME && i >= 0 && i < s->count && s->items[i] == F_HEADING;
 }
 static void rebuild(settings_ui_t *s)
 {
@@ -287,6 +291,7 @@ static const char *row_label(int i, void *ud)
 {
 	settings_ui_t *s = ud;
 	int item = s->items[i];
+	if (s->page == CAT_THEME) return theme_get(item)->name;
 	if (item == CATEGORY_ROW + CAT_RESET && s->game)
 		return "Reset this game";
 	if (item >= CATEGORY_ROW)
@@ -310,6 +315,7 @@ static const char *row_value(int i, void *ud)
 {
 	settings_ui_t *s = ud;
 	int item = s->items[i];
+	if (s->page == CAT_THEME) return "";
 	if (item >= CATEGORY_ROW)
 		return item == CATEGORY_ROW + CAT_RESET ? "" : ">";
 	if (item >= CHEAT_ROW)
@@ -348,15 +354,32 @@ static const char *row_value(int i, void *ud)
 }
 static int parent(int page)
 {
+ if (page == CAT_THEME) return CAT_DISPLAY;
  if (page == CAT_BINDINGS) return CAT_CONTROLS;
  if (page == CAT_DEBUG) return CAT_ADVANCED;
  return CAT_HOME;
 }
 static void open_page(settings_ui_t *s, int page)
 {
+	if (page == CAT_THEME) {
+		s->theme_before = g_cfg.theme;
+		s->selected[CAT_THEME] = g_cfg.theme;
+	}
 	s->page = page;
 	rebuild(s);
-	s->list.init = false;
+    if (page == CAT_THEME) flist_snap(&s->list,s->selected[CAT_THEME],s->count,VISIBLE_ROWS);
+    else s->list.init = false;
+}
+// Preview is volatile until A. B and every external exit restore the entry value.
+static void theme_preview(settings_ui_t *s) {
+    g_cfg.theme = s->selected[CAT_THEME];
+    theme_menu_refresh();
+}
+static void theme_finish(settings_ui_t *s, bool accept) {
+    g_cfg.theme = accept ? s->selected[CAT_THEME] : s->theme_before;
+    if (accept) config_user_changed("theme");
+    theme_menu_refresh();
+    open_page(s, CAT_DISPLAY);
 }
 static void sync_picture(void) { config_ws_sync(); }
 // In a game, why Widescreen is missing or what it costs on this console.
@@ -401,6 +424,11 @@ static int neighbour_page(settings_ui_t *s, int dir)
 // The touch buttons for the page and the selected row; unusable ones are left out.
 static int settings_bar(settings_ui_t *s, ui_button_t *b)
 {
+	if (s->page == CAT_THEME) {
+        b[0]=(ui_button_t){KEY_B,"Cancel",0,false};
+        b[1]=(ui_button_t){KEY_A,"Select",UI_ICON_CHECK,false};
+        return 2;
+    }
 	int n = 0, item = s->count ? s->items[s->selected[s->page]] : -1;
 	b[n++] = (ui_button_t){KEY_B, "Back", 0, false};
 	if (s->page != CAT_HOME && s->page != CAT_CHEATS && s->page != CAT_BINDINGS) {
@@ -416,7 +444,7 @@ static int settings_bar(settings_ui_t *s, ui_button_t *b)
 	} else if (s->game && item >= 0 && item < CONTROL_ROW && overridden(s, item))
 		b[n++] = (ui_button_t){KEY_X, "Inherit", UI_ICON_RESET, false};
 	if (item >= 0 && item != F_HEADING)
-		b[n++] = item >= CATEGORY_ROW || item == F_FOLDER ? (ui_button_t){KEY_A, "Open", UI_ICON_OPEN, false}
+		b[n++] = item >= CATEGORY_ROW || item == F_FOLDER || item == F_THEME ? (ui_button_t){KEY_A, "Open", UI_ICON_OPEN, false}
 			: s->page == CAT_CHEATS ? (ui_button_t){KEY_A, "On/off", UI_ICON_TOGGLE, false}
 			: item == F_RECOMMENDED ? (ui_button_t){KEY_A, "Reset", UI_ICON_RESET, false}
 			: (ui_button_t){KEY_A, "Change", UI_ICON_CHANGE, false};
@@ -426,6 +454,7 @@ static void draw_settings(void *ud)
 {
 	settings_ui_t *s = ud;
 	int sel = s->selected[s->page];
+    if (s->page == CAT_THEME) { theme_picker_draw(&s->list,sel,s->theme_before); return; }
 	const theme_t *th = theme();
 	u32 muted = th->muted;
 	if (!s->game) scene_draw(true);
@@ -488,7 +517,7 @@ static void change(settings_ui_t *s, int item, int dir)
 		options_cycle(item - CORE_ROW, dir);
 		return;
 	}
-	if (!s->game && override_key(item)) config_user_changed(override_key(item));
+	if (!s->game && item != F_THEME && override_key(item)) config_user_changed(override_key(item));
 	switch (item) {
 	case F_CONTROLLER:
 		if (s->game) gamecfg_set_int("controller", !config_controller());
@@ -540,9 +569,7 @@ static void change(settings_ui_t *s, int item, int dir)
 		folders_requested = resume_requested = true;
 		break;
 	case F_THEME:
-		// the menus redraw in the new colours at once
-		g_cfg.theme = (g_cfg.theme + dir + theme_count()) % theme_count();
-		theme_menu_refresh();
+		open_page(s, CAT_THEME);
 		break;
 	case F_SIDE:
 		g_cfg.touch_click_left ^= 1;
@@ -605,6 +632,10 @@ static void (*draw_behind)(void *);
 static void draw_help(void *ud)
 {
 	settings_ui_t *s = ud;
+	if (s->page == CAT_THEME) {
+        scene_draw(false);
+        return;
+    }
 	int item = s->count ? s->items[s->selected[s->page]] : -1;
 	int pic = category_picture(s, item);
 	if (pic >= 0) {
@@ -647,10 +678,15 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 		u32 k = ui_header_back(ui_bar_input(bar, settings_bar(s, bar), input_keys_down()));
 		if (k & KEY_B) {
 			sfx_play(SFX_BACK);
+            if (s->page == CAT_THEME) {
+                theme_finish(s,false);
+                k=0;
+            } else {
 			// Cheats is opened from the pause menu: B returns there.
 			if (s->page == CAT_HOME || s->page == CAT_CHEATS)
 				break;
 			open_page(s, parent(s->page));
+            }
 			k = 0;
 		}
 		int *sel = &s->selected[s->page];
@@ -659,7 +695,7 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 			while (heading(*sel, s));
 			sfx_play(SFX_MOVE);
 		}
-		if (s->page != CAT_HOME && s->page != CAT_CHEATS && (k & (KEY_L | KEY_R))) {
+		if (s->page != CAT_HOME && s->page != CAT_CHEATS && s->page != CAT_THEME && (k & (KEY_L | KEY_R))) {
 			open_page(s, neighbour_page(s, k & KEY_R ? 1 : -1));
 			sel = &s->selected[s->page];
 			k = 0;
@@ -676,6 +712,12 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 					*sel = row;
 			}
 		}
+        if (s->page == CAT_THEME) {
+            theme_preview(s);
+            if (k & KEY_A) { theme_finish(s,true); sfx_play(SFX_SELECT); }
+            k=0;
+            sel=&s->selected[s->page];
+        }
 		int item = s->count ? s->items[*sel] : -1;
 		if ((k & KEY_X) && s->page == CAT_CHEATS) {
 			const char *result = cheats_add_dialog();
@@ -699,7 +741,7 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 			sync_picture();
 		}
 		int dir = k & KEY_LEFT ? -1 : k & (KEY_RIGHT | KEY_A) ? 1 : 0;
-		if (item >= 0 && dir && ((item < CATEGORY_ROW && item != F_RECOMMENDED && item != F_FOLDER) || (k & KEY_A))) {
+		if (item >= 0 && dir && ((item < CATEGORY_ROW && item != F_RECOMMENDED && item != F_FOLDER && item != F_THEME) || (k & KEY_A))) {
 			if (item == CATEGORY_ROW + CAT_RESET) {
 				if (ui_confirm(game ? "Reset this game?" : "Reset all settings?",
 							   game ? "Remove this game's settings and control overrides. Return to its "
@@ -734,6 +776,7 @@ static bool run_settings(bool game, int page, void (*draw_top)(void *))
 		draw_behind = draw_top;
 		video_present_vsync(game, draw_help, draw_settings, s);
 	}
+	if (s->page == CAT_THEME) theme_finish(s,false);
 	active = false;
 	capture_debug = false;
 	config_save();

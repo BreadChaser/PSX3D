@@ -16,7 +16,7 @@
 #define PSX3D_VERSION  "0.5.1"
 // Optional private test identity; the release reports its human version.
 #ifndef PSX3D_BUILD
-#define PSX3D_BUILD "release-v052-play1"
+#define PSX3D_BUILD "release-v052-play3"
 #endif
 #define PSX3D_DIR      "sdmc:/3ds/PSX3D"
 #define PSX3D_BIOS_DIR PSX3D_DIR "/bios"
@@ -492,6 +492,7 @@ void flist_draw_sections(const flist_t *f, int n, int sel, float x, float y0, fl
 	bool (*header)(int, void *));
 int flist_row_at(const flist_t *f, float y0, float row_h, float py);
 void flist_snap(flist_t *f, int sel, int n, int rows);
+void theme_picker_draw(const flist_t *list, int selected, int committed);
 const char *emu_game_title(void);
 void ui_help_panel(float y0, const char *title, const char *impact, const char *text);
 

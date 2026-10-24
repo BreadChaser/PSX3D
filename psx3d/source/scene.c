@@ -5,6 +5,7 @@
 #include "devtools.h"
 #include "psx3d.h"
 #include "scene_data.h"
+#include "scene_palms.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +17,7 @@
 typedef struct {
     float x, y;
 } point_t;
+typedef struct { float x, y, d; } ray_t;
 typedef struct {
     float epoch[COUNT(FL)];
     bool valid[COUNT(FL)];
@@ -23,12 +25,18 @@ typedef struct {
 } flow_cache_t;
 typedef struct {
     flow_cache_t flow[2];
+    ray_t star_ray[2][COUNT(STARS)], chart_ray[2][COUNT(CN)];
     float sine[1024], decay[256];
     C3D_Tex radial;
+    C3D_Tex palms;
+    Tex3DS_SubTexture palms_sub;
+    bool palms_ok;
     Tex3DS_SubTexture radial_sub;
     C2D_Text glyph[12];
     C2D_TextBuf text;
     float grain[20][50];
+    float mesh_px[29][37], mesh_py[29][37], mesh_h[29][37], mesh_z[29];
+    float mesh_rise[37], mesh_side[37];
 #ifdef __3DS__
     scene_glyph cached_glyph[12];
 #endif
@@ -112,12 +120,6 @@ static void glow(float x, float y, float r, u32 col, float a, float sy) {
                     r / 64, r * sy / 64);
 #endif
 }
-static void ring(float x, float y, float r, float lw, u32 col, float a) {
-    for (int i = 0; i < 64; i++) {
-        float aa = i * TAU / 64, bb = (i + 1) * TAU / 64;
-        line(x + cs(aa) * r, y + sn(aa) * r, x + cs(bb) * r, y + sn(bb) * r, col, a, a, lw);
-    }
-}
 static void gradient(const layer_t *L) {
     blend(false);
     for (int k = 1; k < L->ns; k++)
@@ -131,39 +133,167 @@ static void lights(const layer_t *L, float t) {
              f[3] * strength * (1 + .06f * sn(t * .21f + f[0] * 7)), f[4]);
     }
 }
+// Advect existing points along rays from the vanishing point. Depth decreases
+// linearly, so projected motion accelerates near the viewer. Each ray recycles
+// independently at the edge; no scene-wide zoom/reset or extra primitives.
+// The seed's original radius sets its phase, preserving the authored layout at t=0.
+static ray_t forward_ray(point_t p, float cy) {
+    float dx = p.x - w * .5f, dy = p.y - cy;
+    float r = fmaxf(fabsf(dx) / (w * .5f + 30), fabsf(dy) / 270);
+    float d = 1 / fmaxf(.001f, r);
+    return (ray_t){dx * d, dy * d, d};
+}
+static point_t forward_at(ray_t ray, float t, float speed, float cy) {
+    float zz = ray.d - t * speed;
+    if (zz < 1) zz = 1 + fract((zz - 1) / 12) * 12;
+    float k = 1 / zz;
+    return (point_t){w * .5f + ray.x * k, cy + ray.y * k};
+}
+static point_t forward_point(point_t p, float t, float speed, float cy) {
+    return forward_at(forward_ray(p, cy), t, speed, cy);
+}
 static void stars(const layer_t *L, float t) {
     int n = (int)((L->n ? L->n : 110) * clamp(strength) + .5f);
     if (n > COUNT(STARS))
         n = COUNT(STARS);
+    u32 ink = mix(th->fx_colour, th->scene_white, .6f);
     for (int i = 0; i < n; i++) {
         const stars_seed_t *q = &STARS[i];
-        float x = fract(q->x + t * L->drift / w) * w, y = q->y * 240;
+        point_t p = forward_at(ws->star_ray[bottom][i], t, .045f, bottom ? -24 : 96);
+        float x = p.x, y = p.y;
         float a = q->a * strength * (.6f + .4f * sn(t * q->f + q->p));
         if (q->big)
             glow(x, y, 3, th->fx_colour, a * .5f, 1);
         blend(false);
-        rect(x, y, 1, 1, alpha(mix(th->fx_colour, th->scene_white, .6f), a));
+        rect(x, y, 1, 1, alpha(ink, a));
     }
 }
-static void starfield(const layer_t *L, float t) {
-    float cx = (L->cx ? L->cx : .5f) * w, cy = (L->cy ? L->cy : .4f) * 240;
-    int n = (int)((L->n ? L->n : 90) * fmaxf(.3f, strength) + .5f);
-    if (n > COUNT(SF))
-        n = COUNT(SF);
+// Eclipse: independently authored depth flight. Small three-star groups share
+// a depth plane, so their faint links expand with the stars instead of sliding
+// across them. Work is O(n); no neighbour search or frame history is needed.
+// Odysseus inspired only the quiet particles/glow/links, not this implementation.
+static void eclipse(const layer_t *L, float t) {
+    const u32 blue = TH_RGB(83, 132, 255), ice = TH_RGB(179, 205, 255);
+    float cx = w * .5f, cy = bottom ? -36 : 100;
+    glow(cx, cy, w * .72f, TH_RGB(24, 49, 156), .25f * strength, .64f);
+    glow(w * .8f, bottom ? 180 : 42, w * .5f, TH_RGB(36, 41, 125), .10f * strength, .7f);
     blend(true);
-    for (int i = 0; i < n; i++) {
+    int groups = bottom ? 28 : 44;
+    for (int i = 0; i < groups; i++) {
         const sf_seed_t *q = &SF[i];
-        float d = .18f + .82f * fract(q->z - t * .018f), d0 = fminf(1, d + .018f);
-        float x = cx + q->x / d * 1.6f, y = cy + q->y / d * 1.1f;
-        if (x < -10 || x > w + 10 || y < -10 || y > 250)
+        float phase = fract(q->z - t * .014f);
+        float d = .22f + phase * .78f, k = 1 / d;
+        float a = smooth(0, .14f, phase) * smooth(1, .83f, phase) * strength;
+        float x = cx + q->x * 2.1f * k, y = cy + q->y * 1.8f * k;
+        if (x < -40 || x > w + 40 || y < -40 || y > 280)
             continue;
-        float a = q->b * strength * smooth(1, .7f, d) * smooth(.18f, .3f, d);
-        line(cx + q->x / d0 * 1.6f, cy + q->y / d0 * 1.1f, x, y, th->fx_colour, 0, a * .45f,
-             .8f + .18f / d);
-        rect(x - .5f, y - .5f, d < .4f ? 1.6f : 1, d < .4f ? 1.6f : 1,
-             alpha(mix(th->fx_colour, th->scene_white, .55f), a));
-        if (d < .35f)
-            glow(x, y, 3.5f, th->fx_colour, a * .35f, 1);
+        point_t p[3] = {{x, y},
+                        {x + (6 + i % 7) * k, y + (i % 2 ? 7 : -9) * k},
+                        {x - (5 + i % 5) * k, y + (9 + i % 6) * k}};
+        if (i % 4 == 0) {
+            line(p[0].x, p[0].y, p[1].x, p[1].y, blue, a * .11f, a * .07f, .65f);
+            line(p[0].x, p[0].y, p[2].x, p[2].y, blue, a * .11f, a * .05f, .65f);
+        }
+        for (int j = 0; j < 3; j++) {
+            float brightness = a * (j ? .23f : .38f + .30f * q->b);
+            float size = .55f + .32f * k * (j ? .7f : 1);
+            if (!j && i % 3 == 0)
+                glow(p[j].x, p[j].y, 2.5f + k, blue, brightness * .32f, 1);
+            rect(p[j].x - size * .5f, p[j].y - size * .5f, size, size, alpha(ice, brightness));
+        }
+    }
+}
+// Four additional colour families, built from bounded code geometry. Like
+// Eclipse, these borrow only broad visual ideas (dust, facets, fireflies, flow).
+static void solar(float t) {
+    float cy = bottom ? -20 : 104;
+    glow(w * .5f, cy, w * .65f, th->fx_colour, .22f * strength, .7f);
+    glow(w * .2f, 180, w * .48f, th->fx_colour2, .12f * strength, .8f);
+    blend(true);
+    for (int i = 0; i < (bottom ? 54 : 86); i++) {
+        const sf_seed_t *q = &SF[i];
+        float phase = fract(q->z - t * .019f), d = .24f + .76f * phase, k = 1 / d;
+        float a = strength * smooth(0, .14f, phase) * smooth(1, .8f, phase) * q->b;
+        float x = w * .5f + q->x * 2 * k, y = cy + q->y * 1.7f * k;
+        if (x < -8 || x > w + 8 || y < -8 || y > 248)
+            continue;
+        float r = .45f + .33f * k;
+        if (i % 4 == 0)
+            glow(x, y, 4 + k, th->fx_colour, a * .22f, 1);
+        rect(x - r * .5f, y - r * .5f, r, r, alpha(th->fx_colour, a * .7f));
+        if (i % 9 == 0) {
+            line(x - 3 * k, y, x + 3 * k, y, th->fx_colour, 0, a * .2f, .6f);
+            line(x, y - 3 * k, x, y + 3 * k, th->fx_colour, 0, a * .2f, .6f);
+        }
+    }
+}
+static void glacier(float t) {
+    float cy = bottom ? -28 : 92;
+    glow(w * .7f, cy, w * .8f, th->fx_colour, .16f * strength, .8f);
+    blend(true);
+    for (int i = 0; i < (bottom ? 24 : 40); i++) {
+        const sf_seed_t *q = &SF[i];
+        float phase = fract(q->z - t * .011f), d = .28f + .72f * phase, k = 1 / d;
+        float a = strength * smooth(0, .16f, phase) * smooth(1, .82f, phase) * q->b;
+        float x = w * .5f + q->x * 2.6f * k, y = cy + q->y * 2 * k;
+        if (x < -24 || x > w + 24 || y < -24 || y > 264)
+            continue;
+        float rx = (2 + i % 4) * k, ry = (5 + i % 6) * k;
+        tri(x, y - ry, alpha(th->fx_colour, a * .25f), x - rx, y, alpha(th->fx_colour, a * .06f), x,
+            y + ry, alpha(th->fx_colour2, a * .09f));
+        tri(x, y - ry, alpha(th->fx_colour, a * .25f), x + rx, y, alpha(th->fx_colour, a * .12f), x,
+            y + ry, alpha(th->fx_colour2, a * .09f));
+        line(x, y - ry, x - rx, y, th->fx_colour, a * .4f, a * .12f, .65f);
+        line(x, y - ry, x + rx, y, th->fx_colour, a * .4f, a * .12f, .65f);
+        if (i % 5 == 0)
+            glow(x, y - ry, 3, th->fx_colour, a * .25f, 1);
+    }
+}
+static void citron(float t) {
+    float cy = bottom ? -40 : 110;
+    glow(w * .3f, cy, w * .7f, th->fx_colour, .15f * strength, .65f);
+    glow(w * .85f, 180, w * .45f, th->fx_colour2, .09f * strength, .8f);
+    blend(true);
+    struct { float x,y,r,a; } seeds[72];
+    int count=0;
+    for (int i = 0; i < (bottom ? 44 : 72); i++) {
+        const sf_seed_t *q = &SF[i];
+        float phase = fract(q->z - t * .023f), d = .22f + .78f * phase, k = 1 / d;
+        float a = strength * smooth(0, .16f, phase) * smooth(1, .8f, phase) * q->b;
+        float x = w * .5f + q->x * 2 * k, y = cy + q->y * 1.8f * k;
+        if (x < -16 || x > w + 16 || y < -16 || y > 256)
+            continue;
+        float flutter = .75f + .25f * sn(t * .6f + q->z * TAU), r = (.6f + .45f * k) * flutter;
+        glow(x, y, 3 + r * 2, th->fx_colour, a * .3f * flutter, 1);
+        seeds[count].x=x;seeds[count].y=y;seeds[count].r=r;seeds[count++].a=a;
+    }
+    // All glows precede solid seeds: two texture batches, bounded stack only.
+    for(int i=0;i<count;i++) {
+        float x=seeds[i].x,y=seeds[i].y,r=seeds[i].r,a=seeds[i].a;
+        // A tiny tapered seed and its warm core, no CRT/glyph layer.
+        tri(x - r, y, alpha(th->fx_colour, a * .25f), x + r, y - r, alpha(th->fx_colour, a * .65f),
+            x + r * .4f, y + r, alpha(th->fx_colour2, a * .15f));
+        rect(x - .5f, y - .5f, 1, 1, alpha(th->scene_white, a * .6f));
+    }
+}
+static void sienna(float t) {
+    glow(w * .7f, bottom ? -20 : 90, w * .65f, th->fx_colour, .18f * strength, .7f);
+    blend(true);
+    // Expanding contour fibres: sparse, organic curves rather than a corridor.
+    for (int band = 0; band < (bottom ? 6 : 10); band++) {
+        float phase = fract(band / 10.f - t * .008f), d = .3f + .7f * phase, k = 1 / d;
+        float a = strength * smooth(0, .18f, phase) * smooth(1, .8f, phase);
+        point_t prev = {0};
+        for (int j = 0; j <= 18; j++) {
+            float u = j / 18.f, xx = (u - .5f) * w * 1.2f;
+            float yy = 36 + band * 2 + 14 * sn(u * 6 + band * .6f) + 5 * sn(u * 13 + band);
+            point_t p = {w * .5f + xx * k, (bottom ? -35 : 68) + yy * k};
+            if (j)
+                line(prev.x, prev.y, p.x, p.y, th->fx_colour, a * .20f, a * .20f, .7f);
+            prev = p;
+            if (j == 5 + band % 9)
+                glow(p.x, p.y, 3, th->fx_colour, a * .45f, 1);
+        }
     }
 }
 static point_t spine(float u, float y0, float y1) {
@@ -227,10 +357,10 @@ static void constellations(const layer_t *L, float t) {
         n = (n * 3 + 3) / 4;
     for (int i = 0; i < n; i++) {
         const cn_seed_t *q = &CN[i];
-        float x =
-            fract(q->x + t * (q->l ? 3.2f : 1.6f) / (w + 60)) * (w + 60) - 30 + 6 * sn(t * q->w + q->p);
+        point_t at = forward_at(ws->chart_ray[bottom][i], t, q->l ? .045f : .025f, bottom ? -24 : 96);
+        float x = at.x;
         p[i].x = x;
-        p[i].y = q->y * 240 + 5 * sn(t * q->w * .8f + q->p * 2);
+        p[i].y = at.y;
         p[i].l = q->l;
         p[i].a = smooth(-30, 10, x) * smooth(w + 30, w - 10, x) * q->b * (q->l ? 1 : .55f);
     }
@@ -308,7 +438,9 @@ static void silk(const layer_t *L, float t) {
         }
         if (!r)
             for (int k = 0; k < 5; k++) {
-                float x = fract((k * 97 + t * (6 + k)) / (w + 40)) * (w + 40) - 20;
+                float travel = fract(k * .194f + t * .028f);
+                float x = w * .5f + (k & 1 ? -1 : 1) *
+                          travel / (1.6f - .6f * travel) * (w * .5f + 20);
                 int j = (int)((x + 8) / step + .5f);
                 j = j < 0 ? 0 : j >= N ? N - 1 : j;
                 glow(x, cen[j] - wid[j] / 2, 5, th->silk_glint,
@@ -377,10 +509,13 @@ static void flow(const layer_t *L, float t) {
         }
         if (!q->bead)
             continue;
-        float pos = fract(q->ph + t * q->v) * (steps + 8) - 4;
+        float travel = fract(q->ph + t * .022f);
+        float distance = travel / (1.7f - .7f * travel);
+        float pos = steps * .5f + (i & 1 ? -1 : 1) * distance * (steps * .5f + 4);
         for (int k = 0; k < 4; k++) {
-            float d0 = pos - (k + 1) * .9f, d1 = pos - k * .9f;
-            if (d1 <= 0 || d0 >= steps)
+            float direction = i & 1 ? -1 : 1;
+            float d0 = pos - direction * (k + 1) * .9f, d1 = pos - direction * k * .9f;
+            if (fmaxf(d0, d1) <= 0 || fminf(d0, d1) >= steps)
                 continue;
             point_t a = fibre_at(p, d0, steps), b = fibre_at(p, d1, steps);
             float e = smooth(0, 5, d1) * smooth(steps, steps - 5, d1) * q->b * strength * .55f;
@@ -409,10 +544,14 @@ static point_t signal_at(int i, float d) {
 static void signals(const layer_t *L, float t) {
     blend(true);
     float ga = (L->grid ? L->grid : .2f) * strength;
-    for (float x = 12; x < w; x += 24)
+    for (float xx = 12; xx < w; xx += 24) {
+        float x = forward_point((point_t){xx, 96}, t, .06f, 96).x;
         grad(x, 0, 1, 240, alpha(th->fx_colour2, ga * .6f), alpha(th->fx_colour2, ga * .25f));
-    for (float y = 12; y < 240; y += 24)
+    }
+    for (float yy = 12; yy < 240; yy += 24) {
+        float y = forward_point((point_t){w * .5f, yy}, t, .06f, 96).y;
         rect(0, y, w, 1, alpha(th->fx_colour2, ga * (y > 165 && !bottom ? .35f : 1)));
+    }
     int n = (int)((L->n ? L->n : 14) * fmaxf(.4f, strength) + .5f);
     if (n > COUNT(SIG))
         n = COUNT(SIG);
@@ -449,6 +588,8 @@ static void glyphs(const layer_t *L, float t) {
         bx[k] = (.5f + .42f * sn(t * gb[k][2] + gb[k][0] * 6.3f)) * w;
         by[k] = (.5f + .42f * sn(t * gb[k][3] + gb[k][1] * 6.3f + k)) * 240;
         br[k] = gb[k][4] * (bottom ? 44 : 56) * (.85f + .15f * sn(t * .2f + k));
+        point_t p = forward_point((point_t){bx[k], by[k]}, t, .018f, bottom ? -24 : 96);
+        bx[k] = p.x; by[k] = p.y;
         inv_radius[k] = 1 / br[k];
     }
     blend(false);
@@ -456,15 +597,21 @@ static void glyphs(const layer_t *L, float t) {
     // with 16x12 samples instead of 20x15. New and Old top stay unchanged.
     int dx_cell = g_new3ds ? 8 : (bottom ? 20 : 16);
     int dy_cell = g_new3ds ? 12 : (bottom ? 20 : 16);
-    for (int j = 0; j < 240 / dy_cell; j++)
+    for (int j = 0; j < 240 / dy_cell; j++) {
+        float cy = bottom ? -24 : 96, yy = (j + .5f) * dy_cell;
+        float d = 270 / fmaxf(1, fabsf(yy - cy)), zz = d - t * .018f;
+        if (zz < 1) zz = 1 + fract((zz - 1) / 12) * 12;
+        float scale = d / zz;
         for (int i = 0; i < (int)(w / dx_cell); i++) {
-            float x = (i + .5f) * dx_cell, y = (j + .5f) * dy_cell, b = 0;
+            float xx = (i + .5f) * dx_cell;
+            float x = fract(.5f + (xx - w * .5f) * scale / w) * w;
+            float y = cy + (yy - cy) * scale, b = 0;
             for (int k = 0; k < 4; k++) {
                 float dx = (x - bx[k]) * inv_radius[k], dy = (y - by[k]) * inv_radius[k], d = dx * dx + dy * dy;
                 if (d < 4)
                     b += decay(d * 1.6f);
             }
-            float gx = x / 8 - .5f, gy = y / 12 - .5f;
+            float gx = xx / 8 - .5f, gy = yy / 12 - .5f;
             float grain = ws->grain[(int)gy][(int)gx],
                   v = .5f + .5f * sn(gx * .23f - gy * .31f + t * .3f);
             b += (bottom ? .2f : .3f) * (.35f + .65f * v * v) * grain;
@@ -482,6 +629,7 @@ static void glyphs(const layer_t *L, float t) {
             C2D_DrawText(&ws->glyph[ci], C2D_WithColor, x - 3 + depth, y - 6, z, g_new3ds ? .25f : .32f, g_new3ds ? .25f : .32f, col);
 #endif
         }
+    }
     for (int k = 0; k < 4; k++)
         glow(bx[k], by[k], br[k] * 1.3f, th->fx_colour, .1f * strength, .9f);
     blend(false);
@@ -489,8 +637,8 @@ static void glyphs(const layer_t *L, float t) {
         rect(0, y, w, 1, alpha(th->shadow, .16f));
 }
 static point_t ember_at(const em_seed_t *q, float t, float sp) {
-    return (point_t){q->x * w + 14 * sn(t * q->w + q->p) + 5 * sn(t * q->w * 2.7f + q->p * 3),
-                     255 - fract((q->y * 270 + t * sp) / 270) * 270};
+    return forward_point((point_t){q->x * w, 255 - q->y * 270}, t,
+                         .038f * (sp / 7), bottom ? 270 : 210);
 }
 static void embers(const layer_t *L, float t) {
     for (int k = 0; k < 4; k++) {
@@ -511,7 +659,8 @@ static void embers(const layer_t *L, float t) {
         int l = (int)q->l;
         float sp = (l == 0 ? 4 : l == 1 ? 7 : 11) * q->v;
         point_t p = ember_at(q, t, sp), prev = ember_at(q, t - .9f, sp);
-        if (prev.y < p.y)
+        // A recycled ray must not leave a trail across the scene.
+        if (fabsf(prev.x - p.x) + fabsf(prev.y - p.y) > 40)
             continue;
         float life = smooth(255, 215, p.y) * smooth(19.2f, 89.2f, p.y),
               heat = .55f + .45f * smooth(39.2f, 240, p.y),
@@ -543,50 +692,166 @@ static void embers(const layer_t *L, float t) {
             alpha(mix(th->fx_colour, th->scene_white, .6f * a), a * (l == 2 ? .55f : 1)));
     }
 }
-static void corona(const layer_t *L, float t) {
-    float x = w * .5f, y = 96, R = 70;
-    glow(x, y, R * 3.4f, th->fx_colour2, .16f * strength, .8f);
-    glow(x, y, R * 2, th->fx_colour, .22f * strength, 1);
-    blend(true);
-    for (int i = 0; i < COUNT(CR); i++) {
-        const cr_seed_t *q = &CR[i];
-        float a = q->a + t * .004f, pol = cs(a + .35f);
-        pol *= pol;
-        float nz = .5f + .3f * sn(a * 3 + t * .05f + q->f1) + .2f * sn(a * 7 - t * .037f + q->f2),
-              len = R * (.18f + .55f * nz + .9f * pol * nz), ca = cs(a), sa = sn(a), r0 = R * .98f,
-              ww = q->w * (1.6f + 2.2f * pol), al = q->b * strength * (.09f + .07f * pol);
-        u32 c = alpha(mix(th->fx_colour, th->scene_white, .5f), al);
-        tri(x + ca * r0 - sa * ww, y + sa * r0 + ca * ww, c, x + ca * (r0 + len), y + sa * (r0 + len),
-            alpha(th->fx_colour2, 0), x + ca * r0 + sa * ww, y + sa * r0 - ca * ww, c);
-    }
-    blend(false);
-    C2D_DrawCircleSolid(x + depth, y, z, R, th->moon);
-    blend(true);
-    ring(x, y, R + .6f, 9, th->fx_colour, .08f * strength);
-    ring(x, y, R + .6f, 3.5f, th->fx_colour, .28f * strength);
-    ring(x, y, R + .6f, 1.2f, mix(th->fx_colour, th->scene_white, .7f), .9f * strength);
-    float ba = -2.2f + t * .035f, bx = x + cs(ba) * (R + .5f), by = y + sn(ba) * (R + .5f),
-          b = (.75f + .25f * sn(t * .6f)) * strength;
-    glow(bx, by, 22, th->scene_white, .35f * b, 1);
-    glow(bx, by, 6, th->scene_white, .8f * b, 1);
-    for (int k = 0; k < 2; k++) {
-        float dx = k ? 0 : 16, dy = k ? 16 : 0;
-        line(bx - dx, by - dy, bx, by, th->scene_white, 0, .5f * b, .8f);
-        line(bx, by, bx + dx, by + dy, th->scene_white, .5f * b, 0, .8f);
-    }
+// Shipped rc9 rolling landscape, kept at full detail on both models.
+// X-only powers are prepared once; all hill occlusion and clipping remain.
+#define MESH_COLS 37            // x = -18 .. 18
+#define MESH_ROWS 28
+#define MESH_DZ   1.4f
+#define HORIZON   140.0f
+
+static float mesh_height(float x, float z_world, float z)
+{
+	float a = fabsf(x) - 2.0f;
+	if (a <= 0)
+		return 0;
+	float rise = ws->mesh_rise[(int)(x+18)];
+	float n = 0.8f + 0.22f * sinf(x * 0.9f + z_world * 0.35f) + 0.12f * sinf(x * 1.7f - z_world * 0.5f);
+	float near = (z - 1.0f) / 6.0f;
+	if (near > 1) near = 1;
+	if (near < 0) near = 0;
+	return rise * n * (0.35f + 0.65f * near);
 }
-static u32 sunset_sky(float y) {
-    static const float at[] = {0, .38f, .7f, .88f, 1};
-    float p = clamp(y / 141);
-    for (int i = 1; i < 5; i++)
-        if (p <= at[i])
-            return mix(th->sun_sky[i - 1], th->sun_sky[i], (p - at[i - 1]) / (at[i] - at[i - 1]));
-    return th->sun_sky[4];
+
+// The theme's grid colours (near middle, sides, far), as numbers for mesh_colour.
+typedef struct { int n[3], s[3], f[3]; } mesh_ink_t;
+
+static void mesh_ink(mesh_ink_t *k, const theme_t *th)
+{
+	for (int i = 0; i < 3; i++) {
+		k->n[i] = (th->original_grid[0] >> (8 * i)) & 255;
+		k->s[i] = (th->original_grid[1] >> (8 * i)) & 255;
+		k->f[i] = (th->original_grid[2] >> (8 * i)) & 255;
+	}
 }
-static float ridge(int side, float x) {
-    float d = side < 0 ? (150 - x) / 150 : (x - 250) / 150;
-    return d <= 0 ? 0
-                  : smooth(0, .55f, d) * (13 + 8 * sn(x * .04f + side) + 3.5f * sn(x * .11f + 2 * side));
+
+static u32 mesh_colour(const mesh_ink_t *k, float x, float z, u8 alpha)
+{
+	float side = fabsf(x) / 9.0f, depth = (z - 1.0f) / 25.0f;
+	if (side > 1) side = 1;
+	if (depth > 1) depth = 1;
+	if (depth < 0) depth = 0;
+	float t = ws->mesh_side[(int)(x+18)];
+	float r = k->n[0] + (k->s[0] - k->n[0]) * t, g = k->n[1] + (k->s[1] - k->n[1]) * t,
+	      b = k->n[2] + (k->s[2] - k->n[2]) * t;
+	float p = powf(depth, 0.7f) * (1 - side) * 0.85f;
+	r += (k->f[0] - r) * p; g += (k->f[1] - g) * p; b += (k->f[2] - b) * p;
+	return TH_RGBA((u8)r, (u8)g, (u8)b, alpha);
+}
+
+// Line clipped to just beyond the screen. Far off-screen vertices (the
+// nearest grid rows land thousands of pixels out) can make the GPU drop the
+// whole line, so lines vanished before reaching the screen edges.
+static void clip_line(float x0, float y0, u32 c0, float x1, float y1, u32 c1, float w)
+{
+	const float xmin = -8, xmax = 408, ymin = -8, ymax = 248;
+	float t0 = 0, t1 = 1, dx = x1 - x0, dy = y1 - y0;
+	float p[4] = { -dx, dx, -dy, dy }, q[4] = { x0 - xmin, xmax - x0, y0 - ymin, ymax - y0 };
+	for (int i = 0; i < 4; i++) {
+		if (p[i] == 0) {
+			if (q[i] < 0) return;
+			continue;
+		}
+		float r = q[i] / p[i];
+		if (p[i] < 0) { if (r > t1) return; if (r > t0) t0 = r; }
+		else { if (r < t0) return; if (r < t1) t1 = r; }
+	}
+	float ax=x0+dx*t0, ay=y0+dy*t0, bx=x0+dx*t1, by=y0+dy*t1;
+    float len=sqrtf((bx-ax)*(bx-ax)+(by-ay)*(by-ay));
+    if (len < .0001f) return;
+    float nx=-(by-ay)*w*.5f/len, ny=(bx-ax)*w*.5f/len;
+    scene_line_quad(ax-nx,ay-ny,bx-nx,by-ny,ax+nx,ay+ny,bx+nx,by+ny,c0,c1,.16f);
+}
+
+static void draw_grid(float t)
+{
+	float (*px)[37] = ws->mesh_px, (*py)[37] = ws->mesh_py;
+	float (*hgt)[37] = ws->mesh_h;
+	float *rz = ws->mesh_z;
+	const float cx = 200, f = 225;
+	float zoff = t * 0.45f;                      // world units scrolled (slow drift)
+	float phase = fmodf(zoff, MESH_DZ);
+
+	for (int j = 0; j <= MESH_ROWS; j++) {
+		// The nearest row must always land below the screen, or the floor
+		// stops short of the bottom edge for part of each scroll step (at
+		// z = 1.85 it projected to y = 194). It runs from 0.45 down past the
+		// camera; clamped at 0.4 it still projects below the screen (y ~ 392),
+		// so the lines toward it reach the bottom edge.
+		float z = 0.45f - phase + j * MESH_DZ;
+		if (z < 0.4f)
+			z = 0.4f;
+		rz[j] = z;
+		float zw = z + zoff;
+		for (int i = 0; i < MESH_COLS; i++) {
+			float x = i - 18.0f;
+			float h = mesh_height(x, zw, z);
+			hgt[j][i] = h;
+			// far rows sit deeper behind the screen in 3D
+			px[j][i] = cx + x / z * f + ui_depth(2.5f * (z - 1) / 40.0f - 0.5f);
+			py[j][i] = HORIZON + (1.0f - h) / z * f * 0.45f;
+		}
+	}
+	// hills hide the lines behind them in the floor's colour (the picture's, through the theme)
+	const theme_t *th = theme();
+	u32 fillc = th->original_floor;
+	mesh_ink_t ink;
+	mesh_ink(&ink, th);
+	// back to front: hill cells hide the lines behind them
+	for (int j = MESH_ROWS - 1; j >= 0; j--) {
+		for (int i = 0; i < MESH_COLS - 1; i++) {
+			if (hgt[j][i] + hgt[j][i + 1] + hgt[j + 1][i] + hgt[j + 1][i + 1] < 0.01f)
+				continue;   // flat floor: nothing to hide
+			float minx = fminf(fminf(px[j][i], px[j][i + 1]), fminf(px[j + 1][i], px[j + 1][i + 1]));
+			float maxx = fmaxf(fmaxf(px[j][i], px[j][i + 1]), fmaxf(px[j + 1][i], px[j + 1][i + 1]));
+			if (maxx < 0 || minx > 400)
+				continue;   // off-screen: don't spend draw budget on it
+			scene_triangle(px[j][i], py[j][i], fillc, px[j][i + 1], py[j][i + 1], fillc,
+				px[j + 1][i + 1], py[j + 1][i + 1], fillc, 0.15f);
+			scene_triangle(px[j][i], py[j][i], fillc, px[j + 1][i + 1], py[j + 1][i + 1], fillc,
+				px[j + 1][i], py[j + 1][i], fillc, 0.15f);
+		}
+		// this strip's lines: the far edge across, and the lines toward the viewer
+		float zf = rz[j + 1];
+		u8 fade = zf > 32 ? (u8)(255 * (40 - zf) / 8) : 255;   // fade in at the horizon
+		for (int i = 0; i < MESH_COLS - 1; i++)
+			clip_line(px[j + 1][i], py[j + 1][i], mesh_colour(&ink, i - 18.0f, zf, fade),
+				px[j + 1][i + 1], py[j + 1][i + 1], mesh_colour(&ink, i - 17.0f, zf, fade), 1.2f);
+		for (int i = 0; i < MESH_COLS; i++)
+			clip_line(px[j + 1][i], py[j + 1][i], mesh_colour(&ink, i - 18.0f, zf, fade),
+				px[j][i], py[j][i], mesh_colour(&ink, i - 18.0f, rz[j], 255), 1.2f);
+	}
+	for (int i = 0; i < MESH_COLS - 1; i++)
+		clip_line(px[0][i], py[0][i], mesh_colour(&ink, i - 18.0f, rz[0], 255),
+			px[0][i + 1], py[0][i + 1], mesh_colour(&ink, i - 17.0f, rz[0], 255), 1.4f);
+}
+
+
+// Cache detailed CC0 silhouettes from code-drawn spans once per menu visit.
+// Colours remain theme roles; texture is just coverage and dies before a game.
+static void original_palms(float t) {
+    (void)t;
+    if (!ws->palms_ok) {
+        if (!C3D_TexInit(&ws->palms,1024,512,GPU_A8)) return;
+        memset(ws->palms.data,0,ws->palms.size);
+        for (int i=0;i<COUNT(original_palm_spans);i++) {
+            unsigned x=original_palm_spans[i][0],y=original_palm_spans[i][1];
+            for(unsigned end=x+original_palm_spans[i][2];x<end;x++) {
+                unsigned off=(((y>>3)*128+(x>>3))<<6)|(x&1)|((y&1)<<1)|
+                    ((x&2)<<1)|((y&2)<<2)|((x&4)<<2)|((y&4)<<3);
+                ((u8*)ws->palms.data)[off]=255;
+            }
+        }
+        C3D_TexSetFilter(&ws->palms,GPU_LINEAR,GPU_LINEAR);
+        C3D_TexSetWrap(&ws->palms,GPU_CLAMP_TO_EDGE,GPU_CLAMP_TO_EDGE);
+        svcStoreProcessDataCache(CUR_PROCESS_HANDLE,(u32)ws->palms.data,ws->palms.size);
+        ws->palms_sub=(Tex3DS_SubTexture){800,480,0,1,800/1024.f,1-480/512.f};
+        ws->palms_ok=true;
+    }
+    C2D_ImageTint tint;
+    C2D_PlainImageTint(&tint,alpha(th->original_palm_rim,.65f),1);
+    C2D_DrawImageAt((C2D_Image){&ws->palms,&ws->palms_sub},depth+.6f,0,z,&tint,.5f,.5f);
+    C2D_PlainImageTint(&tint,th->original_palm,1);
+    C2D_DrawImageAt((C2D_Image){&ws->palms,&ws->palms_sub},depth,0,z,&tint,.5f,.5f);
 }
 static void sunset(const layer_t *L, float t) {
     blend(false);
@@ -601,84 +866,35 @@ static void sunset(const layer_t *L, float t) {
             grad(x, 0, 1, 240, alpha(th->fx_colour2, .12f), alpha(th->fx_colour2, .02f));
         return;
     }
-    static const float at[] = {0, .38f, .7f, .88f, 1};
-    for (int k = 1; k < 5; k++)
-        grad(0, at[k - 1] * 141, w, (at[k] - at[k - 1]) * 141, th->sun_sky[k - 1], th->sun_sky[k]);
-    for (int i = 0; i < COUNT(SUN_STARS); i++) {
-        float y = SUN_STARS[i].y, a = SUN_STARS[i].a *
-                                      (.55f + .45f * sn(t * SUN_STARS[i].f + SUN_STARS[i].p)) *
-                                      (1 - y / 95);
-        rect(SUN_STARS[i].x, y, 1, 1, alpha(th->scene_white, a));
-    }
-    glow(200, 120, 230, th->sun_glow, .3f, .6f);
-    glow(200, 100, 120, th->sun_hot, .22f, 1);
+    // Original is the shipped rc9 scene, not the round-3 Outrun substitute.
+    // Rich sunset palette, banded sun, palms and a rolling, self-occluding
+    // 37x28 mesh. No Old detail switch: rc9's own menu cost is acceptable.
+    static const float at[] = {0,.4f,.78f,1};
+    for (int k=1;k<4;k++)
+        grad(0,at[k-1]*140,w,(at[k]-at[k-1])*140,th->original_sky[k-1],th->original_sky[k]);
+    grad(0,140,w,100,th->original_floor,th->sun_floor[2]);
+    glow(200,130,112.5f,th->sun_glow,.38f,1);
     blend(false);
-    // Horizontal chords keep the moving cuts inside the solar disc.
-    for (int y = 58; y < 140; y++) {
-        float dy = (y + .5f - 142) / 84.f, half = 84 * sqrtf(fmaxf(0, 1 - dy * dy));
-        u32 c = mix(th->sun_disc[0], th->sun_disc[1], clamp((y - 58) / 37.8f));
-        if (y > 96)
-            c = mix(th->sun_disc[1], th->sun_disc[2], clamp((y - 96) / 25.2f));
-        if (y > 121)
-            c = mix(th->sun_disc[2], th->sun_disc[3], clamp((y - 121) / 21.f));
-        for (int k = 0; k < 7; k++) {
-            float p = fract((k + t * .18f) / 7), cut = 142 - 84 * .52f + p * 84 * .52f;
-            if (y >= cut && y < cut + .4f + p * p * 7.5f)
-                c = sunset_sky(y);
+    // rc9: R=75, centre=(200,130), fixed widening horizontal bands.
+    for (float y=55;y<140;y+=.5f) {
+        float dy=y+.25f-130, half=sqrtf(fmaxf(0,75*75-dy*dy));
+        bool cut=false;
+        for(float cy=75*.62f,k=0;cy<150;k++) {
+            float gap=75*(.02f+.016f*k);
+            if(y-55>=cy && y-55<=cy+gap) cut=true;
+            cy+=gap+75*.08f;
         }
-        rect(200 - half, y, half * 2, 1, c);
+        if(cut)continue;
+        float d=(y-55)/150.f;
+        u32 c=d<.5f?mix(th->original_sun[0],th->original_sun[1],d*2):
+              d<.85f?mix(th->original_sun[1],th->original_sun[2],(d-.5f)/.35f):
+              mix(th->original_sun[2],th->original_sun[3],(d-.85f)/.15f);
+        rect(200-half,y,half*2,.5f,c);
     }
-    for (int side = -1; side <= 1; side += 2) {
-        float start = side < 0 ? 0 : 250, end = side < 0 ? 150 : 400;
-        for (float x = start; x < end; x += 5) {
-            float y0 = 140 - ridge(side, x), y1 = 140 - ridge(side, x + 5);
-            u32 a = th->ridge_high, b = th->ridge_low;
-            tri(x, y0, a, x + 5, y1, a, x + 5, 140, b);
-            tri(x, y0, a, x + 5, 140, b, x, 140, b);
-        }
-        blend(true);
-        for (float x = start; x < end; x += 5) {
-            float a = side < 0 ? .85f - (x / 150) * .8f : .05f + (x - 250) / 150 * .8f;
-            line(x, 140 - ridge(side, x), x + 5, 140 - ridge(side, x + 5), th->sun_rim, a * .18f,
-                 a * .18f, 4);
-            line(x, 140 - ridge(side, x), x + 5, 140 - ridge(side, x + 5), th->sun_rim, a, a, 1.1f);
-        }
-        blend(false);
-    }
-    grad(0, 140, w, 25, th->sun_floor[0], th->sun_floor[1]);
-    grad(0, 165, w, 75, th->sun_floor[1], th->sun_floor[2]);
-    glow(200, 144, 150, th->sun_glow, .35f, .22f);
-    blend(true);
-    for (int i = 0; i < 9; i++) {
-        float d = i / 8.f, y = 143 + d * d * 34,
-              ww = (110 - d * 60) * (.85f + .15f * sn(t * 1.1f + i * 1.9f));
-        line(200 - ww, y, 200, y, th->sun_hot, 0, .32f * (1 - d), 1);
-        line(200, y, 200 + ww, y, th->sun_hot, .32f * (1 - d), 0, 1);
-    }
-    for (int k = 0; k < 40; k++) {
-        float zz = .6f + k - fract(t * 1.1f), y = 140 + 210 / zz;
-        if (zz <= .2f || y > 241 || 210 / zz - 210 / (zz + 1) < 3)
-            continue;
-        float d = (y - 140) / 100, a = smooth(.02f, .14f, d) * (1 - .72f * smooth(.2f, .62f, d));
-        line(0, y, 400, y, th->fx_colour, a * .16f, a * .16f, 3.2f);
-        line(0, y, 400, y, th->fx_colour, a * .9f, a * .9f, 1);
-    }
-    for (int i = -16; i <= 16; i++) {
-        float x0 = 200 + i * 4.2f, x1 = 200 + i * 200;
-        for (int k = 0; k < 3; k++) {
-            float a0 = k / 3.f, a1 = (k + 1) / 3.f;
-            line(x0 + (x1 - x0) * a0, 140 + 160 * a0, x0 + (x1 - x0) * a1, 140 + 160 * a1,
-                 th->fx_colour2, k == 0 ? 0 : .28f,
-                 k == 0   ? .75f
-                 : k == 1 ? .28f
-                          : .08f,
-                 1);
-        }
-    }
-    grad(0, 126, w, 14, alpha(th->sun_glow, 0), alpha(th->sun_hot, .3f));
-    grad(0, 140, w, 12, alpha(th->sun_hot, .3f), alpha(th->sun_glow, 0));
-    line(0, 139.5f, 200, 139.5f, th->scene_white, .35f, .8f, 1);
-    line(200, 139.5f, 400, 139.5f, th->scene_white, .8f, .35f, 1);
+    original_palms(t);
+    blend(false);
+    draw_grid(t);
+
 }
 static void vignette(float a) {
     blend(false);
@@ -700,6 +916,20 @@ static bool prepare(void) {
     ws = calloc(1, sizeof(*ws));
     if (!ws)
         return false;
+    // Projection rays are immutable: calculate divisions once per menu visit.
+    for (int b = 0; b < 2; b++) {
+        w = b ? 320 : 400;
+        float cy = b ? -24 : 96;
+        for (int i = 0; i < COUNT(STARS); i++)
+            ws->star_ray[b][i] = forward_ray((point_t){STARS[i].x * w, STARS[i].y * 240}, cy);
+        for (int i = 0; i < COUNT(CN); i++)
+            ws->chart_ray[b][i] = forward_ray((point_t){CN[i].x * (w + 60) - 30, CN[i].y * 240}, cy);
+    }
+    for (int i=0;i<37;i++) {
+        float x=fabsf(i-18.f);
+        ws->mesh_rise[i]=x<=2?0:powf(x-2,1.15f)*.32f;
+        ws->mesh_side[i]=powf(fminf(1,x/9),.8f);
+    }
     for (int i = 0; i < 1024; i++)
         ws->sine[i] = sinf(i * TAU / 1024);
     for (int j = 0; j < 20; j++)
@@ -750,6 +980,7 @@ void scene_release(void) {
         return;
     video_gpu_idle();
     C3D_TexDelete(&ws->radial);
+    if (ws->palms_ok) C3D_TexDelete(&ws->palms);
     C2D_TextBufDelete(ws->text);
     free(ws);
     ws = NULL;
@@ -827,11 +1058,12 @@ void scene_draw(bool is_bottom) {
         case FX_GLYPHS:
             glyphs(L, tt);
             break;
-        case FX_STARFIELD:
-            starfield(L, tt);
-            break;
-        case FX_CORONA:
-            corona(L, tt);
+        case FX_SOLAR: solar(tt); break;
+        case FX_GLACIER: glacier(tt); break;
+        case FX_CITRON: citron(tt); break;
+        case FX_SIENNA: sienna(tt); break;
+        case FX_ECLIPSE:
+            eclipse(L, tt);
             break;
         case FX_EMBERS:
             embers(L, tt);

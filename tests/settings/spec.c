@@ -21,6 +21,7 @@ void music_play(bool on) { (void)on; }
 void music_update(void) {}
 bool audio_capture_start(void) { return true; }
 bool audio_test_tone_toggle(void) { return false; }
+#include "../../psx3d/source/theme_picker.c"
 #include "../../psx3d/source/settings_ui.c"
 #define HAVE_NO_LANGEXTRA
 #define GPU_PICA
@@ -69,7 +70,7 @@ static void dump_page(settings_ui_t *s, int page, const char *name)
 		strip_marker(row_label(i, s), label, sizeof(label), &marker);
 		row_key(s, item, key, sizeof(key));
 		snprintf(current, sizeof(current), "%s", row_value(i, s));
-		if (item < CATEGORY_ROW && item != F_RECOMMENDED) {
+		if (item < CATEGORY_ROW && item != F_RECOMMENDED && item != F_THEME) {
 			char first[64];
 			snprintf(first, sizeof(first), "%s", row_value(i, s));
 			for (int step = 0; step < 128; step++) {
@@ -99,6 +100,11 @@ static void dump_context(bool game)
 	printf("\n");
 	s.page = CAT_ADVANCED;
 	printf("%s\tHEADER\t%s\n", ctx, advanced_header(&s));
+    if (!game) {
+        open_page(&s,CAT_THEME);
+        for(int i=0;i<s.count;i++)printf("%s\tTHEME\t%s\n",ctx,row_label(i,&s));
+        theme_finish(&s,false);
+    }
 	static const int pages[] = {CAT_DISPLAY, CAT_CONTROLS, CAT_SAVES, CAT_ADVANCED};
 	for (unsigned p = 0; p < sizeof(pages) / sizeof(pages[0]); p++)
 		dump_page(&s, pages[p], categories[pages[p]]);

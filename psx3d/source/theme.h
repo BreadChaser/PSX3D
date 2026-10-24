@@ -40,6 +40,7 @@ typedef struct {
 	u32 input_face[4], input_shoulder, input_stick, input_other, input_hide;
 	u32 fx_colour, fx_colour2;
 	u32 shadow, moon, scene_white, silk_light, silk_glint;
+	u32 original_sky[4], original_sun[4], original_grid[3], original_floor, original_palm, original_palm_rim;
 	u32 sun_sky[5], floor_sky[3], sun_floor[3], sun_disc[4];
 	u32 sun_glow, sun_hot, sun_rim, ridge_high, ridge_low;
 } theme_t;

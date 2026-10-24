@@ -56,6 +56,12 @@ def same_cycle(a, b):
     return len(a) == len(b) and any(a[i:] + a[:i] == b for i in range(len(a)))
 
 
+theme_names = [r[0] for r in block('settings-themes')]
+for ctx in expected_contexts:
+    actual = [d[2] for d in dump if d[0] == ctx and d[1] == 'THEME']
+    if actual != (theme_names if ctx.endswith('-lib') else []):
+        problems.append(f'{ctx}: theme list {actual} != spec inventory')
+
 for ctx in contexts:
     console, kind = ctx.split('-')
     scope = 'lib' if kind == 'lib' else 'game'

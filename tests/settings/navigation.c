@@ -31,6 +31,7 @@ void music_play(bool on) { (void)on; }
 void music_update(void) {}
 bool audio_capture_start(void) { return true; }
 bool audio_test_tone_toggle(void) { return false; }
+#include "../../psx3d/source/theme_picker.c"
 #include "../../psx3d/source/settings_ui.c"
 #define HAVE_NO_LANGEXTRA
 #define GPU_PICA
@@ -319,6 +320,33 @@ int main(void)
 	options_clear();
 	clear_overrides();
 	FT_Done_Face(title_face);
+    // Live previews must never commit accidentally; A keeps the cursor and B
+    // restores the entry theme. Reopening starts on the committed selection.
+    for (int model=0;model<2;model++) {
+        g_new3ds=model;
+        settings_ui_t picker={0};
+        g_cfg.theme=5;
+        open_page(&picker,CAT_THEME);
+        assert(picker.count==12 && picker.selected[CAT_THEME]==5);
+        ui_button_t bar[UI_BAR_MAX];
+        assert(settings_bar(&picker,bar)==2 && bar[0].key==KEY_B && bar[1].key==KEY_A);
+        for(int i=0;i<12;i++) {
+            assert(!heading(i,&picker));
+            picker.selected[CAT_THEME]=i;theme_preview(&picker);
+            assert(g_cfg.theme==i && !strcmp(row_label(i,&picker),theme_get(i)->name));
+            char name[48];snprintf(name,sizeof(name),"%s-Theme-%02d",model?"new":"old",i);
+            shot(name);flist_snap(&picker.list,i,picker.count,6);draw_settings(&picker);shot_end();
+        }
+        theme_finish(&picker,false);
+        assert(g_cfg.theme==5 && picker.page==CAT_DISPLAY);
+        open_page(&picker,CAT_THEME);picker.selected[CAT_THEME]=11;theme_preview(&picker);
+        theme_finish(&picker,true);
+        assert(g_cfg.theme==11 && picker.page==CAT_DISPLAY);
+        open_page(&picker,CAT_THEME);
+        assert(picker.selected[CAT_THEME]==11 && picker.theme_before==11);
+        theme_finish(&picker,false);
+    }
+    puts("PASS: twelve-theme list, both models, live preview, A commit, B restore, reopen, style-7 bar");
 	FT_Done_Face(body_face);
 	FT_Done_FreeType(ft);
 	screen_note_checks();

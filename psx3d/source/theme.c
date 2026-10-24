@@ -24,6 +24,10 @@
 	.input_face={C(47,163,107),C(208,49,59),C(47,111,196),C(215,127,181)}, \
 	.input_shoulder=C(176,90,222), .input_stick=C(69,191,208), .input_other=C(154,165,200), .input_hide=C(43,51,96), \
 	.shadow = C(0,0,0), .moon = C(3,3,7), .scene_white=C(255,255,255), .silk_light=C(255,225,240), .silk_glint=C(255,235,220), \
+	.original_sky={C(40,8,80),C(110,20,120),C(230,40,120),C(255,120,60)}, \
+    .original_sun={C(255,236,110),C(255,196,60),C(255,120,60),C(255,80,100)}, \
+    .original_grid={C(150,60,255),C(40,90,255),C(255,70,200)}, \
+    .original_floor=C(16,2,44), .original_palm=C(18,22,52), .original_palm_rim=C(255,120,90), \
 	.sun_sky = {C(5,2,22), C(26,6,58), C(92,16,104), C(196,40,118), C(255,110,110)}, \
 	.floor_sky = {C(26,5,44),C(12,3,30),C(4,1,12)}, .sun_floor={C(44,8,66),C(18,4,40),C(4,1,12)}, \
 	.sun_disc={C(255,240,160),C(255,176,96),C(255,96,112),C(255,40,140)}, \
@@ -210,6 +214,46 @@ static const theme_t themes[] = {
 		.icon_a = CA(255, 215, 130, 255),
 		.icon_b = CA(255, 80, 30, 255),
 		.icon_glow = CA(255, 120, 40, 150) },
+	{ ORIGINAL, .id="solar", .name="Solar",
+        .menu_bg=C(30,24,4), .header_right=C(186,163,91), .accent={C(255,222,95),C(186,163,91),C(84,66,13),C(255,222,95)},
+        .hl_top=CA(84,66,13,235), .hl_bottom=CA(30,24,4,235), .hl_glow=CA(255,222,95,35),
+        .row_dim={186,163,91}, .value=C(255,222,95), .section=C(186,163,91), .section_rule=C(84,66,13),
+        .muted=C(186,163,91), .hint_lib=C(186,163,91), .hint_menu=C(186,163,91), .scrollbar=C(84,66,13),
+        .help_bg=CA(30,24,4,230), .help_bar=C(255,222,95), .help_text=C(186,163,91), .game_sub=C(186,163,91),
+        .touch_face=C(30,24,4), .touch_border=C(84,66,13), .card_top=C(84,66,13), .card_bottom=C(30,24,4),
+        .card_stack=C(84,66,13), .folder=C(186,163,91), .logo_3d=CA(255,222,95,220), .version_ink=CA(186,163,91,160),
+        .fx_colour=C(255,222,95), .fx_colour2=C(186,163,91), .icon_a=C(255,222,95), .icon_b=C(186,163,91), .icon_glow=CA(255,222,95,135),
+        .input_shoulder=C(255,222,95), .input_stick=C(186,163,91), .input_other=C(186,163,91), .input_hide=C(84,66,13) },
+	{ ORIGINAL, .id="glacier", .name="Glacier",
+        .menu_bg=C(8,25,38), .header_right=C(119,170,197), .accent={C(154,223,255),C(119,170,197),C(28,82,112),C(154,223,255)},
+        .hl_top=CA(28,82,112,235), .hl_bottom=CA(8,25,38,235), .hl_glow=CA(154,223,255,35),
+        .row_dim={119,170,197}, .value=C(154,223,255), .section=C(119,170,197), .section_rule=C(28,82,112),
+        .muted=C(119,170,197), .hint_lib=C(119,170,197), .hint_menu=C(119,170,197), .scrollbar=C(28,82,112),
+        .help_bg=CA(8,25,38,230), .help_bar=C(154,223,255), .help_text=C(119,170,197), .game_sub=C(119,170,197),
+        .touch_face=C(8,25,38), .touch_border=C(28,82,112), .card_top=C(28,82,112), .card_bottom=C(8,25,38),
+        .card_stack=C(28,82,112), .folder=C(119,170,197), .logo_3d=CA(154,223,255,220), .version_ink=CA(119,170,197,160),
+        .fx_colour=C(154,223,255), .fx_colour2=C(119,170,197), .icon_a=C(154,223,255), .icon_b=C(119,170,197), .icon_glow=CA(154,223,255,135),
+        .input_shoulder=C(154,223,255), .input_stick=C(119,170,197), .input_other=C(119,170,197), .input_hide=C(28,82,112) },
+	{ ORIGINAL, .id="citron", .name="Citron",
+        .menu_bg=C(19,27,4), .header_right=C(156,177,89), .accent={C(212,241,93),C(156,177,89),C(65,86,16),C(212,241,93)},
+        .hl_top=CA(65,86,16,235), .hl_bottom=CA(19,27,4,235), .hl_glow=CA(212,241,93,35),
+        .row_dim={156,177,89}, .value=C(212,241,93), .section=C(156,177,89), .section_rule=C(65,86,16),
+        .muted=C(156,177,89), .hint_lib=C(156,177,89), .hint_menu=C(156,177,89), .scrollbar=C(65,86,16),
+        .help_bg=CA(19,27,4,230), .help_bar=C(212,241,93), .help_text=C(156,177,89), .game_sub=C(156,177,89),
+        .touch_face=C(19,27,4), .touch_border=C(65,86,16), .card_top=C(65,86,16), .card_bottom=C(19,27,4),
+        .card_stack=C(65,86,16), .folder=C(156,177,89), .logo_3d=CA(212,241,93,220), .version_ink=CA(156,177,89,160),
+        .fx_colour=C(212,241,93), .fx_colour2=C(156,177,89), .icon_a=C(212,241,93), .icon_b=C(156,177,89), .icon_glow=CA(212,241,93,135),
+        .input_shoulder=C(212,241,93), .input_stick=C(156,177,89), .input_other=C(156,177,89), .input_hide=C(65,86,16) },
+	{ ORIGINAL, .id="sienna", .name="Sienna",
+        .menu_bg=C(32,18,11), .header_right=C(180,139,111), .accent={C(230,172,124),C(180,139,111),C(100,55,30),C(230,172,124)},
+        .hl_top=CA(100,55,30,235), .hl_bottom=CA(32,18,11,235), .hl_glow=CA(230,172,124,35),
+        .row_dim={180,139,111}, .value=C(230,172,124), .section=C(180,139,111), .section_rule=C(100,55,30),
+        .muted=C(180,139,111), .hint_lib=C(180,139,111), .hint_menu=C(180,139,111), .scrollbar=C(100,55,30),
+        .help_bg=CA(32,18,11,230), .help_bar=C(230,172,124), .help_text=C(180,139,111), .game_sub=C(180,139,111),
+        .touch_face=C(32,18,11), .touch_border=C(100,55,30), .card_top=C(100,55,30), .card_bottom=C(32,18,11),
+        .card_stack=C(100,55,30), .folder=C(180,139,111), .logo_3d=CA(230,172,124,220), .version_ink=CA(180,139,111,160),
+        .fx_colour=C(230,172,124), .fx_colour2=C(180,139,111), .icon_a=C(230,172,124), .icon_b=C(180,139,111), .icon_glow=CA(230,172,124,135),
+        .input_shoulder=C(230,172,124), .input_stick=C(180,139,111), .input_other=C(180,139,111), .input_hide=C(100,55,30) },
 };
 #define NTHEMES ((int)(sizeof(themes) / sizeof(themes[0])))
 
