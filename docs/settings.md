@@ -85,7 +85,7 @@ Display | Screen | screen | Original, Stretch, Widescreen | Original | Original 
 Display | Smoothing | smooth | On, Off | On | On | both | all | taste
 Display | FPS counter | show_fps | Off, FPS, Detailed | Off | Off | both | all | taste
 Display | 3D | stereo_style | Real 3D (experimental), Screen depth | - | Screen depth | new | all | taste
-Display | Theme | theme | Original (v0.5.0), Midnight teal, PS1 grey, Sunset magenta, High contrast, Phosphor, Eclipse, Ember | Original (v0.5.0) | Original (v0.5.0) | both | lib | taste
+Display | Theme | theme | - | Original (v0.5.0) | Original (v0.5.0) | both | lib | taste
 Controls | Button mappings | > | - | - | - | both | all | taste
 Controls | Controller | controller | Digital, Analog | Digital | Digital | both | all | tech
 Controls | Analog mode shortcut | analog_combo | Off, L1+R1+Select, L1+R1+Start, L1+R1+L3, L1+R1+R3, L3+R3 | L1+R1+Select | L1+R1+Select | both | all | taste
@@ -264,7 +264,7 @@ Fates:
 | stereo | 3D (Display, New) | Off (fixed) | Screen depth | **Force**: 3D on New (style from `stereo_style`), off on Old; the 3D slider turns it on | User, 2026-10-21; style row back 2026-10-23 | no |
 | stereo_style | 3D (Display, New) | — | Screen depth | **Setting** "3D": Screen depth or Real 3D (experimental) | taste (issue #4: Screen depth is steadier; owner 2026-10-23: default Screen depth, Real 3D 54–86% speed in busy scenes) | no |
 | show_fps | Show FPS (Display) | Off | Off | **Setting** "FPS counter" | taste | no |
-| theme | Theme (Display, library only) | Original (v0.5.0) | Original (v0.5.0) | **Setting** "Theme" | taste; one look for the whole app, so no per-game value. Eight palettes with animated, code-drawn menu scenes and theme-coloured Dreamstale icons; game pictures and cover art keep their colours | no |
+| theme | Theme (Display, library only) | Original (v0.5.0) | Original (v0.5.0) | **Setting** "Theme" | taste; one look for the whole app, so no per-game value. Twelve palettes with animated, code-drawn menu scenes and theme-coloured Dreamstale icons; game pictures and cover art keep their colours | no |
 | touch_click_left | Bottom-screen buttons (Controls, New) | — | Right | **Setting** (New only) | taste | no |
 | audio_stretch | Smooth audio when slow (Sound) | On (5%) | On (5%) | **Force** on | Net win on both; pitch-preserving version in progress (`t3/audio-pitch`), which removes the only downside. | no |
 | sounds | Menu sounds (Sound, library) | On | On | **Force** On | User, 2026-10-21 | no |
@@ -546,3 +546,30 @@ the HTML mock):
 9. Mock notes: no 3D row (slider only, Real 3D, no game screen depth); no
    Sound category (menu sounds and library music always on); tapping the
    header goes back, like B.
+
+### Theme list page
+
+Settings > Display > Theme opens its own scrollable list (A or the Open touch
+button; left/right do not cycle themes). Every row has its name and a small
+colour swatch. Up/down or tapping a new row previews its colours and animated
+scene live on both screens. A / Select (or tapping the selected row) keeps the
+preview and returns to Display. B / Cancel and the header back arrow restore
+the theme selected before entering. An external exit also restores it. Reopening
+starts on the committed theme. It is global and library-only, with no per-game
+value. The bottom touch bar uses style 7: Cancel left, Select right, no category
+L/R buttons on this page.
+
+```settings-themes
+Original (v0.5.0)
+Midnight teal
+PS1 grey
+Sunset magenta
+High contrast
+Phosphor
+Eclipse
+Ember
+Solar
+Glacier
+Citron
+Sienna
+```
