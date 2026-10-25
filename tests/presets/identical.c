@@ -254,12 +254,18 @@ int main(int argc, char **argv)
 	for (size_t i = 0; i < sizeof(legacy_presets) / sizeof(legacy_presets[0]); i++) serials[n++] = legacy_presets[i].serial;
 	for (int i = 0; i < nbundles; i++) serials[n++] = bundles[i].serial;
 	serials[n++] = "SLUS99999"; // uncurated, no bundle
-	serials[n++] = "SCUS94163"; // FFVII: in the library, never curated
+	serials[n++] = "SCUS94163"; // FFVII: technical Off draft on Old only; never curated
 	int compared = 0;
 	quiet = true;
 	for (int i = 0; i < n; i++)
 		for (int model = 0; model < 2; model++) {
 			view_t a = legacy_view(serials[i], model), b = new_view(argv[2], serials[i], model);
+			// Tier1 play3 draft: FFVII USA Disc1 battle reaches100% with Off.
+			// Allow only that Old frameskip delta; all capability/curation and New
+			// behavior must still match the frozen reference. Also works before
+			// this optional data-only draft is present.
+			if (!model && !strcmp(serials[i], "SCUS94163") && game_preset_version() > 0)
+				a.frameskip = 0;
 			if (memcmp(&a, &b, sizeof(a))) {
 				quiet = false;
 				fprintf(stderr, "MISMATCH %s %s\n", serials[i], model ? "new" : "old");
@@ -271,7 +277,7 @@ int main(int argc, char **argv)
 			compared++;
 		}
 	quiet = false;
-	printf("PASS: %d serial/console views identical to v0.4.1 (capabilities, curated, widescreen offer and note)\n", compared);
+	printf("PASS: %d serial/console views match v0.4.1 plus explicit Old FFVII frameskip draft (capabilities, curated, widescreen unchanged)\n", compared);
 	int clocks = 0;
 	g_new3ds = true;
 	static const char *const oc[] = { "SCUS94426", "SCUS94455", "SLUS00707", "SLUS00826" };
