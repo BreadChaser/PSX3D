@@ -220,7 +220,7 @@ bool dev_update(const char *args, char *result, size_t capacity)
 	installing = true;
 	for (offset = 0; offset < total;) {
 		if (devnet_stopping()) {
-			failure = "install cancelled on exit";
+			failure = "install canceled on exit";
 			goto done;
 		}
 		u32 chunk = total - offset, read = 0, written = 0;

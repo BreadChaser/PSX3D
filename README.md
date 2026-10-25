@@ -48,7 +48,7 @@ settings for each tested game on your console. No BIOS file, no setup.
 
 **Easy to use**
 - Main menu with **Continue**: back in your game in one press
-- Box-art library with recently played games, favourites, sorting and a letter jump
+- Box-art library with recently played games, favorites, sorting and a letter jump
 - Box art downloads by itself; clean titles; multi-disc games grouped
 - Finds your games on the SD card without any setup
 
@@ -118,7 +118,7 @@ your own picture, see [box art](docs/box-art.md).
 | Where | Button | Action |
 |---|---|---|
 | Main menu | A / X | Open / Settings |
-| Library | A / X / Y | Play / Sort / Favourite |
+| Library | A / X / Y | Play / Sort / Favorite |
 | Library | L / R | Previous / next letter |
 | Library | SELECT | Scan for new games |
 | In game | A / B / X / Y | Circle / Cross / Triangle / Square |
@@ -195,7 +195,7 @@ and attach `log.txt` if you can.
   it.
 - **Join through Download Play:** a friend's 3DS gets PSX3D's join app straight
   from the Download Play menu.
-- **Themes:** new colour themes with animated backgrounds and icons.
+- **Themes:** new color themes with animated backgrounds and icons.
 - **Better Real 3D:** full speed and more depth in more games.
 - **More tuned games:** recommended settings for more of the PlayStation
   library on both consoles.

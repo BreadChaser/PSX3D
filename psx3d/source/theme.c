@@ -67,7 +67,7 @@ static const theme_t themes[] = {
 		.card_stack = C(30, 64, 74), .folder = C(150, 215, 220),
 		.version_ink = CA(120, 170, 180, 160), .logo_3d = CA(90, 220, 220, 200),
 		.icon_a = C(150, 250, 230), .icon_b = C(60, 140, 235), .icon_glow = CA(90, 220, 230, 130) },
-	{ ORIGINAL, .id = "ps1-grey", .name = "PS1 grey",
+	{ ORIGINAL, .id = "ps1-grey", .name = "PS1 gray",
 		.input_shoulder=C(175,175,190), .input_stick=C(220,220,230), .input_other=C(150,150,160), .input_hide=C(80,80,90), .fx_colour = C(205, 212, 230), .fx_colour2 = C(140, 150, 180),
 		.menu_bg = C(28, 28, 32), .hl_top = CA(90, 90, 100, 235), .hl_bottom = CA(60, 60, 70, 235),
 		.hl_glow = CA(200, 200, 210, 30), .value = C(200, 200, 215), .muted = C(150, 150, 160),

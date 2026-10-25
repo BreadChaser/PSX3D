@@ -690,7 +690,7 @@ static const char *bar_caption(const ui_button_t *p)
 	if (p->label)
 		return p->label;
 	switch (p->icon) {
-	case UI_ICON_STAR: return "Favourite";
+	case UI_ICON_STAR: return "Favorite";
 	case UI_ICON_SORT: return "Sort";
 	case UI_ICON_RESCAN: return "Rescan";
 	case UI_ICON_FOLDER: return "Folders";

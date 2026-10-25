@@ -23,7 +23,7 @@ Base: `release/v0.5.0-candidate` (`4bc03da`, presets-v2 merged). It replaces
 4. Defaults are versioned data (`defaults.ini`). Presets record which defaults
    they were tested with, and a build check stops silent changes (§6).
 5. A test proves the real menu equals this document (§7).
-6. **Dithering ("PS1 colour shading") is forced On on both consoles** (user,
+6. **Dithering ("PS1 color shading") is forced On on both consoles** (user,
    2026-10-21). It is the original PS1 look, and Off only causes banding.
    Measured cost on the Old 3DS is about 0 (v0.4.0 A/B: Crash −0.4%, others ±0.3%).
 7. Cheats live in the pause menu only. They are not part of Settings.
@@ -137,7 +137,7 @@ game without a widescreen fix, Screen offers only Original and Stretch. Scope
   still draws a second top picture every frame and has never been speed-gated
   on the Old, so it is not offered.
 - **Games folder** (library only, home page; moved from the library's Y, which
-  is Favourite now). A opens the folder browser; its "Use this folder for games"
+  is the Favorites view now). A opens the folder browser; its "Use this folder for games"
   row sets `games_dir`. The value shows the folder's name. It is not a stored
   setting of its own (`games_dir` is library state, see §3.2).
 - **FPS counter** (renamed from "Show FPS"). Detailed stays: it is the player's
@@ -151,7 +151,7 @@ game without a widescreen fix, Screen offers only Original and Stretch. Scope
 - **Bottom-screen buttons** (New only): Right side or Left side.
 - **Memory cards.** Same values and meaning as today (card 2 "Shared" is
   PSX3D-managed since the safety round). These take effect on the next game start.
-- **Rewind** (New only, game only). Unchanged behaviour: it needs free memory
+- **Rewind** (New only, game only). Unchanged behavior: it needs free memory
   and shows "Unavailable" when that runs out. The preset key `rewind` keeps
   only its Old 3DS meaning (impossible there). On New it is a plain choice,
   default **On** (user, 2026-10-21).
@@ -187,7 +187,7 @@ although its policy still applies.
 **Reset to recommended** (with confirmation) removes this game's overrides of
 Advanced options only. Display, Controls and Saves overrides stay. The
 existing top-level **Reset this game** / **Reset all settings** keep their
-current behaviour, minus the removed keys.
+current behavior, minus the removed keys.
 
 ## 3. Complete option inventory and fate
 
@@ -216,7 +216,7 @@ Fates:
 | drc | — | no | enabled (auto via Luma) | same | **Force** | Chosen by SVC access. The slow-mode notice explains when it is off. | no |
 | drc_thread | — | no | disabled | disabled | **Force** | already forced (`locked[]`) | no |
 | psxclock | Game CPU speed | yes (Speed hacks) | auto | auto | **Setting** (Advanced) | Real per-game value (New overclock presets). | yes: 4 files, New (CTR, GT2 Arcade, SH, NFS) |
-| dithering | PS1 colour shading | yes (Display) | enabled | enabled | **Force** enabled | User decision 2026-10-21; cost about 0 measured; Off bands SH fog. "Always" (force) also goes. | no |
+| dithering | PS1 color shading | yes (Display) | enabled | enabled | **Force** enabled | User decision 2026-10-21; cost about 0 measured; Off bands SH fog. "Always" (force) also goes. | no |
 | gpu_thread_rendering | — | no | forced disabled | forced enabled | **Force/console** (unchanged) | Old: syscore 30% slices made drawing wait (25 vs 36 fps). New: GPU worker +2.7–3.0% in SH, CTR, R4 (Crash even), 2026-10-18. | no |
 | frameskip_type | Skip frames when slow | yes (Performance; hidden when a preset sets it) | auto | auto | **Setting** (Advanced, "Frameskip") | Real per-game choice; Off/Auto only (user 2026-10-19). | key exists, no file sets it |
 | frameskip_threshold | — | retired | 33 | 33 | **Remove** (already retired) | Off/Auto only | no |
@@ -229,7 +229,7 @@ Fates:
 | scale_hires | — | no | enabled | enabled | **Force** | 240-line screen | no |
 | gpu_slow_llists | Safe drawing | yes (Picture accuracy) | auto | auto | **Setting** (Compatibility) | Per-game fix | no |
 | show_overscan | — | no (hidden by `show_` prefix, by accident) | disabled | disabled | **Force** disabled | Overscan would not fit the 400-px screen with Original framing. Recorded here so it is a decision, not an accident. | no |
-| screen_centering, _x, _y, _h_adj | — | no (removed) | auto | auto | **Force** auto | The game's own display position (gpulib "auto": pictures within 8 px of the middle are centred). `psx3d/source/display.c` shows the field like a TV: short pictures get black borders, 480i is two lines per row, PAL shows a 240-line window. Same in every screen mode. | no |
+| screen_centering, _x, _y, _h_adj | — | no (removed) | auto | auto | **Force** auto | The game's own display position (gpulib "auto": pictures within 8 px of the middle are centered). `psx3d/source/display.c` shows the field like a TV: short pictures get black borders, 480i is two lines per row, PAL shows a 240-line window. Same in every screen mode. | no |
 | neon_*, gpu_peops_*, gpu_unai_* | — | no | — | — | **Remove** (not built) | No such renderers on 3DS (`hidden_prefix`); the unai prefix is a leftover from the Software renderer removal. | no |
 | show_gpu_peops_settings, show_input_settings | — | no | disabled | disabled | **Force** | RetroArch menu folding | no |
 | spu_reverb | Sound echo | Old only (Sound) | disabled | forced enabled | **Force** On, both | User decision (Q1): the PS1 has it. Old cost measured on heavy scenes: see `devtools/settings-impl/REPORT.md`. | no |
@@ -264,7 +264,7 @@ Fates:
 | stereo | 3D (Display, New) | Off (fixed) | Screen depth | **Force**: 3D on New (style from `stereo_style`), off on Old; the 3D slider turns it on | User, 2026-10-21; style row back 2026-10-23 | no |
 | stereo_style | 3D (Display, New) | — | Screen depth | **Setting** "3D": Screen depth or Real 3D (experimental) | taste (issue #4: Screen depth is steadier; owner 2026-10-23: default Screen depth, Real 3D 54–86% speed in busy scenes) | no |
 | show_fps | Show FPS (Display) | Off | Off | **Setting** "FPS counter" | taste | no |
-| theme | Theme (Display, library only) | Original (v0.5.0) | Original (v0.5.0) | **Setting** "Theme" | taste; one look for the whole app, so no per-game value. Twelve palettes with animated, code-drawn menu scenes and theme-coloured Dreamstale icons; game pictures and cover art keep their colours | no |
+| theme | Theme (Display, library only) | Original (v0.5.0) | Original (v0.5.0) | **Setting** "Theme" | taste; one look for the whole app, so no per-game value. Twelve palettes with animated, code-drawn menu scenes and theme-colored Dreamstale icons; game pictures and cover art keep their colors | no |
 | touch_click_left | Bottom-screen buttons (Controls, New) | — | Right | **Setting** (New only) | taste | no |
 | audio_stretch | Smooth audio when slow (Sound) | On (5%) | On (5%) | **Force** on | Net win on both; pitch-preserving version in progress (`t3/audio-pitch`), which removes the only downside. | no |
 | sounds | Menu sounds (Sound, library) | On | On | **Force** On | User, 2026-10-21 | no |
@@ -551,7 +551,7 @@ the HTML mock):
 
 Settings > Display > Theme opens its own scrollable list (A or the Open touch
 button; left/right do not cycle themes). Every row has its name and a small
-colour swatch. Up/down or tapping a new row previews its colours and animated
+color swatch. Up/down or tapping a new row previews its colors and animated
 scene live on both screens. A / Select (or tapping the selected row) keeps the
 preview and returns to Display. B / Cancel and the header back arrow restore
 the theme selected before entering. An external exit also restores it. Reopening
@@ -562,7 +562,7 @@ L/R buttons on this page.
 ```settings-themes
 Original (v0.5.0)
 Midnight teal
-PS1 grey
+PS1 gray
 Sunset magenta
 High contrast
 Phosphor

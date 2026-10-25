@@ -63,7 +63,7 @@ static const char *const tips[] = {
  [F_REWIND]="Hold the rewind shortcut to go back.",
  [F_RECOMMENDED]="Remove this game's Advanced changes.",
  [F_RECORD]="Capture 30 seconds for troubleshooting.", [F_TONE]="Play a tone to check audio output.",
- [F_THEME]="Change the menu colours and animated scene.",
+ [F_THEME]="Change the menu colors and animated scene.",
  [F_FOLDER]="Pick the folder the library shows.",
  [F_STEREO]="Real 3D is experimental: slower in busy games.",
 };
@@ -80,7 +80,7 @@ static const char *const helps[] = {
  [F_TONE]="Play a steady tone to check audio output.",
  [F_FOLDER]="The folder on the SD card that the library lists. Opens the folder browser; you can also start a game from there.",
  [F_STEREO]="Use the 3D slider to turn 3D on and set its strength. Screen depth puts the whole picture behind the screen. Real 3D gives every object its own depth; it is experimental and can be slower in busy games.",
- [F_THEME]="Choose the menu colours, animated background and icons. Each theme has its own scene. Game pictures and cover art keep their colours.",
+ [F_THEME]="Choose the menu colors, animated background and icons. Each theme has its own scene. Game pictures and cover art keep their colors.",
 };
 static const char *const category_tips[] = {
  [CAT_DISPLAY]=THEMES_SHOWN ? "Picture shape, smoothing, FPS counter and theme." : "Picture shape, smoothing and FPS counter.",

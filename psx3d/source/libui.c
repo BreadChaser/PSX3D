@@ -39,7 +39,7 @@ static bool scrubbing;             // a drag along the list's right edge
 // The sort views put section headings between the entries: the list counts
 // them as rows, the carousel only shows entries.
 enum { V_AZ, V_RECENT, V_MOST, V_FAV, V_COUNT };
-static const char *const view_names[V_COUNT] = { "A-Z", "Recent", "Most played", "Favourites" };
+static const char *const view_names[V_COUNT] = { "A-Z", "Recent", "Most played", "Favorites" };
 static int view[2048 + 512];
 static int nview;
 static int open_series = -1;
@@ -432,7 +432,7 @@ static void draw_top(void *ud)
 	if (!n && open_series < 0 && g_cfg.library_view == V_FAV) {
 		// no favourites yet: a big star in the empty carousel
 		ui_star(200 + ui_depth(-1.0f), 92, 46, ui_bar_color(UI_COL_STAR), theme_alpha(th->menu_bg, 255), 0.5f);
-		text(title_font, 200, 172, 0.8f, th->game_title, C2D_AlignCenter, "No favourites yet");
+		text(title_font, 200, 172, 0.8f, th->game_title, C2D_AlignCenter, "No favorites yet");
 	}
 	if (jump_frames > 0)
 		draw_jump(jump_frames > 12 ? 255 : jump_frames * 255 / 12);
@@ -559,7 +559,7 @@ static void draw_bottom(void *ud)
 	const theme_t *th = theme();
 	scene_draw(true);
 	if (!nview && open_series < 0 && g_cfg.library_view == V_FAV) {
-		ui_menu_header("Favourites", "None yet");
+		ui_menu_header("Favorites", "None yet");
 		ui_text_wrap(16, 48, 0.45f, th->help_text, 288, "Pick a game in A-Z and press Y (or tap the star).");
 	}
 	int srow = nview ? row_of(sel) : -1;
@@ -808,7 +808,7 @@ int libui_run(char *out_path, size_t len)
 		}
 		if ((k & KEY_Y) && n && entry_series(sel) < 0) {
 			bool on = playlog_toggle_favourite(save_key(entry_game(sel)));
-			say(on ? "Added to favourites" : "Removed from favourites");
+			say(on ? "Added to favorites" : "Removed from favorites");
 			sfx_play(on ? SFX_SELECT : SFX_BACK);
 			rebuild_keep(sel);   // the Favourites view drops the row; the cursor stays put
 			n = nview;

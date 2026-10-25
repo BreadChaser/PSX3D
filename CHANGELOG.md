@@ -6,7 +6,7 @@ Speed figures are for specific saved scenes; see [Performance](README.md#perform
 ## v0.5.1
 
 - New: a main menu with Continue, Library, Share PSX3D and Settings.
-- New: the library shows recently played games first; sort by name, recent or most played; mark favourites with Y; L/R jumps by letter.
+- New: the library shows recently played games first; sort by name, recent or most played; mark favorites with Y; L/R jumps by letter.
 - New: touch buttons at the bottom of every menu.
 - New: save backups: the last ten automatic saves and dated memory card copies per game; Undo and Redo in the pause menu.
 - New: sharper box art, found by disc serial for files with any name.
