@@ -2,7 +2,7 @@
 
 <h1 align="center">PSX3D</h1>
 <p align="center"><b>A PlayStation emulator built for the Nintendo 3DS.</b><br>
-GPU rendering, a box-art library and settings tuned for every tested game.</p>
+GPU rendering, a box-art library and recommended settings for a growing list of games.</p>
 
 <p align="center">
   <a href="https://github.com/BreadChaser/PSX3D/releases/latest"><img src="https://img.shields.io/github/v/release/BreadChaser/PSX3D?color=ae68df" alt="Latest release"></a>
@@ -28,8 +28,8 @@ GPU rendering, a box-art library and settings tuned for every tested game.</p>
 </table>
 
 PSX3D plays PlayStation games on every 3DS and 2DS. It draws with the 3DS
-graphics chip, opens straight into your game library, and applies the right
-settings for each tested game on your console. No BIOS file, no setup.
+graphics chip, puts your library one tap away, and applies recommended settings
+for a growing list of tested games (US editions so far). No BIOS file needed.
 
 > [!NOTE]
 > PSX3D is a work in progress and improves with every release. Most games run
@@ -51,6 +51,8 @@ settings for each tested game on your console. No BIOS file, no setup.
 - Box-art library with recently played games, favorites, sorting and a letter jump
 - Box art downloads by itself; clean titles; multi-disc games grouped
 - Finds your games on the SD card without any setup
+- Twelve animated color themes with a live preview in Settings → Display → Theme
+- Theme-colored menu icons and in-game touch controls
 
 **Keeps your progress safe**
 - Your place is saved when you quit, when the 3DS sleeps and every few minutes
@@ -195,7 +197,6 @@ and attach `log.txt` if you can.
   it.
 - **Join through Download Play:** a friend's 3DS gets PSX3D's join app straight
   from the Download Play menu.
-- **Themes:** new color themes with animated backgrounds and icons.
 - **Better Real 3D:** full speed and more depth in more games.
 - **More tuned games:** recommended settings for more of the PlayStation
   library on both consoles.
@@ -203,7 +204,7 @@ and attach `log.txt` if you can.
 ## FAQ
 
 **Old 3DS or New 3DS?**
-Both are supported. The New 3DS runs every tested game at full speed with Auto
+Both are supported. The New 3DS runs the games in the performance table at full speed with Auto
 frameskip, and adds
 3D, rewind and a faster PS1 processor. The Old 3DS runs most games well;
 demanding 3D games are slower there.

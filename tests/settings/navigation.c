@@ -185,9 +185,9 @@ int main(void)
 		input_touch_disc_log("CD-ROM ID: SLUS00707\n");
 		settings_ui_t sh = {.game = true};
 		open_page(&sh, CAT_ADVANCED);
-		assert(game_preset_tested() == model);   // New: overclock entry tested_with = 1
-		assert(!strcmp(advanced_header(&sh), model ? advanced_tested : advanced_untested));
-		assert(has_row(&sh, F_RECOMMENDED) == model);
+		assert(game_preset_tested());   // Approved Silent Hill presets on both models
+		assert(!strcmp(advanced_header(&sh), advanced_tested));
+		assert(has_row(&sh, F_RECOMMENDED));
 		int clock = options_index("pcsx_rearmed_psxclock");
 		assert(clock >= 0);
 #ifdef PSX3D_PS1_OVERCLOCK_PRESETS

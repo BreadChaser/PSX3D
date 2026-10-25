@@ -3,6 +3,16 @@
 What changed in each release, newest first. One line per point.
 Speed figures are for specific saved scenes; see [Performance](README.md#performance) and [compatibility](docs/compatibility.md).
 
+## v0.5.2
+
+- Faster Old 3DS gameplay with improvements to the emulator and GPU renderer.
+- Faster experimental Real 3D on New 3DS.
+- Twelve animated themes, a live Theme preview, and matching menu icons and touch controls.
+- A smoother Original menu backdrop with the same classic look.
+- Recommended Old 3DS settings for nine tested US games, including Silent Hill and Klonoa.
+- Improved correctness when games change code across memory pages.
+- American English throughout the interface.
+
 ## v0.5.1
 
 - New: a main menu with Continue, Library, Share PSX3D and Settings.
