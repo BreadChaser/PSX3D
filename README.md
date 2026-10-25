@@ -36,6 +36,11 @@ for a growing list of tested games (US editions so far). No BIOS file needed.
 > well; demanding 3D games run slower on the Old 3DS. See
 > [Performance](#performance) and [Known issues](#known-issues).
 
+> [!TIP]
+> Coming next: [BreadBox](https://github.com/BreadChaser/BreadBox), a
+> multi-system emulator for the 3DS built on PSX3D, starting with PlayStation
+> and Game Boy Advance.
+
 ## Features
 
 **Plays well**
@@ -200,6 +205,8 @@ and attach `log.txt` if you can.
 - **Better Real 3D:** full speed and more depth in more games.
 - **More tuned games:** recommended settings for more of the PlayStation
   library on both consoles.
+- **[BreadBox](https://github.com/BreadChaser/BreadBox):** PSX3D's approach
+  for more systems, starting with PlayStation and Game Boy Advance.
 
 ## FAQ
 
