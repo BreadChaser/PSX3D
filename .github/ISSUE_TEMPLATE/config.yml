@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: PSX3D is now BreadBox
+    url: https://github.com/BreadChaser/BreadBox/issues/new/choose
+    about: PSX3D gets no more updates. Please report problems on BreadBox.
   - name: Known issues
     url: https://github.com/BreadChaser/PSX3D#known-issues
     about: Problems we already know about.

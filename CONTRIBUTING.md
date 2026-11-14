@@ -1,6 +1,7 @@
 # Contributing
 
-Thanks for helping. Bug reports with a log are the most useful thing you can send.
+Thanks for helping. PSX3D is now [BreadBox](https://github.com/BreadChaser/BreadBox) and gets no more updates:
+please report problems and send changes there.
 
 ## Reporting a bug
 

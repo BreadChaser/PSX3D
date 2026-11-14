@@ -2,7 +2,7 @@
 
 <h1 align="center">PSX3D</h1>
 <p align="center"><b>A PlayStation emulator built for the Nintendo 3DS.</b><br>
-GPU rendering, a box-art library and recommended settings for a growing list of games.</p>
+PSX3D is now <a href="https://github.com/BreadChaser/BreadBox">BreadBox</a>.</p>
 
 <p align="center">
   <a href="https://github.com/BreadChaser/PSX3D/releases/latest"><img src="https://img.shields.io/github/v/release/BreadChaser/PSX3D?color=ae68df" alt="Latest release"></a>
@@ -16,8 +16,19 @@ GPU rendering, a box-art library and recommended settings for a growing list of 
   <a href="#controls">Controls</a> ·
   <a href="#performance">Performance</a> ·
   <a href="#faq">FAQ</a> ·
-  <a href="https://github.com/BreadChaser/PSX3D/issues/new/choose">Report a problem</a>
+  <a href="https://github.com/BreadChaser/BreadBox/issues/new/choose">Report a problem</a>
 </p>
+
+> [!IMPORTANT]
+> **PSX3D is now [BreadBox](https://github.com/BreadChaser/BreadBox).** BreadBox
+> plays everything PSX3D did, adds Game Boy Advance, and updates itself.
+> PSX3D 0.5.2 is the last PSX3D release and gets no more updates.
+>
+> **Moving over:** install [**BreadBox.cia**](https://github.com/BreadChaser/BreadBox/releases/latest/download/BreadBox.cia)
+> with FBI. On first start it copies your memory cards, save states, per-game
+> settings, cheats and BIOS files from PSX3D. PSX3D itself is left untouched and
+> can stay installed. Please report problems on
+> [BreadBox](https://github.com/BreadChaser/BreadBox/issues/new/choose).
 
 <table>
   <tr>
@@ -35,11 +46,6 @@ for a growing list of tested games (US editions so far). No BIOS file needed.
 > PSX3D is a work in progress and improves with every release. Most games run
 > well; demanding 3D games run slower on the Old 3DS. See
 > [Performance](#performance) and [Known issues](#known-issues).
-
-> [!TIP]
-> Coming next: [BreadBox](https://github.com/BreadChaser/BreadBox), a
-> multi-system emulator for the 3DS built on PSX3D, starting with PlayStation
-> and Game Boy Advance.
 
 ## Features
 
@@ -192,21 +198,12 @@ with Auto frameskip.
 - With the built-in BIOS, the first Gran Turismo hangs and Mega Man Legends 2
   goes black after the intro. A real BIOS fixes Gran Turismo.
 
-Found something else? [Open an issue](https://github.com/BreadChaser/PSX3D/issues/new/choose)
+Found something else? [Open an issue on BreadBox](https://github.com/BreadChaser/BreadBox/issues/new/choose)
 and attach `log.txt` if you can.
 
 ## Planned features
 
-- **Play together:** play with a friend over local wireless. Both players with
-  their own copy of the game, or stream the game to a friend who doesn't have
-  it.
-- **Join through Download Play:** a friend's 3DS gets PSX3D's join app straight
-  from the Download Play menu.
-- **Better Real 3D:** full speed and more depth in more games.
-- **More tuned games:** recommended settings for more of the PlayStation
-  library on both consoles.
-- **[BreadBox](https://github.com/BreadChaser/BreadBox):** PSX3D's approach
-  for more systems, starting with PlayStation and Game Boy Advance.
+New work happens in [BreadBox](https://github.com/BreadChaser/BreadBox).
 
 ## FAQ
 
