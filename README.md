@@ -86,20 +86,35 @@ for a growing list of tested games (US editions so far). No BIOS file needed.
 
 ## Install
 
+**Install BreadBox instead.** PSX3D is no longer updated; BreadBox plays
+everything PSX3D did and copies your PSX3D saves and settings on first start.
+
 **You need** a 3DS or 2DS with [Luma3DS](https://github.com/LumaTeam/Luma3DS)
 custom firmware, and your own PlayStation game images.
 
 1. Open **FBI → Remote Install → Scan QR Code** and scan this code:
 
-   <img src="docs/qr-install.png" width="180" alt="QR code for the latest PSX3D.cia">
+   <img src="https://raw.githubusercontent.com/BreadChaser/BreadBox/main/docs/qr-install.png" width="180" alt="QR code for the latest BreadBox.cia">
 
-   Or download [**PSX3D.cia**](https://github.com/BreadChaser/PSX3D/releases/latest/download/PSX3D.cia)
+   Or download [**BreadBox.cia**](https://github.com/BreadChaser/BreadBox/releases/latest/download/BreadBox.cia)
    and install it with FBI.
 2. Copy your games to `sdmc:/roms/psx/`.
-3. Start **PSX3D** from the HOME Menu.
+3. Start **BreadBox** from the HOME Menu.
 
-To update, scan the same code again. A `.3dsx` for the Homebrew Launcher is on
-the [release page](https://github.com/BreadChaser/PSX3D/releases/latest).
+More in the [BreadBox guide](https://github.com/BreadChaser/BreadBox#install).
+
+<details>
+<summary>The old version: PSX3D 0.5.2</summary>
+
+Scan this code in **FBI → Remote Install → Scan QR Code**:
+
+<img src="docs/qr-install.png" width="180" alt="QR code for PSX3D.cia 0.5.2">
+
+Or download [**PSX3D.cia**](https://github.com/BreadChaser/PSX3D/releases/latest/download/PSX3D.cia)
+and install it with FBI. A `.3dsx` for the Homebrew Launcher is on the
+[release page](https://github.com/BreadChaser/PSX3D/releases/latest).
+
+</details>
 
 ## Getting started
 
